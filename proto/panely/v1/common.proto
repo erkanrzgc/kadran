@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package panely.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1";
+
+// Actor, bir eylemi kimin başlattığını tanımlar.
+//
+// Panely'de parola girişi yoktur; gerçek kimlik SSH açık anahtarının
+// parmak izidir. `source_ip` şartname §1.3'ün "IP adresiyle kaydedilir"
+// gereksinimini karşılar ve denetim zincirinin hash yüküne dahildir.
+message Actor {
+  // SSH açık anahtarının SHA256 parmak izi ("SHA256:abc..." biçiminde).
+  // Sistem tarafından başlatılan eylemlerde boştur.
+  string ssh_key_fingerprint = 1;
+
+  // Bağlantının geldiği IP adresi. Yerel/sistem eylemlerinde boştur.
+  string source_ip = 2;
+
+  // İnsan tarafından okunabilir etiket (authorized_keys yorumu).
+  string label = 3;
+
+  // Eylemi başlatan bileşen: "cli", "gui", "scheduler", "executor".
+  string origin = 4;
+}
+
+// AuditOutcome, bir eylemin nasıl sonuçlandığını belirtir.
+enum AuditOutcome {
+  AUDIT_OUTCOME_UNSPECIFIED = 0;
+  AUDIT_OUTCOME_SUCCESS = 1;
+  AUDIT_OUTCOME_FAILURE = 2;
+  // İstek şema/değişmez doğrulamasında reddedildi. Bu, güvenlik modelinin
+  // devreye girdiği durumdur ve ayrıca izlenir.
+  AUDIT_OUTCOME_DENIED = 3;
+}
+
+// AuditRecord, hash zincirindeki tek bir halkadır.
+//
+// `hash` alanı diğer tüm alanların kanonik serileştirmesi üzerinden
+// hesaplanır ve `prev_hash` ile zincirlenir:
+//
+//   hash = SHA256(canonical(seq, ts, actor, action, target, params,
+//                           outcome, detail) || prev_hash)
+//
+// Zincir yalnızca ekleme (append-only) yapılarak büyür; bir satırın
+// değiştirilmesi kendisinden sonraki tüm hash'leri geçersiz kılar.
+message AuditRecord {
+  // 1'den başlayan, boşluksuz artan sıra numarası.
+  uint64 seq = 1;
+
+  google.protobuf.Timestamp ts = 2;
+
+  Actor actor = 3;
+
+  // Noktalı eylem adı: "app.deploy", "container.create", "secret.rotate".
+  string action = 4;
+
+  // Eylemin uygulandığı nesne: "app/blog", "volume/blog-data".
+  string target = 5;
+
+  // İsteğin kanonik JSON gösterimi. Sırlar buraya YAZILMAZ; kasa
+  // alanları kaydedilmeden önce "[REDACTED]" ile değiştirilir.
+  string params_json = 6;
+
+  AuditOutcome outcome = 7;
+
+  // Hata mesajı veya kısa sonuç özeti.
+  string detail = 8;
+
+  // Zincirdeki bir önceki kaydın hash'i. İlk kayıtta 32 sıfır bayt.
+  bytes prev_hash = 9;
+
+  // Bu kaydın hash'i.
+  bytes hash = 10;
+
+  // Kaydı hangi bileşenin ürettiği. Executor kendi eylemlerini kendi
+  // günlüğüne yazar; böylece panelyd ele geçirilse bile ayrıcalıklı
+  // işlemler kayıtsız kalamaz.
+  AuditSource source = 11;
+}
+
+enum AuditSource {
+  AUDIT_SOURCE_UNSPECIFIED = 0;
+  AUDIT_SOURCE_DAEMON = 1;
+  AUDIT_SOURCE_EXECUTOR = 2;
+}
+
+// HostInfo, sunucunun donanım ve çekirdek bilgisidir.
+//
+// Hem api.proto (istemciye gösterilir) hem exec.proto (executor toplar)
+// tarafından kullanıldığı için burada, ortak dosyada tanımlıdır.
+message HostInfo {
+  string os = 1;
+  string kernel_version = 2;
+  string architecture = 3;
+  uint32 cpu_count = 4;
+  uint64 memory_total_bytes = 5;
+  uint64 memory_available_bytes = 6;
+  // Docker Engine sürümü. Executor üzerinden alınır; boşsa Docker yok.
+  string docker_version = 7;
+}
+
+// ResourceLimits, cgroups üzerinden zorlanan kaynak kotalarıdır (§2.2).
+//
+// Bu alanlar executor tarafından üst sınırlara karşı doğrulanır; sınırsız
+// (0) değer kabul edilmez.
+message ResourceLimits {
+  uint64 memory_bytes = 1;
+  // CPU çekirdek oranı, milli-çekirdek cinsinden (1000 = 1 çekirdek).
+  uint32 cpu_millis = 2;
+  // Blok G/Ç ağırlığı, 10-1000 arası.
+  uint32 blkio_weight = 3;
+}

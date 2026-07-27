@@ -1,0 +1,204 @@
+# Mimari Kararlar
+
+Panely'nin şekline yön veren kararlar ve — mümkün olduğunda — onları
+destekleyen **ölçülmüş kanıt**. "Böyle olması lazım" ile "denedim, böyle
+oluyor" arasındaki fark burada kayıt altına alınır.
+
+---
+
+## K-001 — Kontrol düzlemi masaüstü + CLI, web paneli yok
+
+**Karar.** Panely bir web uygulaması değil; sunucuda `panelyd` daemon'ı,
+iş istasyonunda Electron GUI ve `panely` CLI çalışır. Bağlantı SSH üzerinden.
+
+**Gerekçe.** Web paneli tüm bir güvenlik sınıfını beraberinde getiriyordu:
+çerez, CSRF, SameSite, XSS, oturum jetonu, CORS. Masaüstü istemcide bunların
+hiçbiri yok. Kimlik doğrulama SSH anahtarına iner ki bu zaten sunucudaki en
+güçlü kimlik katmanıdır.
+
+**Sonuç.** Şartname §9.3'teki "frontend Vercel'de dursun ki sunucu çökünce
+panel ayakta kalsın" maddesi gereksizleşti — masaüstü uygulaması zaten
+kullanıcının makinesinde.
+
+**Açık varsayım.** Sunucu ölünce uygulama ayakta kalır ama yönetecek bir API
+kalmaz. Gerçek felaket *yönetimi* Faz 5'te yedek düğümün de `panelyd`
+çalıştırmasını gerektirir. O zamana kadar §9 "gözlem + geri yükleme"
+seviyesindedir, "canlı devralma" değil.
+
+---
+
+## K-002 — Üç binary, üç yetki seviyesi
+
+**Karar.** `panelyd` yetkisiz (kullanıcı `panely`), `panely-exec` ayrıcalıklı
+(root) ve aralarındaki sözleşme tipli bir protobuf şeması.
+
+**Gerekçe.** Docker soketine erişim pratikte root yetkisidir. "Panel root
+çalışmasın" şartını gerçekten karşılamanın tek yolu, ayrıcalıklı yüzeyi
+denetlenebilir küçük bir binary'ye hapsetmektir. Coolify/Dokploy dahil
+mevcut panellerin hiçbirinde bu ayrım yok.
+
+**Değişmez.** `internal/exec` 2000 satırı geçerse ne eklendiği sorgulanır.
+Ayrıcalıklı yüzey büyüdükçe "en az yetki" iddiası anlamını yitirir.
+
+---
+
+## K-003 — SSH erişimi zorlanmış komutla, soket yönlendirmesiyle değil
+
+**Karar.** İstemcinin `authorized_keys` girdisi:
+
+```
+command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA...
+```
+
+**Reddedilen alternatif.** İlk taslakta `direct-streamlocal@openssh.com` ile
+unix soketi yönlendirmesine izin verilmesi düşünülmüştü.
+
+**Neden reddedildi.** OpenSSH'ta unix soketi yönlendirmesini açmak
+`port-forwarding` iznini gerektirir; bu da istemciye sunucudaki **her TCP
+portuna** tünel açma yetkisi verir — örneğin `localhost:5432`'deki
+veritabanına. `restrict` + zorlanmış komut ile bu sınıf tamamen kapanır:
+anahtar yalnızca `panely-connect` binary'sini çalıştırabilir, o da sokete
+bayt taşımaktan başka bir şey yapmaz.
+
+**Yan fayda.** OpenSSH'ın ince yönlendirme semantiğine hiç bağımlı değiliz.
+Faz 7'deki veritabanı tünelleri de SSH yönlendirmesi yerine denetim
+günlüğüne yazılan bir RPC üzerinden geçecek.
+
+---
+
+## K-004 — İki ayrı unix grubu: `panely` ve `panely-client`
+
+**Karar.**
+
+| Yol | Sahiplik | Mod | Erişebilen |
+|---|---|---|---|
+| `/run/panely-exec/` | `root:panely` | 0750 | yalnızca panelyd |
+| `/run/panely-exec/exec.sock` | `root:panely` | 0660 | yalnızca panelyd |
+| `/run/panely/` | `panely:panely-client` | 0750 | panelyd + istemci |
+| `/run/panely/api.sock` | `panely:panely-client` | 0660 | panelyd + istemci |
+
+**Yakalanan kaçak.** Tek grup kullanılsaydı, istemci SSH kullanıcısı
+`api.sock`'a erişebilmek için `panely` grubunda olmak zorunda kalırdı — ve
+aynı grup `exec.sock`'u da açtığı için istemci **panelyd'yi atlayıp doğrudan
+executor'a** bağlanabilirdi. İki grup bu yolu kapatır.
+
+**Bootstrap değişmezi.** `SO_PEERCRED` yalnızca sürecin **birincil** gid'ini
+bildirir, ek grup üyeliklerini değil. Bu yüzden istemci kullanıcısı
+`useradd -g panely-client` ile oluşturulmalıdır, `-G` ile değil. Yanlış
+yapılırsa hata mesajı çıkmaz; her bağlantı sessizce reddedilir.
+
+---
+
+## K-005 — Kontrol veritabanı SQLite, Postgres değil
+
+**Karar.** `modernc.org/sqlite` (saf Go, CGO'suz), WAL modu,
+`_txlock=immediate`.
+
+**Gerekçe.** Kontrol düzleminde yüksek eşzamanlı yazma yok. Postgres ayrı bir
+servis, ayrı bir yedekleme yolu ve bir tavuk-yumurta problemi getirirdi:
+"Panely'nin veritabanını Panely mi yönetsin?" SQLite gömülüdür, yedeği tek
+dosyadır ve Faz 5'te Litestream ile R2'ye sürekli replike edilebilir.
+
+**CGO'suz olması şart.** Windows iş istasyonundan `linux/amd64` ve
+`linux/arm64` hedeflerine çapraz derleme buna bağlı; `panely bootstrap`'in
+"tek komut kurulum" vaadi de öyle.
+
+**Ölçülmüş kanıt.** `_txlock=immediate`'in sürücü tarafından gerçekten
+ayrıştırıldığı doğrulandı: `_txlock=zirvana` verildiğinde sürücü
+`unknown _txlock "zirvana"` hatası döndürüyor, yani değeri yok saymıyor.
+(Bilinmeyen *diğer* parametreler sessizce yok sayılıyor, bu yüzden bu
+kontrol anlamlıydı.)
+
+---
+
+## K-006 — Denetim zinciri kanonik JSON değil, uzunluk-önekli ikili kodlama
+
+**Karar.** `audit.ComputeHash`, alanları uzunluk öneki ile SHA-256'ya besler.
+
+**Gerekçe.** JSON kanonikleştirmesi ince tuzaklarla dolu: anahtar sıralaması,
+unicode kaçışları, ondalık gösterim, boşluk. Farklı bir kütüphane sürümü aynı
+kayıt için farklı bayt üretip zinciri sebepsiz kırabilir.
+
+Uzunluk öneki ayrıca klasik zincir hatasını engeller: önek olmadan
+`("ab","c")` ile `("a","bc")` aynı baytlara serileşir ve iki farklı kayıt aynı
+hash'i üretir. Bu, bir saldırganın alan sınırlarını kaydırarak eylemin
+anlamını değiştirmesine izin verirdi.
+
+**Test.** `TestLengthPrefixPreventsFieldBoundaryCollision`.
+
+---
+
+## K-007 — Executor'ın günlüğü düz dosya, SQLite değil
+
+**Karar.** `/var/lib/panely/exec-audit.log`, satır başına bir JSON kaydı,
+0640 `root:panely` (panelyd okur, **yazamaz**).
+
+**Gerekçe.** SQLite'ı executor'a bağlamak ~200 bin satırlık bir SQL motorunu
+ayrıcalıklı sürecin içine sokardı. Dosya tabanlı günlük ~200 satır. K-002'nin
+değişmezi burada test edildi ve kolaylık için taviz verilmedi.
+
+**Neden ayrı bir günlük?** panelyd'nin ele geçirilmesi tehdit modelinin
+merkezinde. Kayıtlar yalnızca panelyd'de tutulsaydı, ele geçirilmiş bir
+panelyd kendi yaptığı ayrıcalıklı çağrıları hiç kaydetmeyebilirdi.
+
+**Okuma anında yeniden doğrulama.** `Journal.Read`, açılıştaki doğrulamaya
+güvenmez; her çağrıda zinciri seq 1'den yeniden doğrular. Aksi hâlde
+executor çalışırken dosyaya eklenen sahte bir satır "gerçek" gibi teslim
+edilir ve panelyd'nin çapraz doğrulaması iki doğrulanmamış zinciri
+karşılaştırmış olurdu — yani hiçbir şey kanıtlamazdı.
+Test: `TestReadRejectsLineForgedWhileOpen`.
+
+---
+
+## K-008 — §1.1'deki seccomp ifadesinin yerine konan gerçek kontroller
+
+**Şartnamede yazan.** "Çekirdek seviyesinde süreçlerin yetkisiz bellek veya
+doğrudan donanım alanlarına erişimini engelleyen kısıtlama kuralları."
+
+**Sorun.** seccomp *sistem çağrılarını* filtreler; bellek veya donanım
+erişimini değil. Madde olduğu gibi uygulanabilir değil.
+
+**Yerine konan.** İş yükü konteynerlerinde Docker varsayılan seccomp profili
++ `no-new-privileges` + düşürülmüş yetenekler. Daemon'ın kendisinde systemd
+sıkılaştırması: `NoNewPrivileges`, `ProtectSystem=strict`,
+`CapabilityBoundingSet=`, `SystemCallFilter=@system-service`,
+`MemoryDenyWriteExecute`, `PrivateDevices`, `RestrictAddressFamilies`.
+
+Özel bir seccomp katmanı **yazılmayacak**.
+
+---
+
+## K-009 — gRPC unix soketi sertleştirme altında çalışıyor (ölçüldü)
+
+**Endişe.** `RestrictAddressFamilies=AF_UNIX` panelyd'nin `exec.sock`'a
+bağlanmasını kırabilir mi? Go'nun çözümleyicisi bazı yollarda `AF_NETLINK`
+kullanır.
+
+**Ölçüm.** WSL Ubuntu (systemd çalışır durumda) üzerinde bir gRPC sunucu +
+istemci sondası, `panelyd.service`'in kısıtlarıyla çalıştırıldı:
+`RestrictAddressFamilies=AF_UNIX`, `NoNewPrivileges`,
+`SystemCallArchitectures=native`, `SystemCallFilter=@system-service`,
+`SystemCallFilter=~@privileged @resources @obsolete @mount @debug
+@cpu-emulation @swap @raw-io`, `MemoryDenyWriteExecute`, `LockPersonality`.
+
+**Sonuç.** Her iki bağlanma yöntemi de başarılı:
+
+| Yöntem | Kısıtsız | Kısıtlı |
+|---|---|---|
+| `unix://` hedefi, gRPC çözümleyicisi | bağlandı | bağlandı |
+| `passthrough:///` + özel dialer | bağlandı | bağlandı |
+
+**Karar.** Endişe gerçekleşmedi, ancak kodda yine de **passthrough + özel
+dialer** kullanılacak. Bedeli sıfır ve çözümleyiciyi tamamen devreden
+çıkararak bir bilinmeyeni kalıcı olarak siliyor.
+
+---
+
+## K-010 — `buf` uzak eklentileri değil, yerel eklentiler
+
+**Karar.** `buf.gen.yaml` yalnızca `local:` eklentiler kullanır.
+
+**Gerekçe.** buf'ın `remote:` eklentileri `.proto` tanımlarını kod üretimi
+için buf.build sunucularına yükler. `exec.proto` projenin güvenlik sınırıdır
+ve yetki modelinin tamamını tarif eder. Üçüncü taraf bir servise
+gönderilmesi için hiçbir gerekçe yok.

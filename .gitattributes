@@ -1,0 +1,24 @@
+# Panely Windows iş istasyonundan geliştirilip Linux sunucuya dağıtılır.
+# Satır sonları bu yüzden yapılandırma değil, DOĞRULUK meselesidir:
+#
+#   - CRLF'li bir systemd unit dosyası sessizce çalışmaz
+#   - CRLF'li bir shell betiği "bad interpreter: /usr/bin/env bash^M" verir
+#   - CRLF'li bir authorized_keys satırı SSH tarafından reddedilir
+#
+# Bu yüzden depodaki her metin dosyası hem depoda hem çalışma kopyasında
+# LF ile tutulur. Windows editörleri (VS Code, GoLand) LF ile sorunsuz
+# çalışır; risk tek yönlüdür ve Linux tarafındadır.
+
+* text=auto eol=lf
+
+# İkili dosyalar dönüştürülmemeli.
+*.png  binary
+*.jpg  binary
+*.ico  binary
+*.gz   binary
+*.zip  binary
+
+# Üretilen protobuf kodu diff'lerde gürültü yapmasın; GitHub bunları
+# gözden geçirme ekranında katlar. (Şu an .gitignore'da, ama üretilen
+# kodu depoya almaya karar verilirse bu satır hazır olsun.)
+*.pb.go linguist-generated=true

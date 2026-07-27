@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+package panely.v1;
+
+import "panely/v1/common.proto";
+
+option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1";
+
+// ExecutorService, panelyd (yetkisiz) ile panely-exec (ayrıcalıklı)
+// arasındaki sözleşmedir.
+//
+// ════════════════════════════════════════════════════════════════════
+//  BU DOSYA GÜVENLİK SINIRIDIR. ŞEMA, BEYAZ LİSTENİN KENDİSİDİR.
+// ════════════════════════════════════════════════════════════════════
+//
+// Buradaki her RPC, ayrıcalıklı bir yeteneğin panelyd'ye açılması
+// demektir. Bir alan eklemeden önce sorulacak soru şudur:
+//
+//   "panelyd tamamen ele geçirilmiş olsaydı, bu alanla ne yapardı?"
+//
+// Tasarım kuralları — istisnasız:
+//
+//  1. SERBEST ARGV YOK. Hiçbir RPC "şu komutu çalıştır" demez. Her
+//     yetenek kendi tipli mesajına sahiptir.
+//
+//  2. HOST YOLU KABUL EDİLMEZ. Bind-mount'lar host yolu değil, uygulama
+//     kapsamlı bir *hacim adı* alır; gerçek yolu executor kurar. Yol alıp
+//     doğrulamak TOCTOU'ya açıktır (doğrulama ile kullanım arasında
+//     sembolik bağ değiştirilebilir). Girdiyi hiç almamak, doğrulamaktan
+//     kategorik olarak daha güçlüdür.
+//
+//  3. TEHLİKELİ SEÇENEKLER TEMSİL EDİLEMEZ. `privileged`, `cap_add`,
+//     `host_network`, `pid_mode`, `devices`, `userns_mode` için ALAN
+//     YOKTUR. Reddedilen istek değil, ifade edilemeyen istek.
+//
+//  4. HER İSTEK KENDİNİ DENETLER. Executor her çağrıyı kendi
+//     hash-zincirli günlüğüne yazar (0640 root:panely — panelyd okur,
+//     yazamaz). panelyd ele geçirilip kayıt düşürse bile
+//     VerifyAuditChain iki zincir arasındaki farkı yakalar.
+//
+//  5. ÇAĞIRAN DOĞRULANIR. Soket izinlerine güvenilmez; her bağlantıda
+//     SO_PEERCRED ile uid/gid kontrol edilir.
+//
+// Taşıma: `/run/panely-exec/exec.sock` üzerinde gRPC, mod 0660 root:panely.
+// Dizin ayrıdır ve 0750 root:panely'dir. İstemci SSH kullanıcısı
+// `panely-client` grubundadır, `panely` grubunda DEĞİLDİR — bu yüzden bu
+// dizini traverse edemez ve panelyd'yi atlayıp executor'a bağlanamaz.
+service ExecutorService {
+  // Ping, executor'ın canlılığını ve sürümünü döner.
+  rpc Ping(ExecutorServicePingRequest) returns (ExecutorServicePingResponse);
+
+  // GetHostInfo, çekirdek/bellek/Docker bilgisini toplar. Salt okunur.
+  rpc GetHostInfo(GetHostInfoRequest) returns (GetHostInfoResponse);
+
+  // ReadAuditJournal, executor'ın kendi hash-zincirli günlüğünü döner.
+  // panelyd bunu kendi zinciriyle karşılaştırmak için okur.
+  rpc ReadAuditJournal(ReadAuditJournalRequest) returns (ReadAuditJournalResponse);
+
+  // ── Faz 1'de eklenecek yetenekler ───────────────────────────────
+  //
+  //   rpc ImageBuild(ImageBuildRequest) returns (stream BuildEvent);
+  //   rpc ContainerCreate(ContainerCreateRequest) returns (...);
+  //   rpc ContainerStart / Stop / Remove / Logs
+  //   rpc NetworkEnsure(NetworkEnsureRequest) returns (...);
+  //
+  // ContainerCreateRequest'in taslak şekli (kural 2 ve 3'ün somut hâli):
+  //
+  //   message ContainerCreateRequest {
+  //     string app_id           = 1;  // hacim ve ad alanlarını kapsar
+  //     string release_id       = 2;
+  //     string image            = 3;  // yalnızca izinli registry'lerden
+  //     repeated string command = 4;  // argv — konteyner İÇİNDE, kabuk yok
+  //     map<string,string> env  = 5;  // kasa tarafından çözülmüş değerler
+  //     ResourceLimits limits   = 6;  // sıfır değer kabul edilmez
+  //     repeated VolumeMount volumes = 7;  // HOST YOLU YOK
+  //     uint32 container_port   = 8;
+  //   }
+  //
+  //   message VolumeMount {
+  //     string volume_name   = 1;  // [a-z0-9-]{1,64}, app_id ile kapsanır
+  //     string container_path = 2; // mutlak, ".." içeremez
+  //     bool read_only       = 3;
+  //   }
+  //
+  // Executor gerçek yolu şöyle kurar ve başka hiçbir yol kabul etmez:
+  //   /var/lib/panely/volumes/<app_id>/<volume_name>
+  //
+  // ─────────────────────────────────────────────────────────────────
+}
+
+message ExecutorServicePingRequest {}
+
+message ExecutorServicePingResponse {
+  string executor_version = 1;
+  uint32 protocol_version = 2;
+  // Executor'ın çalıştığı efektif uid. Kurulum doğrulaması için.
+  uint32 effective_uid = 3;
+}
+
+message GetHostInfoRequest {}
+
+message GetHostInfoResponse {
+  HostInfo host = 1;
+}
+
+message ReadAuditJournalRequest {
+  uint64 after_seq = 1;
+  uint32 limit = 2;
+}
+
+message ReadAuditJournalResponse {
+  repeated AuditRecord records = 1;
+  uint64 latest_seq = 2;
+}

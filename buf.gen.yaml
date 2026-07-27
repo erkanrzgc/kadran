@@ -1,0 +1,24 @@
+version: v2
+plugins:
+  # YEREL eklentiler kullanılır, uzak (remote:) eklentiler DEĞİL.
+  #
+  # buf'ın uzak eklentileri .proto tanımlarını kod üretimi için
+  # buf.build sunucularına yükler. Bu şema projenin güvenlik sınırıdır
+  # ve yetki modelinin tamamını tarif eder; üçüncü taraf bir servise
+  # gönderilmesi için hiçbir gerekçe yok.
+  #
+  # Kurulum:
+  #   go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.4
+  #   go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+  - local: protoc-gen-go
+    out: internal/pb
+    opt: paths=source_relative
+
+  - local: protoc-gen-go-grpc
+    out: internal/pb
+    opt:
+      - paths=source_relative
+      # Yeni RPC eklendiğinde derlemenin KIRILMASINI istiyoruz.
+      # Sessizce Unimplemented dönen gömülü yapı, güvenlik sınırında
+      # eksik uygulamayı gizler.
+      - require_unimplemented_servers=true

@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package panely.v1;
+
+import "google/protobuf/timestamp.proto";
+import "panely/v1/common.proto";
+
+option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1";
+
+// PanelyService, iş istasyonu istemcisi (CLI / Electron sidecar) ile
+// sunucudaki panelyd arasındaki sözleşmedir.
+//
+// Taşıma: `/run/panely/api.sock` üzerinde gRPC. Uzaktan erişim SSH
+// zorlanmış komutu (panely-connect) üzerinden bu sokete yönlendirilir.
+// Ağ dinleyicisi yoktur.
+//
+// Kimlik doğrulama SSH katmanında yapılır; buraya ulaşan her istek
+// halihazırda doğrulanmıştır. panely-connect, çağıranın anahtar parmak
+// izini ve kaynak IP'sini gRPC metadata'sına ekler ve panelyd bunları
+// denetim kaydının aktörü olarak kullanır.
+service PanelyService {
+  // Ping, bağlantı canlılığını ve sürüm uyumunu doğrular.
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // GetSystemInfo, daemon ve host durumunu döner.
+  rpc GetSystemInfo(GetSystemInfoRequest) returns (GetSystemInfoResponse);
+
+  // ListAuditRecords, denetim zincirini sayfalı olarak okur.
+  rpc ListAuditRecords(ListAuditRecordsRequest) returns (ListAuditRecordsResponse);
+
+  // VerifyAuditChain, zincirin tamamını yürür ve kurcalama tespit eder.
+  // Hem daemon hem executor zincirini doğrular ve ikisini karşılaştırır.
+  rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse);
+}
+
+message PingRequest {
+  // İstemcinin sürümü. Sunucu uyumsuzluk durumunda uyarı döner.
+  string client_version = 1;
+}
+
+message PingResponse {
+  string daemon_version = 1;
+  // Sözleşme sürümü. Uyumsuzsa istemci bağlanmayı reddeder.
+  uint32 protocol_version = 2;
+  google.protobuf.Timestamp server_time = 3;
+  // Boş değilse istemciye gösterilecek uyumluluk uyarısı.
+  string compatibility_warning = 4;
+}
+
+message GetSystemInfoRequest {}
+
+message GetSystemInfoResponse {
+  string daemon_version = 1;
+  string hostname = 2;
+  // Daemon'ın çalışma süresi, saniye.
+  int64 daemon_uptime_seconds = 3;
+  // panelyd'nin çalıştığı kullanıcı adı. "root" olmamalıdır.
+  string running_as_user = 4;
+  // Executor'a ulaşılabiliyor mu?
+  bool executor_reachable = 5;
+  string executor_version = 6;
+  HostInfo host = 7;
+}
+
+message ListAuditRecordsRequest {
+  // Bu sıra numarasından itibaren okur (dahil). 0 = baştan.
+  uint64 after_seq = 1;
+  // Döndürülecek en fazla kayıt. 0 = varsayılan (100), üst sınır 1000.
+  uint32 limit = 2;
+}
+
+message ListAuditRecordsResponse {
+  repeated AuditRecord records = 1;
+  // Zincirdeki en son sıra numarası.
+  uint64 latest_seq = 2;
+}
+
+message VerifyAuditChainRequest {}
+
+message VerifyAuditChainResponse {
+  bool valid = 1;
+  uint64 records_checked = 2;
+  // Geçersizse, zincirin ilk bozulduğu sıra numarası.
+  uint64 first_invalid_seq = 3;
+  string detail = 4;
+  // Executor'ın kendi günlüğü de doğrulandı mı ve daemon zinciriyle
+  // örtüşüyor mu? Örtüşmüyorsa daemon kayıt düşürmüş demektir.
+  bool executor_chain_valid = 5;
+  string executor_detail = 6;
+}

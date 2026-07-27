@@ -1,0 +1,39 @@
+# --- Go ---
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# --- Generated protobuf code ---
+# Regenerate with: buf generate
+*.pb.go
+
+# --- Node / Electron ---
+node_modules/
+desktop/dist/
+desktop/out/
+desktop/.vite/
+*.tsbuildinfo
+
+# --- Local state (NEVER commit) ---
+*.db
+*.db-wal
+*.db-shm
+*.key
+*.pem
+*.env
+.env.*
+!.env.example
+
+# --- Editors / OS ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Local dev scratch ---
+/tmp/
+/.scratch/

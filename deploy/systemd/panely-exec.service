@@ -1,0 +1,62 @@
+[Unit]
+Description=Panely privileged executor (typed RPC whitelist)
+Documentation=https://github.com/erkanrzgc/panely
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/lib/panely/panely-exec --socket /run/panely-exec/exec.sock
+Restart=on-failure
+RestartSec=2s
+
+# Executor ROOT çalışır — bu kaçınılmaz, çünkü Docker soketine erişim
+# pratikte root yetkisidir. Modelin özü, bu ayrıcalığın ~1500 satırlık
+# şema doğrulamalı bir yüzeye hapsedilmesidir.
+User=root
+Group=root
+
+# ── Sıkılaştırma ─────────────────────────────────────────────────
+# Root olsa bile gereksiz her şey kapatılır.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@obsolete @cpu-emulation @swap @reboot @raw-io
+
+# Yalnızca unix soketi: Docker Engine API ve kendi dinleyicisi.
+# Executor'ın ağa çıkması gerekmez; imaj çekme Docker daemon'ının işidir.
+RestrictAddressFamilies=AF_UNIX
+
+# Root'un tüm yeteneklerini almasına gerek yok. Hacim dizinlerinin
+# sahipliğini ayarlamak için gerekenler dışında hepsi düşürülür.
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
+
+# ProtectSystem=strict tüm dosya sistemini salt okunur yapar;
+# yazılabilir alanlar burada tek tek açılır.
+ReadWritePaths=/var/lib/panely
+ReadWritePaths=/run/panely-exec
+
+# Docker soketine erişim (ProtectSystem=strict /run'ı kapsamaz ama
+# açıkça belirtmek niyeti belgelendirir).
+BindReadOnlyPaths=/run/docker.sock
+
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

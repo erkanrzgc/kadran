@@ -1,0 +1,65 @@
+[Unit]
+Description=Panely control plane daemon
+Documentation=https://github.com/erkanrzgc/panely
+After=network-online.target panely-exec.service
+Wants=network-online.target
+Requires=panely-exec.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+ExecStart=/usr/local/lib/panely/panelyd --config /etc/panely/panelyd.toml
+Restart=on-failure
+RestartSec=2s
+
+# YETKİSİZ. Bu satır ürünün tamamının dayandığı iddiadır.
+# `sudo -u panely docker ps` BAŞARISIZ OLMAK ZORUNDADIR.
+User=panely
+Group=panely
+
+# api.sock'u panely-client grubuna açabilmek için ek grup üyeliği.
+# İstemci SSH kullanıcısı panely-client grubundadır; `panely` grubunda
+# DEĞİLDİR — bu yüzden /run/panely-exec dizinini traverse edemez ve
+# executor'a doğrudan ulaşamaz.
+SupplementaryGroups=panely-client
+
+# ── Sıkılaştırma ─────────────────────────────────────────────────
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
+
+# Yetenek yok. Hiç.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Faz 0'da daemon yalnızca unix soketleri kullanır: kendi api.sock'u ve
+# executor'ın exec.sock'u.
+# NOT: Faz 1'de sağlık denetçisi konteynerlere HTTP isteği atacağı için
+# buraya AF_INET AF_INET6 eklenecek. Şimdiden eklemek gereksiz yüzey açar.
+RestrictAddressFamilies=AF_UNIX
+
+ReadWritePaths=/var/lib/panely
+ReadWritePaths=/run/panely
+
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

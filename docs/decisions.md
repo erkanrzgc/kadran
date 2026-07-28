@@ -194,6 +194,33 @@ dialer** kullanılacak. Bedeli sıfır ve çözümleyiciyi tamamen devreden
 
 ---
 
+## K-011 — Uygulanmamış RPC derlemeyi kırar (ölçüldü)
+
+**Karar.** `buf.gen.yaml`'da `require_unimplemented_servers=false` — gRPC
+varsayılanının **tersi**. Sunucular `UnimplementedXxxServer` yapısını gömmez.
+
+**Gerekçe.** Varsayılan (`true`) ileriye uyumluluk sağlar: şemaya yeni bir RPC
+eklendiğinde mevcut sunucular derlenmeye devam eder ve yeni metot sessizce
+`codes.Unimplemented` döner. `exec.proto` bir güvenlik sınırıdır; oraya
+ayrıcalıklı bir yetenek eklenip uygulamasının unutulması sessiz bir boşluktur.
+
+**Ölçüm.** Şemaya `TehlikeliYeniYetenek` adında bir RPC eklendi, uygulaması
+yazılmadı, `buf generate` çalıştırıldı:
+
+```
+cmd/panely-exec/main.go:128:49: cannot use service (variable of type
+*exec.Server) as panelyv1.ExecutorServiceServer value: *exec.Server does not
+implement panelyv1.ExecutorServiceServer (missing method TehlikeliYeniYetenek)
+```
+
+Derleme kırıldı, değişiklik geri alındı.
+
+**Bedeli.** İleriye uyumluluk kaybı. Panely'de üç binary birlikte sürümlenip
+`panely bootstrap` ile birlikte kurulduğu için bu bedel yok sayılabilir; sürüm
+uyumu ayrıca `version.Protocol` sabitiyle çalışma anında denetlenir.
+
+---
+
 ## K-010 — `buf` uzak eklentileri değil, yerel eklentiler
 
 **Karar.** `buf.gen.yaml` yalnızca `local:` eklentiler kullanır.

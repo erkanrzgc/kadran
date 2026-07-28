@@ -18,7 +18,20 @@ plugins:
     out: internal/pb
     opt:
       - paths=source_relative
-      # Yeni RPC eklendiğinde derlemenin KIRILMASINI istiyoruz.
-      # Sessizce Unimplemented dönen gömülü yapı, güvenlik sınırında
-      # eksik uygulamayı gizler.
-      - require_unimplemented_servers=true
+      # require_unimplemented_servers=false — kasıtlı ve gRPC
+      # varsayılanının TERSİ.
+      #
+      # Varsayılan (true) ileriye uyumluluk sağlar: sunucular
+      # UnimplementedXxxServer yapısını gömer ve şemaya yeni bir RPC
+      # eklendiğinde derleme kırılmaz — yeni metot sessizce
+      # codes.Unimplemented döner.
+      #
+      # exec.proto bir güvenlik sınırıdır. Oraya ayrıcalıklı bir yetenek
+      # eklenip uygulamasının unutulması, sessiz bir boşluk demektir.
+      # false ile gömme zorunluluğu kalkar; gömmediğimiz için yeni bir RPC
+      # DERLEMEYİ KIRAR ve bilinçli uygulamaya zorlar.
+      #
+      # Bedeli ileriye uyumluluğun kaybı. Panely'de üç binary birlikte
+      # sürümlenip `panely bootstrap` ile birlikte kurulduğu için bu bedel
+      # yok sayılabilir; sürüm uyumu ayrıca Protocol sabiti ile denetlenir.
+      - require_unimplemented_servers=false

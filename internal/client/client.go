@@ -1,0 +1,322 @@
+// Package client, iş istasyonundan panelyd'ye bağlanmayı sağlar.
+//
+// İki taşıma desteklenir:
+//
+//   - SSH: `ssh -T panely-client@host` alt süreç olarak çalıştırılır ve
+//     borularının üzerinden gRPC konuşulur. Sunucuda sshd bu boruları
+//     zorlanmış komuta (panely-connect) bağlar.
+//   - Yerel unix soketi: sunucunun kendisinde çalışırken kullanılır.
+//
+// Hiçbir durumda ağ portu açılmaz.
+package client
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"net"
+	"os/exec"
+	"strconv"
+	"strings"
+	"sync"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+
+	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/panely/internal/version"
+)
+
+// DefaultSSHUser, bootstrap'in oluşturduğu yetkisiz istemci kullanıcısıdır.
+const DefaultSSHUser = "panely-client"
+
+// DefaultSocketPath, sunucudaki api soketidir.
+const DefaultSocketPath = "/run/panely/api.sock"
+
+// Target, bağlanılacak hedefi tanımlar.
+type Target struct {
+	// SocketPath doluysa yerel unix soketi kullanılır.
+	SocketPath string
+
+	// SSHUser/SSHHost doluysa SSH taşıması kullanılır.
+	SSHUser string
+	SSHHost string
+	SSHPort int
+}
+
+// IsLocal, hedefin yerel soket olup olmadığını söyler.
+func (t Target) IsLocal() bool { return t.SocketPath != "" }
+
+// String, hedefi insan tarafından okunabilir biçimde döndürür.
+func (t Target) String() string {
+	if t.IsLocal() {
+		return "unix:" + t.SocketPath
+	}
+	if t.SSHPort != 0 && t.SSHPort != 22 {
+		host := t.SSHHost
+		// Port varken IPv6 köşeli paranteze alınmalı; yoksa üretilen dize
+		// ParseTarget tarafından geri okunamaz.
+		if strings.Contains(host, ":") {
+			host = "[" + host + "]"
+		}
+		return fmt.Sprintf("%s@%s:%d", t.SSHUser, host, t.SSHPort)
+	}
+	return t.SSHUser + "@" + t.SSHHost
+}
+
+// ParseTarget, komut satırından gelen hedef dizesini çözümler.
+//
+// Kabul edilen biçimler:
+//
+//	/run/panely/api.sock        → yerel soket (mutlak yol)
+//	unix:///run/panely/api.sock → yerel soket (açık)
+//	kullanici@sunucu            → SSH
+//	kullanici@sunucu:2222       → SSH, özel port
+//	sunucu                      → SSH, varsayılan kullanıcı
+//
+// Boş dize yerel varsayılan sokete çözümlenir; sunucuda `panely status`
+// yazmak yeterli olsun diye.
+func ParseTarget(s string) (Target, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return Target{SocketPath: DefaultSocketPath}, nil
+	}
+
+	if path, ok := strings.CutPrefix(s, "unix://"); ok {
+		if path == "" {
+			return Target{}, errors.New("client: unix:// hedefinde yol yok")
+		}
+		return Target{SocketPath: path}, nil
+	}
+
+	// Mutlak yol (POSIX veya Windows) yerel soket sayılır.
+	if strings.HasPrefix(s, "/") || strings.HasPrefix(s, `\`) {
+		return Target{SocketPath: s}, nil
+	}
+
+	user := DefaultSSHUser
+	host := s
+	if u, h, ok := strings.Cut(s, "@"); ok {
+		if u == "" {
+			return Target{}, errors.New("client: hedefte kullanıcı adı boş")
+		}
+		user, host = u, h
+	}
+
+	host, port, err := splitHostPort(host)
+	if err != nil {
+		return Target{}, err
+	}
+	if host == "" {
+		return Target{}, errors.New("client: hedefte sunucu adı boş")
+	}
+	return Target{SSHUser: user, SSHHost: host, SSHPort: port}, nil
+}
+
+// splitHostPort, sunucu adını ve varsa portu ayırır.
+//
+// # IPv6 neden özel?
+//
+// Çıplak bir IPv6 adresi zaten iki nokta üst üste içerir (2001:db8::1).
+// Naif bir "ilk iki noktadan böl" yaklaşımı bunu host=2001, port=db8::1
+// diye ayırır. Ayrım kuralı standart URL semantiğiyle aynıdır:
+//
+//   - Köşeli parantezli ([2001:db8::1]:2222) → port olabilir
+//   - Birden fazla iki nokta, parantezsiz → çıplak IPv6, port yok
+//   - Tek iki nokta → sunucu:port
+func splitHostPort(s string) (host string, port int, err error) {
+	if strings.HasPrefix(s, "[") {
+		closing := strings.LastIndex(s, "]")
+		if closing < 0 {
+			return "", 0, fmt.Errorf("client: kapanmamış köşeli parantez: %q", s)
+		}
+		host = s[1:closing]
+		rest := s[closing+1:]
+		if rest == "" {
+			return host, 0, nil
+		}
+		p, ok := strings.CutPrefix(rest, ":")
+		if !ok {
+			return "", 0, fmt.Errorf("client: köşeli parantezden sonra beklenmedik metin: %q", rest)
+		}
+		port, err = parsePort(p)
+		return host, port, err
+	}
+
+	if strings.Count(s, ":") > 1 {
+		// Çıplak IPv6. Port belirtmek için köşeli parantez gerekir.
+		return s, 0, nil
+	}
+
+	h, p, ok := strings.Cut(s, ":")
+	if !ok {
+		return s, 0, nil
+	}
+	port, err = parsePort(p)
+	return h, port, err
+}
+
+func parsePort(s string) (int, error) {
+	port, err := strconv.Atoi(s)
+	if err != nil || port <= 0 || port > 65535 {
+		return 0, fmt.Errorf("client: geçersiz port: %q", s)
+	}
+	return port, nil
+}
+
+// Client, panelyd'ye bağlı bir istemcidir.
+type Client struct {
+	conn   *grpc.ClientConn
+	rpc    panelyv1.PanelyServiceClient
+	target Target
+}
+
+// Dial, hedefe bağlanır.
+//
+// Bağlantı tembeldir: gerçek bağlantı ilk RPC'de kurulur. Bu kasıtlıdır —
+// SSH alt sürecini ancak gerçekten ihtiyaç duyulduğunda başlatmak, `panely
+// --help` gibi komutların sunucuya dokunmamasını sağlar.
+func Dial(target Target) (*Client, error) {
+	dialer, err := dialerFor(target)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := grpc.NewClient("passthrough:///panely",
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithContextDialer(dialer),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("client: bağlantı kurulamadı: %w", err)
+	}
+
+	return &Client{
+		conn:   conn,
+		rpc:    panelyv1.NewPanelyServiceClient(conn),
+		target: target,
+	}, nil
+}
+
+// Close, bağlantıyı ve varsa SSH alt sürecini kapatır.
+func (c *Client) Close() error { return c.conn.Close() }
+
+// Target, bağlanılan hedefi döndürür.
+func (c *Client) Target() Target { return c.target }
+
+// RPC, alt seviye gRPC istemcisini döndürür.
+func (c *Client) RPC() panelyv1.PanelyServiceClient { return c.rpc }
+
+// dialerFor, hedefe uygun bağlantı kurucuyu üretir.
+func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error) {
+	if t.IsLocal() {
+		return func(ctx context.Context, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, "unix", t.SocketPath)
+		}, nil
+	}
+	if t.SSHHost == "" {
+		return nil, errors.New("client: hedef belirtilmedi")
+	}
+	return func(ctx context.Context, _ string) (net.Conn, error) {
+		return dialSSH(ctx, t)
+	}, nil
+}
+
+// dialSSH, `ssh` alt sürecini başlatır ve borularını net.Conn'a sarar.
+func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
+	args := []string{
+		"-T", // pty isteme: zorlanmış komut zaten kabuk vermiyor
+		// BatchMode: parola sorulmasın. Anahtar çalışmıyorsa sonsuza
+		// kadar bir istemde asılı kalmak yerine hemen hata versin.
+		"-o", "BatchMode=yes",
+		// Bağlantı kurulamıyorsa uzun uzun beklemesin.
+		"-o", "ConnectTimeout=10",
+	}
+	if t.SSHPort != 0 {
+		args = append(args, "-p", strconv.Itoa(t.SSHPort))
+	}
+	args = append(args, t.SSHUser+"@"+t.SSHHost)
+
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, fmt.Errorf("client: ssh stdout borusu açılamadı: %w", err)
+	}
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return nil, fmt.Errorf("client: ssh stdin borusu açılamadı: %w", err)
+	}
+
+	// ssh'ın stderr'i yakalanır: "Permission denied", "Host key
+	// verification failed" gibi asıl teşhis oradan gelir. Kullanıcıya
+	// "bağlantı kapandı" demek yerine gerçek sebebi göstermek istiyoruz.
+	stderr := &syncBuffer{}
+	cmd.Stderr = stderr
+
+	if err := cmd.Start(); err != nil {
+		if errors.Is(err, exec.ErrNotFound) {
+			return nil, errors.New("client: `ssh` komutu bulunamadı — OpenSSH istemcisi kurulu mu?")
+		}
+		return nil, fmt.Errorf("client: ssh başlatılamadı: %w", err)
+	}
+
+	cleanup := func() error {
+		err := cmd.Wait()
+		if err == nil {
+			return nil
+		}
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			return fmt.Errorf("ssh: %s", msg)
+		}
+		return fmt.Errorf("ssh sonlandı: %w", err)
+	}
+
+	return newPipeConn(stdout, stdin, t.String(), cleanup), nil
+}
+
+// syncBuffer, alt sürecin stderr'ini eşzamanlı okuma/yazmaya karşı güvenli
+// biçimde biriktirir.
+//
+// exec paketi stderr'e ayrı bir goroutine'den yazar; cleanup ise başka bir
+// goroutine'den okuyabilir. Kilitsiz bir bytes.Buffer burada yarış üretirdi.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// CheckProtocol, sunucuyla sürüm uyumunu doğrular.
+//
+// Protokol sürümü farklıysa bağlantı reddedilir: uyumsuz sözleşmelerle
+// konuşmak, sessizce yanlış davranmaktan iyidir.
+func (c *Client) CheckProtocol(ctx context.Context) (*panelyv1.PingResponse, error) {
+	resp, err := c.rpc.Ping(ctx, &panelyv1.PingRequest{ClientVersion: version.Version})
+	if err != nil {
+		return nil, err
+	}
+	if resp.GetProtocolVersion() != version.Protocol {
+		return nil, fmt.Errorf(
+			"protokol uyumsuzluğu: istemci %d, sunucu %d — `panely bootstrap` ile sunucuyu güncelleyin",
+			version.Protocol, resp.GetProtocolVersion())
+	}
+	return resp, nil
+}
+
+// SSHAvailable, `ssh` komutunun bulunup bulunmadığını söyler.
+func SSHAvailable() bool {
+	_, err := exec.LookPath("ssh")
+	return err == nil
+}

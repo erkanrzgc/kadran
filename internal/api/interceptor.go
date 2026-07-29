@@ -7,8 +7,6 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/status"
-
-	"github.com/erkanrzgc/panely/internal/peercred"
 )
 
 // LoggingInterceptor, her isteği çağıranın kimliğiyle birlikte günlüğe yazar.
@@ -43,11 +41,11 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
 			"koken", actor.Origin,
 		}
 
-		// SO_PEERCRED ile doğrulanmış unix kimliği. Metadata istemciden
-		// gelir; bu ise çekirdekten gelir ve uydurulamaz. İkisini birlikte
-		// günlüğe yazmak, tutarsızlık olursa fark edilmesini sağlar.
-		if p, ok := peercredFromContext(ctx); ok {
-			attrs = append(attrs, "unix_uid", p.UID, "unix_pid", p.PID)
+		// SO_PEERCRED ile çekirdekten alınan unix kimliği. Bunu ve SSH
+		// kimliğini birlikte günlüğe yazmak, ikisi arasında beklenmedik bir
+		// tutarsızlık oluşursa fark edilmesini sağlar.
+		if info, ok := callerFromContext(ctx); ok {
+			attrs = append(attrs, "unix_uid", info.Unix.UID, "unix_pid", info.Unix.PID)
 		}
 
 		if err != nil {
@@ -58,15 +56,6 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
 		slog.Debug("istek tamamlandı", attrs...)
 		return resp, nil
 	}
-}
-
-// peercredFromContext, gRPC bağlamından doğrulanmış unix kimliğini çıkarır.
-func peercredFromContext(ctx context.Context) (peercred.Cred, bool) {
-	info, ok := peercred.AuthInfoFromContext(ctx)
-	if !ok {
-		return peercred.Cred{}, false
-	}
-	return info.Cred, true
 }
 
 func orUnknown(s string) string {

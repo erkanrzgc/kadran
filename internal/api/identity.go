@@ -2,66 +2,54 @@ package api
 
 import (
 	"context"
-	"strings"
 
-	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/peer"
 
 	"github.com/erkanrzgc/panely/internal/audit"
 )
 
-// Çağıranın kimliğini taşıyan gRPC metadata anahtarları.
-//
-// Bu değerleri `panely-connect` doldurur. panely-connect, istemcinin SSH
-// oturumu İÇİNDE, zorlanmış komut olarak çalışır; dolayısıyla değerleri
-// OpenSSH'ın kendi ortam değişkenlerinden alır ve istemci bunları
-// uyduramaz:
-//
-//	SSH_CONNECTION    → kaynak IP (sshd tarafından ayarlanır)
-//	SSH_AUTH_INFO_0   → kullanılan açık anahtar (sshd tarafından ayarlanır)
-//
-// SSH_AUTH_INFO_0 için sshd_config'de `ExposeAuthInfo yes` gerekir;
-// bootstrap bunu ayarlar.
-//
-// # Bu metadata neden güvenilir?
-//
-// api.sock'a yalnızca panely-client grubundaki bir süreç ulaşabilir ve bu
-// SO_PEERCRED ile doğrulanır. O grubun tek üyesi, zorlanmış komuta
-// bağlanmış istemci SSH kullanıcısıdır — kabuğu yoktur, başka bir program
-// çalıştıramaz. Yani bu metadata'yı yazabilen tek şey panely-connect'tir.
-const (
-	MDKeyFingerprint = "panely-key-fingerprint"
-	MDKeySourceIP    = "panely-source-ip"
-	MDKeyLabel       = "panely-key-label"
-	MDKeyOrigin      = "panely-origin"
-)
+// callerFromContext, bağlantıya bağlı doğrulanmış çağıran bilgisini çıkarır.
+func callerFromContext(ctx context.Context) (CallerInfo, bool) {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.AuthInfo == nil {
+		return CallerInfo{}, false
+	}
+	info, ok := p.AuthInfo.(CallerInfo)
+	return info, ok
+}
 
-// actorFromContext, çağıranın kimliğini gRPC metadata'sından çıkarır.
+// actorFromContext, denetim kaydı için aktörü üretir.
 //
-// Metadata eksikse boş alanlarla döner; UYDURMAZ. Denetim kaydında boş bir
-// parmak izi "kimliği bilinmiyor" demektir ve bu dürüst bir kayıttır —
-// yer tutucu bir değer yazmak, sonradan bakan birini yanıltırdı.
+// # Kimlik neden gRPC metadata'sından OKUNMUYOR?
+//
+// İlk tasarımda öyleydi ve delik bir tasarımdı. `panely-connect` bir bayt
+// pompasıdır: gRPC metadata'sını yazan o değil, SSH'ın diğer ucundaki UZAK
+// İSTEMCİDİR. İstemci kendi parmak izini istediği gibi uydurabilir ve
+// denetim günlüğü "kim yaptı" alanında yalan söylerdi — hem de tam olarak
+// inkâr edilemezlik için tutulan kayıtta.
+//
+// Şimdi kimlik, bağlantı kurulurken okunan önsözden geliyor
+// (bkz. internal/connproto). Önsözü panely-connect yazar, sshd'nin kendi
+// ortam değişkenlerinden türeterek; uzak istemcinin baytları ondan sonra
+// geldiği için onu değiştiremez.
+//
+// Kimlik yoksa UYDURULMAZ. Denetim izinde boş bir parmak izi "bilinmiyor"
+// demektir ve bu dürüst bir kayıttır; yer tutucu bir değer, sonradan bakan
+// birini gerçek bir kimlik gördüğüne inandırırdı.
 func actorFromContext(ctx context.Context) audit.Actor {
-	md, ok := metadata.FromIncomingContext(ctx)
+	info, ok := callerFromContext(ctx)
 	if !ok {
 		return audit.Actor{Origin: "unknown"}
 	}
 
 	actor := audit.Actor{
-		KeyFingerprint: firstValue(md, MDKeyFingerprint),
-		SourceIP:       firstValue(md, MDKeySourceIP),
-		Label:          firstValue(md, MDKeyLabel),
-		Origin:         firstValue(md, MDKeyOrigin),
+		KeyFingerprint: info.Identity.Fingerprint,
+		SourceIP:       info.Identity.SourceIP,
+		Label:          info.Identity.Label,
+		Origin:         info.Identity.Origin,
 	}
 	if actor.Origin == "" {
 		actor.Origin = "unknown"
 	}
 	return actor
-}
-
-func firstValue(md metadata.MD, key string) string {
-	values := md.Get(key)
-	if len(values) == 0 {
-		return ""
-	}
-	return strings.TrimSpace(values[0])
 }

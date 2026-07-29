@@ -1,7 +1,9 @@
 // panely-exec, Panely'nin ayrıcalıklı executor'ıdır.
 //
 // ════════════════════════════════════════════════════════════════════
-//  BU BINARY ROOT ÇALIŞIR. EKLENEN HER SATIR AYRICALIKLI YÜZEYDİR.
+//
+//	BU BINARY ROOT ÇALIŞIR. EKLENEN HER SATIR AYRICALIKLI YÜZEYDİR.
+//
 // ════════════════════════════════════════════════════════════════════
 //
 // Ayrıcalık kaçınılmazdır: Docker soketine erişim pratikte root yetkisidir.

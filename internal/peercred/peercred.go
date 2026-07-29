@@ -29,7 +29,6 @@ import (
 	"net"
 
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
 )
 
 // ErrUnsupportedPlatform, SO_PEERCRED bulunmayan platformlarda döner.
@@ -103,23 +102,6 @@ type AuthInfo struct {
 
 // AuthType, credentials.AuthInfo arayüzünü karşılar.
 func (AuthInfo) AuthType() string { return "peercred" }
-
-// AuthInfoFromContext, gRPC bağlamından doğrulanmış çağıran kimliğini çıkarır.
-//
-// Handler'lar bunu, çağıranın çekirdek tarafından doğrulanmış unix kimliğini
-// öğrenmek için kullanır. İstemciden gelen metadata'nın aksine bu değer
-// uydurulamaz: bağlantı kurulurken SO_PEERCRED ile okunmuştur.
-//
-// İkinci dönüş değeri false ise bağlantı bu kimlik bilgisiyle kurulmamıştır
-// (örneğin testlerde bellek içi bir dinleyici kullanılıyordur).
-func AuthInfoFromContext(ctx context.Context) (AuthInfo, bool) {
-	p, ok := peer.FromContext(ctx)
-	if !ok {
-		return AuthInfo{}, false
-	}
-	info, ok := p.AuthInfo.(AuthInfo)
-	return info, ok
-}
 
 // TransportCredentials, unix soketi bağlantılarında SO_PEERCRED doğrulaması
 // yapan bir gRPC taşıma kimlik bilgisi döndürür.

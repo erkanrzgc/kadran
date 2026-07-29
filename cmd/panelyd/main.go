@@ -24,7 +24,6 @@ import (
 	"github.com/erkanrzgc/panely/internal/execclient"
 	"github.com/erkanrzgc/panely/internal/grpcserve"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/peercred"
 	"github.com/erkanrzgc/panely/internal/sdnotify"
 	"github.com/erkanrzgc/panely/internal/sockets"
 	"github.com/erkanrzgc/panely/internal/store"
@@ -115,14 +114,18 @@ func run() error {
 		return err
 	}
 
-	// api.sock'a yalnızca panely-client grubundaki süreçler bağlanabilir.
-	// O grubun tek üyesi, zorlanmış komuta bağlanmış istemci SSH
-	// kullanıcısıdır. UYARI: SO_PEERCRED yalnızca BİRİNCİL grubu bildirir,
-	// bu yüzden bootstrap kullanıcıyı `useradd -g panely-client` ile
+	// İki aşamalı çağıran doğrulaması:
+	//
+	//  1. SO_PEERCRED — api.sock'a yalnızca panely-client grubundaki
+	//     süreçler bağlanabilir. O grubun tek üyesi, zorlanmış komuta
+	//     bağlanmış istemci SSH kullanıcısıdır.
+	//  2. Kimlik önsözü — panely-connect, sshd'nin ortam değişkenlerinden
+	//     türettiği SSH kimliğini bağlantı başında yazar.
+	//
+	// UYARI: SO_PEERCRED yalnızca BİRİNCİL grubu bildirir, bu yüzden
+	// bootstrap istemci kullanıcısını `useradd -g panely-client` ile
 	// oluşturmalıdır — `-G` ile değil.
-	creds, err := peercred.TransportCredentials(peercred.Policy{
-		AllowGIDs: []uint32{uint32(clientGID)}, //nolint:gosec // gid daima 32 bite sığar
-	})
+	creds, err := api.TransportCredentials(uint32(clientGID)) //nolint:gosec // gid daima 32 bite sığar
 	if err != nil {
 		return fmt.Errorf("çağıran doğrulaması kurulamadı: %w", err)
 	}

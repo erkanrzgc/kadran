@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // runSidecarWith, verilen satırları sidecar'a besler ve yanıtları döndürür.
@@ -146,12 +151,19 @@ func TestSidecarNotificationGetsNoReply(t *testing.T) {
 	}
 }
 
-// TestSidecarHandlesMultipleRequestsInOrder, ardışık isteklerin sırayla
-// yanıtlandığını doğrular.
+// TestSidecarAnswersEveryRequestExactlyOnce, her isteğin tam olarak bir
+// yanıt aldığını doğrular.
 //
-// Çerçeveleme satır sonuna dayanıyor: bir yanıtın içine kaçmamış bir
-// satır sonu sızarsa üst süreç akışı yanlış bölerdi.
-func TestSidecarHandlesMultipleRequestsInOrder(t *testing.T) {
+// Sıra KASTEN sınanmıyor: istekler eşzamanlı işleniyor, bu yüzden
+// yanıtlar sıra dışı dönebilir. JSON-RPC bunu öngörür — eşleştirme `id`
+// üzerinden yapılır. Seri işleseydik yavaş bir uzak çağrı arkasındaki her
+// isteği 30 saniyeye kadar bloklardı ve GUI donardı.
+//
+// Sınanan asıl şey: eşzamanlı yazmalar birbirine karışmıyor. Çerçeveleme
+// satır sonuna dayandığı için araya giren bir yazma, üst sürecin akışı
+// yanlış bölmesine yol açardı; bozuk satırlar burada çözümlenemez ve test
+// patlardı.
+func TestSidecarAnswersEveryRequestExactlyOnce(t *testing.T) {
 	input := `{"jsonrpc":"2.0","id":1,"method":"version"}` + "\n" +
 		`{"jsonrpc":"2.0","id":2,"method":"yok"}` + "\n" +
 		`{"jsonrpc":"2.0","id":3,"method":"version"}` + "\n"
@@ -161,16 +173,89 @@ func TestSidecarHandlesMultipleRequestsInOrder(t *testing.T) {
 	if len(responses) != 3 {
 		t.Fatalf("yanıt sayısı = %d, beklenen 3", len(responses))
 	}
-	for i, want := range []string{"1", "2", "3"} {
-		if string(responses[i].ID) != want {
-			t.Errorf("%d. yanıtın id'si = %s, beklenen %s", i+1, responses[i].ID, want)
+
+	byID := make(map[string]rpcResponse, len(responses))
+	for _, resp := range responses {
+		id := string(resp.ID)
+		if _, dup := byID[id]; dup {
+			t.Errorf("id %s için iki yanıt döndü", id)
+		}
+		byID[id] = resp
+	}
+
+	for _, id := range []string{"1", "2", "3"} {
+		if _, ok := byID[id]; !ok {
+			t.Errorf("id %s yanıtsız kaldı", id)
 		}
 	}
-	if responses[1].Error == nil {
-		t.Error("ikinci istek hata döndürmeliydi")
+	if byID["2"].Error == nil {
+		t.Error("bilinmeyen metot hata döndürmeliydi")
 	}
-	if responses[0].Error != nil || responses[2].Error != nil {
-		t.Error("geçerli istekler hata döndürdü")
+	if byID["1"].Error != nil || byID["3"].Error != nil {
+		t.Errorf("geçerli istekler hata döndürdü: %+v / %+v", byID["1"].Error, byID["3"].Error)
+	}
+}
+
+// TestSidecarConcurrentRequestsDoNotInterleave, çok sayıda eşzamanlı
+// isteğin çıktıyı bozmadığını doğrular.
+//
+// Yanıtlar tek satırlık JSON olarak yazılıyor. Yazma kilidi olmasaydı iki
+// goroutine aynı satıra yazabilir ve üst süreç çözümlenemez bir şey
+// görürdü. -race ile birlikte koşturulduğunda yarışı da yakalar.
+func TestSidecarConcurrentRequestsDoNotInterleave(t *testing.T) {
+	const count = 50
+
+	var input strings.Builder
+	for i := 1; i <= count; i++ {
+		fmt.Fprintf(&input, `{"jsonrpc":"2.0","id":%d,"method":"version"}`+"\n", i)
+	}
+
+	// parseResponses her satırı çözümlüyor; karışmış bir çıktı orada patlar.
+	responses := runSidecarWith(t, input.String())
+
+	if len(responses) != count {
+		t.Fatalf("yanıt sayısı = %d, beklenen %d", len(responses), count)
+	}
+	seen := make(map[string]bool, count)
+	for _, resp := range responses {
+		if resp.Error != nil {
+			t.Fatalf("beklenmedik hata: %+v", resp.Error)
+		}
+		seen[string(resp.ID)] = true
+	}
+	if len(seen) != count {
+		t.Errorf("benzersiz id sayısı = %d, beklenen %d", len(seen), count)
+	}
+}
+
+// TestShouldDropConnectionOnlyOnTransportFailure, önbellekteki bağlantının
+// yalnızca taşıma koptuğunda düşürüldüğünü doğrular.
+//
+// Bu ayrım bir hataydı: her hatada bağlantı düşürülüyordu. Anlık kilitli
+// bir SQLite'tan gelen Internal hatası, sağlıklı bir SSH bağlantısını
+// yıkardı — yani önbellek tam da işe yaraması gereken anda (arka arkaya
+// çağrılar) devre dışı kalırdı.
+func TestShouldDropConnectionOnlyOnTransportFailure(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"taşıma koptu", status.Error(codes.Unavailable, "connection refused"), true},
+		{"iç hata", status.Error(codes.Internal, "database is locked"), false},
+		{"geçersiz argüman", status.Error(codes.InvalidArgument, "limit"), false},
+		{"bulunamadı", status.Error(codes.NotFound, "kayıt"), false},
+		{"yetki yok", status.Error(codes.PermissionDenied, "grup"), false},
+		{"süre aşımı", status.Error(codes.DeadlineExceeded, "yavaş"), false},
+		{"gRPC olmayan hata", errors.New("düz hata"), false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldDropConnection(tc.err); got != tc.want {
+				t.Errorf("shouldDropConnection(%v) = %v, beklenen %v", tc.err, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -199,11 +284,19 @@ func TestSidecarInvalidTargetIsReportedNotCrashed(t *testing.T) {
 	if len(responses) != 2 {
 		t.Fatalf("yanıt sayısı = %d, beklenen 2 — süreç ilk hatada düşmüş olabilir", len(responses))
 	}
-	if responses[0].Error == nil {
+
+	// Eşzamanlı işlendikleri için yanıtlar sıra dışı dönebilir; id ile
+	// eşleştiriliyor.
+	byID := make(map[string]rpcResponse, len(responses))
+	for _, resp := range responses {
+		byID[string(resp.ID)] = resp
+	}
+
+	if byID["1"].Error == nil {
 		t.Error("geçersiz hedef kabul edildi")
 	}
 	// İkinci istek hâlâ çalışmalı: bir hata oturumu bitirmemeli.
-	if responses[1].Error != nil {
-		t.Errorf("hatadan sonra sonraki istek de başarısız: %+v", responses[1].Error)
+	if byID["2"].Error != nil {
+		t.Errorf("hatadan sonra sonraki istek de başarısız: %+v", byID["2"].Error)
 	}
 }

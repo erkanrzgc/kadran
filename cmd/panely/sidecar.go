@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 	"time"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/panely/internal/client"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
@@ -105,11 +107,33 @@ type sidecar struct {
 	// milisaniye ekler ve GUI hissedilir biçimde yavaşlar.
 	mu    sync.Mutex
 	conns map[string]*client.Client
+
+	// writeMu, yanıtların stdout'ta birbirine karışmasını engeller.
+	//
+	// İstekler eşzamanlı işlendiği için iki yanıt aynı anda yazmaya
+	// çalışabilir. Çerçeveleme satır sonuna dayandığından araya giren
+	// bir yazma, üst sürecin akışı yanlış bölmesine yol açardı.
+	writeMu sync.Mutex
 }
 
+// serve, stdin'den gelen istekleri okur ve her birini eşzamanlı işler.
+//
+// # Neden eşzamanlı?
+//
+// Seri işleseydik, yavaş bir uzak `status` çağrısı — süre sınırına kadar
+// 30 saniye — arkasındaki HER isteği bloklardı, `version` gibi sunucuya
+// hiç dokunmayanları bile. GUI'nin tamamı donardı.
+//
+// JSON-RPC yanıtları `id` ile eşleştiği için sıra dışı dönmeleri sorun
+// değil; protokol zaten bunu öngörüyor.
 func (s *sidecar) serve(ctx context.Context) error {
 	scanner := bufio.NewScanner(s.cli.stdin)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxRequestBytes)
+
+	var wg sync.WaitGroup
+	// Uçuştaki işler bitmeden dönmeyiz: aksi hâlde çağıranın closeAll'ı
+	// hâlâ kullanılan bağlantıları kapatırdı.
+	defer wg.Wait()
 
 	for scanner.Scan() {
 		select {
@@ -118,18 +142,25 @@ func (s *sidecar) serve(ctx context.Context) error {
 		default:
 		}
 
-		line := scanner.Bytes()
-		if len(line) == 0 {
+		if len(scanner.Bytes()) == 0 {
 			continue
 		}
-		s.handleLine(ctx, line)
+
+		// Scanner tamponunu bir sonraki Scan'de YENİDEN KULLANIR. Diliminin
+		// kendisini goroutine'e vermek, üzerine yazılan bir tamponu okumak
+		// demek olurdu — klasik ve sessiz bir veri yarışı.
+		line := append([]byte(nil), scanner.Bytes()...)
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.handleLine(ctx, line)
+		}()
 	}
 
+	// stdin kapandığında Scanner.Err() nil döner; EOF hata sayılmaz.
+	// Buraya bir hata geldiyse gerçekten okuma bozulmuş demektir.
 	if err := scanner.Err(); err != nil {
-		// stdin kapandıysa üst süreç gitmiştir; bu normal bir son.
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
 		return fmt.Errorf("sidecar girdisi okunamadı: %w", err)
 	}
 	return nil
@@ -258,14 +289,46 @@ func (s *sidecar) withConn(
 
 	result, err := fn(ctx, conn)
 	if err != nil {
-		// Bağlantı bozulmuş olabilir; önbellekten düşür ki bir sonraki
-		// çağrı temiz bir bağlantıyla denesin.
-		s.closeTarget(p.Target)
+		if shouldDropConnection(err) {
+			s.closeTarget(p.Target)
+		}
 		return nil, &rpcError{Code: codeInternalError, Message: "çağrı başarısız", Data: err.Error()}
 	}
 	return result, nil
 }
 
+// shouldDropConnection, hatanın önbellekteki bağlantıyı düşürmeyi
+// gerektirip gerektirmediğini söyler.
+//
+// # Neden her hatada düşürmüyoruz?
+//
+// Önbelleğin varlık nedeni SSH el sıkışmasından kaçınmak: her çağrıda yeni
+// bir `ssh` alt süreci başlatmak yüzlerce milisaniye ekler ve GUI
+// hissedilir biçimde yavaşlar.
+//
+// Uygulama düzeyindeki bir hata — anlık kilitli SQLite, geçersiz parametre,
+// bulunamayan kayıt — bağlantı hakkında hiçbir şey söylemez. Böyle bir
+// hatada bağlantıyı yıkmak, önbelleği tam da işe yaraması gereken anda
+// (arka arkaya çağrılar) devre dışı bırakırdı.
+//
+// Yalnızca `Unavailable` taşımanın koptuğunu bildirir; bu durumda saklanan
+// bağlantı zaten ölüdür ve düşürülmesi doğrudur.
+func shouldDropConnection(err error) bool {
+	return status.Code(err) == codes.Unavailable
+}
+
+// connFor, hedefe açık bir bağlantı döndürür; yoksa kurar.
+//
+// # Bilinen sınır
+//
+// Kilit, bağlantı kurulurken de tutuluyor. Yani YENİ bir hedefe bağlanmak
+// (SSH'ta ConnectTimeout=10) o sırada başka bir hedefe bağlanmak isteyen
+// istekleri bekletir. Sunucuya dokunmayan metotlar (`version`) etkilenmez.
+//
+// Bilerek böyle bırakıldı: çift kontrollü kilitleme kodu karmaşıklaştırır
+// ve masaüstü kullanımında aynı anda birden fazla YENİ sunucuya bağlanmak
+// ender bir durum. Elektron kabuğu bunun sorun olduğunu gösterirse
+// düzeltilir — şimdilik varsayım değil, ölçüm beklenmeli.
 func (s *sidecar) connFor(ctx context.Context, rawTarget string) (*client.Client, error) {
 	target, err := client.ParseTarget(rawTarget)
 	if err != nil {
@@ -342,6 +405,9 @@ func (s *sidecar) reply(resp rpcResponse) {
 			Error:   &rpcError{Code: codeInternalError, Message: "yanıt kodlanamadı"},
 		})
 	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	fmt.Fprintf(s.cli.stdout, "%s\n", body)
 }
 

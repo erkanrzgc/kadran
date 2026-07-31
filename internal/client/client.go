@@ -375,7 +375,8 @@ func (c *Client) CheckProtocol(ctx context.Context) (*panelyv1.PingResponse, err
 	}
 	if resp.GetProtocolVersion() != version.Protocol {
 		return nil, fmt.Errorf(
-			"protokol uyumsuzluğu: istemci %d, sunucu %d — `panely bootstrap` ile sunucuyu güncelleyin",
+			"protokol uyumsuzluğu: istemci %d, sunucu %d — "+
+				"iki tarafın binary'leri aynı sürümden olmalı, sunucudakileri güncelleyin",
 			version.Protocol, resp.GetProtocolVersion())
 	}
 	return resp, nil

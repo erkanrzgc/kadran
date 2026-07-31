@@ -1,0 +1,167 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Üretilen protobuf kodu depoya konmuyor (.gitignore: *.pb.go), bu yüzden
+# HER iş önce `buf generate` çalıştırmak zorunda. Ortak adımlar bir bileşik
+# eyleme (.github/actions/setup) çıkarıldı.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GO_VERSION: "1.25"
+  BUF_VERSION: "1.47.2"
+
+jobs:
+  lint:
+    name: Biçim ve statik analiz
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      - name: buf lint
+        run: buf lint
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l ./cmd ./internal)"
+          if [[ -n "$unformatted" ]]; then
+            echo "Biçimlendirilmemiş dosyalar:" >&2
+            echo "$unformatted" >&2
+            echo "Düzeltmek için: gofmt -w ./cmd ./internal" >&2
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      # Sürüm sabitli: .golangci.yml v1 şemasında yazıldı ve v1.62.2 ile
+      # yerelde doğrulandı. v2'ye yükseltmek yapılandırma göçü gerektirir;
+      # ikisi birlikte değişmeli.
+      #
+      # Bu adım setup'tan SONRA gelmek zorunda: üretilen protobuf kodu
+      # olmadan tip denetimi yapılamaz ve linter anlamsız hatalar verir.
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.62
+
+  test:
+    name: Testler (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Linux üretim hedefi; Windows geliştirme iş istasyonu. İkisi de
+        # kırılmamalı — güvenlik testlerinin bir kısmı yalnızca Linux'ta
+        # KOŞUYOR (SO_PEERCRED, unix soketi), ama hepsi ikisinde de DERLENİYOR.
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      - name: go test -race
+        run: go test -race -count=1 ./...
+
+  build:
+    name: Derleme (linux/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      # arm64 desteği iddia değil, gereklilik: Hetzner'ın ARM sunucuları
+      # (CAX serisi) belirgin biçimde ucuz. SQLite sürücüsü CGO'suz
+      # (modernc.org/sqlite) seçildiği için çapraz derleme sade kalıyor.
+      - name: Binary'leri derle
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p dist
+          version="${GITHUB_REF_NAME}"
+          ldflags="-s -w"
+          ldflags="$ldflags -X github.com/erkanrzgc/panely/internal/version.Version=$version"
+          ldflags="$ldflags -X github.com/erkanrzgc/panely/internal/version.Commit=${GITHUB_SHA::12}"
+          for binary in panelyd panely-exec panely-connect panely; do
+            go build -trimpath -ldflags "$ldflags" -o "dist/$binary" "./cmd/$binary"
+          done
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: panely-linux-${{ matrix.arch }}
+          path: dist/
+          retention-days: 14
+
+  e2e:
+    name: Uçtan uca (gerçek panelyd)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      # Birim testleri istemciyi SAHTE bir sunucuya karşı sınıyor. Sahte
+      # sunucu SO_PEERCRED doğrulaması yapmıyor ve kimlik önsözünü okumuyor;
+      # K-012'deki hata tam olarak bu boşlukta yaşadı. Burada gerçek panelyd
+      # başlatılıp gerçek panely ile konuşuluyor.
+      - name: Binary'leri derle
+        run: |
+          mkdir -p bin/linux
+          go build -o bin/linux/panelyd ./cmd/panelyd
+          go build -o bin/linux/panely ./cmd/panely
+
+      - name: E2E CLI kontrolleri
+        run: bash scripts/e2e-cli-runner.sh bin/linux
+
+  security:
+    name: Güvenlik değişmezleri
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      # Kontrolün KENDİSİ önce sınanıyor: hiç ateşlenmeyen bir güvenlik
+      # kontrolü, hiç olmayandan kötüdür — yeşil rozet verir, kimse bakmaz.
+      # Bu adım kasten bozulmuş şemalarla kontrolün yakaladığını doğrular.
+      - name: Yüzey kontrolünün kendisini sına
+        run: bash scripts/check-exec-surface-test.sh
+
+      # Ayrıcalıklı yüzey ne kadar büyürse "en az yetki" o kadar
+      # anlamsızlaşır. Şemada temsil EDİLEMEYEN bir seçenek, doğrulanan
+      # bir seçenekten güçlüdür: kazara kabul edilemez.
+      - name: Ayrıcalıklı yüzey değişmezleri
+        run: bash scripts/check-exec-surface.sh
+
+      - name: govulncheck
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...

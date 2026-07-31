@@ -244,6 +244,11 @@ func TestComputeHashIsDeterministic(t *testing.T) {
 		PrevHash:   GenesisHash,
 	}
 
+	// Aynı ifadenin iki kez çağrılması KASITLI: sınanan şey ComputeHash'in
+	// deterministik olduğu. Zincirin tamamı buna dayanıyor — aynı kayıt
+	// farklı hash üretirse doğrulama rastgele başarısız olurdu.
+	//
+	//nolint:staticcheck // SA4000: determinizm sınanıyor, ifade tekrarı kasıtlı
 	if ComputeHash(r) != ComputeHash(r) {
 		t.Fatal("ComputeHash deterministik değil")
 	}

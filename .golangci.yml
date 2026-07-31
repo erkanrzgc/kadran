@@ -1,0 +1,52 @@
+# golangci-lint yapılandırması (v1 şeması — CI v1.62'ye sabitli).
+#
+# Varsayılan linter kümesi güvenlik sınırı olan bir proje için yeterli
+# değil: gosec, bodyclose ve errorlint açıkça ekleniyor. Buna karşılık
+# üslupçu linter'lar (lll, gochecknoglobals gibi) eklenmiyor — okunabilirlik
+# insan incelemesiyle korunuyor ve gürültülü bir CI kapatılmaya mahkûmdur.
+#
+# NOT: golangci-lint v2 farklı bir yapılandırma şeması kullanıyor. Sürüm
+# yükseltilirse bu dosya da göç ettirilmeli; CI'daki sürüm sabiti ile
+# buradaki şema birlikte değişmek zorunda.
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    # Güvenlik odaklı
+    - gosec
+    - bodyclose
+    - errorlint
+    - noctx
+
+    # Doğruluk
+    - copyloopvar
+    - durationcheck
+    - makezero
+    - nilerr
+    - sqlclosecheck
+
+linters-settings:
+  gosec:
+    excludes:
+      # G115: tamsayı dönüşümünde taşma. gid/uid dönüşümleri nokta nokta
+      # //nolint ile gerekçelendirilmiş; genel kural gürültü üretiyor.
+      - G115
+
+  errcheck:
+    check-type-assertions: true
+
+issues:
+  # Varsayılan 3'lük "aynı sorundan en fazla N tane göster" sınırı,
+  # gerçek bulguları gizleyebiliyor. Hepsi görünsün.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  exclude-rules:
+    # Testlerde gosec'in dosya izni ve rastgelelik uyarıları anlamsız:
+    # geçici dizinlerde çalışıyorlar ve kriptografik rastgelelik
+    # gerektirmiyorlar.
+    - path: _test\.go
+      linters:
+        - gosec

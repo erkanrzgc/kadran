@@ -113,6 +113,11 @@ func TestOverrideServerNameIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatalf("oluşturulamadı: %v", err)
 	}
+	// OverrideServerName gRPC'de kullanımdan kalktı ama arayüzün parçası
+	// olmayı sürdürüyor, yani hâlâ ÇAĞRILABİLİR. Reddettiğimizi sınamak
+	// için burada bilerek çağrılıyor.
+	//
+	//nolint:staticcheck // SA1019: kullanımdan kalkmış metodun reddi sınanıyor
 	if err := tc.OverrideServerName("herhangi"); err == nil {
 		t.Error("sunucu adı geçersiz kılma reddedilmedi")
 	}

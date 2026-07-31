@@ -227,7 +227,13 @@ func TestCloseIsIdempotent(t *testing.T) {
 	first := c.Close()
 	second := c.Close()
 
-	if !errors.Is(second, first) && second != first {
+	// Sözleşme: tekrarlanan Close aynı sonucu döndürür. Karşılaştırma
+	// errors.Is ile yapılıyor çünkü sonuç errors.Join ile sarmalanmış
+	// olabilir ve doğrudan != karşılaştırması sarmalanmış hatada yanılır.
+	//
+	// Asıl idempotanlık iddiası — temizlik işinin yalnızca bir kez
+	// koşması — ayrı bir testte: TestCloseRunsCleanupExactlyOnce.
+	if !errors.Is(second, first) {
 		t.Errorf("ikinci Close farklı sonuç verdi: %v != %v", second, first)
 	}
 }

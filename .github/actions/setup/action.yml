@@ -1,0 +1,53 @@
+name: Panely derleme ortamı
+description: >
+  Go ve buf kurar, protobuf kodunu üretir. Üretilen kod depoda tutulmadığı
+  için (.gitignore: *.pb.go) her iş bu adımı çalıştırmak zorunda.
+
+inputs:
+  go-version:
+    description: Kurulacak Go sürümü
+    required: true
+  buf-version:
+    description: Kurulacak buf sürümü
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: true
+
+    - uses: bufbuild/buf-setup-action@v1
+      with:
+        version: ${{ inputs.buf-version }}
+        github_token: ${{ github.token }}
+
+    # Eklentiler YEREL kurulur; buf'ın uzak eklentileri .proto tanımlarını
+    # kod üretimi için buf.build sunucularına yükler. exec.proto projenin
+    # güvenlik sınırıdır ve yetki modelinin tamamını tarif eder — üçüncü
+    # taraf bir servise gönderilmesi için hiçbir gerekçe yok (K-010).
+    #
+    # Sürümler buf.gen.yaml'daki yorumlarla aynı tutulmalı.
+    - name: protoc eklentilerini kur
+      shell: bash
+      run: |
+        go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.4
+        go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
+
+    - name: Protobuf kodunu üret
+      shell: bash
+      run: buf generate
+
+    # Üretim başarılı görünüp hiçbir şey yazmamışsa sonraki adımlar
+    # anlaşılmaz derleme hatalarıyla patlar. Burada erken ve net hata ver.
+    - name: Üretilen kodu doğrula
+      shell: bash
+      run: |
+        count="$(find internal/pb -name '*.pb.go' | wc -l)"
+        echo "Üretilen dosya sayısı: $count"
+        if [[ "$count" -eq 0 ]]; then
+          echo "::error::buf generate hiçbir dosya üretmedi." >&2
+          exit 1
+        fi

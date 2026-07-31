@@ -334,3 +334,64 @@ doğrulaması ayrı kalıyor (`scripts/e2e-executor.sh`).
 **Doğrulanan halkalar.** unix soketi → SO_PEERCRED → kimlik önsözü → gRPC →
 SQLite denetim zinciri → CLI çıktısı ve çıkış kodu. Ayrıca sidecar'ın stdio
 JSON-RPC yolu gerçek sunucudan yanıt alıyor.
+
+---
+
+## K-015 — CI güvenlik kontrolleri, kendileri sınanmadan sayılmaz
+
+**Karar.** Ayrıcalıklı yüzey denetimleri `scripts/check-exec-surface.sh`'a
+taşındı ve o betiğin KENDİSİ `scripts/check-exec-surface-test.sh` ile
+sınanıyor. CI önce testi, sonra kontrolü çalıştırır.
+
+**Neden.** İlk sürümde kontroller CI YAML'ının içine gömülüydü ve biri
+sessizce yanlış çalışıyordu: yorum satırlarını da tarıyordu. `exec.proto`
+gelecekteki alan şekillerini yorum içinde örnekliyor —
+
+```
+//     repeated string command = 4;  // argv — konteyner İÇİNDE, kabuk yok
+```
+
+— ve tarama bunu gerçek bir alan sanıp temiz ağaçta hata veriyordu. Yanlış
+alarm veren bir kontrol kapatılmaya mahkûmdur; kapatıldığında da geriye
+yeşil bir rozet ve hiçbir koruma kalmaz.
+
+Ters yön daha sinsi: hiçbir zaman ATEŞLENMEYEN bir kontrol de aynı yeşil
+rozeti verir ve kimse fark etmez. Bu yüzden test betiği kasten bozulmuş
+şemalar üretiyor ve kontrolün onları yakaladığını doğruluyor:
+
+```
+✓ gerçek exec.proto temiz
+✓ yorumdaki örnekler yanlış alarm üretmiyor
+✓ privileged alanı yakalandı
+✓ cap_add alanı yakalandı
+✓ serbest argv yakalandı
+✓ serbest kabuk alanı yakalandı
+✓ satır sınırı uygulanıyor
+```
+
+**Kontrol ettiği değişmezler.** Ayrıcalıklı kodun 2000 satırı geçmemesi
+(K-002); `privileged`, `cap_add`, `host_network` gibi seçeneklerin şemada
+TEMSİL EDİLEMEMESİ; serbest argv/kabuk alanı bulunmaması. Temsil edilemeyen
+bir seçenek, doğrulanan bir seçenekten güçlüdür — kazara kabul edilemez.
+
+---
+
+## K-016 — Üretilen kod depoda tutulmuyor, CI her işte üretiyor
+
+**Karar.** `*.pb.go` `.gitignore`'da. CI'daki her iş, ortak bir bileşik
+eylemle (`.github/actions/setup`) önce `buf generate` çalıştırır ve
+üretimin gerçekten dosya yazdığını doğrular.
+
+**Gerekçe.** Üretilen kodu depoda tutmak, şema ile kodun sessizce ayrışması
+demektir: biri `.proto`'yu değiştirip `buf generate` çalıştırmayı unutursa
+derleme geçer ve fark edilmez. Üretmeden derlenemeyen bir ağaçta bu sınıf
+hata imkânsız.
+
+Bedeli: her CI işine bir üretim adımı. Bu bedel, eklentilerin YEREL
+kurulmasıyla birlikte ödeniyor (K-010) ve üretim boş çıkarsa adım hemen
+hata veriyor — yoksa sonraki adımlar anlaşılmaz derleme hatalarıyla patlardı.
+
+**Yan bulgu.** `internal/exec/dockerprobe.go` linux'a etiketlenirken
+`DefaultDockerSocket` sabiti de içeride kalmıştı ve Windows derlemesi
+kırıldı. Ayrım kuralı `internal/exec/docker.go`'ya yazıldı: platforma özgü
+olan DAVRANIŞTIR, yapılandırma değil.

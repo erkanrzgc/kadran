@@ -1,3 +1,11 @@
+//go:build linux
+
+// Docker Engine yoklaması yalnızca Linux'ta derlenir.
+//
+// Tek çağıranı hostinfo_linux.go ve yaptığı iş bir unix soketine bağlanmak;
+// diğer platformlarda derlemek ölü kod bırakır. Windows'ta geliştirme
+// yaparken linter'ın "kullanılmıyor" demesi de bu yüzdendi.
+
 package exec
 
 import (
@@ -8,9 +16,6 @@ import (
 	"net/http"
 	"time"
 )
-
-// DefaultDockerSocket, Docker Engine API'sinin varsayılan unix soketidir.
-const DefaultDockerSocket = "/run/docker.sock"
 
 // dockerVersion, Docker Engine'in sürümünü sorgular.
 //

@@ -229,3 +229,108 @@ uyumu ayrıca `version.Protocol` sabitiyle çalışma anında denetlenir.
 için buf.build sunucularına yükler. `exec.proto` projenin güvenlik sınırıdır
 ve yetki modelinin tamamını tarif eder. Üçüncü taraf bir servise
 gönderilmesi için hiçbir gerekçe yok.
+
+---
+
+## K-012 — Yerel istemci kimlik önsözünü kendisi yazar (hata düzeltmesi)
+
+**Karar.** `panely` yerel unix soketine bağlanırken kimlik önsözünü
+(`connproto.Identity{Origin: "local"}`) kendisi yazar. SSH yolunda YAZMAZ —
+orada önsözü sunucudaki `panely-connect` yazıyor.
+
+**Bulunan hata.** `internal/client` yerel yolda hiç önsöz yazmıyordu, oysa
+`api.callerCreds.ServerHandshake` önsözü koşulsuz okuyor. Sunucuda argümansız
+`panely status` — yani birincil kullanım — gRPC'nin HTTP/2 önsözünü uzunluk
+sanıp ölürdü: `PRI ` dizisi big-endian okunduğunda 1.347.703.584 eder ve
+`ErrPreambleTooLarge` döner. Operatörün gördüğü mesaj `broken pipe` idi;
+gerçek nedenle hiçbir ilgisi yok.
+
+**Ölçüm.** Önsöz yazımı geçici olarak devre dışı bırakıldı ve testler gerçek
+Linux'ta koşturuldu:
+
+```
+--- FAIL: TestLocalDialWritesIdentityPreamble    önsöz hiç gelmedi
+--- FAIL: TestGRPCWorksOverRealSocketAfterPreamble
+    rpc error: code = Unavailable desc = write unix ...: broken pipe
+```
+
+Yazım geri konunca ikisi de geçti.
+
+**Önsöz neden dialer'ın İÇİNDE yazılıyor?** gRPC bağlantı kurucusunu bağlantı
+başına çağırır: ilk bağlantıda ve kopma sonrası her yeniden bağlanmada
+(GOAWAY, geçici hata). `Dial()` içinde bir kez yazmak ilk bağlantıda çalışır,
+sonrakilerin hepsinde sessizce bozulurdu. `TestReconnectWritesPreambleAgain`
+sunucuyu kasten düşürüp bunu doğruluyor.
+
+**Bu, önsözü uydurulabilir yapmıyor mu?** Hayır. Önsözün bütünlüğü "api.sock'a
+yalnızca panely-connect yazabilir" varsayımına dayanmıyor; "`SSH_AUTH_INFO_0`'ı
+yalnızca sshd ayarlayabilir" varsayımına dayanıyor. İstemci kullanıcısı olarak
+rastgele kod çalıştırabilen biri, `panely-connect`'i düzmece bir ortamla
+çağırarak istediği kimliği zaten yazdırabilirdi — yerel yol yeni bir saldırı
+yüzeyi açmıyor. Bu yüzden `Origin` sabit tutuldu ve geçersiz kılacak bir
+bayrak konmadı: kimlik uydurmak bir sömürü adımı olarak kalmalı, hazır bir kod
+yolu haline gelmemeli.
+
+**Asimetri korunmalı.** SSH yolunda istemci de önsöz yazsaydı panelyd iki
+önsöz görürdü: ilkini okur, ardından HTTP/2 beklediği yerde dört baytlık bir
+uzunluk artı JSON bulurdu. `TestSSHTransportWritesNoPreamble` sahte bir `ssh`
+alt süreciyle boruya yazılan ilk baytları yakalayıp HTTP/2 önsözü olduğunu
+doğruluyor.
+
+---
+
+## K-013 — Zincir doğrulaması üç durumlu, iki bool değil
+
+**Karar.** `VerifyAuditChainResponse`'taki `valid` ve `executor_chain_valid`
+bool alanları kaldırıldı (1 ve 5 `reserved`), yerlerine `ChainStatus` enum'u
+geldi: `VALID`, `INVALID`, `UNREACHABLE`. `version.Protocol` 1 → 2.
+
+**Gerekçe.** "Doğrulanamadı" ile "geçersiz" AYRI durumlardır ve operatörün
+tepkisi tamamen farklıdır:
+
+- `UNREACHABLE` bir işletim sorunudur (executor kapalı, veritabanı okunamıyor)
+  ve zincir hakkında hiçbir şey söylemez.
+- `INVALID` kurcalama şüphesidir ve araştırılmalıdır.
+
+Eski kod erişilemeyen executor'ı `executor_chain_valid = false` diye
+raporluyordu. Cron'a konulan bir `panely audit verify`, executor'ın kapalı
+olduğu her an sahte bir güvenlik alarmı üretirdi — ve tekrarlayan sahte
+alarmların sonu, gerçek olanın da yok sayılmasıdır.
+
+Daemon tarafında ayrım `errors.Is(err, audit.ErrChainBroken)` ile yapılıyor:
+zincir bütünlüğü hatası `INVALID`, veritabanı G/Ç hatası `UNREACHABLE`.
+
+**Çıkış kodlarına yansıması.** `panely audit verify`:
+
+| Durum | Kod |
+|---|---|
+| iki zincir de `VALID` | 0 |
+| herhangi biri `INVALID` | 3 |
+| kurcalama yok ama biri doğrulanamadı | 1 |
+
+Kurcalama, erişilememeyi bastırır: gerçek bulgu öncelikli.
+
+**Alan silmek neden protokol sürümünü artırdı?** `version.Protocol` kuralı
+"alan eklemek artırmaz, silmek veya anlamını değiştirmek artırır" diyor. Henüz
+dağıtılmış bir sunucu olmasa da kuralın kendisine uyulmasının nedeni budur:
+istisna tanınan bir kural, kural değildir.
+
+---
+
+## K-014 — CLI uçtan uca gerçek daemon'a karşı doğrulanıyor
+
+**Karar.** `scripts/e2e-cli.sh`, gerçek `panelyd`'yi WSL'de başlatıp gerçek
+`panely` ile konuşur. Root gerektirmez.
+
+**Gerekçe.** Birim testleri istemciyi sahte bir sunucuya karşı sınıyor. Sahte
+sunucu, gerçeğinin yaptığı iki şeyi yapmıyor: `SO_PEERCRED` ile çağıranı
+doğrulamak ve kimlik önsözünü okumak. İkisi de yalnızca Linux'ta çalışır ve
+K-012'deki hata tam olarak bu boşlukta yaşıyordu.
+
+Betik istemci grubu olarak kullanıcının kendi birincil grubunu kullanıyor;
+üretimde bu `panely-client` olur. Ayrıcalık izolasyonunun root gerektiren
+doğrulaması ayrı kalıyor (`scripts/e2e-executor.sh`).
+
+**Doğrulanan halkalar.** unix soketi → SO_PEERCRED → kimlik önsözü → gRPC →
+SQLite denetim zinciri → CLI çıktısı ve çıkış kodu. Ayrıca sidecar'ın stdio
+JSON-RPC yolu gerçek sunucudan yanıt alıyor.

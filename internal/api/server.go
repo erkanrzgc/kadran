@@ -151,27 +151,50 @@ func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRe
 // saklayacak ve doğrulama "her executor kaydının daemon tarafında bir
 // karşılığı var mı" sorusunu kesin olarak yanıtlayabilecek. Faz 0'da
 // durum değiştiren executor çağrısı olmadığı için executor zinciri boş.
+// Doğrulama sonucu neden bool DEĞİL?
+//
+// Üç ayrı durum var ve ikisini karıştırmak pahalıya patlar:
+//
+//   - VALID       — zincir doğrulandı.
+//   - INVALID     — zincir kırık. Kurcalama şüphesi, araştırılmalı.
+//   - UNREACHABLE — doğrulanamadı (executor kapalı, veritabanı okunamadı).
+//     Zincir hakkında HİÇBİR ŞEY söylemez.
+//
+// "Doğrulanamadı"yı "geçersiz" diye raporlamak, executor'ın kapalı olduğu
+// her an operatörü olmayan bir saldırının peşine düşürürdü.
 func (s *Server) VerifyAuditChain(ctx context.Context, _ *panelyv1.VerifyAuditChainRequest) (*panelyv1.VerifyAuditChainResponse, error) {
 	resp := &panelyv1.VerifyAuditChainResponse{}
 
 	checked, err := s.store.VerifyAuditChain(ctx)
 	resp.RecordsChecked = checked
-	if err != nil {
-		resp.Valid = false
+
+	switch {
+	case err == nil:
+		resp.DaemonStatus = panelyv1.ChainStatus_CHAIN_STATUS_VALID
+		resp.Detail = "daemon zinciri geçerli"
+
+	case errors.Is(err, audit.ErrChainBroken):
+		// Zincirin kendisi kırık: bu gerçek bir bulgu.
+		resp.DaemonStatus = panelyv1.ChainStatus_CHAIN_STATUS_INVALID
 		// Kopma noktası: doğrulanan son kayıttan sonraki kayıt.
 		resp.FirstInvalidSeq = checked + 1
 		resp.Detail = err.Error()
-	} else {
-		resp.Valid = true
-		resp.Detail = "daemon zinciri geçerli"
+
+	default:
+		// Veritabanı okunamadı. Zincir hakkında bir iddiada BULUNMUYORUZ.
+		resp.DaemonStatus = panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE
+		resp.Detail = "daemon zinciri doğrulanamadı: " + err.Error()
 	}
 
-	resp.ExecutorChainValid, resp.ExecutorDetail = s.verifyExecutorChain(ctx)
+	execStatus, execChecked, execDetail := s.verifyExecutorChain(ctx)
+	resp.ExecutorStatus = execStatus
+	resp.ExecutorRecordsChecked = execChecked
+	resp.ExecutorDetail = execDetail
 	return resp, nil
 }
 
 // verifyExecutorChain, executor'ın kendi günlüğünü baştan sona doğrular.
-func (s *Server) verifyExecutorChain(ctx context.Context) (bool, string) {
+func (s *Server) verifyExecutorChain(ctx context.Context) (panelyv1.ChainStatus, uint64, string) {
 	ctx, cancel := context.WithTimeout(ctx, execclient.DefaultTimeout)
 	defer cancel()
 
@@ -183,17 +206,22 @@ func (s *Server) verifyExecutorChain(ctx context.Context) (bool, string) {
 	for {
 		page, err := s.exec.ReadJournal(ctx, after, pageSize)
 		if err != nil {
-			return false, "executor günlüğü okunamadı: " + err.Error()
+			// Executor'a ulaşılamıyor: günlüğü hakkında bir şey bilmiyoruz.
+			// Hata zaten "executor denetim günlüğü okunamadı" diye
+			// başlıyor; başına bir kez daha eklemek mesajı okunmaz yapar.
+			return panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE, v.Count(), err.Error()
 		}
 		if len(page.Records) == 0 {
 			if v.Count() == 0 {
-				return true, "executor zinciri boş (henüz ayrıcalıklı işlem yapılmadı)"
+				return panelyv1.ChainStatus_CHAIN_STATUS_VALID, 0,
+					"executor zinciri boş (henüz ayrıcalıklı işlem yapılmadı)"
 			}
-			return true, "executor zinciri geçerli"
+			return panelyv1.ChainStatus_CHAIN_STATUS_VALID, v.Count(),
+				"executor zinciri geçerli"
 		}
 		for _, rec := range page.Records {
 			if err := v.Next(rec); err != nil {
-				return false, err.Error()
+				return panelyv1.ChainStatus_CHAIN_STATUS_INVALID, v.Count(), err.Error()
 			}
 		}
 		after = page.Records[len(page.Records)-1].Seq

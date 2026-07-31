@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	"github.com/erkanrzgc/panely/internal/connproto"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/version"
 )
@@ -208,11 +209,18 @@ func (c *Client) Target() Target { return c.target }
 func (c *Client) RPC() panelyv1.PanelyServiceClient { return c.rpc }
 
 // dialerFor, hedefe uygun bağlantı kurucuyu üretir.
+//
+// # Önsöz asimetrisi — kasıtlı
+//
+// Yerel yol kimlik önsözünü KENDİ yazar; SSH yolu yazmaz. SSH'ta önsözü
+// sunucu tarafında panely-connect yazıyor (bkz. cmd/panely-connect).
+// Burada da yazmak iki önsöz üretirdi: panelyd ilkini okur, ardından
+// HTTP/2 beklediği yerde dört baytlık bir uzunluk artı JSON bulurdu ve
+// bağlantı kurulmadan ölürdü.
 func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error) {
 	if t.IsLocal() {
 		return func(ctx context.Context, _ string) (net.Conn, error) {
-			var d net.Dialer
-			return d.DialContext(ctx, "unix", t.SocketPath)
+			return dialLocal(ctx, t.SocketPath)
 		}, nil
 	}
 	if t.SSHHost == "" {
@@ -223,7 +231,65 @@ func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error
 	}, nil
 }
 
+// dialLocal, yerel unix soketine bağlanır ve kimlik önsözünü yazar.
+//
+// # Önsöz neden burada, Dial() içinde değil?
+//
+// gRPC bu kurucuyu bağlantı başına çağırır: ilk bağlantıda, ve kopma
+// sonrası her yeniden bağlanmada (GOAWAY, geçici hata). Önsözü Dial()
+// içinde bir kez yazmak ilk bağlantıda çalışır, sonrakilerin hepsinde
+// sessizce bozulurdu.
+//
+// Bağlantı gRPC'ye teslim edilmeden önce yazıldığı için sıralama garanti
+// altındadır; yarış yoktur.
+func dialLocal(ctx context.Context, path string) (net.Conn, error) {
+	var d net.Dialer
+	conn, err := d.DialContext(ctx, "unix", path)
+	if err != nil {
+		return nil, fmt.Errorf("client: yerel sokete bağlanılamadı (%s): %w", path, err)
+	}
+
+	// Önsöz yazılamazsa bağlantı KAPATILMALIDIR. gRPC kurucuyu yeniden
+	// deneyecek; kapatılmayan her başarısız deneme bir dosya tanıtıcısı
+	// sızdırır ve sınır yoktur.
+	if err := connproto.Write(conn, localIdentity()); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	return conn, nil
+}
+
+// localIdentity, yerel soket bağlantısının kimliğidir.
+//
+// Origin sabittir, parmak izi yoktur ve geçersiz kılacak bir bayrak
+// bulunmaz.
+//
+// # Bu, önsözü uydurulabilir yapmıyor mu?
+//
+// Hayır — çünkü uydurma zaten mümkündü ve bu kod onu kolaylaştırmıyor.
+// Önsözün bütünlüğü "api.sock'a yalnızca panely-connect yazabilir"
+// varsayımına DAYANMAZ; "SSH_AUTH_INFO_0'ı yalnızca sshd ayarlayabilir"
+// varsayımına dayanır. İstemci kullanıcısı olarak rastgele kod
+// çalıştırabilen biri panely-connect'i düzmece bir ortamla çağırıp
+// istediği kimliği zaten yazdırabilir; yerel yol yeni bir yüzey açmıyor.
+//
+// Sabit tutmanın nedeni budur: kimlik uydurmak bir sömürü adımı olarak
+// kalmalı, hazır bir kod yolu haline gelmemeli.
+func localIdentity() connproto.Identity {
+	return connproto.Identity{Origin: "local"}
+}
+
+// sshCommand, çalıştırılacak SSH istemcisinin adıdır.
+//
+// Değişken olmasının tek nedeni testtir: sahte bir `ssh` ile değiştirilip
+// istemcinin boruya YAZDIĞI ilk baytlar doğrulanabiliyor. Üretimde asla
+// değişmez ve dışarıdan ayarlanamaz.
+var sshCommand = "ssh"
+
 // dialSSH, `ssh` alt sürecini başlatır ve borularını net.Conn'a sarar.
+//
+// Buraya kimlik önsözü YAZILMAZ; sunucuda panely-connect yazıyor.
+// Gerekçe için dialerFor'daki "önsöz asimetrisi" notuna bakın.
 func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 	args := []string{
 		"-T", // pty isteme: zorlanmış komut zaten kabuk vermiyor
@@ -238,7 +304,7 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 	}
 	args = append(args, t.SSHUser+"@"+t.SSHHost)
 
-	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd := exec.CommandContext(ctx, sshCommand, args...)
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

@@ -217,15 +217,20 @@ func TestVerifyAuditChainSeparatesTwoChains(t *testing.T) {
 		t.Fatalf("doğrulama başarısız: %v", err)
 	}
 
-	if !resp.GetValid() {
-		t.Errorf("geçerli daemon zinciri geçersiz bildirildi: %s", resp.GetDetail())
+	if got := resp.GetDaemonStatus(); got != panelyv1.ChainStatus_CHAIN_STATUS_VALID {
+		t.Errorf("daemon durumu = %v, beklenen VALID: %s", got, resp.GetDetail())
 	}
 	if resp.GetRecordsChecked() != 1 {
 		t.Errorf("doğrulanan kayıt = %d, beklenen 1", resp.GetRecordsChecked())
 	}
+
 	// Executor yok → ayrı alanda raporlanmalı, daemon sonucunu bozmamalı.
-	if resp.GetExecutorChainValid() {
-		t.Error("erişilemeyen executor zinciri geçerli bildirildi")
+	//
+	// Ve UNREACHABLE olmalı, INVALID DEĞİL: erişilemeyen bir executor
+	// kurcalama kanıtı değildir. İkisini karıştırmak, executor'ın kapalı
+	// olduğu her an sahte bir güvenlik alarmı üretirdi.
+	if got := resp.GetExecutorStatus(); got != panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE {
+		t.Errorf("erişilemeyen executor durumu = %v, beklenen UNREACHABLE", got)
 	}
 	if resp.GetExecutorDetail() == "" {
 		t.Error("executor durumu açıklanmadı")
@@ -239,8 +244,8 @@ func TestVerifyAuditChainOnEmptyDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("doğrulama başarısız: %v", err)
 	}
-	if !resp.GetValid() {
-		t.Error("boş zincir geçersiz bildirildi")
+	if got := resp.GetDaemonStatus(); got != panelyv1.ChainStatus_CHAIN_STATUS_VALID {
+		t.Errorf("boş zincir durumu = %v, beklenen VALID", got)
 	}
 	if resp.GetRecordsChecked() != 0 {
 		t.Errorf("doğrulanan kayıt = %d, beklenen 0", resp.GetRecordsChecked())

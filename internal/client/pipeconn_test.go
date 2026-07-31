@@ -78,7 +78,11 @@ func (s *stubService) ListAuditRecords(context.Context, *panelyv1.ListAuditRecor
 }
 
 func (s *stubService) VerifyAuditChain(context.Context, *panelyv1.VerifyAuditChainRequest) (*panelyv1.VerifyAuditChainResponse, error) {
-	return &panelyv1.VerifyAuditChainResponse{Valid: true, Detail: "stub"}, nil
+	return &panelyv1.VerifyAuditChainResponse{
+		DaemonStatus:   panelyv1.ChainStatus_CHAIN_STATUS_VALID,
+		ExecutorStatus: panelyv1.ChainStatus_CHAIN_STATUS_VALID,
+		Detail:         "stub",
+	}, nil
 }
 
 // connectedPipes, birbirine bağlı iki pipeConn üretir.

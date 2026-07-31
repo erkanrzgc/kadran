@@ -20,4 +20,12 @@ var Commit = "unknown"
 // Bu sayı yalnızca GERİYE UYUMSUZ bir değişiklikte artar. Alan eklemek
 // protobuf'ta uyumludur ve sayıyı artırmaz; alan silmek veya anlamını
 // değiştirmek artırır.
-const Protocol uint32 = 1
+//
+// Sürüm geçmişi:
+//
+//	1 → İlk sözleşme.
+//	2 → VerifyAuditChainResponse'ta `valid` ve `executor_chain_valid`
+//	    bool alanları kaldırıldı; yerlerine ChainStatus enum'u geldi.
+//	    Üç durumlu bir sonuç ("geçerli", "geçersiz", "doğrulanamadı")
+//	    iki bool ile temsil edilemiyordu.
+const Protocol uint32 = 2

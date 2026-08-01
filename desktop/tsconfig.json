@@ -1,0 +1,34 @@
+{
+  // Kaynakta içe aktarımlar `.ts` uzantısıyla yazılıyor; böylece
+  // `node --test` derleme olmadan doğrudan çalışabiliyor ve testler
+  // bağımlılıksız kalıyor.
+  //
+  // rewriteRelativeImportExtensions (TS 5.7+) tsc çıktısında bu uzantıları
+  // `.js`'e çeviriyor — Electron derlenmiş kodu çalıştırıyor. İki kip de
+  // aynı kaynaktan besleniyor, ayrı bir dosya kopyası yok.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "nodenext",
+
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "exactOptionalPropertyTypes": false,
+
+    "outDir": "out",
+    "rootDir": "src",
+    "sourceMap": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  // renderer/ derlenmiyor: düz JavaScript olarak kopyalanıyor. Tarayıcı
+  // bağlamında modül çözümlemesi ayrı bir sorun kümesi ve tek ekranlık
+  // bir arayüz için o karmaşıklığa değmez.
+  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts"]
+}

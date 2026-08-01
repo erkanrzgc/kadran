@@ -37,3 +37,6 @@ Thumbs.db
 # --- Local dev scratch ---
 /tmp/
 /.scratch/
+
+# --- Electron derleme çıktısı ---
+desktop/out/

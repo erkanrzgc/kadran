@@ -1,0 +1,22 @@
+{
+  "name": "panely-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Panely masaüstü kabuğu — panely sidecar'ını çocuk süreç olarak çalıştırır",
+  "type": "module",
+  "main": "out/main/index.js",
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc && node scripts/copy-renderer.mjs",
+    "dev": "npm run build && electron ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "electron": "^43.2.0",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

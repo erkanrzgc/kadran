@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <!--
+      İçerik güvenliği politikası.
+
+      default-src 'none' ile başlayıp yalnızca gerekeni açıyoruz. Satır içi
+      script ve stil YASAK — bu yüzden bu dosyada tek bir style= niteliği
+      veya onclick= yok. connect-src de kapalı: arayüzün ağa çıkması
+      gerekmiyor, her şey sidecar üzerinden IPC ile geliyor.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'"
+    />
+    <title>Panely</title>
+    <link rel="stylesheet" href="app.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="rail">
+        <header class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <h1 class="brand-name">Panely</h1>
+          <p class="brand-sub" id="sidecar-version">sidecar yükleniyor…</p>
+        </header>
+
+        <form class="connect" id="connect-form">
+          <label class="field-label" for="target">Sunucu hedefi</label>
+          <input
+            class="field"
+            id="target"
+            name="target"
+            type="text"
+            placeholder="panely-client@1.2.3.4"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button class="btn btn-primary" type="submit" id="connect-btn">Bağlan</button>
+          <p class="hint">
+            Kimlik doğrulamayı <code>ssh</code> yapar. Parola veya özel anahtar
+            burada saklanmaz, istenmez.
+          </p>
+        </form>
+
+        <section class="profiles" aria-labelledby="profiles-heading">
+          <h2 class="rail-heading" id="profiles-heading">Kayıtlı sunucular</h2>
+          <ul class="profile-list" id="profile-list"></ul>
+          <p class="empty" id="profiles-empty">Henüz kayıt yok.</p>
+        </section>
+      </aside>
+
+      <main class="stage">
+        <div class="stage-empty" id="stage-empty">
+          <p class="stage-empty-title">Bir sunucuya bağlan</p>
+          <p class="stage-empty-body">
+            Soldaki alana hedefini yaz. Yerel soket için alanı boş bırakabilirsin —
+            yalnızca sunucunun kendisinde çalışır.
+          </p>
+        </div>
+
+        <div class="stage-content" id="stage-content" hidden>
+          <header class="stage-head">
+            <p class="eyebrow">Bağlı sunucu</p>
+            <h2 class="stage-title" id="stage-target">—</h2>
+            <p class="stage-meta" id="stage-meta"></p>
+          </header>
+
+          <section class="cards" aria-label="Sunucu durumu">
+            <article class="card">
+              <h3 class="card-title">Daemon</h3>
+              <dl class="rows">
+                <div class="row">
+                  <dt>Sürüm</dt>
+                  <dd id="daemon-version">—</dd>
+                </div>
+                <div class="row">
+                  <dt>Çalışma süresi</dt>
+                  <dd id="daemon-uptime">—</dd>
+                </div>
+                <div class="row">
+                  <dt>Kullanıcı</dt>
+                  <dd id="daemon-user">—</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="card">
+              <h3 class="card-title">Executor</h3>
+              <dl class="rows">
+                <div class="row">
+                  <dt>Durum</dt>
+                  <dd id="executor-state">—</dd>
+                </div>
+                <div class="row">
+                  <dt>Sürüm</dt>
+                  <dd id="executor-version">—</dd>
+                </div>
+                <div class="row">
+                  <dt>Docker</dt>
+                  <dd id="docker-version">—</dd>
+                </div>
+              </dl>
+            </article>
+
+            <article class="card">
+              <h3 class="card-title">Sunucu</h3>
+              <dl class="rows">
+                <div class="row">
+                  <dt>Ad</dt>
+                  <dd id="host-name">—</dd>
+                </div>
+                <div class="row">
+                  <dt>Çekirdek</dt>
+                  <dd id="host-kernel">—</dd>
+                </div>
+                <div class="row">
+                  <dt>Bellek</dt>
+                  <dd id="host-memory">—</dd>
+                </div>
+              </dl>
+            </article>
+          </section>
+
+          <!--
+            İki zincir AYRI gösteriliyor.
+
+            Tek bir "geçerli" rozetinde birleştirmek, modelin tamamının
+            dayandığı ayrımı gizlerdi: ele geçirilmiş bir panelyd kendi
+            zincirini temiz tutabilir ama executor'ın günlüğüne yazamaz.
+          -->
+          <section class="chains" aria-labelledby="chains-heading">
+            <div class="chains-head">
+              <h3 class="section-title" id="chains-heading">Denetim zincirleri</h3>
+              <button class="btn btn-ghost" type="button" id="verify-btn">Doğrula</button>
+            </div>
+
+            <div class="chain-grid">
+              <article class="chain" id="chain-daemon">
+                <div class="chain-top">
+                  <h4 class="chain-name">daemon</h4>
+                  <span class="badge" id="daemon-chain-badge">—</span>
+                </div>
+                <p class="chain-count" id="daemon-chain-count">doğrulanmadı</p>
+                <p class="chain-detail" id="daemon-chain-detail"></p>
+              </article>
+
+              <article class="chain" id="chain-executor">
+                <div class="chain-top">
+                  <h4 class="chain-name">executor</h4>
+                  <span class="badge" id="executor-chain-badge">—</span>
+                </div>
+                <p class="chain-count" id="executor-chain-count">doğrulanmadı</p>
+                <p class="chain-detail" id="executor-chain-detail"></p>
+              </article>
+            </div>
+            <p class="chain-note">
+              Ayrı tutuluyorlar çünkü panelyd, executor'ın günlüğüne yazamaz
+              (0640 root:panely). Ele geçirilmiş bir daemon kendi kaydını
+              temizleyebilir, diğerini değil.
+            </p>
+          </section>
+
+          <section class="audit" aria-labelledby="audit-heading">
+            <div class="chains-head">
+              <h3 class="section-title" id="audit-heading">Son denetim kayıtları</h3>
+              <button class="btn btn-ghost" type="button" id="audit-btn">Yenile</button>
+            </div>
+            <div class="table-wrap">
+              <table class="audit-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Seq</th>
+                    <th scope="col">Zaman</th>
+                    <th scope="col">Aktör</th>
+                    <th scope="col">Eylem</th>
+                    <th scope="col">Hedef</th>
+                    <th scope="col">Sonuç</th>
+                  </tr>
+                </thead>
+                <tbody id="audit-body"></tbody>
+              </table>
+            </div>
+            <p class="empty" id="audit-empty">Henüz okunmadı.</p>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

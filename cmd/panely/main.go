@@ -20,11 +20,12 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"strings"
+	"path/filepath"
 	"syscall"
 	"text/tabwriter"
 	"time"
 
+	"github.com/erkanrzgc/panely/internal/bootstrap"
 	"github.com/erkanrzgc/panely/internal/client"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/version"
@@ -81,7 +82,7 @@ func commands() []command {
 		{"status", "[hedef]", "sunucu ve daemon durumunu gösterir", (*cli).runStatus},
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
-		{"bootstrap", "root@sunucu", "sunucuyu kurar (henüz uygulanmadı)", (*cli).runBootstrap},
+		{"bootstrap", "root@sunucu", "sunucuyu sıfırdan kurar (tek seferlik)", (*cli).runBootstrap},
 		{"version", "", "sürüm bilgisini yazar", (*cli).runVersion},
 	}
 }
@@ -203,20 +204,74 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 	return exitOK
 }
 
-// runBootstrap, kurulum komutunun yerini tutar.
+// runBootstrap, sunucuyu sıfırdan kurar.
 //
-// Komut listede DURUYOR ama çalışmıyor. Gerekçe: `panely bootstrap ...`
-// yazan birine "bilinmeyen komut" demek, komutu yanlış yazdığını
-// düşündürür. Planlanmış ama henüz yok demek dürüst ve yönlendirici.
-func (c *cli) runBootstrap(_ context.Context, _ []string) int {
-	fmt.Fprintln(c.stderr, strings.TrimSpace(`
-panely: `+"`bootstrap`"+` henüz uygulanmadı.
+// Bu komut root olarak bağlanan TEK komuttur ve yalnızca bir kez
+// çalıştırılır. Kurulum bittikten sonra günlük kullanım yetkisiz
+// `panely-client` kullanıcısı üzerinden yürür; root erişimine bir daha
+// gerek kalmaz.
+func (c *cli) runBootstrap(ctx context.Context, args []string) int {
+	fs := c.newFlagSet("bootstrap")
+	binaryDir := fs.String("binaries", defaultBinaryDir(), "linux binary'lerinin bulunduğu dizin")
+	repoRoot := fs.String("repo", ".", "systemd birimlerinin okunacağı depo kökü")
+	clientKey := fs.String("client-key", defaultClientKey(), "sunucuya yetkilendirilecek AÇIK anahtar")
+	timeout := fs.Duration("timeout", 10*time.Minute, "toplam süre sınırı")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	if fs.NArg() != 1 {
+		return c.usageError("kullanım: panely bootstrap [seçenekler] root@sunucu")
+	}
 
-Bu komut sunucuyu sıfırdan kuracak: binary'leri kopyalar, panely ve
-panely-client kullanıcılarını oluşturur, systemd birimlerini yazar ve
-zorlanmış SSH komutunu yapılandırır.
+	target, err := client.ParseTarget(fs.Arg(0))
+	if err != nil {
+		return c.fail(err)
+	}
+	if target.IsLocal() {
+		return c.usageError("`bootstrap` uzak bir hedef ister, yerel soket değil")
+	}
+	if !client.SSHAvailable() {
+		return c.fail(errors.New("`ssh` komutu bulunamadı — OpenSSH istemcisi gerekli"))
+	}
 
-Gerçek bir sunucuda uçtan uca doğrulanmadan yayımlanmayacak; yarım bir
-kurulum betiği, hiç olmayandan daha tehlikelidir.`))
-	return exitError
+	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	defer cancel()
+
+	fmt.Fprintf(c.stdout, "Panely kurulumu — %s\n", target.String())
+	fmt.Fprintln(c.stdout,
+		"Parola veya özel anahtar istenmez; kimlik doğrulamayı `ssh` yapar.")
+
+	err = bootstrap.Run(ctx, bootstrap.Options{
+		Host:          target.SSHUser + "@" + target.SSHHost,
+		Port:          target.SSHPort,
+		BinaryDir:     *binaryDir,
+		RepoRoot:      *repoRoot,
+		ClientKeyPath: *clientKey,
+		Stdout:        c.stdout,
+		Stderr:        c.stderr,
+	})
+	if err != nil {
+		return c.fail(err)
+	}
+
+	fmt.Fprintf(c.stdout, "\nDoğrulamak için:\n  panely status %s@%s\n",
+		client.DefaultSSHUser, target.SSHHost)
+	return exitOK
+}
+
+// defaultBinaryDir, derlenmiş linux binary'lerinin varsayılan yeri.
+func defaultBinaryDir() string {
+	if dir := os.Getenv("PANELY_BINARY_DIR"); dir != "" {
+		return dir
+	}
+	return "bin"
+}
+
+// defaultClientKey, iş istasyonunun varsayılan açık anahtarı.
+func defaultClientKey() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".ssh", "id_ed25519.pub")
 }

@@ -395,3 +395,77 @@ hata veriyor — yoksa sonraki adımlar anlaşılmaz derleme hatalarıyla patlar
 `DefaultDockerSocket` sabiti de içeride kalmıştı ve Windows derlemesi
 kırıldı. Ayrım kuralı `internal/exec/docker.go`'ya yazıldı: platforma özgü
 olan DAVRANIŞTIR, yapılandırma değil.
+
+---
+
+## K-017 — Profiller anahtarlıkta değil düz JSON'da
+
+**Karar.** Masaüstü uygulaması sunucu profillerini `app.getPath('userData')`
+altında düz JSON olarak saklar. Plandaki "OS anahtarlığı" maddesi düşürüldü.
+
+**Gerekçe.** Bu tasarımda bir profil `panely-client@1.2.3.4` gibi bir hedef
+dizesinden ibaret ve İÇİNDE SIR YOK. Kimlik doğrulamayı `ssh` yapıyor;
+anahtar ssh-agent'ta ya da `~/.ssh` altında duruyor ve uygulama onu hiç
+görmüyor. Anahtarlık, sıfır kazanç karşılığında bir arıza kipi eklerdi:
+anahtarlık sıfırlandığında çözülemeyen bir bloba dönüşen profiller.
+
+---
+
+## K-018 — `bootstrap` tek tar akışı gönderir, betiği uzakta çalıştırır
+
+**Karar.** Kurulum için gereken her şey (üç binary, systemd birimleri,
+tmpfiles, istemci açık anahtarı, kurulum betiği) bellekte bir tar'a
+konur ve TEK bir SSH bağlantısında gönderilir.
+
+**Gerekçe.** Dosya başına `scp` hem yavaş hem de yarım kalmaya açık:
+üçüncü dosyada kopan bir bağlantı, yarı kurulmuş bir sunucu bırakır.
+Betik paketin içinde olduğu için uzak kabuk komutu dört satırda kalıyor
+ve betik değiştiğinde güncellenmesi gerekmiyor.
+
+**Mimari önce sorulur.** `uname -m` ile sunucunun mimarisi öğrenilip
+eşleşen binary gönderiliyor. Yanlış mimari "exec format error" ile ölür
+ve neden günlükte kolayca gözden kaçar; sormak bu sınıfı tamamen siler.
+
+**Özel anahtar kontrolü.** `--client-key`'e kazara özel anahtar verilmesi
+felaket olurdu: sunucuya yüklenir ve `authorized_keys`'e yazılırdı.
+`validatePublicKey` bunu yakalıyor ve `TestRejectsPrivateKey` sınıyor.
+
+---
+
+## K-019 — İstemci kullanıcısının kabuğu `nologin` OLAMAZ
+
+**Bulgu.** İlk tasarımda `panely-client` kullanıcısına — daemon kullanıcısı
+gibi — `nologin` verilecekti. Bu, taşımayı tamamen kırardı.
+
+sshd zorlanmış komutu (`command="..."`) kullanıcının GİRİŞ KABUĞU üzerinden
+çalıştırır: `$SHELL -c "<komut>"`. `nologin` ise ne verilirse verilsin
+reddeder. Sonuç: her bağlantı, sebebi belirsiz biçimde kapanırdı.
+
+**Karar.** İstemci kabuğu `/bin/sh`. Hesabı kısıtlayan şey kabuk değil,
+`authorized_keys`'teki `command=...,restrict` ikilisi: istemci ne isterse
+istesin yalnızca `panely-connect` çalışır, pty/port yönlendirme/ajan
+yönlendirme kapalıdır.
+
+`TestInstallScriptDoesNotUseNologinForClient` bu tuzağı bekliyor.
+
+---
+
+## K-020 — Kurulum kendi değişmezlerini kurulum sonunda ÖLÇER
+
+**Karar.** `install.sh` bitmeden önce beş kontrol yapar ve biri bile
+başarısızsa kurulumu başarısız sayar:
+
+1. panelyd `panely` kullanıcısı olarak mı çalışıyor (root DEĞİL)
+2. `panely` kullanıcısı Docker'a erişebiliyor mu (ERİŞEMEMELİ)
+3. `api.sock` = 660 panely:panely-client
+4. `panely-client` `exec.sock`'a erişebiliyor mu (ERİŞEMEMELİ)
+5. `authorized_keys` zorlanmış komut içeriyor mu
+
+Ayrıca kullanıcılar oluşturulduktan hemen sonra iki değişmez doğrulanır:
+`panely-client`'ın BİRİNCİL grubu `panely-client` mi, ve `panely`
+grubunda DEĞİL mi.
+
+**Gerekçe.** "Kurulum başarılı" mesajı, kurulan şeyin iddia edilen
+özellikleri taşıdığı ölçülmeden verilemez. Bu kontroller olmadan yanlış
+bir `useradd -G` sessizce geçer ve sorun ancak ilk bağlantı denemesinde,
+hiçbir açıklama olmadan görünür.

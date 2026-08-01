@@ -102,21 +102,67 @@ func TestAuditRequiresSubcommand(t *testing.T) {
 	}
 }
 
-func TestBootstrapReportsNotImplemented(t *testing.T) {
+// TestBootstrapRequiresExactlyOneTarget, argüman doğrulamasının ağa
+// çıkmadan yapıldığını doğrular.
+//
+// Kullanım hatası için bir SSH bağlantısı denemek, kullanıcıyı 15 saniye
+// bekletip alakasız bir "connection timed out" göstermek olurdu.
+func TestBootstrapRequiresExactlyOneTarget(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"hedef yok", []string{"bootstrap"}},
+		{"iki hedef", []string{"bootstrap", "root@a", "root@b"}},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _, errOut := newTestCLI("")
+
+			done := make(chan int, 1)
+			go func() { done <- c.run(context.Background(), tc.args) }()
+
+			select {
+			case code := <-done:
+				if code != exitUsage {
+					t.Errorf("çıkış kodu = %d, beklenen %d", code, exitUsage)
+				}
+			case <-time.After(3 * time.Second):
+				t.Fatal("kullanım hatası için ağa çıkıldı — doğrulama bağlantıdan ÖNCE olmalı")
+			}
+
+			if !strings.Contains(errOut.String(), "root@sunucu") {
+				t.Errorf("doğru kullanım gösterilmedi: %s", errOut.String())
+			}
+		})
+	}
+}
+
+// TestBootstrapRejectsLocalTarget, kurulumun yerel sokete
+// yönlendirilemeyeceğini doğrular.
+//
+// `panely bootstrap /run/panely/api.sock` anlamsız: bootstrap SSH ile
+// root olarak bağlanan tek komut.
+func TestBootstrapRejectsLocalTarget(t *testing.T) {
 	c, _, errOut := newTestCLI("")
 
-	// "Bilinmeyen komut" DEĞİL: komut planlı, sadece henüz yok.
-	// Bu ayrım, kullanıcının komutu yanlış yazdığını sanmasını engelliyor.
-	code := c.run(context.Background(), []string{"bootstrap", "root@1.2.3.4"})
-	if code != exitError {
-		t.Errorf("çıkış kodu = %d, beklenen %d", code, exitError)
+	done := make(chan int, 1)
+	go func() {
+		done <- c.run(context.Background(), []string{"bootstrap", "/run/panely/api.sock"})
+	}()
+
+	select {
+	case code := <-done:
+		if code != exitUsage {
+			t.Errorf("çıkış kodu = %d, beklenen %d", code, exitUsage)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("yerel hedef için bağlantı denendi")
 	}
-	msg := errOut.String()
-	if strings.Contains(msg, "bilinmeyen komut") {
-		t.Error("bootstrap bilinmeyen komut olarak raporlandı")
-	}
-	if !strings.Contains(msg, "henüz uygulanmadı") {
-		t.Errorf("durum açıklanmadı: %s", msg)
+
+	if !strings.Contains(errOut.String(), "uzak bir hedef") {
+		t.Errorf("gerekçe açıklanmadı: %s", errOut.String())
 	}
 }
 

@@ -65,10 +65,25 @@ chmod 0750 "$SOCK_DIR"
 chmod 0755 "$WORK"
 
 echo "==> Executor başlatılıyor"
+
+# PANELY_E2E_ALLOW_INTRUDER, testin KENDİSİNİ sınamak içindir.
+#
+# Ayarlandığında executor davetsiz kullanıcıyı da kabul eder — yani
+# SO_PEERCRED politikası kasten "bozulur". Bu durumda 5. doğrulamanın
+# BAŞARISIZ olması gerekir. Olmuyorsa test hiçbir şey ölçmüyor demektir.
+#
+# Hiç ateşlenmeyen bir güvenlik testi, yeşil bir rozet ve sahte bir
+# güven duygusundan başka bir şey üretmez.
+ALLOW_USER=panely-e2e-daemon
+if [[ -n "${PANELY_E2E_ALLOW_INTRUDER:-}" ]]; then
+    ALLOW_USER=panely-e2e-intruder
+    echo "  (kendini sınama kipi: executor DAVETSİZ kullanıcıyı kabul edecek)"
+fi
+
 "$EXEC_BIN" \
     --socket "$SOCKET" \
     --journal "$JOURNAL" \
-    --allow-user panely-e2e-daemon \
+    --allow-user "$ALLOW_USER" \
     --owner-group panely-e2e-daemon &
 EXEC_PID=$!
 
@@ -138,29 +153,76 @@ else
     ok "yetkisiz kullanıcı reddedildi (dizin izinleri)"
 fi
 
-# 5. Dizin izinleri gevşetilse bile SO_PEERCRED reddetmeli.
-#    Bu, dosya izinlerinin tek savunma olmadığını kanıtlar.
+# 5. ASIL İDDİA: dizin izinleri gevşetilse BİLE SO_PEERCRED reddetmeli.
+#
+# # Bu test neden üç durumu ayırıyor?
+#
+# Naif hâli ("bağlanamadıysa geçti") BOŞ YERE geçebilirdi: connect()
+# işletim sistemi izinleri yüzünden başarısız olsaydı SO_PEERCRED hiç
+# devreye girmemiş olurdu ama test yine "geçti" derdi. Yani testin
+# kanıtladığını sandığı şeyi kanıtlamazdı.
+#
+# Şimdi connect()'in BAŞARILI olması ZORUNLU (izinler gerçekten
+# gevşetildi mi), ve el sıkışmanın reddedilmesi ayrıca sınanıyor.
 chmod 0755 "$SOCK_DIR"
 chmod 0666 "$SOCKET"
-if runuser -u panely-e2e-intruder -- \
-       python3 -c "
-import socket,sys
-s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+intruder_result="$(runuser -u panely-e2e-intruder -- \
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 s.settimeout(3)
 try:
     s.connect('$SOCKET')
-    # Bağlantı TCP seviyesinde kurulabilir; gRPC el sıkışması
-    # SO_PEERCRED reddi yüzünden kapanmalı.
-    s.sendall(b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n')
-    data = s.recv(1)
-    s.close()
-    sys.exit(0 if data else 1)
 except Exception:
-    sys.exit(1)
-" 2>/dev/null; then
-    bad "İZİNLER GEVŞEKKEN YETKİSİZ ÇAĞIRAN KABUL EDİLDİ — SO_PEERCRED çalışmıyor"
+    # İzinler hâlâ engelliyor: SO_PEERCRED sınanamadı.
+    print('CONNECT_ENGELLENDI'); raise SystemExit(0)
+try:
+    s.sendall(b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n')
+    print('VERI_GELDI' if s.recv(64) else 'KAPATILDI')
+except Exception:
+    print('KAPATILDI')
+" 2>/dev/null)"
+
+case "$intruder_result" in
+    KAPATILDI)
+        ok "izinler gevşek olsa bile SO_PEERCRED reddetti (connect başarılı, el sıkışma kapandı)"
+        ;;
+    VERI_GELDI)
+        bad "İZİNLER GEVŞEKKEN YETKİSİZ ÇAĞIRAN KABUL EDİLDİ — SO_PEERCRED çalışmıyor"
+        ;;
+    CONNECT_ENGELLENDI)
+        # Testin kendisi kurulamadı; "geçti" demek yanıltıcı olurdu.
+        bad "izinler gevşetilemedi, SO_PEERCRED sınanamadı — testin kendisi geçersiz"
+        ;;
+    *)
+        bad "yetkisiz çağıran testi beklenmedik sonuç verdi: '$intruder_result'"
+        ;;
+esac
+
+# 6. Karşılaştırma: AYNI gevşek izinlerle İZİNLİ kullanıcı kabul edilmeli.
+#
+# Bu satır olmadan 5. test, executor'ın herkesi reddettiği bozuk bir
+# durumda da geçerdi. İki kullanıcı arasındaki TEK fark uid/gid; izinler
+# birebir aynı. Farklı sonuç almak, ayrımın gerçekten kimliğe dayandığını
+# kanıtlıyor.
+allowed_result="$(runuser -u panely-e2e-daemon -- \
+    python3 -c "
+import socket
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(3)
+try:
+    s.connect('$SOCKET')
+    s.sendall(b'PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n')
+    print('VERI_GELDI' if s.recv(64) else 'KAPATILDI')
+except Exception:
+    print('KAPATILDI')
+" 2>/dev/null)"
+
+if [[ "$allowed_result" == "VERI_GELDI" ]]; then
+    ok "aynı izinlerle izinli kullanıcı kabul edildi — ayrım kimliğe dayanıyor"
 else
-    ok "izinler gevşek olsa bile SO_PEERCRED reddetti"
+    bad "izinli kullanıcı da reddedildi ('$allowed_result') — executor herkesi reddediyor olabilir"
 fi
 
 echo

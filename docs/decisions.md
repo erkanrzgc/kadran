@@ -469,3 +469,61 @@ grubunda DEĞİL mi.
 özellikleri taşıdığı ölçülmeden verilemez. Bu kontroller olmadan yanlış
 bir `useradd -G` sessizce geçer ve sorun ancak ilk bağlantı denemesinde,
 hiçbir açıklama olmadan görünür.
+
+---
+
+## K-021 — Ayrıcalık izolasyonu ÖLÇÜLDÜ: SO_PEERCRED gerçekten reddediyor
+
+**Durum: doğrulandı** (2026-08-03, WSL Ubuntu, gerçek Linux çekirdeği).
+
+Ürünün merkezî iddiası buydu ve şimdiye kadar yalnızca birim testleriyle
+destekleniyordu. Kök E2E testi artık koştu: **7 doğrulamanın 7'si geçti.**
+
+**Kritik olan doğrulama.** Soket dizini `0755`, soket `0666` yapıldıktan
+sonra — yani dosya izinleri savunma olmaktan çıktıktan sonra — yetkisiz
+kullanıcı hâlâ reddediliyor:
+
+| Kullanıcı | İzinler | `connect()` | Yanıt |
+|---|---|---|---|
+| yetkisiz | 0666 | **başarılı** | `ConnectionResetError` |
+| izinli | 0666 | başarılı | **15 bayt** (gRPC SETTINGS) |
+
+İki kullanıcı arasındaki TEK fark uid/gid. İzinler birebir aynı. Farklı
+sonuç, ayrımın gerçekten çekirdekten gelen kimliğe dayandığını kanıtlıyor.
+
+**Testin naif hâli boş yere geçiyordu.** Önceki sürüm "bağlanamadıysa
+geçti" diyordu. Ama `connect()` işletim sistemi izinleri yüzünden
+başarısız olsaydı SO_PEERCRED hiç devreye girmemiş olurdu — test,
+kanıtladığını sandığı şeyi kanıtlamazdı. Şimdi `connect()`'in BAŞARILI
+olması zorunlu; engellendiyse test "geçersiz" sayılıyor.
+
+**Testin kendisi de sınanıyor.** `PANELY_E2E_ALLOW_INTRUDER=1` ile
+executor davetsiz kullanıcıyı kabul edecek şekilde başlatılıyor ve
+doğrulamanın gerçekten KALDIĞI görülüyor:
+
+```
+[KALDI]  İZİNLER GEVŞEKKEN YETKİSİZ ÇAĞIRAN KABUL EDİLDİ — SO_PEERCRED çalışmıyor
+[KALDI]  izinli kullanıcı da reddedildi — executor herkesi reddediyor olabilir
+==> Sonuç: 5 geçti, 2 kaldı
+```
+
+CI her iki geçişi de koşuyor: önce testin bozuk politikayı yakaladığı,
+sonra gerçek doğrulama.
+
+---
+
+## K-022 — WSL'de root için `sudo` gerekmiyor: `wsl.exe -u root`
+
+**Bulgu.** Kök E2E testi "sunucu gelene kadar bekliyor" sanılıyordu,
+çünkü WSL'de parolasız `sudo` yok. Bu yanlış bir çıkarımdı:
+`wsl.exe -d Ubuntu -u root` doğrudan root veriyor ve `sudo`'ya hiç
+uğramıyor. PID 1 de systemd.
+
+Yani test ilk günden çalıştırılabilirmiş. Engel teknik değil, varsayımdı.
+
+**Ders.** "X yok" ile "X'e giden tek yol kapalı" aynı şey değil. Bir
+doğrulama engellenmiş görünüyorsa, engelin kendisi de ölçülmeli.
+
+**Testler `/mnt/c` üzerinde DEĞİL `/tmp` altında koşuyor:** `/mnt/c`
+Windows dosya semantiği taşır ve doğrulanan şey tam olarak unix
+izinleri.

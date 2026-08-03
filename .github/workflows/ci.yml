@@ -161,6 +161,30 @@ jobs:
       - name: Ayrıcalıklı yüzey değişmezleri
         run: bash scripts/check-exec-surface.sh
 
+      # Ayrıcalık izolasyonunun ta kendisi: SO_PEERCRED, dosya izinleri
+      # tek savunma olmadığı için var. Bu testin kanıtı, izinler KASTEN
+      # gevşetildiğinde bile yetkisiz çağıranın reddedilmesi.
+      #
+      # Önce testin KENDİSİ sınanıyor: executor davetsiz kullanıcıyı kabul
+      # edecek şekilde başlatılıp doğrulamanın gerçekten kaldığı görülüyor.
+      # Ateşlenmeyen bir güvenlik testi yeşil rozetten başka bir şey
+      # üretmez.
+      - name: Ayrıcalık izolasyonu (root)
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o bin/panely-exec ./cmd/panely-exec
+          export PANELY_EXEC_BIN="$PWD/bin/panely-exec"
+
+          echo "── 1/2: testin kendisi bozuk politikayı yakalıyor mu?"
+          if sudo -E PANELY_E2E_ALLOW_INTRUDER=1 \
+               PANELY_EXEC_BIN="$PANELY_EXEC_BIN" bash scripts/e2e-executor.sh; then
+            echo "::error::SO_PEERCRED kasten gevşetildiği hâlde test geçti — test hiçbir şey ölçmüyor." >&2
+            exit 1
+          fi
+          echo "  ✓ test bozuk politikayı yakaladı"
+
+          echo "── 2/2: gerçek doğrulama"
+          sudo -E PANELY_EXEC_BIN="$PANELY_EXEC_BIN" bash scripts/e2e-executor.sh
+
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest

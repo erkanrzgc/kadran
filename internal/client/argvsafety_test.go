@@ -148,3 +148,47 @@ func TestDialSSHPassesHostAsSinglePositionalArg(t *testing.T) {
 		t.Errorf("konumsal argüman `-` ile başlıyor: %q", son)
 	}
 }
+
+// TestDefaultTargetsSurviveOptionCheck, doğrulamanın BİRİNCİL kullanım
+// yollarını kapatmadığını sabitler.
+//
+// # Neden ayrı bir test?
+//
+// Yeni bir girdi reddi eklerken asıl risk, yasakladığın şeyin meşru
+// varsayılanı da kapsaması. Bu projede aynı şekil bir kez yaşandı:
+// yerel bağlantı yolu kimlik önsözünü yazmıyordu ve argümansız
+// `panely status` — birincil kullanım — ölüyordu (K-012).
+//
+// Yukarıdaki pozitif kontrol "panely-client" dizgisini ELLE yazıyor;
+// yani DefaultSSHUser değişse haberi olmazdı. Burada sabitlerin
+// kendileri sınanıyor.
+func TestDefaultTargetsSurviveOptionCheck(t *testing.T) {
+	// Argümansız çağrı: yerel sokete düşmeli, SSH doğrulamasına hiç
+	// uğramamalı.
+	yerel, err := ParseTarget("")
+	if err != nil {
+		t.Fatalf("boş hedef reddedildi — argümansız `panely status` kırık: %v", err)
+	}
+	if !yerel.IsLocal() || yerel.SocketPath != DefaultSocketPath {
+		t.Errorf("boş hedef %+v, beklenen yerel soket %q", yerel, DefaultSocketPath)
+	}
+
+	// Çıplak sunucu adı: varsayılan kullanıcı öne eklenmeli ve
+	// birleşen argüman `-` ile başlamamalı.
+	uzak, err := ParseTarget("sunucu")
+	if err != nil {
+		t.Fatalf("çıplak sunucu adı reddedildi: %v", err)
+	}
+	if uzak.SSHUser != DefaultSSHUser {
+		t.Errorf("kullanıcı %q, beklenen %q", uzak.SSHUser, DefaultSSHUser)
+	}
+	if strings.HasPrefix(DefaultSSHUser, "-") {
+		t.Fatalf("DefaultSSHUser `-` ile başlıyor (%q) — kendi doğrulamamız "+
+			"varsayılan yolu kapatır", DefaultSSHUser)
+	}
+
+	// Tam biçim de geçmeli.
+	if _, err := ParseTarget(DefaultSSHUser + "@sunucu:2222"); err != nil {
+		t.Errorf("varsayılan kullanıcıyla açık hedef reddedildi: %v", err)
+	}
+}

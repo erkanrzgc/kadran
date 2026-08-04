@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,8 +25,9 @@ import (
 // boruya yazdığı İLK BAYTLAR gerçekten ölçülebiliyor.
 
 const (
-	fakeSSHEnv    = "PANELY_TEST_FAKE_SSH"
-	fakeSSHOutEnv = "PANELY_TEST_FAKE_SSH_OUT"
+	fakeSSHEnv     = "PANELY_TEST_FAKE_SSH"
+	fakeSSHOutEnv  = "PANELY_TEST_FAKE_SSH_OUT"
+	fakeSSHArgvEnv = "PANELY_TEST_FAKE_SSH_ARGV"
 )
 
 // http2Preface, gRPC'nin bağlantıda gönderdiği ilk baytlardır (RFC 7540 §3.5).
@@ -40,9 +42,16 @@ func TestMain(m *testing.M) {
 }
 
 // fakeSSHMain, stdin'den gelen ilk baytları dosyaya yazıp çıkar.
-// Argümanları kasıtlı olarak yok sayar; gerçek ssh'ı taklit etmiyor,
-// yalnızca boruyu dinliyor.
+// Gerçek ssh'ı taklit etmiyor; yalnızca boruyu dinliyor.
+//
+// fakeSSHArgvEnv ayarlıysa ayrıca ALDIĞI argümanları kaydeder. Bu,
+// "istemci ssh'a ne geçiyor?" sorusunun tek dürüst yanıtıdır: dize
+// birleştirmesini okuyup çıkarım yapmak yerine çalıştırılan argv'ye
+// bakar.
 func fakeSSHMain() {
+	if path := os.Getenv(fakeSSHArgvEnv); path != "" {
+		_ = os.WriteFile(path, []byte(strings.Join(os.Args[1:], "\n")), 0o600)
+	}
 	buf := make([]byte, len(http2Preface))
 	n, _ := io.ReadFull(os.Stdin, buf)
 	_ = os.WriteFile(os.Getenv(fakeSSHOutEnv), buf[:n], 0o600)

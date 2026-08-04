@@ -112,7 +112,46 @@ func ParseTarget(s string) (Target, error) {
 	if host == "" {
 		return Target{}, errors.New("client: hedefte sunucu adı boş")
 	}
+	if err := rejectOptionLike(user, host); err != nil {
+		return Target{}, err
+	}
 	return Target{SSHUser: user, SSHHost: host, SSHPort: port}, nil
+}
+
+// rejectOptionLike, `-` ile başlayan kullanıcı/sunucu adlarını reddeder.
+//
+// # Kabuk yok ama argüman enjeksiyonu var
+//
+// `ssh` bir kabuk üzerinden çağrılmıyor; argümanlar exec'e dizi olarak
+// veriliyor. Bu, kabuk enjeksiyonunu tamamen kapatır — ama BAŞKA bir
+// sınıfı açık bırakır. `-` ile başlayan bir konumsal argümanı ssh
+// SEÇENEK olarak okur, ve `-oProxyCommand=<komut>` keyfî YEREL komut
+// çalıştırır.
+//
+// Somut olarak: `strings.Cut(s, "@")` ilk @'te böldüğü için
+// `-oProxyCommand=touch /tmp/pwned@sunucu` girdisinde kullanıcı adı
+// saldırganın denetimine geçiyordu ve birleştirilen argüman `-` ile
+// başlıyordu.
+//
+// Hedef dizesi yalnızca komut satırından gelmiyor: sidecar hedefleri
+// GUI profillerinden alıyor. Yani "kullanıcı kendi ayağına sıkar"
+// savunması geçerli değil.
+//
+// Neden `--` ile ayırmak yerine reddetmek? `--` desteği OpenSSH
+// sürümüne göre değişir; taşınabilir ve kesin olan, girdiyi kaynağında
+// reddetmektir. Meşru hiçbir kullanıcı veya sunucu adı `-` ile başlamaz.
+func rejectOptionLike(user, host string) error {
+	if strings.HasPrefix(user, "-") {
+		return fmt.Errorf(
+			"client: kullanıcı adı `-` ile başlayamaz (%q) — "+
+				"ssh bunu seçenek olarak yorumlar", user)
+	}
+	if strings.HasPrefix(host, "-") {
+		return fmt.Errorf(
+			"client: sunucu adı `-` ile başlayamaz (%q) — "+
+				"ssh bunu seçenek olarak yorumlar", host)
+	}
+	return nil
 }
 
 // splitHostPort, sunucu adını ve varsa portu ayırır.
@@ -291,6 +330,13 @@ var sshCommand = "ssh"
 // Buraya kimlik önsözü YAZILMAZ; sunucuda panely-connect yazıyor.
 // Gerekçe için dialerFor'daki "önsöz asimetrisi" notuna bakın.
 func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
+	// ParseTarget tek savunma olsaydı, doğrudan kurulan bir Target
+	// (diskteki profilden okunan alanlar gibi) korumayı baypas ederdi.
+	// Doğrulama argv'nin kurulduğu yerde de duruyor; bkz. rejectOptionLike.
+	if err := rejectOptionLike(t.SSHUser, t.SSHHost); err != nil {
+		return nil, err
+	}
+
 	args := []string{
 		"-T", // pty isteme: zorlanmış komut zaten kabuk vermiyor
 		// BatchMode: parola sorulmasın. Anahtar çalışmıyorsa sonsuza

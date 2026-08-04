@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -305,7 +306,7 @@ func readArchive(t *testing.T, archive []byte) map[string][]byte {
 	tr := tar.NewReader(bytes.NewReader(archive))
 	for {
 		header, err := tr.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -318,4 +319,50 @@ func readArchive(t *testing.T, archive []byte) map[string][]byte {
 		files[header.Name] = content
 	}
 	return files
+}
+
+// TestRejectsOptionLikeHost, `-` ile başlayan hedefin reddedildiğini
+// doğrular.
+//
+// `ssh` kabuk üzerinden çağrılmıyor, yani kabuk enjeksiyonu yok. Ama
+// `-` ile başlayan konumsal argümanı ssh SEÇENEK olarak okur:
+// `-oProxyCommand=<komut>` iş istasyonunda keyfî yerel komut çalıştırır.
+// Bootstrap'ta hedef tek parça argüman olarak geçtiği için kontrol de
+// tek satır.
+//
+// Aynı sınıfın istemci tarafındaki karşılığı için
+// internal/client/argvsafety_test.go'ya bakın.
+func TestRejectsOptionLikeHost(t *testing.T) {
+	anahtar := filepath.Join(t.TempDir(), "id.pub")
+	if err := os.WriteFile(anahtar, []byte("ssh-ed25519 AAAAC3Example test\n"), 0o600); err != nil {
+		t.Fatalf("anahtar yazılamadı: %v", err)
+	}
+
+	for _, hedef := range []string{
+		"-oProxyCommand=touch /tmp/pwned",
+		"-E/tmp/gunluk",
+	} {
+		t.Run(hedef, func(t *testing.T) {
+			opts := Options{Host: hedef, ClientKeyPath: anahtar}
+			if err := validate(&opts); err == nil {
+				t.Fatalf("seçenek benzeri hedef kabul edildi: %q", hedef)
+			}
+		})
+	}
+}
+
+// TestAcceptsOrdinaryHost, doğrulamanın her şeyi reddetmediğini gösterir.
+//
+// Bu satır olmadan yukarıdaki test, validate'in daima hata döndürdüğü
+// bozuk bir durumda da geçerdi.
+func TestAcceptsOrdinaryHost(t *testing.T) {
+	anahtar := filepath.Join(t.TempDir(), "id.pub")
+	if err := os.WriteFile(anahtar, []byte("ssh-ed25519 AAAAC3Example test\n"), 0o600); err != nil {
+		t.Fatalf("anahtar yazılamadı: %v", err)
+	}
+
+	opts := Options{Host: "root@1.2.3.4", ClientKeyPath: anahtar}
+	if err := validate(&opts); err != nil {
+		t.Fatalf("meşru hedef reddedildi: %v", err)
+	}
 }

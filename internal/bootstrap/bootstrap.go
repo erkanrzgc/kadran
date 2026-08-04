@@ -88,6 +88,18 @@ func validate(opts *Options) error {
 	if opts.Host == "" {
 		return fmt.Errorf("bootstrap: hedef sunucu belirtilmedi")
 	}
+	// `-` ile başlayan hedef, ssh tarafından konumsal argüman değil
+	// SEÇENEK olarak okunur; `-oProxyCommand=<komut>` iş istasyonunda
+	// keyfî yerel komut çalıştırır. Kabuk kullanılmadığı için kabuk
+	// enjeksiyonu yok, ama argüman enjeksiyonu ayrı bir sınıf.
+	//
+	// `--` ile ayırmak yerine reddetmenin nedeni: `--` desteği OpenSSH
+	// sürümüne göre değişir. Meşru hiçbir hedef `-` ile başlamaz.
+	if strings.HasPrefix(opts.Host, "-") {
+		return fmt.Errorf(
+			"bootstrap: hedef `-` ile başlayamaz (%q) — "+
+				"ssh bunu seçenek olarak yorumlar", opts.Host)
+	}
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
 	}
@@ -241,7 +253,14 @@ trap 'rm -rf "$d"' EXIT
 tar -x -C "$d"
 bash "$d/install.sh" "$d"`
 
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remote)...)
+	// G204 bastırılıyor. Bastırılan şey tam olarak şu: gosec, argv'nin
+	// sabit olmamasını bayrak ediyor. Komut adı sabit ("ssh"), kabuk
+	// kullanılmıyor ve argv dizi olarak veriliyor — kabuk enjeksiyonu
+	// burada temsil EDİLEMEZ. Geriye kalan gerçek sınıf argüman
+	// enjeksiyonuydu (`-` ile başlayan hedefi ssh seçenek sanar);
+	// validate() onu reddediyor, bkz. TestRejectsOptionLikeHost.
+	// remote sabit bir dize.
+	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remote)...) //nolint:gosec
 	cmd.Stdin = bytes.NewReader(archive)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
@@ -265,7 +284,9 @@ func sshArgs(opts Options, remoteCommand string) []string {
 }
 
 func sshOutput(ctx context.Context, opts Options, remoteCommand string) (string, error) {
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remoteCommand)...)
+	// G204 gerekçesi için runInstaller'daki nota bakın: sabit komut adı,
+	// kabuksuz argv, ve `-` ile başlayan hedef validate()'te reddediliyor.
+	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remoteCommand)...) //nolint:gosec
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

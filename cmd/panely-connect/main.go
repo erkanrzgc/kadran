@@ -19,19 +19,26 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net"
 	"os"
+	"time"
 
 	"github.com/erkanrzgc/panely/internal/connproto"
 	"github.com/erkanrzgc/panely/internal/sshenv"
 	"github.com/erkanrzgc/panely/internal/version"
 )
 
-const defaultSocket = "/run/panely/api.sock"
+const (
+	defaultSocket = "/run/panely/api.sock"
+
+	// dialTimeout, panelyd soketine bağlanmak için tanınan süre.
+	dialTimeout = 10 * time.Second
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -61,7 +68,21 @@ func run() error {
 
 	identity := resolveIdentity()
 
-	conn, err := net.Dial("unix", *socketPath)
+	// # Neden zaman aşımlı bağlanılıyor?
+	//
+	// Bu süreç bir SSH oturumunun içinde çalışıyor. panelyd yanıt
+	// vermiyorsa (askıda, yeniden başlıyor, soket dosyası duruyor ama
+	// arkasında kimse yok) zaman aşımsız bir Dial süresiz bekler ve
+	// SSH oturumunu açık tutar. Bağlantı başına bir asılı süreç,
+	// birikince sunucuda gerçek bir kaynak sorunu.
+	//
+	// Yerel unix soketine bağlanmak milisaniyeler sürer; 10 saniye
+	// fazlasıyla cömert bir üst sınır.
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "unix", *socketPath)
 	if err != nil {
 		return fmt.Errorf("panelyd'ye bağlanılamadı (%s): %w", *socketPath, err)
 	}

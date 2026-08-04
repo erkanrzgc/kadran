@@ -527,3 +527,114 @@ doğrulama engellenmiş görünüyorsa, engelin kendisi de ölçülmeli.
 **Testler `/mnt/c` üzerinde DEĞİL `/tmp` altında koşuyor:** `/mnt/c`
 Windows dosya semantiği taşır ve doğrulanan şey tam olarak unix
 izinleri.
+
+---
+
+## K-023 — CI'ın ilk koşusu gerçek bir güvenlik açığı buldu: grpc 1.70 → 1.82.1
+
+**Bağlam.** Boru hattı yazılmıştı ama hiç çalışmamıştı: uzak depo yoktu.
+İlk gerçek koşuda `govulncheck` iki açığı çağrı iziyle raporladı.
+
+```
+GO-2026-4762  Authorization bypass in gRPC-Go via missing leading slash in :path
+              Found in: google.golang.org/grpc@v1.70.0   Fixed in: v1.79.3
+              internal/grpcserve/serve.go:35: grpcserve.Run calls grpc.Server.Serve
+
+GO-2026-6061  xDS RBAC + HTTP/2 transport server
+              Found in: google.golang.org/grpc@v1.70.0   Fixed in: v1.82.1
+```
+
+`GO-2026-4762` bu projede sıradan bir bağımlılık uyarısı değil.
+Panely'nin tüm modeli executor'ın YALNIZCA beyaz listedeki RPC'leri kabul
+etmesine dayanıyor; `:path` üzerinden yetkilendirme atlatma o beyaz
+listenin altını oyan sınıf. Şema-beyaz-liste tasarımı, altındaki gRPC
+yönlendirmesi doğru çalıştığı sürece anlamlı.
+
+**Karar.** grpc v1.82.1'e yükseltildi (ikisini birden kapatan alt sınır).
+
+**Doğrulama.** `govulncheck ./...` → "No vulnerabilities found", çıkış 0.
+12 paketin tamamı `-race` ile geçiyor. Bu ikincisi önemsiz değil:
+1.70 → 1.82 büyük bir sıçrama ve `peercred`'in dayandığı
+`credentials.TransportCredentials` el sıkışma yolu tam orada yaşıyor.
+
+**Ders.** Hiç çalıştırılmamış bir CI, yeşil rozet bile üretmez — hiçbir
+şey üretmez. Boru hattının değeri yazıldığı an değil, ilk koştuğu an
+başlıyor.
+
+---
+
+## K-024 — `ssh` argüman enjeksiyonu: `-` ile başlayan hedef reddediliyor
+
+**Bulgu.** golangci-lint v2 yükseltmesi G204 bayrağı kaldırdı. İnceleme
+gerçek bir açığa çıktı.
+
+`ssh` kabuk üzerinden çağrılmıyor; argümanlar exec'e dizi olarak
+veriliyor. Bu kabuk enjeksiyonunu TAMAMEN kapatır — ve tam da bu yüzden
+insanı rahatlatıp ikinci sınıfı gözden kaçırtıyor: `-` ile başlayan bir
+konumsal argümanı `ssh` SEÇENEK olarak okur, `-oProxyCommand=<komut>`
+iş istasyonunda keyfî yerel komut çalıştırır.
+
+`ParseTarget` ilk `@`'te böldüğü için kullanıcı adı saldırganın
+denetimindeydi. Kırmızı test bunu doğrudan yazdırdı:
+
+```
+seçenek benzeri hedef kabul edildi: -oProxyCommand=touch /tmp/pwned@sunucu
+(ssh'a geçecek argüman: "-oProxyCommand=touch /tmp/pwned@sunucu")
+```
+
+**"Kullanıcı kendi ayağına sıkar" savunması geçerli değil.** Hedef dizesi
+yalnızca komut satırından gelmiyor: sidecar hedefleri GUI profillerinden
+alıyor. Kaynağı operatörün kendi yazdığı komut olmayan bir yol var.
+
+**Karar.** İki katmanda reddediliyor: `ParseTarget` (erken, anlaşılır
+hata) ve `dialSSH` (çözümlemeyi atlayan, doğrudan kurulan `Target` için).
+Bootstrap'ta hedef tek parça argüman olduğu için kontrol de tek satır.
+
+**Neden `--` ile ayırmak değil?** `--` desteği OpenSSH sürümüne göre
+değişir. Taşınabilir ve kesin olan, girdiyi kaynağında reddetmek. Meşru
+hiçbir kullanıcı veya sunucu adı `-` ile başlamaz.
+
+**Ölçüm düzeneğinin kendisi de sınandı.** Sahte `ssh` artık aldığı argv'yi
+kaydediyor. Negatif test "argv dosyası yok ⇒ exec edilmedi" diyor; bu
+BOŞ YERE geçebilirdi, çünkü alt süreç dosyayı eşzamansız yazıyor ve
+"henüz yazmadı" da dosyasız görünür. Pozitif kontrol AYNI bekleme
+süresiyle dosyayı görüyor — yani yokluğu artık bir şey ifade ediyor.
+(Aynı hata sınıfı K-021'de yakalanmıştı.)
+
+---
+
+## K-025 — Linter sabitlenirken sürüm yetmez, derleme araç zinciri de sabitlenmeli
+
+**Bulgu.** `.golangci.yml` v1.62.2 ile yerelde doğrulanmıştı. CI ilk
+koştuğunda aynı sürüm, aynı yapılandırma, farklı sonuç:
+
+```
+can't load config: the Go language version (go1.23) used to build
+golangci-lint is lower than the targeted Go version (1.25.0)
+```
+
+golangci-lint KENDİSİNİN derlendiği Go sürümünü `go.mod`'un hedefiyle
+karşılaştırıyor. Yereldeki kurulum `go install` ile, yani yerel araç
+zinciriyle (go1.26.5) derlenmişti ve geçiyordu. CI ise yayınlanmış
+binary'yi indiriyor — o go1.23 ile derlenmiş.
+
+**Ders.** Bir aracın *sürümü* ile *nasıl elde edildiği* ayrı iki
+değişken. "Yerelde çalışıyor" burada bilgi taşımıyordu.
+
+**Karar.** golangci-lint v2.12.2 + action v9. Üçü tek küme olarak hareket
+ediyor: action v6 yalnızca v1'i, v7+ yalnızca v2'yi destekliyor ve
+`.golangci.yml` şeması da sürüme bağlı.
+
+**Doğrulama varsayımla değil ölçümle:** CI'ın indireceği linux-amd64
+artefaktı indirilip `--version` çalıştırıldı → `built with go1.26.2`.
+
+**Yükseltmenin bulduğu 5 gerçek sorun** (v1.62 hiçbirini görmüyordu):
+argüman enjeksiyonu (K-024), sarmalanmış hatada `==` karşılaştırması, ve
+`panely-connect`'te zaman aşımsız `Dial` — ayrıcalıklı vekil yolunda
+askıda kalan bir bağlantı SSH oturumunu süresiz açık tutuyordu.
+
+**Bilerek ertelendi.** v2 göçü, v1'de ÖRTÜK olan varsayılan hariç
+tutmaları (`legacy`, `common-false-positives`) açık hâle getirdi. Bunlar
+bir kısım gosec bulgusunu susturuyor ve güvenlik sınırı olan bir projede
+ayrıca gözden geçirilmeli. Göçle sıkılaştırmayı aynı değişikliğe koymak,
+CI kızardığında sebebi ayırt edilemez kılardı.

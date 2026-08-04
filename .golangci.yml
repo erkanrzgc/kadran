@@ -1,16 +1,27 @@
-# golangci-lint yapılandırması (v1 şeması — CI v1.62'ye sabitli).
+# golangci-lint yapılandırması (v2 şeması).
 #
 # Varsayılan linter kümesi güvenlik sınırı olan bir proje için yeterli
 # değil: gosec, bodyclose ve errorlint açıkça ekleniyor. Buna karşılık
 # üslupçu linter'lar (lll, gochecknoglobals gibi) eklenmiyor — okunabilirlik
 # insan incelemesiyle korunuyor ve gürültülü bir CI kapatılmaya mahkûmdur.
 #
-# NOT: golangci-lint v2 farklı bir yapılandırma şeması kullanıyor. Sürüm
-# yükseltilirse bu dosya da göç ettirilmeli; CI'daki sürüm sabiti ile
-# buradaki şema birlikte değişmek zorunda.
-
-run:
-  timeout: 5m
+# # Sürüm sabiti neden hem burada hem CI'da yazılı?
+#
+# golangci-lint, KENDİSİNİN derlendiği Go sürümünü `go.mod`'un hedeflediği
+# sürümle karşılaştırır ve küçükse yapılandırmayı okumadan çıkar. v1.62'nin
+# yayınlanmış binary'si go1.23 ile derlenmişti; `go 1.25.0` hedefiyle
+# çalışmıyordu — ama YEREL kurulum `go install` ile derlendiği için yerel
+# araç zinciriyle (go1.26.5) derlenmiş oluyor ve sorunsuz geçiyordu.
+# Yani "yerelde çalışıyor" bu hatayı gizledi; CI ilk koştuğunda çıktı.
+#
+# Ders: sürüm numarası tek başına yetmiyor, aracın NASIL elde edildiği de
+# değişkenin parçası. CI hazır binary indiriyor; v2.12.2'nin linux-amd64
+# artefaktı go1.26.2 ile derlenmiş olduğu doğrulandı (indirilip `--version`
+# çalıştırılarak, varsayılarak değil).
+#
+# Şema ile sürüm birlikte değişmek zorunda: bu dosya v2 şemasında, CI de
+# v2'ye sabitli.
+version: "2"
 
 linters:
   enable:
@@ -27,15 +38,53 @@ linters:
     - nilerr
     - sqlclosecheck
 
-linters-settings:
-  gosec:
-    excludes:
-      # G115: tamsayı dönüşümünde taşma. gid/uid dönüşümleri nokta nokta
-      # //nolint ile gerekçelendirilmiş; genel kural gürültü üretiyor.
-      - G115
+  settings:
+    errcheck:
+      check-type-assertions: true
 
-  errcheck:
-    check-type-assertions: true
+    gosec:
+      excludes:
+        # G115: tamsayı dönüşümünde taşma. gid/uid dönüşümleri nokta nokta
+        # //nolint ile gerekçelendirilmiş; genel kural gürültü üretiyor.
+        - G115
+
+  exclusions:
+    generated: lax
+
+    # Bunlar v1'de ÖRTÜK olarak açıktı; v2 göçünde açık hâle getirildiler.
+    # Davranış eşitliği için korunuyorlar, onaylandıkları için değil.
+    # `legacy` ve `common-false-positives` bir kısım gosec bulgusunu
+    # susturuyor — güvenlik sınırı olan bir projede bu ayrıca gözden
+    # geçirilmeli. Göçle sıkılaştırmayı aynı değişikliğe koymak, CI
+    # kızardığında sebebi ayırt edilemez kılardı.
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+
+    rules:
+      # Testlerde gosec'in dosya izni ve rastgelelik uyarıları anlamsız:
+      # geçici dizinlerde çalışıyorlar ve kriptografik rastgelelik
+      # gerektirmiyorlar.
+      - path: _test\.go
+        linters:
+          - gosec
+
+      # noctx, üretim kodunun iptal/zaman aşımına saygı duymasını sağlamak
+      # için var. Test yardımcılarındaki net.Listen/net.Dial çağrıları
+      # geçici soket kurup hemen kapatıyor; context eklemek hiçbir davranış
+      # değiştirmez, yalnızca gürültü üretir. Üretim kodunda noctx AÇIK
+      # kalıyor — panely-connect'teki bağlantı zaman aşımı bu linter
+      # sayesinde eklendi.
+      - path: _test\.go
+        linters:
+          - noctx
+
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 
 issues:
   # Varsayılan 3'lük "aynı sorundan en fazla N tane göster" sınırı,
@@ -43,10 +92,10 @@ issues:
   max-issues-per-linter: 0
   max-same-issues: 0
 
-  exclude-rules:
-    # Testlerde gosec'in dosya izni ve rastgelelik uyarıları anlamsız:
-    # geçici dizinlerde çalışıyorlar ve kriptografik rastgelelik
-    # gerektirmiyorlar.
-    - path: _test\.go
-      linters:
-        - gosec
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

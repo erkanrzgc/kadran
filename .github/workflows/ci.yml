@@ -48,16 +48,26 @@ jobs:
       - name: go vet
         run: go vet ./...
 
-      # Sürüm sabitli: .golangci.yml v1 şemasında yazıldı ve v1.62.2 ile
-      # yerelde doğrulandı. v2'ye yükseltmek yapılandırma göçü gerektirir;
-      # ikisi birlikte değişmeli.
+      # # Sürüm sabiti neden hem action'ı hem linter'ı kapsıyor?
+      #
+      # action v6 YALNIZCA golangci-lint v1, v7+ YALNIZCA v2 destekliyor.
+      # Yani linter sürümünü değiştirmek action'ın ana sürümünü de
+      # değiştirmek demek; ikisi birlikte hareket etmek zorunda.
+      # .golangci.yml de v2 şemasında — üçü tek bir küme.
+      #
+      # v1.62 neden bırakıldı: yayınlanmış binary'si go1.23 ile derlenmiş
+      # ve golangci-lint kendi Go sürümünü go.mod'un hedefinden (1.25.0)
+      # küçük bulunca yapılandırmayı okumadan çıkıyor. Yerelde sorun
+      # görünmüyordu çünkü yerel kurulum `go install` ile, yani yerel
+      # araç zinciriyle derlenmişti. v2.12.2'nin linux-amd64 artefaktının
+      # go1.26.2 ile derlendiği indirilip doğrulandı.
       #
       # Bu adım setup'tan SONRA gelmek zorunda: üretilen protobuf kodu
       # olmadan tip denetimi yapılamaz ve linter anlamsız hatalar verir.
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.62
+          version: v2.12.2
 
   test:
     name: Testler (${{ matrix.os }})

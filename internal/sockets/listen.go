@@ -57,7 +57,12 @@ func Listen(opts ListenOptions) (net.Listener, error) {
 		return nil, err
 	}
 
-	ln, err := net.Listen("unix", opts.Path)
+	// noctx bastırılıyor. Önerdiği (*net.ListenConfig).Listen biçimi bir
+	// context ister; bu da Listen()'in imzasını değiştirip her çağıranı
+	// dolaşmayı gerektirirdi. Karşılığında elde edilen davranış farkı
+	// SIFIR: unix soketi dinlemeye almak yerel ve anlık bir işlem, iptal
+	// edilecek bir bekleme yok. İmza değişikliği bedelinin karşılığı yok.
+	ln, err := net.Listen("unix", opts.Path) //nolint:noctx
 	if err != nil {
 		return nil, fmt.Errorf("sockets: %s dinlenemedi: %w", opts.Path, err)
 	}

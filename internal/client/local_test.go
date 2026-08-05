@@ -28,6 +28,7 @@ const (
 	fakeSSHEnv     = "PANELY_TEST_FAKE_SSH"
 	fakeSSHOutEnv  = "PANELY_TEST_FAKE_SSH_OUT"
 	fakeSSHArgvEnv = "PANELY_TEST_FAKE_SSH_ARGV"
+	fakeSSHEchoEnv = "PANELY_TEST_FAKE_SSH_ECHO"
 )
 
 // http2Preface, gRPC'nin bağlantıda gönderdiği ilk baytlardır (RFC 7540 §3.5).
@@ -51,6 +52,13 @@ func TestMain(m *testing.M) {
 func fakeSSHMain() {
 	if path := os.Getenv(fakeSSHArgvEnv); path != "" {
 		_ = os.WriteFile(path, []byte(strings.Join(os.Args[1:], "\n")), 0o600)
+	}
+	// Yankı kipi: stdin'i stdout'a kopyalar ve stdin kapanana kadar
+	// YAŞAR. Alt sürecin ömrünü sınayan testler bunu kullanıyor —
+	// süreç erken öldürülürse yankı gelmez ve test bunu görür.
+	if os.Getenv(fakeSSHEchoEnv) != "" {
+		_, _ = io.Copy(os.Stdout, os.Stdin)
+		return
 	}
 	buf := make([]byte, len(http2Preface))
 	n, _ := io.ReadFull(os.Stdin, buf)

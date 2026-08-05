@@ -638,3 +638,92 @@ tutmaları (`legacy`, `common-false-positives`) açık hâle getirdi. Bunlar
 bir kısım gosec bulgusunu susturuyor ve güvenlik sınırı olan bir projede
 ayrıca gözden geçirilmeli. Göçle sıkılaştırmayı aynı değişikliğe koymak,
 CI kızardığında sebebi ayırt edilemez kılardı.
+
+---
+
+## K-026 — Gerçek sunucuda ilk koşu dört hata buldu
+
+`panely bootstrap` haftalarca yazılı ve testli durdu, ama hiç gerçek
+sunucuda çalıştırılmadı. İlk koşuda **dört ayrı hata** çıktı; hiçbiri
+birim testleri, WSL veya CI ile yakalanamazdı.
+
+| # | Belirti | Kök neden |
+|---|---|---|
+| 1 | `226/NAMESPACE`, birim hiç başlamıyor | `BindReadOnlyPaths=/run/docker.sock` — taze sunucuda Docker yok, `-` öneki eksikti |
+| 2 | `2/INVALIDARGUMENT`, sonsuz yeniden başlatma | Birim `--config /etc/panely/panelyd.toml` geçiyordu; ne bayrak ne dosya vardı |
+| 3 | `31/SYS` (SIGSYS), çekirdek öldürüyor | `~@privileged` chown ailesini kapatıyordu; daemon api.sock'un grubunu ayarlayamıyordu |
+| 4 | `error reading server preface: EOF` | ssh alt süreci gRPC'nin deneme bağlamına bağlıydı ve el sıkışmadan sonra öldürülüyordu |
+
+**Neden hiçbiri yakalanamamıştı.** Birim testleri binary'leri sınıyordu;
+birim DOSYALARINI kimse sınamıyordu (1, 2). Seccomp ve systemd ad alanı
+yalıtımı yalnızca gerçek çekirdekte kurulur (1, 3). SSH taşıması ilk kez
+gerçekten kullanıldı; testler `dialSSH`'ı iptal edilmeyen bağlamla
+çağırıyordu (4).
+
+**Kabul ölçütü servisin ayakta olması DEĞİL.** 3. hatadan sonra bootstrap
+"Kurulum tamamlandı" dedi ve kurulum sonrası altı kontrolün hepsi geçti —
+ama istemci hâlâ bağlanamıyordu (4. hata). "Servis active" ile "istemci
+konuşabiliyor" farklı iddialar; doğrulama ikincisini ölçmeli.
+
+**Sonuç (46.225.95.35, Ubuntu 24.04, cx23/nbg1):**
+
+```
+panely status panely-client@<ip>        → tam çıktı, çıkış 0
+panely audit verify panely-client@<ip>  → daemon GEÇERLİ (2 kayıt),
+                                          executor GEÇERLİ (0 kayıt)
+panely bootstrap root@<ip>  (2. kez)    → idempotan, servis kesintisiz
+```
+
+CAX11 (ARM) seçilmişti ama Hetzner'da üç EU lokasyonunda da kapasite
+yoktu; cx23 aynı özellikleri (2 vCPU / 4 GB / 40 GB) daha ucuza veriyor
+(8,05 vs 8,67 EUR/ay). Tek fark x86; ARM kapasitesi dönünce geçilebilir.
+
+---
+
+## K-027 — systemd birim dosyaları artık test ediliyor
+
+1. ve 2. hatalar aynı boşluktan geldi: **binary sınanıyordu, birim
+dosyası sınanmıyordu.** İkisi de çevrimdışı doğrulanabilir gerçekler.
+
+`internal/bootstrap/units_test.go`:
+
+- `TestUnitsDoNotHardRequireForeignPaths` — Panely'nin oluşturmadığı bir
+  yola zorunlu bind kurulmuş mu (kural: `-` öneki şart).
+- `TestDockerSocketBindIsOptional` — somut gerilemenin nöbetçisi.
+- `TestUnitExecStartFlagsExist` — `ExecStart`'taki her `--bayrak`
+  binary'de gerçekten tanımlı mı.
+
+Üçü de düzeltme geri alınarak sınandı; hepsi hatayı yakalıyor. Her biri
+"hiç bulgu yoksa test bir şey ölçmüyor" koruması taşıyor, çünkü dosya
+taşınırsa sessizce geçmeleri mümkündü.
+
+**Seccomp için karşılık gelen test YOK ve yazılmayacak.** `@privileged`
+çıkarmasının chown'u kapattığı yalnızca gerçek çekirdek + gerçek systemd
+ile görülebilir. Zayıf bir vekil test, olmayandan kötü olurdu.
+
+---
+
+## K-028 — Alt sürecin ömrü bağlantıya bağlanır, denemeye değil
+
+`dialSSH`, ssh'ı `exec.CommandContext(ctx, ...)` ile başlatıyordu.
+Buradaki ctx gRPC'nin **bağlantı denemesi** bağlamı; gRPC onu el sıkışma
+biter bitmez iptal eder ve `CommandContext` iptalde süreci **öldürür**.
+Yani ssh, bağlantı kurulur kurulmaz ölüyordu.
+
+Belirti yanıltıcıydı: `error reading server preface: EOF` sunucuyu
+suçluyor. Teşhisi ayıran ölçüm şuydu — aynı sunucuda `panely-client`
+kullanıcısı YEREL sokete bağlanınca tam çıktı alıyordu. Daemon
+sağlamdı, kopan taşımaydı.
+
+Yerel yol neden etkilenmiyordu: unix soketine bağlandıktan sonra bağlamın
+iptali bağlantıyı etkilemez. Bu asimetri hatayı SSH'a özel kıldı ve
+gerçek sunucuya kadar gizledi.
+
+**Karar.** `exec.Command` kullanılıyor; süreç `Close()` içinde toplanıyor,
+süre sınırı dolarsa öldürülüyor. İki test bunu iki yönden kilitliyor:
+
+- `TestSSHProcessSurvivesDialContextCancel` — iptalden sonra taşıma yaşar
+- `TestSSHProcessDiesWhenConnectionCloses` — ama bağlantı kapanınca ölür
+
+İkincisi olmadan birincisi "süreci hiç öldürme" diyerek de geçerdi ve her
+bağlantı arkada asılı bir ssh bırakırdı.

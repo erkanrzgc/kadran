@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -34,6 +35,11 @@ const DefaultSSHUser = "panely-client"
 
 // DefaultSocketPath, sunucudaki api soketidir.
 const DefaultSocketPath = "/run/panely/api.sock"
+
+// sshExitGrace, bağlantı kapandıktan sonra ssh alt sürecinin kendiliğinden
+// çıkması için tanınan süre. Dolarsa süreç öldürülür; asılı bir süreç
+// bırakmak sızıntıdır.
+const sshExitGrace = 5 * time.Second
 
 // Target, bağlanılacak hedefi tanımlar.
 type Target struct {
@@ -350,7 +356,27 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 	}
 	args = append(args, t.SSHUser+"@"+t.SSHHost)
 
-	cmd := exec.CommandContext(ctx, sshCommand, args...)
+	// # Neden CommandContext DEĞİL?
+	//
+	// Buradaki ctx gRPC'nin BAĞLANTI DENEMESİ bağlamıdır ve gRPC onu el
+	// sıkışma biter bitmez iptal eder. `exec.CommandContext` iptalde
+	// süreci ÖLDÜRÜR — yani ssh, bağlantı kurulur kurulmaz ölürdü ve
+	// istemci şunu görürdü:
+	//
+	//	error reading server preface: EOF
+	//
+	// Alt sürecin ömrü BAĞLANTIYA bağlı olmalı, tek bir denemeye değil.
+	// Toplanması Close() üzerinden yapılıyor (aşağıdaki cleanup).
+	//
+	// Yerel yol bu hatadan etkilenmiyordu: unix soketine bağlandıktan
+	// sonra bağlamın iptali bağlantıyı etkilemez. Hata bu yüzden ancak
+	// gerçek sunucuya SSH ile bağlanınca ortaya çıktı.
+	//
+	// Bkz. TestSSHProcessSurvivesDialContextCancel.
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("client: bağlanmadan önce iptal edildi: %w", err)
+	}
+	cmd := exec.Command(sshCommand, args...) //nolint:noctx // gerekçe yukarıda
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -374,8 +400,24 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 		return nil, fmt.Errorf("client: ssh başlatılamadı: %w", err)
 	}
 
+	// cleanup, bağlantı kapanınca alt süreci toplar.
+	//
+	// Süreç artık dial bağlamına bağlı olmadığı için toplanması TAMAMEN
+	// buraya kaldı. pipeConn önce yazma ucunu kapatıyor; ssh normalde
+	// EOF görüp kendiliğinden çıkar. Çıkmazsa süresiz beklemek her
+	// bağlantıda asılı bir süreç bırakırdı — o yüzden süre sınırı var.
 	cleanup := func() error {
-		err := cmd.Wait()
+		bitti := make(chan error, 1)
+		go func() { bitti <- cmd.Wait() }()
+
+		var err error
+		select {
+		case err = <-bitti:
+		case <-time.After(sshExitGrace):
+			_ = cmd.Process.Kill()
+			err = <-bitti
+		}
+
 		if err == nil {
 			return nil
 		}

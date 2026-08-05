@@ -7,7 +7,13 @@ Wants=docker.service
 [Service]
 Type=notify
 NotifyAccess=main
-ExecStart=/usr/local/lib/panely/panely-exec --socket /run/panely-exec/exec.sock
+# Bayraklar açık; gerekçe için panelyd.service'teki nota bakın.
+# --allow-user, executor'ın SO_PEERCRED ile kabul ettiği TEK kullanıcı.
+ExecStart=/usr/local/lib/panely/panely-exec \
+    --socket /run/panely-exec/exec.sock \
+    --journal /var/lib/panely/exec-audit.log \
+    --allow-user panely \
+    --owner-group panely
 Restart=on-failure
 RestartSec=2s
 
@@ -36,6 +42,15 @@ RestrictNamespaces=yes
 LockPersonality=yes
 MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
+# # Bu filtre panelyd'ninkiyle KASTEN aynı değil — eşitlemeyin.
+#
+# panelyd `~@privileged` çıkarıyor, bu birim çıkarmıyor. Executor root
+# çalışıyor ve soket/günlük sahipliklerini kurmak için chown'a ihtiyacı
+# var. panelyd'de aynı çıkarma, api.sock'un grubunu ayarlarken
+# SIGSYS/çökme döngüsü ürettiği için orada `@chown` ayrıca geri
+# veriliyor (gerekçesi panelyd.service'te).
+#
+# İki birimi "tutarlılık" adına eşitlemek o çökmeyi geri getirir.
 SystemCallFilter=@system-service
 SystemCallFilter=~@obsolete @cpu-emulation @swap @reboot @raw-io
 
@@ -54,7 +69,24 @@ ReadWritePaths=/run/panely-exec
 
 # Docker soketine erişim (ProtectSystem=strict /run'ı kapsamaz ama
 # açıkça belirtmek niyeti belgelendirir).
-BindReadOnlyPaths=/run/docker.sock
+#
+# # Baştaki `-` neden ŞART?
+#
+# `-` olmadan systemd, kaynak yol yoksa ad alanını kuramaz ve birimi
+# HİÇ başlatmaz:
+#
+#   Failed to set up mount namespacing: /run/docker.sock: No such file
+#   or directory              → status=226/NAMESPACE
+#
+# Taze bir sunucuda Docker kurulu değil (Faz 0 kurmuyor; Docker
+# sürücüsü Faz 1). Yani `-` olmadan bootstrap TAZE MAKİNEDE ÇALIŞMAZ —
+# ve tam olarak böyle oldu: hata ancak gerçek sunucuda ortaya çıktı,
+# çünkü WSL ve CI systemd ad alanı yalıtımını bu biçimde kurmuyor.
+#
+# Executor Docker yokluğunu zaten çalışma anında bildiriyor
+# (internal/exec/dockerprobe.go); başlamamak yerine "Docker yok"
+# demek doğru davranış.
+BindReadOnlyPaths=-/run/docker.sock
 
 UMask=0027
 

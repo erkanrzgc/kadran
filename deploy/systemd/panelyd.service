@@ -8,7 +8,19 @@ Requires=panely-exec.service
 [Service]
 Type=notify
 NotifyAccess=main
-ExecStart=/usr/local/lib/panely/panelyd --config /etc/panely/panelyd.toml
+# Bayraklar AÇIK yazılıyor, varsayılana bırakılmıyor: bir varsayılanın
+# kodda değişmesi üretim yapılandırmasını sessizce kaydırmamalı.
+#
+# Buradaki her bayrağın binary'de gerçekten TANIMLI olduğunu
+# TestUnitExecStartFlagsExist doğruluyor. Gerekçesi somut: bu satır
+# uzun süre `--config /etc/panely/panelyd.toml` diyordu — ne böyle bir
+# bayrak ne de böyle bir dosya vardı. Hata ancak gerçek sunucuda
+# ortaya çıktı (status=2/INVALIDARGUMENT, sonsuz yeniden başlatma).
+ExecStart=/usr/local/lib/panely/panelyd \
+    --socket /run/panely/api.sock \
+    --exec-socket /run/panely-exec/exec.sock \
+    --db /var/lib/panely/panely.db \
+    --client-group panely-client
 Restart=on-failure
 RestartSec=2s
 
@@ -45,6 +57,29 @@ MemoryDenyWriteExecute=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
+
+# # @chown neden geri veriliyor?
+#
+# Daemon api.sock'un grubunu panely-client yapmak ZORUNDA; istemcinin
+# sokete ulaşmasının tek yolu bu. Ama systemd'de chown ailesi
+# @privileged içinde, ve yukarıdaki çıkarma @system-service'in verdiği
+# @chown'u geri alıyor. Sonuç, gerçek sunucuda:
+#
+#   audit: ... comm="panelyd" sig=31 syscall=260   (fchownat)
+#   panelyd.service: Main process exited, code=dumped, status=31/SYS
+#
+# Bu yalnızca gerçek çekirdek + gerçek systemd ile ortaya çıkar; WSL ve
+# CI yakalayamaz.
+#
+# Verilen yetki neredeyse sıfır: süreç uid 999, CapabilityBoundingSet
+# BOŞ, NoNewPrivileges=yes. Çekirdek, root olmayan bir sürecin chown'unu
+# zaten sıkı kısıtlar — yalnızca SAHİBİ OLDUĞU dosyanın GRUBUNU, ve
+# yalnızca ÜYESİ OLDUĞU bir gruba çevirebilir (panely, panely-client).
+# Sahip değiştirmek hiçbir koşulda mümkün değil.
+#
+# Tek çağrı (fchownat) yerine aile veriliyor: Go'nun os.Chown'u ileride
+# başka bir çağrı seçerse bu çökme döngüsü geri gelirdi.
+SystemCallFilter=@chown
 
 # Yetenek yok. Hiç.
 CapabilityBoundingSet=

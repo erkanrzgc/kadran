@@ -178,16 +178,30 @@ if [[ -n "$module_path" ]]; then
     done
     echo "    ($counted paket, panely-exec'in içe aktarma grafiğinden; üretilen kod hariç)"
 else
-    echo "    UYARI: go bulunamadı, sabit yol listesine düşülüyor —" \
-         "bütçe içe aktarma grafiğini YANSITMIYOR" >&2
-    exec_lines="$(find "$REPO_ROOT/internal/exec" "$REPO_ROOT/cmd/panely-exec" \
-        -name '*.go' ! -name '*_test.go' -exec cat {} + 2>/dev/null | wc -l)"
-    exec_lines="${exec_lines// /}"
+    # ÖLÇEMİYORSAK ONAYLAMAYIZ.
+    #
+    # Buradaki cazip seçenek, sabit yol listesine düşüp bir uyarı basmaktı.
+    # Ama o liste yüzeyin yarısını sayıyor (K-034) — yani çıktı yeşil bir
+    # onay ve düşük bir sayı olurdu. Ölçemediğini onaylayan bir güvenlik
+    # kontrolü, tam olarak bu projede dört kez yakalanan sınıf.
+    #
+    # CI'da go daima var (.github/actions/setup). Yerelde yoksa doğru
+    # yanıt "geçti" değil, "ölçemedim".
+    note_failure "go bulunamadı — ayrıcalıklı yüzey ÖLÇÜLEMEDİ.
+  Bütçe, cmd/panely-exec'in içe aktarma grafiğinden türetiliyor ve bu
+  \`go list -deps\` gerektiriyor. Sabit yol listesine düşmek yüzeyin
+  yaklaşık yarısını sayardı; eksik ölçüme dayalı bir onay vermiyoruz."
+    exec_lines=""
 fi
-if [[ "$exec_lines" -gt "$MAX_EXEC_LINES" ]]; then
-    note_failure "ayrıcalıklı kod $exec_lines satır, sınır $MAX_EXEC_LINES — ne eklendiği sorgulanmalı"
-else
-    note_ok "ayrıcalıklı kod $exec_lines satır (sınır $MAX_EXEC_LINES)"
+
+# Ölçüm yapılamadıysa karşılaştırma da yapılmaz. Aksi hâlde çıktı kendi
+# kendisiyle çelişirdi: bir ✗ hemen ardından "✓ 0 satır" gelirdi.
+if [[ -n "$exec_lines" ]]; then
+    if [[ "$exec_lines" -gt "$MAX_EXEC_LINES" ]]; then
+        note_failure "ayrıcalıklı kod $exec_lines satır, sınır $MAX_EXEC_LINES — ne eklendiği sorgulanmalı"
+    else
+        note_ok "ayrıcalıklı kod $exec_lines satır (sınır $MAX_EXEC_LINES)"
+    fi
 fi
 
 echo

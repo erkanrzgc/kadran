@@ -56,9 +56,10 @@ type JournalOptions struct {
 	// Path, günlük dosyasının yoludur.
 	Path string
 
-	// GroupGID, dosya yeni oluşturulduğunda atanacak gruptur.
-	// panelyd'nin okuyabilmesi için `panely` grubu verilir.
-	// Sıfır ise grup değiştirilmez.
+	// GroupGID, dosyaya HER AÇILIŞTA atanacak gruptur — yalnızca ilk
+	// oluşturmada değil. panelyd'nin okuyabilmesi için `panely` grubu
+	// verilir. Sıfır ise grup değiştirilmez (testler bunu kullanır;
+	// chown root gerektirir).
 	GroupGID int
 }
 
@@ -72,22 +73,43 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 		return nil, errors.New("journal: yol boş olamaz")
 	}
 
-	created := false
-	if _, err := os.Stat(opts.Path); errors.Is(err, os.ErrNotExist) {
-		created = true
-	}
-
 	// 0640: sahibi (root) yazar, grubu (panely) okur, diğerleri hiçbir şey.
 	f, err := os.OpenFile(opts.Path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o640)
 	if err != nil {
 		return nil, fmt.Errorf("journal: dosya açılamadı: %w", err)
 	}
 
-	if created && opts.GroupGID > 0 {
+	// Sahiplik ve mod HER AÇILIŞTA zorlanır, yalnızca dosya yeni
+	// oluşturulduğunda değil.
+	//
+	// # Neden "sadece oluştururken" yetmiyordu?
+	//
+	// Bu günlüğün 0640 root:panely olmasının tek amacı panelyd'nin onu
+	// OKUYABİLMESİ: çapraz doğrulama (panelyd'nin SQLite zinciri ile bu
+	// zincirin karşılaştırılması) buna dayanıyor. Dosya bir kez yanlış
+	// grupla var olduysa — yedekten geri alındı, elle oluşturuldu, ya da
+	// `-owner-group` farklı verilerek bir kez çalıştırıldı — eski kod onu
+	// bir daha ASLA düzeltmezdi.
+	//
+	// Sonuç sessiz olurdu: executor sorunsuz açılır, ayrıcalıklı işlemler
+	// kaydedilmeye devam eder, ama panelyd günlüğü okuyamadığı için çapraz
+	// doğrulama çalışmaz. Yani tehdit modelinin "ele geçirilmiş panelyd
+	// kayıt düşüremez" iddiası, kimse fark etmeden geçersiz hâle gelirdi.
+	//
+	// Executor root çalışır (main.go bunu başlangıçta doğrular), bu yüzden
+	// chown burada daima mümkündür ve başarısızlığı gerçek bir sorundur.
+	if opts.GroupGID > 0 {
 		if err := f.Chown(0, opts.GroupGID); err != nil {
 			_ = f.Close()
-			return nil, fmt.Errorf("journal: grup atanamadı: %w", err)
+			return nil, fmt.Errorf("journal: sahiplik zorlanamadı: %w", err)
 		}
+	}
+	// umask, O_CREATE'in modunu kısabilir. panely-exec.service `UMask=0027`
+	// pinliyor ama unit dosyası dışında da çalıştırılabilir; modu açıkça
+	// yerine oturtmak bu bağımlılığı kaldırır.
+	if err := f.Chmod(0o640); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("journal: mod zorlanamadı: %w", err)
 	}
 
 	j := &Journal{path: opts.Path, f: f}

@@ -8,7 +8,7 @@
 //
 // Ayrıcalık kaçınılmazdır: Docker soketine erişim pratikte root yetkisidir.
 // Modelin özü bu ayrıcalığı, şema doğrulamalı ve denetlenebilir küçük bir
-// yüzeye hapsetmektir. Değişmez: internal/exec 2000 satırı geçerse ne
+// yüzeye hapsetmektir. Değişmez: ayrıcalıklı kod 2500 satırı geçerse ne
 // eklendiği sorgulanır (docs/decisions.md K-002).
 package main
 

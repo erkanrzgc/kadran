@@ -162,6 +162,42 @@ jobs:
       - name: E2E CLI kontrolleri
         run: bash scripts/e2e-cli-runner.sh bin/linux
 
+      # ── Docker sürücüsü GERÇEK daemon'a karşı ──────────────────────
+      #
+      # Birim testleri SAHTE bir daemon'a konuşuyor ve sahte daemon,
+      # gövdeyi Docker'ın gerçekten kabul edip etmediğini bilmez. Bu
+      # projede "derleniyor" ile "çalışıyor" farkı defalarca gerçek hata
+      # çıkardı; ubuntu runner'ında Docker zaten kurulu, bedava.
+      #
+      # Hacim kökü BURADA sertleştiriliyor, çünkü sertleştirilmemişse
+      # ilgili test SKIP eder — ve sessizce atlanan bir güvenlik testi
+      # yeşil rozetten başka bir şey üretmez.
+      - name: Hacim kökünü sertleştir (nodev,nosuid)
+        run: |
+          sudo mkdir -p /var/lib/panely/volumes
+          sudo mount -o bind,nodev,nosuid /var/lib/panely/volumes /var/lib/panely/volumes
+          opts="$(awk '$5=="/var/lib/panely/volumes"{print $6}' /proc/self/mountinfo | head -1)"
+          echo "etkin: $opts"
+          for f in nodev nosuid; do
+            printf '%s' "$opts" | tr ',' '\n' | grep -qx "$f" \
+              || { echo "::error::$f uygulanmadı — sürücü testi anlamsız olurdu"; exit 1; }
+          done
+          sudo chmod 0777 /var/lib/panely/volumes
+
+      - name: Docker sürücüsü E2E
+        run: go test -tags dockere2e -count=1 -v ./internal/dockerdrv/
+
+      # Testin KENDİSİ sınanıyor: sertleştirme kaldırılınca hacim testi
+      # SKIP'e düşmeli, sessizce GEÇMEMELİ. Atlanan test ile geçen testi
+      # ayırt edemeyen bir kontrol, hiç olmayandan kötüdür.
+      - name: Sertleştirme testi gerçekten ateşliyor mu?
+        run: |
+          sudo umount /var/lib/panely/volumes
+          out="$(go test -tags dockere2e -count=1 -v -run TestVolumeMountIsHardenedEndToEnd ./internal/dockerdrv/ 2>&1)"
+          echo "$out"
+          grep -q "sertleştirilmemiş" <<<"$out" \
+            || { echo "::error::sertleştirme kalkmasına rağmen test bunu fark etmedi"; exit 1; }
+
   security:
     name: Güvenlik değişmezleri
     runs-on: ubuntu-latest

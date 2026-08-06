@@ -13,6 +13,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/erkanrzgc/panely/internal/dockerdrv"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 )
 
@@ -21,7 +22,7 @@ import (
 // Tamamı salt okunur ve /proc üzerinden yapılır; hiçbir dış komut
 // çalıştırılmaz. Ayrıcalıklı süreçte alt süreç doğurmak, tam olarak
 // kaçındığımız şeydir.
-func collectHostInfo(ctx context.Context, dockerSocket string) *panelyv1.HostInfo {
+func collectHostInfo(ctx context.Context, probe *dockerdrv.Client) *panelyv1.HostInfo {
 	info := &panelyv1.HostInfo{
 		CpuCount: uint32(runtime.NumCPU()),
 		Os:       readOSPrettyName(),
@@ -39,7 +40,7 @@ func collectHostInfo(ctx context.Context, dockerSocket string) *panelyv1.HostInf
 
 	// Docker'a ulaşılamaması hata değildir: Faz 0'da Docker henüz
 	// gerekli değil ve boş sürüm "kurulu değil" anlamına gelir.
-	if v, err := dockerVersion(ctx, dockerSocket); err == nil {
+	if v, err := probe.Ping(ctx); err == nil {
 		info.DockerVersion = v
 	}
 

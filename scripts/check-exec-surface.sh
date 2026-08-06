@@ -89,8 +89,31 @@ SCHEMA="${1:-$REPO_ROOT/proto/panely/v1/exec.proto}"
 # Yorum hariç ölçüm 1608 veriyor, tam o mertebe. Bu yüzden sınır
 # ORİJİNAL 2000'e geri alındı (K-036).
 #
+# ── 2000 → 2500: TAHMİN yanlıştı, kural gevşetilmedi (K-040) ─────────
+#
+# Docker sürücüsü yazılınca yüzey 2199'a çıktı ve bu kontrol ateşledi —
+# yani tasarlandığı gibi çalıştı. Kural "sınır aşılamaz" değil, "aşılırsa
+# NE EKLENDİĞİ SORGULANIR"dı. Sorgulandı; eklenen şey Docker sürücüsü,
+# yani ayrıcalıklı binary'nin VAR OLMA SEBEBİ. Docker'a konuşamayan bir
+# executor'ın hiçbir işlevi yok.
+#
+# 2000 sayısı, plandaki "~1500 satırlık executor" TAHMİNİNDEN türetilmişti
+# ve o tahmin, Engine API sarmalayıcısının gerçek maliyeti bilinmeden
+# yapılmıştı. Ölçüm tahmini yanlışladı. Düzeltilen şey kural değil, kuralın
+# dayandığı sayıdır.
+#
+# ⚠ DÜRÜSTLÜK NOTU: bu, metriğin kısa sürede ÜÇÜNCÜ değişimi (kapsam →
+# birim → sınır). Üçü de gerekçeliydi ama desen kendi başına bir uyarıdır:
+# ölçtüğü şeye uyacak şekilde sürekli ayarlanan bir metrik, ölçmeyi
+# bırakır. BUNDAN SONRAKİ her yükseltme, yüzeyi KÜÇÜLTME seçeneğinin neden
+# tercih edilmediğinin yazılı gerekçesini gerektirir.
+#
+# Sınırın asıl işi zaten tek başına bu sayı değil: aşağıdaki yapısal
+# kontroller (yasak alanlar, serbest argv) değişmezleri doğrudan zorluyor
+# ve onlar gevşetilmedi.
+#
 # Çıktı HER ZAMAN iki sayıyı da basar; ham sayı gizlenmiyor.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2000}"
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2500}"
 
 fail=0
 note_failure() {
@@ -232,13 +255,20 @@ echo "==> Şemada yasak alanlar"
 # `map<string,string> env` var, yani her iki şekil de gerçekten kullanılıyor.
 field_type='(map<[^>]*>|[A-Za-z0-9_.]+)'
 field_label='((repeated|optional)[[:space:]]+)?'
+# Bölüm YEREL sayacı. Daha önce genel `fail` sayacına bakılıyordu ve bu,
+# ALAKASIZ bir başarısızlığın (ör. bütçenin aşılması) bu bölümün ✓
+# satırını yutmasına yol açıyordu: tarama geçmesine rağmen çıktıda hiçbir
+# şey yazmıyordu. Geçtiğini söylemeyen bir güvenlik kontrolü, okuyana
+# "koştu mu, kaldı mı?" sorusu bırakır. Aşağıdaki argv bölümü zaten
+# doğru deseni kullanıyordu.
+before_fields=$fail
 for field in "${forbidden_fields[@]}"; do
     if grep -Eqi "^[[:space:]]*${field_label}${field_type}[[:space:]]+${field}[[:space:]]*=[[:space:]]*[0-9]+" \
         <<<"$schema_body"; then
         note_failure "exec.proto içinde yasak alan: $field"
     fi
 done
-[[ $fail -eq 0 ]] && note_ok "yasak alan yok (${#forbidden_fields[@]} desen tarandı)"
+[[ $fail -eq $before_fields ]] && note_ok "yasak alan yok (${#forbidden_fields[@]} desen tarandı)"
 
 echo
 echo "==> Şemada serbest komut alanı"

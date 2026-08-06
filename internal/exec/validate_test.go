@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -242,8 +243,38 @@ func TestContainerPortMustBeInRange(t *testing.T) {
 // kapatıyor: kötü istek InvalidArgument, iyi istek Unimplemented almalı.
 // İki kodun FARKLI olması, doğrulamanın sürücüden önce koştuğunu gösterir.
 
+// newTestServer, gerçek bir günlük ve ULAŞILAMAZ bir Docker soketi taşıyan
+// sunucu kurar.
+//
+// Soketin ulaşılamaz olması testin ta kendisi: doğrulamayı GEÇEN bir istek
+// sürücüye ulaşır ve orada bağlantı hatası alır (codes.Internal), REDDEDİLEN
+// bir istek ise sürücüye hiç ulaşmadan codes.InvalidArgument alır. İki kodun
+// ayrışması, doğrulamanın ayrıcalıklı işten ÖNCE koştuğunun kanıtıdır.
+func newTestServer(t *testing.T) *Server {
+	t.Helper()
+	srv, err := NewServer(ServerOptions{
+		Journal:      openTestJournal(t),
+		DockerSocket: filepath.Join(t.TempDir(), "yok.sock"),
+		VolumeRoot:   filepath.Join(t.TempDir(), "volumes"),
+	})
+	if err != nil {
+		t.Fatalf("sunucu kurulamadı: %v", err)
+	}
+	return srv
+}
+
+func openTestJournal(t *testing.T) *Journal {
+	t.Helper()
+	j, err := OpenJournal(JournalOptions{Path: filepath.Join(t.TempDir(), "audit.log")})
+	if err != nil {
+		t.Fatalf("günlük açılamadı: %v", err)
+	}
+	t.Cleanup(func() { _ = j.Close() })
+	return j
+}
+
 func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
-	srv := &Server{}
+	srv := newTestServer(t)
 
 	kotuRef := &panelyv1.ContainerRef{
 		Release: &panelyv1.ReleaseRef{AppId: "../evil", ReleaseId: "x"},
@@ -358,8 +389,14 @@ func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
 				t.Errorf("kötü istek %s aldı, InvalidArgument bekleniyordu — "+
 					"handler doğrulamayı atlıyor olabilir", got)
 			}
-			if got := status.Code(c.iyi()); got != codes.Unimplemented {
-				t.Errorf("iyi istek %s aldı, Unimplemented bekleniyordu", got)
+			// Geçerli istek doğrulamayı GEÇMELİ. Sürücüye ulaşıp orada
+			// başarısız olması (Docker soketi yok) beklenen sonuçtur;
+			// önemli olan InvalidArgument ALMAMASI — aksi hâlde
+			// doğrulayıcı geçerli girdiyi de reddediyor demektir ve
+			// yukarıdaki reddetme kontrolü hiçbir şey kanıtlamazdı.
+			if got := status.Code(c.iyi()); got == codes.InvalidArgument {
+				t.Errorf("geçerli istek de InvalidArgument aldı — "+
+					"doğrulayıcı fazla dar, reddetme testi anlamsızlaşıyor (%v)", c.iyi())
 			}
 		})
 	}

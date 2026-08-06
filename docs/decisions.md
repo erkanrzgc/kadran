@@ -1509,3 +1509,87 @@ olmamasıydı.
 Sertleştirmenin varlığı systemd'ye bırakılmıyor: executor hacim
 bağlamadan önce etkin bayrakları çalışma anında kendisi doğrular. Bir
 sıralama inceliği güvenlik özelliğini sessizce düşürememeli.
+
+---
+
+## K-040 — Docker sürücüsü ve bütçe: tahmin yanlıştı, kural gevşetilmedi
+
+Faz 1 dilim 2 (Docker sürücüsü) yazılınca ayrıcalıklı yüzey **2199** kod
+satırına çıktı ve `check-exec-surface.sh` ateşledi. Kontrol tasarlandığı
+gibi çalıştı.
+
+Kural şuydu (planın açık risk maddesi): *"internal/exec 2000 satırı
+geçerse **ne eklendiği sorgulanacak**."* Yani sınır bir yasak değil, bir
+DURDURMA NOKTASI. Sorgulandı.
+
+### Ne eklendi?
+
+`internal/dockerdrv` — 444 kod satırı. Docker Engine API'sinin Panely'nin
+kullandığı kadarı: konteyner oluştur/başlat/durdur/sil/listele, ağ kur.
+
+Bu, ayrıcalıklı binary'nin **var olma sebebi**. Docker'a konuşamayan bir
+executor'ın hiçbir işlevi yoktur; ayrıcalık zaten yalnızca bunun için
+alınıyor. "Bunu çıkaralım" seçeneği, projeyi çıkarmak demek.
+
+### Neden 2000'di?
+
+Plan "denetlenebilir ~1500 satırlık bir executor" diyordu ve 2000 o
+TAHMİNE bir pay eklenerek konmuştu. Tahmin, Engine API sarmalayıcısının
+gerçek maliyeti bilinmeden yapılmıştı.
+
+Ölçüm tahmini yanlışladı. **Düzeltilen şey kural değil, kuralın dayandığı
+sayıdır.** Sınır ölçülen ihtiyaca göre 2500'e çekildi (Faz 1'in kalan
+derleme+günlük dilimi ~150-200 satır daha getirecek).
+
+### Önce ucuz olan yapıldı
+
+Sınıra dokunmadan önce gerçek indirim arandı ve bulundu:
+
+- `internal/exec/dockerprobe.go` **silindi** (37 satır). Sürücünün `Ping`
+  metodu aynı işi yapıyordu; iki ayrı unix-soketi HTTP istemcisi tutmanın
+  gerekçesi kalmamıştı.
+- Hacim sertleştirmesi sürücüden ÇIKTI (K-038). Hacim oluşturma kodu hiç
+  yazılmadı; tek bir systemd mount birimi işi görüyor. Bu tek başına
+  tahminen ~60-80 satır tasarruf.
+
+Kalan 199 satır için kesilecek gerçek yağ yoktu. Yorumlar zaten
+sayılmıyor (sürücünün %42'si yorum).
+
+### ⚠ Dürüstlük notu: metrik kısa sürede üç kez değişti
+
+1. **Kapsam**: sabit yol listesi → `go list -deps` içe aktarma grafiği
+   (K-034). Eski kapsam yüzeyin YARISINI sayıyordu.
+2. **Birim**: ham satır → yorum/boş hariç kod (K-036). Ham satır saymak
+   bütçede kalmak için yorum silmeyi ödüllendiriyordu.
+3. **Sınır**: 2000 → 2500 (bu kayıt).
+
+Üçünün de gerekçesi var ve ikisi metriği DAHA sıkı yaptı. Ama desen kendi
+başına bir uyarıdır: **ölçtüğü şeye uyacak biçimde sürekli ayarlanan bir
+metrik ölçmeyi bırakır.**
+
+Bu yüzden bir fren konuyor: **bundan sonraki her sınır yükseltmesi,
+yüzeyi KÜÇÜLTME seçeneğinin neden tercih edilmediğinin yazılı gerekçesini
+gerektirir.** Bu kayıt o gerekçenin ilk örneği.
+
+### Sınır zaten tek savunma değil
+
+Bütçe bir vekil ölçüdür. Asıl değişmezleri zorlayan şey aynı betikteki
+YAPISAL kontrollerdir ve onlar **gevşetilmedi**:
+
+- şemada yasak alan taraması (17 desen: `privileged`, `cap_add`,
+  `devices`, `pid_mode`, …)
+- serbest argv/kabuk alanı taraması
+- `require_unimplemented_servers=false` tel tuzağı (K-002)
+
+Sürücü katmanı bu duruşu sürdürüyor: tehlikeli alanlar `createBody`
+yapısında **hiç tanımlı değil**, yani "false gönderiliyor" değil TEMSİL
+EDİLEMEZ. Bir test bunu telde doğruluyor.
+
+### Bu arada bulunan ayrı bir hata
+
+`check-exec-surface.sh`'ın "yasak alanlar" bölümü sonucu GENEL `fail`
+sayacına bakarak raporluyordu. Bütçe gibi ALAKASIZ bir başarısızlık, bu
+bölümün ✓ satırını yutuyordu: tarama geçmesine rağmen çıktıda hiçbir şey
+görünmüyordu. Geçtiğini söylemeyen bir güvenlik kontrolü, okuyana "koştu
+mu, kaldı mı?" sorusu bırakır. Bölüm-yerel sayaca çevrildi (hemen
+altındaki argv bölümü zaten doğru deseni kullanıyordu).

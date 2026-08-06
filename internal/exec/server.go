@@ -8,6 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/panely/internal/dockerdrv"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/pbconv"
 	"github.com/erkanrzgc/panely/internal/version"
@@ -22,6 +23,11 @@ import (
 type Server struct {
 	journal      *Journal
 	dockerSocket string
+
+	// docker, Engine API sürücüsü. Proto mesajı KABUL ETMEZ — doğrulama
+	// bu paketin işi ve o sınırın kodla değil TİPLE korunması gerekiyor
+	// (internal/dockerdrv paket yorumu).
+	docker *dockerdrv.Client
 
 	// allowedGitHosts, ImageBuild'in kabul ettiği kaynak sunucularıdır.
 	//
@@ -42,7 +48,19 @@ type ServerOptions struct {
 	// AllowedGitHosts, ImageBuild'in kabul edeceği kaynak sunucuları.
 	// Boşsa yalnızca DefaultGitHost kabul edilir.
 	AllowedGitHosts []string
+
+	// VolumeRoot, uygulama hacimlerinin kökü. Boşsa varsayılan kullanılır.
+	//
+	// Bu dizinin `nodev,nosuid` ile bağlanmış olması gerekir; sürücü bunu
+	// hacim bağlamadan önce çalışma anında DOĞRULAR (K-039).
+	VolumeRoot string
 }
+
+// DefaultVolumeRoot, uygulama hacimlerinin varsayılan köküdür.
+//
+// tmpfiles bu dizini oluşturur, var-lib-panely-volumes.mount birimi
+// `bind,nodev,nosuid` ile bağlar.
+const DefaultVolumeRoot = "/var/lib/panely/volumes"
 
 // NewServer, executor servisini oluşturur.
 func NewServer(opts ServerOptions) (*Server, error) {
@@ -58,10 +76,14 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if len(opts.AllowedGitHosts) == 0 {
 		opts.AllowedGitHosts = []string{DefaultGitHost}
 	}
+	if opts.VolumeRoot == "" {
+		opts.VolumeRoot = DefaultVolumeRoot
+	}
 	return &Server{
 		journal:         opts.Journal,
 		dockerSocket:    opts.DockerSocket,
 		allowedGitHosts: opts.AllowedGitHosts,
+		docker:          dockerdrv.New(opts.DockerSocket, opts.VolumeRoot),
 	}, nil
 }
 
@@ -93,7 +115,7 @@ func (s *Server) Ping(context.Context, *panelyv1.ExecutorServicePingRequest) (*p
 // GetHostInfo, çekirdek, bellek ve Docker bilgisini döner. Salt okunur.
 func (s *Server) GetHostInfo(ctx context.Context, _ *panelyv1.GetHostInfoRequest) (*panelyv1.GetHostInfoResponse, error) {
 	return &panelyv1.GetHostInfoResponse{
-		Host: collectHostInfo(ctx, s.dockerSocket),
+		Host: collectHostInfo(ctx, s.docker),
 	}, nil
 }
 

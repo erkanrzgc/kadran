@@ -16,7 +16,8 @@ Good: "Reverted the path.Clean check; TestMountPathRejectsEscapeAttempts failed 
 - [ ] `go build ./...` and `go test -race ./...` pass
 - [ ] `gofmt -l .` prints nothing
 - [ ] `golangci-lint run ./...` clean for **both** `GOOS=linux` and `GOOS=windows`
-- [ ] `buf generate` run if `proto/` changed
+- [ ] If `proto/` changed: `buf lint`, `buf format --diff --exit-code`, and
+      `buf generate` all run (generate passing does not imply lint passing)
 - [ ] New behaviour has a test that I have **observed fail** before the fix
 
 ## Privileged surface

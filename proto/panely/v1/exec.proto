@@ -83,7 +83,7 @@ service ExecutorService {
   rpc ContainerList(ContainerListRequest) returns (ContainerListResponse);
 
   // ContainerLogs, bir replikanın çıktısını akıtır.
-  rpc ContainerLogs(ContainerLogsRequest) returns (stream ContainerLogChunk);
+  rpc ContainerLogs(ContainerLogsRequest) returns (stream ContainerLogsResponse);
 
   // ── Sonraki dilimlere bırakılanlar ──────────────────────────────
   //
@@ -302,7 +302,7 @@ message ContainerLogsRequest {
   google.protobuf.Timestamp since = 4;
 }
 
-message ContainerLogChunk {
+message ContainerLogsResponse {
   bytes data = 1;
   // Docker akışları ayırır; istemci stderr'i farklı gösterebilsin.
   bool is_stderr = 2;

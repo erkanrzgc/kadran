@@ -125,7 +125,7 @@ func (s *Server) ContainerList(_ context.Context, req *panelyv1.ContainerListReq
 }
 
 // ContainerLogs, bir replikanın çıktısını akıtır.
-func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, _ grpc.ServerStreamingServer[panelyv1.ContainerLogChunk]) error {
+func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, _ grpc.ServerStreamingServer[panelyv1.ContainerLogsResponse]) error {
 	if err := validateContainerRef(req.GetRef()); err != nil {
 		return invalidArgument(err)
 	}

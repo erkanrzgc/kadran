@@ -53,10 +53,15 @@ go build ./...
 go test -race ./...
 gofmt -l .                          # must print nothing
 golangci-lint run ./...             # and GOOS=windows golangci-lint run ./...
+buf lint && buf format --diff --exit-code   # after editing proto/
 buf generate                        # after editing proto/
 scripts/check-exec-surface.sh
 scripts/check-exec-surface-test.sh
 ```
+
+`buf generate` succeeding does **not** mean `buf lint` will. Style rules —
+for example, a streaming RPC's response message must be named
+`<Rpc>Response` — are only enforced by `buf lint`, and CI runs it.
 
 Generated protobuf code is gitignored — run `buf generate` after cloning.
 

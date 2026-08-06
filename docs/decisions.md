@@ -1002,3 +1002,79 @@ kalıcı ve hash'li kayda sır yazmasına yol açardı.
 
 Tanınmayan değerler KAPALI sayılır: `PANELY_DEBUG=hayir` yazan biri kapalı
 bekler. "Boş değilse aç" mantığı bunu sessizce açardı.
+
+---
+
+## K-034 — Ayrıcalıklı yüzey bütçesi, yüzeyin yarısını ölçüyordu
+
+`check-exec-surface.sh` sabit bir yol listesi sayıyordu:
+
+```bash
+find "$REPO_ROOT/internal/exec" "$REPO_ROOT/cmd/panely-exec" -name '*.go' ...
+```
+
+Bu, K-002'nin değişmezini ("ayrıcalıklı kod 2000 satırı geçerse ne
+eklendiği sorgulanır") **zorlanamaz** hâle getiriyordu: root süreç bu iki
+dizinden fazlasını çalıştırıyor, ama sayaç geri kalanını görmüyordu.
+
+Sonuç: yeni bir paket yazıp `cmd/panely-exec`'ten içe aktarmak, kodu
+ayrıcalıklı sürecin içine sokuyor ama bütçeye hiç dokunmuyordu.
+
+**Bu teorik değildi — aynı oturumda gerçekleşti.** Debug kipi için
+`internal/logutil` eklendi ve `panely-exec` onu içe aktardı. Sayaç
+1267'de kaldı. 64 satır root sürece girdi, bütçe kıpırdamadı.
+
+**Düzeltme.** Sayılan küme artık binary'nin GERÇEK içe aktarma
+grafiğinden türetiliyor:
+
+```bash
+go list -deps ./cmd/panely-exec | grep "^${module_path}/"
+```
+
+Gerçek rakam **2395** çıktı — eski ölçümün neredeyse iki katı:
+
+| Paket | Satır |
+|---|---|
+| internal/exec | 1093 |
+| internal/audit | 432 |
+| internal/peercred | 215 |
+| cmd/panely-exec | 174 |
+| internal/pbconv | 144 |
+| internal/sockets | 128 |
+| internal/logutil | 64 |
+| internal/grpcserve | 61 |
+| internal/sdnotify | 53 |
+| internal/version | 31 |
+
+**Üretilen protobuf kodu (4057 satır) hariç tutuldu.** Gerekçe:
+`internal/pb/**` exec.proto'dan mekanik türetiliyor, elle yazılmıyor ve
+elle denetlenmiyor; bütçenin sorusu "root süreçte kaç satır İNSAN YAZIMI
+kod var". Dışlama körü körüne değil — o dizindeki her dosyanın
+`// Code generated ... DO NOT EDIT.` başlığı taşıdığı doğrulanıyor.
+Aksi hâlde dizin, denetimden kaçmak için elle kod saklanacak bir yer
+olurdu.
+
+**Sınır 2000 -> 2600.** Denetlenen kod DEĞİŞMEDİ; değişen, ne kadarını
+gördüğümüz. Bu bir bütçe gevşetmesi değil, yanlış bir taban çizgisinin
+düzeltilmesi. Kalan pay (~205 satır) bilerek dar: Docker sürücüsü bu
+sınıra çarpacak ve "ne ekliyoruz" tartışması tam orada yapılmalı.
+
+**Ölçüm.** `internal/smuggled` adında 304 satırlık sahte bir paket
+yazılıp `panely-exec`'ten içe aktarıldı:
+
+| Mantık | Sonuç |
+|---|---|
+| Eski (sabit yol listesi) | 1269 satır — **GEÇERDİ** |
+| Yeni (içe aktarma grafiği) | 2701 satır — **YAKALANDI** |
+
+Yazımın ilk hâlinde ikinci bir hata vardı: `go list -deps` hedef paketi
+zaten listelediği için `cmd/panely-exec` elle de eklenince iki kez
+sayıldı (174 + 174). Paket dökümü basılmasaydı fark edilmezdi — sayaç
+sadece "biraz yüksek" görünürdü.
+
+**Sınıf.** [[surface-check-regex-gaps]] ile aynı: kontrolün KENDİSİ
+hatalıydı ve yeşil rozet veriyordu. Kural genelleşiyor: bir güvenlik
+kontrolünün kapsamı elle bakımı yapılan bir listeyse, o liste er ya da
+geç gerçeklikten kopar. Kapsam mümkün olduğunca **türetilmeli** —
+yasak alan listesi `--list-forbidden` ile testten, bütçe kapsamı
+`go list -deps` ile derleyiciden.

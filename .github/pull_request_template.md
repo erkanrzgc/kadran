@@ -28,6 +28,6 @@ Good: "Reverted the path.Clean check; TestMountPathRejectsEscapeAttempts failed 
 - [ ] Threat rationale written: if `panelyd` were fully compromised, what would it
       do with this? →
 - [ ] Escape-attempt tests added, not just happy-path
-- [ ] `scripts/check-exec-surface.sh` passes and stays under the 2000-line budget
+- [ ] `scripts/check-exec-surface.sh` passes and stays under the 2600-line budget
 - [ ] Any new forbidden field pattern has a matching proof in
       `scripts/check-exec-surface-test.sh`

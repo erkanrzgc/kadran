@@ -102,9 +102,11 @@ protection is removed:
 - **No free-form argv and no `sh -c`,** anywhere.
 - **Caller is authenticated per connection** via `SO_PEERCRED`; socket permissions
   alone are not trusted.
-- **Privileged code is size-capped.** `internal/exec` + `cmd/panely-exec` must stay
-  under 2000 lines. CI fails the build otherwise, because a least-privilege boundary
-  that keeps growing stops being one.
+- **Privileged code is size-capped** at 2600 lines, and the cap is measured from the
+  *actual import graph* of `cmd/panely-exec` rather than a hand-maintained path list —
+  otherwise the budget can be walked around by putting code in a new package and
+  importing it. CI fails the build otherwise, because a least-privilege boundary that
+  keeps growing stops being one.
 
 ### Dual-chain audit log
 
@@ -153,9 +155,15 @@ command:
 command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA... panely-client
 ```
 
-`restrict` disables everything: no pty, no port forwarding, no agent forwarding,
-no X11, no user-rc. The key can only execute `panely-connect`, which does nothing
-but connect to `api.sock` and shuttle bytes.
+`restrict` disables port, agent and X11 forwarding, PTY allocation, and `~/.ssh/rc`.
+The key can only execute `panely-connect`, which does nothing but connect to
+`api.sock` and shuttle bytes.
+
+It does **not** disable environment processing — a common and load-bearing
+misreading. The audit trail's actor identity comes from `SSH_AUTH_INFO_0`, and an
+`environment=` entry in `authorized_keys` would override sshd's own value, letting
+a caller forge who did what. That is closed by `PermitUserEnvironment no`, pinned
+explicitly in the sshd drop-in rather than left to a distribution default.
 
 > **Design note.** An earlier draft allowed unix-socket forwarding via
 > `direct-streamlocal`. The forced command is both simpler and stricter: socket

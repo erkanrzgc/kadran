@@ -65,7 +65,29 @@ SCHEMA="${1:-$REPO_ROOT/proto/panely/v1/exec.proto}"
 # büyürse "en az yetki" o kadar anlamsızlaşır. Sınırı yükseltmek bir
 # çözüm değil, bir kararın kendisidir — gerekiyorsa ne eklendiği
 # tartışılarak yükseltilmeli.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2000}"
+#
+# ── 2000 -> 2600: ÖLÇÜM DÜZELTİLDİ, KOD BÜYÜMEDİ ─────────────────────
+#
+# Sınır uzun süre 2000'di ve sayaç 1267 gösteriyordu. O sayı YANLIŞTI:
+# yalnızca `internal/exec` + `cmd/panely-exec` sayılıyordu, oysa root
+# süreç bunlardan fazlasını çalıştırıyor. Sayım içe aktarma grafiğinden
+# türetilince gerçek rakam **2395** çıktı.
+#
+#   internal/exec 1093 · internal/audit 432 · internal/peercred 215
+#   cmd/panely-exec 174 · internal/pbconv 144 · internal/sockets 128
+#   internal/logutil 64 · internal/grpcserve 61 · internal/sdnotify 53
+#   internal/version 31
+#
+# Yani bütçe, ayrıcalıklı yüzeyin yaklaşık YARISINI ölçüyordu ve geri
+# kalanı sessizce dolanılabiliyordu — bir paket yazıp panely-exec'ten
+# içe aktarmak yeterliydi. Tam bu oldu: `internal/logutil` girdi, sayaç
+# kıpırdamadı (docs/decisions.md K-034).
+#
+# Sınır bu yüzden 2600'e çekildi. DENETLENEN KOD DEĞİŞMEDİ; değişen,
+# ne kadarını gördüğümüz. Kalan pay (~205 satır) bilerek dar: Faz 1'in
+# Docker sürücüsü bu sınıra çarpacak ve "ne ekliyoruz" tartışması tam
+# o noktada yapılmalı. Çarpması bir arıza değil, bütçenin işlevi.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2600}"
 
 fail=0
 note_failure() {
@@ -93,9 +115,75 @@ fi
 schema_body="$(strip_comments "$SCHEMA")"
 
 echo "==> Ayrıcalıklı kod boyutu"
-exec_lines="$(find "$REPO_ROOT/internal/exec" "$REPO_ROOT/cmd/panely-exec" \
-    -name '*.go' ! -name '*_test.go' -exec cat {} + 2>/dev/null | wc -l)"
-exec_lines="${exec_lines// /}"
+
+# Sayılan küme, SABİT BİR YOL LİSTESİ DEĞİL — root binary'nin GERÇEK
+# içe aktarma grafiğinden türetilir.
+#
+# # Neden?
+#
+# Liste `internal/exec` + `cmd/panely-exec` olarak sabitlenmişti. Bu,
+# bütçenin sessizce dolanılabilmesi demekti: yeni bir paket yazıp
+# panely-exec'ten içe aktarmak, kodu ayrıcalıklı sürecin içine sokar ama
+# sayaca hiç dokunmazdı. Tam olarak bu oldu — `internal/logutil` root
+# binary'ye girdi ve bütçe 1267'de kaldı.
+#
+# `go list -deps` binary'nin gerçekten derlediği her paketi verir. Modül
+# içindekileri süzüp sayıyoruz; standart kütüphane ve dış bağımlılıklar
+# bu bütçenin konusu değil (onlar ayrı bir sorun ve govulncheck'in işi).
+#
+# go yoksa sabit listeye düşülür ama bu AÇIKÇA duyurulur — sessiz bir
+# geri düşüş, kontrolün kendisini yalancı yapardı.
+module_path="$(cd "$REPO_ROOT" && go list -m 2>/dev/null || echo "")"
+
+if [[ -n "$module_path" ]]; then
+    # `go list -deps` HEDEF PAKETİ DE listeler; ayrıca eklemek onu iki kez
+    # saydırır. (İlk yazımda tam bu oldu: cmd/panely-exec 174 satır olarak
+    # iki kere toplandı.)
+    mapfile -t priv_dirs < <(
+        cd "$REPO_ROOT" &&
+        go list -deps ./cmd/panely-exec 2>/dev/null |
+            grep "^${module_path}/" |
+            sed "s|^${module_path}/||"
+    )
+
+    exec_lines=0
+    counted=0
+    for d in "${priv_dirs[@]}"; do
+        [[ -d "$REPO_ROOT/$d" ]] || continue
+
+        # ÜRETİLEN protobuf kodu bütçenin dışında.
+        #
+        # Gerekçe: bu kod exec.proto'dan mekanik olarak türetiliyor, elle
+        # yazılmıyor ve elle denetlenmiyor. Bütçenin amacı "root süreçte
+        # kaç satır İNSAN YAZIMI kod var" sorusunu yanıtlamak; 4000 satır
+        # üretilmiş marshalling kodu bu sayıyı anlamsız kılardı. Şemanın
+        # kendisi zaten aşağıdaki yasak-alan taramalarıyla korunuyor.
+        #
+        # Dışlama KÖRÜ KÖRÜNE yapılmıyor: dosyaların gerçekten üretilmiş
+        # olduğu doğrulanıyor. Aksi hâlde bu dizin, denetimden kaçmak
+        # isteyen birinin elle kod saklayabileceği bir yer olurdu.
+        if [[ "$d" == internal/pb/* ]]; then
+            handwritten="$(grep -LE '^// Code generated .* DO NOT EDIT\.$' \
+                "$REPO_ROOT/$d"/*.go 2>/dev/null || true)"
+            if [[ -n "$handwritten" ]]; then
+                note_failure "üretilen kod dizininde elle yazılmış dosya var (bütçeden kaçış): $handwritten"
+            fi
+            continue
+        fi
+
+        n="$(find "$REPO_ROOT/$d" -maxdepth 1 -name '*.go' ! -name '*_test.go' \
+            -exec cat {} + 2>/dev/null | wc -l)"
+        exec_lines=$((exec_lines + ${n// /}))
+        counted=$((counted + 1))
+    done
+    echo "    ($counted paket, panely-exec'in içe aktarma grafiğinden; üretilen kod hariç)"
+else
+    echo "    UYARI: go bulunamadı, sabit yol listesine düşülüyor —" \
+         "bütçe içe aktarma grafiğini YANSITMIYOR" >&2
+    exec_lines="$(find "$REPO_ROOT/internal/exec" "$REPO_ROOT/cmd/panely-exec" \
+        -name '*.go' ! -name '*_test.go' -exec cat {} + 2>/dev/null | wc -l)"
+    exec_lines="${exec_lines// /}"
+fi
 if [[ "$exec_lines" -gt "$MAX_EXEC_LINES" ]]; then
     note_failure "ayrıcalıklı kod $exec_lines satır, sınır $MAX_EXEC_LINES — ne eklendiği sorgulanmalı"
 else

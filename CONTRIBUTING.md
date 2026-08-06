@@ -40,7 +40,8 @@ A PR here must include:
 3. **Evidence the test fires.** Describe the mutation you applied and the failure
    you observed.
 4. **Room in the budget.** `scripts/check-exec-surface.sh` caps the privileged code
-   at 2000 lines. Raising that cap is a decision, not a fix — open an issue first.
+   at 2600 lines, measured from the real import graph of `cmd/panely-exec`.
+   Raising that cap is a decision, not a fix — open an issue first.
 
 New forbidden field patterns must be added to `scripts/check-exec-surface.sh`. The
 list is exported via `--list-forbidden` and the test script generates a proof for

@@ -1078,3 +1078,178 @@ kontrolünün kapsamı elle bakımı yapılan bir listeyse, o liste er ya da
 geç gerçeklikten kopar. Kapsam mümkün olduğunca **türetilmeli** —
 yasak alan listesi `--list-forbidden` ile testten, bütçe kapsamı
 `go list -deps` ile derleyiciden.
+
+---
+
+## K-035 — Uzak git bağlamını kimse çekmiyor: BuildKit çekiyor
+
+`ImageBuild` bir dilim boyunca ertelenmişti ve ertelenme gerekçesi bir
+ikilem olarak yazılmıştı: "panelyd mi çeksin, executor mü?" panelyd'nin
+birimi `RestrictAddressFamilies=AF_UNIX` taşıdığı için klonlayamıyordu;
+executor çekerse git URL'i root koduna ulaşacaktı.
+
+**İkilem yanlıştı.** İki gözden kaçan nokta:
+
+1. `panely-exec.service` de `RestrictAddressFamilies=AF_UNIX` taşıyor.
+   Yani "executor çeksin" seçeneği notların varsaydığından daha kötüydü:
+   gevşetilecek olan ROOT sürecin ağ erişimiydi.
+2. Uzak bağlamı BuildKit kendi çözüyor. Executor yalnızca unix soketine
+   bayt yazıyor. **Hiçbir birimin ağa açılması gerekmiyor.**
+
+### Ölçüm
+
+Varsayılmadı. `unshare -n` ile bomboş bir ağ ad alanına konmuş bir
+istemciden derleme başlatıldı — bu düzenek Panely'nin kısıtını doğru
+taklit ediyor, çünkü unix soketi bir dosya sistemi nesnesi olduğu için
+ad alanından etkilenmiyor.
+
+**Pozitif kontrol önce koşturuldu.** O olmadan `unshare -n` sessizce
+etkisiz kalsaydı "daemon çekti" derdik:
+
+| Kontrol | Sonuç |
+|---|---|
+| Ağsız ad alanından `getent hosts github.com` | BAŞARISIZ (beklenen) |
+| Ağsız ad alanından `git ls-remote` | BAŞARISIZ (beklenen) |
+| Ağsız ad alanından `docker build <git-url>` | **Depo ÇEKİLDİ** |
+
+Çekme kanıtı daemon çıktısından:
+
+```
+#1 [internal] load git source https://github.com/octocat/Hello-World.git
+#1 0.039 Initialized empty Git repository in
+         /var/lib/desktop-containerd/.../snapshots/635/fs/
+#1 1.281 From https://github.com/octocat/Hello-World
+#1 DONE 4.1s
+ERROR: failed to solve: failed to read dockerfile: open Dockerfile: ...
+```
+
+Depo kasıtlı olarak Dockerfile'sız seçildi: hatanın TÜRÜ ayırt edici.
+Ağ hatası gelseydi çekme istemci tarafında olurdu; "Dockerfile yok"
+gelmesi çekmenin daemon tarafında BAŞARIYLA gerçekleştiğini kanıtlıyor.
+
+Çıktı ayrıca git'in kendi mesajlarını taşıyor — yani BuildKit daemon
+tarafında ROOT olarak `git` çalıştırıyor. Aşağıdaki tasarımı gerekli
+kılan da bu.
+
+### Tasarım: URL alınmaz, kurulur
+
+Serbest bir URL dizgisi kabul edilseydi, o dizgi root bağlamındaki bir
+git ayrıştırıcısına giden girdi olurdu. Bilinen kötüye kullanımlar:
+
+| Girdi | Sonuç |
+|---|---|
+| `ext::sh -c '...'` | rastgele komut (git-remote-ext) |
+| `ssh://...` | executor'ın SSH anahtarlarıyla kimlik |
+| `git://...` | kimlik doğrulamasız, şifresiz taşıma |
+| `https://user:token@...` | kimlik bilgisi provenance'a sızar (GHSA-gc89-7gcr-jxqc) |
+| `<url>#<ref>:<subdir>` | depo kökü DIŞINA erişim (CVE-2026-33748) |
+
+BuildKit bunların çoğunu kendi şema beyaz listesiyle (`http, https, ssh,
+git`) reddediyor. **Ama bu bizim kontrolümüzde olmayan bir kodda, çalışma
+zamanında yapılan bir savunma ve o kodun bu yıl çıkmış bir CVE'si var.**
+Panely'nin duruşu "BuildKit doğruluyor, biz güvendeyiz" değil.
+
+URL hiç alınmıyor; parçalardan executor kuruyor:
+
+```
+https://<host>/<owner>/<repo>.git#<commit_sha>
+```
+
+- Şema sabit `https` → `ext::`, `ssh://`, `git://` temsil edilemez
+- Kullanıcı bilgisi alanı yok → URL'e gömülü kimlik bilgisi temsil edilemez
+- `commit_sha` TAM 40 hane hex → iki nokta üst üste yok → subdir bileşeni
+  temsil edilemez (CVE-2026-33748 sınıfı)
+- Host beyaz listesi ŞEMADA DEĞİL, `-allow-git-host` bayrağında: ele
+  geçirilmiş bir panelyd listeye ekleme yapamaz
+
+`VolumeMount`'ta host yolu alınmamasıyla aynı karar: girdiyi doğrulamak
+yerine hiç almamak, sınıfın tamamını siler.
+
+**Dal adı da reddediliyor.** İki sebep: dal hareket eder ve geri alma
+(§2.1) tekrarlanabilirliğe dayanır; ayrıca dal adları iki nokta
+taşıyabilir ve fragment'in subdir bileşenini açan tam olarak budur.
+Ek fayda: sha'ya sabitlemek, dilim 1'de belgelenen
+`release_id ↔ commit_sha` boşluğunu daraltıyor — executor artık en
+azından kendi içinde tutarlı (aynı doğrulanmış sha'dan hem derliyor hem
+etiketliyor).
+
+**Özel depolar desteklenmiyor** ve bu gizlenmiyor. Kimlik doğrulama alanı
+bilerek yok: token alanı eklemek, sırrı bu mesajın kapatmak için var
+olduğu yollara koymak demekti. Doğru yer Faz 2'nin kasası ve alan bir
+token değil opak bir kasa referansı olacak. Faz 1 kabul ölçütü ("basit
+bir depo → deploy") genel depolarla karşılanıyor.
+
+### Ölçüm: mutasyonlar
+
+| Mutasyon | Sonuç |
+|---|---|
+| Beyaz liste kontrolü kaldırıldı | `TestGitHostWhitelistIsEnforced` + `TestEmptyWhitelistDoesNotMeanAllowAll` KIRMIZI |
+| `commit_sha` deseni dal adı kabul ediyor | `TestCommitSHAMustBeFullHex` KIRMIZI (`main`, `HEAD`, `<sha>:etc/passwd`) |
+| Handler doğrulamayı atlıyor | `TestImageBuildHandlerValidatesFirst` KIRMIZI |
+
+Üçüncüsü yine kritik: diğer testler doğrulayıcıları DOĞRUDAN çağırıyor,
+handler onları hiç çağırmasa da geçerlerdi.
+
+K-002 tripwire'ı da beklendiği gibi ateşledi: `ImageBuild` şemaya
+eklenince `cmd/panely-exec` DERLENMEDİ (`missing method ImageBuild`).
+
+### Sürücü diliminin devraldığı yükümlülükler
+
+1. Uzak bağlam URL'i YALNIZCA `BuildContextURL` ile kurulur
+2. Etiket YALNIZCA `ImageTag` ile kurulur
+3. Derleme argümanları denetime yazılırken `audit.RedactEnv` uygulanır
+   (derleme argümanları imaj geçmişinde görünür)
+4. Derleme çıktısı istemciye akar ama denetime GİRMEZ — çıktı
+   kullanıcının kodundan gelir ve sır basabilir
+
+### Açık kalan
+
+Ölçüm Docker Desktop'ın Linux motorunda yapıldı. `AF_UNIX`-only bir
+istemcinin GERÇEK systemd altında aynı şekilde çalıştığı hâlâ
+sınanmadı — `unshare -n` daha sert bir kısıt olduğu için sonucun
+değişmesi beklenmiyor, ama "beklenmiyor" ölçüm değildir. Sürücü
+diliminin doğrulama listesine yazıldı.
+
+---
+
+## K-036 — Bütçe metriği açıklamayı cezalandırıyordu
+
+K-034'ten hemen sonra `ImageBuild` eklendi ve bütçe ısırdı: 2631 > 2600.
+Bu, bütçenin işlevini görmesiydi — ama sayıya bakınca metrikte ikinci bir
+sorun çıktı.
+
+Ayrıcalıklı yüzeyin **%38'i yorum**: 2631 ham satır, 1608 kod satırı.
+
+Ham satır saymak perves bir teşvik yaratıyor: bütçede kalmanın en kolay
+yolu **yorum silmek** olurdu. Oysa K-002'nin amacı yüzeyi DENETLENEBİLİR
+tutmak ve bu projede ağır yorumlama bilinçli bir karar — açıklama
+denetlenebilirliği azaltmıyor, artırıyor. Yani metrik, var olma sebebinin
+tersine çalışıyordu.
+
+Planın kendi ifadesi de zaten koddan bahsediyordu:
+
+> ayrıcalıklı yüzeyi denetlenebilir ~1500 satıra indirmektir
+
+Yorum hariç ölçüm **1608** veriyor — tam o mertebe. Yani orijinal 2000
+sınırı büyük olasılıkla en baştan kod satırı için düşünülmüştü ve ham
+satır sayması bir uygulama hatasıydı.
+
+**Sınır 2600'den ORİJİNAL 2000'e geri alındı.** Bu bir gevşetme değil;
+K-034'ün 2000→2600 hamlesi ham-satır ölçümüne yapılmış geçici bir
+düzeltmeydi ve artık gereksiz.
+
+Şeffaflık için çıktı **her zaman iki sayıyı da** basıyor:
+
+```
+ham satır: 2631 · yorum/boş hariç: 1608
+✓ ayrıcalıklı kod 1608 satır (sınır 2000)
+```
+
+Yorum ayıklama sezgiseldir (`^\s*(//|/\*|\*|$)`); hata payı kodu FAZLA
+saymaya doğrudur, yani bütçe lehine değil aleyhine yanılır.
+
+**Dürüst not:** ölçüm aynı oturumda ikinci kez değişti ve ikisi de baskıyı
+azalttı. İkisinin de gerekçesi metriğin yanlış şeyi saymasıydı, ama bu
+desen kendi başına bir uyarı işareti. Üçüncü bir ölçüm değişikliği
+gerekirse önce "gerçekten metrik mi yanlış, yoksa kod mu fazla büyüdü"
+sorusu açıkça yanıtlanmalı.

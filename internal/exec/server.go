@@ -22,6 +22,13 @@ import (
 type Server struct {
 	journal      *Journal
 	dockerSocket string
+
+	// allowedGitHosts, ImageBuild'in kabul ettiği kaynak sunucularıdır.
+	//
+	// Executor'ın YAPILANDIRMASINDAN gelir, istekten değil. Ele geçirilmiş
+	// bir panelyd listeye ekleme yapamamalıdır; `-docker-socket` ve
+	// `-owner-group` ile aynı desen.
+	allowedGitHosts []string
 }
 
 // ServerOptions, executor sunucusunu yapılandırır.
@@ -31,6 +38,10 @@ type ServerOptions struct {
 
 	// DockerSocket, Docker Engine API soketi. Boşsa varsayılan kullanılır.
 	DockerSocket string
+
+	// AllowedGitHosts, ImageBuild'in kabul edeceği kaynak sunucuları.
+	// Boşsa yalnızca DefaultGitHost kabul edilir.
+	AllowedGitHosts []string
 }
 
 // NewServer, executor servisini oluşturur.
@@ -41,7 +52,17 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.DockerSocket == "" {
 		opts.DockerSocket = DefaultDockerSocket
 	}
-	return &Server{journal: opts.Journal, dockerSocket: opts.DockerSocket}, nil
+	// Boş liste "her host serbest" ANLAMINA GELMEZ. Varsayılana düşülür:
+	// boş bir beyaz listeyi "kısıt yok" saymak, yapılandırma hatasını
+	// sessizce güvenlik açığına çevirirdi.
+	if len(opts.AllowedGitHosts) == 0 {
+		opts.AllowedGitHosts = []string{DefaultGitHost}
+	}
+	return &Server{
+		journal:         opts.Journal,
+		dockerSocket:    opts.DockerSocket,
+		allowedGitHosts: opts.AllowedGitHosts,
+	}, nil
 }
 
 // ── Denetim politikası ───────────────────────────────────────────────

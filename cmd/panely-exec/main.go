@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/user"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc"
 
@@ -56,6 +57,8 @@ func run() error {
 		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "soket ve günlük dosyasının grubu")
 		showVersion  = flag.Bool("version", false, "sürümü yazdır ve çık")
 		debug        = flag.Bool("debug", false, "ayrıntılı günlük (PANELY_DEBUG=1 ile de açılır)")
+		gitHosts     = flag.String("allow-git-host", panelyexec.DefaultGitHost,
+			"ImageBuild için izinli git sunucuları (virgülle ayrılmış)")
 	)
 	flag.Parse()
 
@@ -110,8 +113,9 @@ func run() error {
 	}()
 
 	service, err := panelyexec.NewServer(panelyexec.ServerOptions{
-		Journal:      journal,
-		DockerSocket: *dockerSocket,
+		Journal:         journal,
+		DockerSocket:    *dockerSocket,
+		AllowedGitHosts: splitHosts(*gitHosts),
 	})
 	if err != nil {
 		return err
@@ -145,6 +149,17 @@ func run() error {
 	}
 
 	return grpcserve.Run(server, listener)
+}
+
+// splitHosts, virgülle ayrılmış host listesini böler ve boşları atar.
+func splitHosts(v string) []string {
+	var out []string
+	for _, h := range strings.Split(v, ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			out = append(out, h)
+		}
+	}
+	return out
 }
 
 func lookupUID(name string) (uint32, error) {

@@ -85,18 +85,7 @@ service ExecutorService {
   // ContainerLogs, bir replikanın çıktısını akıtır.
   rpc ContainerLogs(ContainerLogsRequest) returns (stream ContainerLogsResponse);
 
-  // ── Sonraki dilimlere bırakılanlar ──────────────────────────────
-  //
-  //   rpc ImageBuild(ImageBuildRequest) returns (stream BuildEvent);
-  //
-  // ImageBuild kasten ertelendi: derleme bağlamını KİMİN çektiği henüz
-  // kararlaştırılmadı. panelyd'nin birimi `RestrictAddressFamilies=AF_UNIX`
-  // taşıdığı için git deposunu çekemez; executor çekerse git URL'i root
-  // koduna ulaşır ve git URL'leri (`ext::sh -c`, `--upload-pack=`)
-  // K-024'teki argüman enjeksiyonuyla aynı sınıftır. Bu soru şemayı
-  // değiştirir, dolayısıyla şemayla birlikte kapatılamaz.
-  //
-  // ─────────────────────────────────────────────────────────────────
+  rpc ImageBuild(ImageBuildRequest) returns (stream ImageBuildResponse);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -305,6 +294,121 @@ message ContainerLogsRequest {
 message ContainerLogsResponse {
   bytes data = 1;
   // Docker akışları ayırır; istemci stderr'i farklı gösterebilsin.
+  bool is_stderr = 2;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  İMAJ DERLEME
+// ════════════════════════════════════════════════════════════════════
+
+// GitSource, derlenecek kaynağı adlandırır.
+//
+// ── Neden URL alanı YOK ──────────────────────────────────────────────
+//
+// Bu mesajın tamamı tek bir soruya verilen yanıttır: "ele geçirilmiş bir
+// panelyd bu alanla ne yapardı?"
+//
+// Serbest bir URL dizgisi kabul edilseydi, o dizgi daemon tarafında ROOT
+// olarak çalışan `git`'e ulaşırdı. ÖLÇÜLDÜ (docs/decisions.md K-035):
+// BuildKit uzak bağlamı kendi çekiyor ve bunu `git` binary'sini
+// çalıştırarak yapıyor. Yani URL, root bağlamındaki bir ayrıştırıcıya
+// giden girdidir.
+//
+// O yolun bilinen kötüye kullanımları:
+//
+//   ext::sh -c '...'          rastgele komut çalıştırma (git-remote-ext)
+//   ssh://...                 executor'ın SSH anahtarlarıyla kimlik
+//   git://...                 kimlik doğrulamasız, şifresiz taşıma
+//   https://user:token@...    kimlik bilgisi URL'e gömülür ve provenance
+//                             attestation'a sızar (GHSA-gc89-7gcr-jxqc)
+//   <url>#<ref>:<subdir>      fragment'in subdir bileşeni depo kökünün
+//                             DIŞINA erişebiliyordu (CVE-2026-33748)
+//
+// BuildKit bunların çoğunu kendi doğrulamasıyla reddeder — şema beyaz
+// listesi `http, https, ssh, git`. AMA bu, BİZİM KONTROLÜMÜZDE OLMAYAN
+// bir kodda, çalışma zamanında yapılan bir savunmadır ve o kodun bu yıl
+// çıkmış bir CVE'si var. Panely'nin duruşu "BuildKit doğruluyor, biz
+// güvendeyiz" değil.
+//
+// Bunun yerine URL hiç alınmaz; parçalardan executor KURAR:
+//
+//   https://<host>/<owner>/<repo>.git#<commit_sha>
+//
+// Şema sabit `https`. Kullanıcı bilgisi alanı yok. Fragment, doğrulanmış
+// 40 haneli bir sha — iki nokta üst üste içeremeyeceği için subdir
+// bileşeni oluşturulamaz. Yukarıdaki sınıfların hiçbiri TEMSİL EDİLEMEZ,
+// dolayısıyla BuildKit'in doğrulamasındaki bir gerileme bizi etkilemez.
+//
+// Bu, `VolumeMount`'ta host yolu alınmamasıyla aynı karar: girdiyi
+// doğrulamak yerine hiç almamak, sınıfın tamamını siler.
+message GitSource {
+  // host, izin verilen kaynak sunucularından biri OLMALIDIR.
+  //
+  // Beyaz liste ŞEMADA DEĞİL, executor'ın `-allow-git-host` bayrağında
+  // durur (varsayılan: github.com). Sebep: liste bir işletme kararıdır ve
+  // ele geçirilmiş bir panelyd ona ekleme YAPAMAMALIDIR. Aynı desen
+  // `-docker-socket` ve `-owner-group` için de kullanılıyor.
+  //
+  // Kısıt: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$
+  // Port, kullanıcı bilgisi, yol veya şema içeremez.
+  string host = 1;
+
+  // owner ve repo, yol bileşenleridir.
+  //
+  // Kısıt: ^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$ — eğik çizgi YOK, bu yüzden
+  // ek yol segmenti enjekte edilemez; `..` tek başına reddedilir.
+  string owner = 2;
+  string repo = 3;
+
+  // commit_sha, TAM 40 haneli küçük harf onaltılıktır.
+  //
+  // Dal veya etiket adı kabul EDİLMEZ. İki sebep:
+  //
+  //  1. Dal hareket eder. "main'i derle" tekrarlanabilir değildir ve geri
+  //     alma (§2.1) tam olarak tekrarlanabilirliğe dayanır.
+  //  2. Dal adları eğik çizgi ve iki nokta taşıyabilir; fragment'in
+  //     subdir bileşenini açan da bu (CVE-2026-33748). 40 haneli hex
+  //     bunu temsil edilemez kılar.
+  //
+  // Kısa sha da kabul edilmez: bir derleme referansı belirsiz olamaz.
+  string commit_sha = 4;
+}
+
+// ImageBuildRequest, bir sürümün imajını derletir.
+//
+// ── ÖZEL DEPOLAR HENÜZ DESTEKLENMİYOR ────────────────────────────────
+//
+// Kimlik doğrulama alanı BİLEREK yok. Bir token alanı eklemek, sırrı
+// URL'e ya da ortama koymak demekti; ikisi de bu mesajın kapatmak için
+// var olduğu sızıntı yollarıdır. Doğru yer Faz 2'nin kasasıdır ve oraya
+// geldiğinde alan bir token değil, opak bir kasa referansı olacak.
+//
+// Faz 1 kabul ölçütü ("basit bir depo → deploy") genel depolarla
+// karşılanıyor; sınır gizlenmiyor, yazılıyor.
+message ImageBuildRequest {
+  // Derlenen sürüm. Etiket bu değerlerden KURULUR: panely/<app_id>:<sha>
+  ReleaseRef release = 1;
+
+  GitSource source = 2;
+
+  // dockerfile_path, depo KÖKÜNE göreli yoldur.
+  //
+  // Boşsa "Dockerfile" kullanılır. Mutlak olamaz, temiz olmalıdır
+  // (path.Clean(p) == p) ve `..` içeremez — VolumeMount.mount_path ile
+  // aynı kontrol.
+  string dockerfile_path = 3;
+
+  // build_args, Dockerfile'a geçirilen derleme argümanlarıdır.
+  //
+  // UYARI (denetim kaydına yazan kod için): derleme argümanları imaj
+  // geçmişinde görünür ve sır TAŞIMAMALIDIR. Denetime yazılırken
+  // audit.RedactEnv uygulanır — değerler değil yalnızca adlar kalır.
+  map<string, string> build_args = 4;
+}
+
+message ImageBuildResponse {
+  // BuildKit'in ilerleme çıktısı. Ham bayt; istemciye akar.
+  bytes data = 1;
   bool is_stderr = 2;
 }
 

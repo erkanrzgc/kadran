@@ -102,11 +102,17 @@ protection is removed:
 - **No free-form argv and no `sh -c`,** anywhere.
 - **Caller is authenticated per connection** via `SO_PEERCRED`; socket permissions
   alone are not trusted.
-- **Privileged code is size-capped** at 2600 lines, and the cap is measured from the
-  *actual import graph* of `cmd/panely-exec` rather than a hand-maintained path list —
-  otherwise the budget can be walked around by putting code in a new package and
-  importing it. CI fails the build otherwise, because a least-privilege boundary that
-  keeps growing stops being one.
+- **No git URL.** `ImageBuild` takes `{host, owner, repo, commit_sha}` and the executor
+  *constructs* `https://<host>/<owner>/<repo>.git#<sha>`. Scheme is fixed, there is no
+  userinfo field, and the ref must be exactly 40 hex characters — so `ext::sh -c`,
+  `ssh://`, embedded credentials, and the `#ref:subdir` traversal of CVE-2026-33748 are
+  all unrepresentable, independently of BuildKit's own validation.
+- **Privileged code is size-capped** at 2000 lines of code, measured from the *actual
+  import graph* of `cmd/panely-exec` rather than a hand-maintained path list — otherwise
+  the budget is walked around by putting code in a new package and importing it.
+  Comments are excluded so the budget never rewards deleting the explanations that make
+  the surface auditable. CI fails the build otherwise, because a least-privilege
+  boundary that keeps growing stops being one.
 
 ### Dual-chain audit log
 

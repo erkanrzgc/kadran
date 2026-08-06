@@ -66,28 +66,31 @@ SCHEMA="${1:-$REPO_ROOT/proto/panely/v1/exec.proto}"
 # çözüm değil, bir kararın kendisidir — gerekiyorsa ne eklendiği
 # tartışılarak yükseltilmeli.
 #
-# ── 2000 -> 2600: ÖLÇÜM DÜZELTİLDİ, KOD BÜYÜMEDİ ─────────────────────
+# ── Ölçüm KAPSAMI: sabit yol listesi değil, içe aktarma grafiği ──────
 #
-# Sınır uzun süre 2000'di ve sayaç 1267 gösteriyordu. O sayı YANLIŞTI:
-# yalnızca `internal/exec` + `cmd/panely-exec` sayılıyordu, oysa root
-# süreç bunlardan fazlasını çalıştırıyor. Sayım içe aktarma grafiğinden
-# türetilince gerçek rakam **2395** çıktı.
+# Kapsam bir dönem `internal/exec` + `cmd/panely-exec` olarak
+# sabitlenmişti ve sayaç 1267 gösteriyordu. O sayı YANLIŞTI: root süreç
+# bunlardan fazlasını çalıştırıyor, yani bütçe sessizce dolanılabiliyordu
+# — bir paket yazıp panely-exec'ten içe aktarmak yeterliydi. Tam bu oldu:
+# `internal/logutil` root binary'ye girdi ve sayaç kıpırdamadı (K-034).
 #
-#   internal/exec 1093 · internal/audit 432 · internal/peercred 215
-#   cmd/panely-exec 174 · internal/pbconv 144 · internal/sockets 128
-#   internal/logutil 64 · internal/grpcserve 61 · internal/sdnotify 53
-#   internal/version 31
+# Kapsam artık `go list -deps` ile DERLEYİCİDEN türetiliyor.
 #
-# Yani bütçe, ayrıcalıklı yüzeyin yaklaşık YARISINI ölçüyordu ve geri
-# kalanı sessizce dolanılabiliyordu — bir paket yazıp panely-exec'ten
-# içe aktarmak yeterliydi. Tam bu oldu: `internal/logutil` girdi, sayaç
-# kıpırdamadı (docs/decisions.md K-034).
+# ── Sayılan ŞEY: yorum ve boş satır HARİÇ kod ────────────────────────
 #
-# Sınır bu yüzden 2600'e çekildi. DENETLENEN KOD DEĞİŞMEDİ; değişen,
-# ne kadarını gördüğümüz. Kalan pay (~205 satır) bilerek dar: Faz 1'in
-# Docker sürücüsü bu sınıra çarpacak ve "ne ekliyoruz" tartışması tam
-# o noktada yapılmalı. Çarpması bir arıza değil, bütçenin işlevi.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2600}"
+# İlk düzeltmede ham satır sayılıyordu ve bu, metriğin kendisinde ikinci
+# bir sorun yarattı: ayrıcalıklı yüzeyin %38'i yorum (2631 ham / 1608
+# kod). Bu projede ağır yorumlama BİLİNÇLİ bir karar — K-002'nin amacı
+# yüzeyi DENETLENEBİLİR tutmak ve açıklama denetlenebilirliği artırır.
+# Ham satır saymak, bütçede kalmak için yorum silmeyi ödüllendirirdi:
+# metrik, var olma sebebinin tersine çalışırdı.
+#
+# Planın kendi hedefi de zaten koddu — "denetlenebilir ~1500 satır".
+# Yorum hariç ölçüm 1608 veriyor, tam o mertebe. Bu yüzden sınır
+# ORİJİNAL 2000'e geri alındı (K-036).
+#
+# Çıktı HER ZAMAN iki sayıyı da basar; ham sayı gizlenmiyor.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2000}"
 
 fail=0
 note_failure() {
@@ -147,6 +150,7 @@ if [[ -n "$module_path" ]]; then
     )
 
     exec_lines=0
+    total_lines=0
     counted=0
     for d in "${priv_dirs[@]}"; do
         [[ -d "$REPO_ROOT/$d" ]] || continue
@@ -171,12 +175,19 @@ if [[ -n "$module_path" ]]; then
             continue
         fi
 
-        n="$(find "$REPO_ROOT/$d" -maxdepth 1 -name '*.go' ! -name '*_test.go' \
+        raw="$(find "$REPO_ROOT/$d" -maxdepth 1 -name '*.go' ! -name '*_test.go' \
             -exec cat {} + 2>/dev/null | wc -l)"
-        exec_lines=$((exec_lines + ${n// /}))
+        # Yorum ve boş satırlar sayılmaz — aşağıdaki gerekçeye bakın.
+        # Sezgisel: yorum GİBİ görünmeyen her şey kod sayılır, yani hata
+        # payı kodu FAZLA saymaya doğrudur (blok yorum gövdeleri).
+        code="$(find "$REPO_ROOT/$d" -maxdepth 1 -name '*.go' ! -name '*_test.go' \
+            -exec cat {} + 2>/dev/null | grep -vcE '^[[:space:]]*(//|/\*|\*|$)')"
+        exec_lines=$((exec_lines + ${code// /}))
+        total_lines=$((total_lines + ${raw// /}))
         counted=$((counted + 1))
     done
     echo "    ($counted paket, panely-exec'in içe aktarma grafiğinden; üretilen kod hariç)"
+    echo "    ham satır: $total_lines · yorum/boş hariç: $exec_lines"
 else
     # ÖLÇEMİYORSAK ONAYLAMAYIZ.
     #

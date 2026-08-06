@@ -131,3 +131,35 @@ func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, _ grpc.Server
 	}
 	return notYetImplemented("ContainerLogs")
 }
+
+// ImageBuild, bir sürümün imajını uzak git bağlamından derletir.
+//
+// ── Ağa KİM çıkıyor? Hiçbirimiz ─────────────────────────────────────
+//
+// Bu soru bu RPC'yi bir dilim boyunca geciktirdi ve notlardaki ikilem
+// ("panelyd mi çeksin, executor mü?") YANLIŞTI: her iki birim de
+// `RestrictAddressFamilies=AF_UNIX` taşıyor ve ikisinin de gevşetilmesi
+// gerekmiyor. Uzak bağlamı BuildKit kendi ağ ad alanında çözüyor;
+// executor yalnızca unix soketine bayt yazıyor.
+//
+// Bu varsayılmadı, ÖLÇÜLDÜ: ağsız bir ad alanına (`unshare -n`) konmuş
+// bir istemciden başlatılan derleme depoyu çekmeyi başardı ve hata ağ
+// hakkında değil Dockerfile hakkında geldi. Pozitif kontrol de koşturuldu
+// — aynı ad alanından `git ls-remote` başarısız oluyor, yani ad alanı
+// gerçekten ağsız (docs/decisions.md K-035).
+//
+// Sürücü diliminin devraldığı yükümlülükler:
+//
+//  1. Uzak bağlam URL'i YALNIZCA BuildContextURL ile kurulur. İstekten
+//     gelen hiçbir dizgi doğrudan BuildKit'e verilmez.
+//  2. Etiket YALNIZCA ImageTag ile kurulur.
+//  3. Derleme argümanları denetime yazılırken audit.RedactEnv uygulanır:
+//     derleme argümanları imaj geçmişinde görünür ve sır taşıyabilir.
+//  4. Derleme çıktısı istemciye akar ama denetim kaydına GİRMEZ — çıktı
+//     kullanıcının kodundan gelir ve sır basabilir.
+func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, _ grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+	if err := validateImageBuild(req, s.allowedGitHosts); err != nil {
+		return invalidArgument(err)
+	}
+	return notYetImplemented("ImageBuild")
+}

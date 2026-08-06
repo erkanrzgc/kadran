@@ -78,7 +78,20 @@ jobs:
         # Linux üretim hedefi; Windows geliştirme iş istasyonu. İkisi de
         # kırılmamalı — güvenlik testlerinin bir kısmı yalnızca Linux'ta
         # KOŞUYOR (SO_PEERCRED, unix soketi), ama hepsi ikisinde de DERLENİYOR.
-        os: [ubuntu-latest, windows-latest]
+        #
+        # ubuntu-24.04-arm GERÇEK arm64 donanımıdır ve emülasyon değildir.
+        #
+        # Neden önemli: arm64 uzun süre yalnızca ÇAPRAZ DERLENİYORDU, hiç
+        # KOŞTURULMUYORDU. "Derleniyor" ile "çalışıyor" arasındaki fark,
+        # bu projede tekrar tekrar gerçek hata çıkardı — SO_PEERCRED
+        # testleri de Windows'ta derlenip koşmadığı için bir dönem boşluk
+        # bırakmıştı. Hizalama, atomik işlemler ve syscall davranışı
+        # mimariye göre değişir; derleyici bunları yakalamaz.
+        #
+        # Bu runner PUBLIC depolarda ücretsiz. Hetzner'de ARM (cax*)
+        # kapasitesi nbg1/fsn1/hel1'in üçünde de yoktu, yani gerçek ARM'a
+        # erişimin tek yolu buydu (docs/decisions.md K-037).
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup

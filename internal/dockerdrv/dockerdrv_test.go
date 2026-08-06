@@ -54,6 +54,13 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 			_, _ = w.Write([]byte(`{"message":"sahte hata"}`))
 			return
 		}
+		// Uzlaşma çağrısı: gerçek bir daemon gibi aralık bildir.
+		if r.URL.Path == "/version" {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"Version": "29.1.3", "ApiVersion": "1.48", "MinAPIVersion": "1.44",
+			})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/containers/json") {
 			_ = json.NewEncoder(w).Encode(f.containers)
 			return
@@ -63,6 +70,21 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 	}))
 	t.Cleanup(f.Close)
 	return f
+}
+
+// op, uzlaşma DIŞINDAKİ ilk isteği döndürür.
+//
+// İstemci her bağlantıda önce `/version` çağırıp API sürümünü uzlaşıyor;
+// indeks 0'a bakan testler bu yüzden yanlış isteği inceler.
+func (f *fakeDocker) op(t *testing.T) recorded {
+	t.Helper()
+	for _, r := range f.requests {
+		if r.Path != "/version" {
+			return r
+		}
+	}
+	t.Fatal("uzlaşma dışında hiç istek gitmedi — test bir şey ölçmüyor")
+	return recorded{}
 }
 
 // client, sahte daemon'a konuşan bir istemci kurar.
@@ -108,19 +130,16 @@ func TestCreateSendsExpectedBody(t *testing.T) {
 	if err := c.ContainerCreate(context.Background(), validSpec()); err != nil {
 		t.Fatalf("geçerli istek reddedildi: %v", err)
 	}
-	if len(f.requests) != 1 {
-		t.Fatalf("%d istek gitti, 1 bekleniyordu", len(f.requests))
-	}
-
+	op := f.op(t)
 	var body map[string]any
-	if err := json.Unmarshal(f.requests[0].Body, &body); err != nil {
+	if err := json.Unmarshal(op.Body, &body); err != nil {
 		t.Fatalf("gövde çözümlenemedi: %v", err)
 	}
 	if got := body["Image"]; got != "panely/blog:7fd1a60b01f91b314f59955a4e4d4e80d8edf11d" {
 		t.Errorf("Image %v", got)
 	}
-	if !strings.Contains(f.requests[0].Query, "panely_blog_r1_0") {
-		t.Errorf("konteyner adı beklenen biçimde değil: %s", f.requests[0].Query)
+	if !strings.Contains(op.Query, "panely_blog_r1_0") {
+		t.Errorf("konteyner adı beklenen biçimde değil: %s", op.Query)
 	}
 }
 
@@ -140,7 +159,7 @@ func TestCreateBodyOmitsDangerousFields(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	wire := string(f.requests[0].Body)
+	wire := string(f.op(t).Body)
 	for _, forbidden := range []string{
 		"Privileged", "CapAdd", "Devices", "PidMode", "UsernsMode",
 		"IpcMode", "CgroupParent", "Sysctls", "DeviceCgroupRules",
@@ -174,7 +193,7 @@ func TestCreatePinsSecurityOpt(t *testing.T) {
 			} `json:"RestartPolicy"`
 		} `json:"HostConfig"`
 	}
-	if err := json.Unmarshal(f.requests[0].Body, &body); err != nil {
+	if err := json.Unmarshal(f.op(t).Body, &body); err != nil {
 		t.Fatal(err)
 	}
 
@@ -242,7 +261,7 @@ func TestCreateAllowsHardenedVolumeRoot(t *testing.T) {
 			Binds []string `json:"Binds"`
 		} `json:"HostConfig"`
 	}
-	if err := json.Unmarshal(f.requests[0].Body, &body); err != nil {
+	if err := json.Unmarshal(f.op(t).Body, &body); err != nil {
 		t.Fatal(err)
 	}
 	want := "/var/lib/panely/volumes/blog/data:/data"
@@ -457,6 +476,110 @@ func TestNetworkNameIsDerived(t *testing.T) {
 	}
 	if got := ImageTag("blog", "abc123"); got != "panely/blog:abc123" {
 		t.Errorf("ImageTag = %q", got)
+	}
+}
+
+// ── API sürümü uzlaşması ─────────────────────────────────────────────
+
+// TestVersionNegotiationCoversMeasuredDaemons, bugün ÖLÇÜLEN iki
+// daemon'ın da desteklendiğini doğrular.
+//
+// Sabit pin bu ikisini AYNI ANDA memnun edemiyordu ve bu teorik değil:
+// v1.51 CI runner'ında "too new", v1.41 Docker 29.1.3'te "too old" hatası
+// verdi. Uzlaşma tam olarak bu çatışmayı çözmek için var.
+func TestVersionNegotiationCoversMeasuredDaemons(t *testing.T) {
+	cases := []struct {
+		name, dMin, dMax, want string
+	}{
+		{"CI runner (maks 1.48)", "1.24", "1.48", "v1.48"},
+		{"Docker 29.1.3 (min 1.44)", "1.44", "1.52", "v1.48"},
+		{"tam üst sınırımızda", "1.44", "1.44", "v1.44"},
+		{"MinAPIVersion bildirmeyen eski daemon", "", "1.45", "v1.45"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := pickVersion(tc.dMin, tc.dMax)
+			if err != nil {
+				t.Fatalf("uzlaşma başarısız: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("seçilen %q, beklenen %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestVersionNegotiationFailsClosed, ortak sürüm yoksa HATA verildiğini
+// doğrular.
+//
+// Sessizce sürümsüz isteğe düşmek kabul edilemez: sürümsüz istek
+// daemon'ın en yenisine düşer ve alan anlamları sınanmamış bir sürümde
+// değişmiş olabilir. Belirsiz davranış ayrıcalıklı bir istemcide en kötü
+// sonuçtur.
+func TestVersionNegotiationFailsClosed(t *testing.T) {
+	cases := []struct{ name, dMin, dMax string }{
+		{"daemon bizden tamamen yeni", "1.60", "1.70"},
+		{"daemon bizden tamamen eski", "1.20", "1.30"},
+		{"daemon sürüm bildirmedi", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got, err := pickVersion(tc.dMin, tc.dMax); err == nil {
+				t.Errorf("örtüşme yokken %q seçildi", got)
+			}
+		})
+	}
+}
+
+// TestVersionCompareIsNumeric, sürüm karşılaştırmasının SÖZLÜKSEL
+// olmadığını doğrular.
+//
+// "1.9" > "1.48" sözlüksel olarak DOĞRUdur ve tam bu yüzden yanlıştır:
+// sözlüksel karşılaştırma 1.9'u 1.48'den yeni sanar, uzlaşma sessizce
+// yanlış sürüm seçer ve hata çok sonra ortaya çıkar.
+func TestVersionCompareIsNumeric(t *testing.T) {
+	if compareVersions("1.9", "1.48") >= 0 {
+		t.Error("1.9, 1.48'den büyük sayıldı — sözlüksel karşılaştırma yapılıyor")
+	}
+	if compareVersions("1.48", "1.48") != 0 {
+		t.Error("aynı sürümler eşit sayılmadı")
+	}
+	if compareVersions("2.0", "1.99") <= 0 {
+		t.Error("ana sürüm karşılaştırması yanlış")
+	}
+}
+
+// TestNegotiationHappensBeforeAnyRequest, uzlaşmanın gerçekten istek
+// yoluna girdiğini doğrular.
+//
+// pickVersion'ı tek başına test etmek yetmez: uzlaşma çağrılmasaydı da o
+// testler geçerdi. Burada sahte daemon'ın gördüğü YOL sınanıyor.
+func TestNegotiationHappensBeforeAnyRequest(t *testing.T) {
+	f := newFakeDocker(t)
+	c := f.client(hardenedRoot(t, "rw,nosuid,nodev,relatime"))
+
+	if err := c.ContainerCreate(context.Background(), validSpec()); err != nil {
+		t.Fatal(err)
+	}
+	if len(f.requests) < 2 {
+		t.Fatalf("%d istek gitti — uzlaşma çağrısı görünmüyor", len(f.requests))
+	}
+	if f.requests[0].Path != "/version" {
+		t.Errorf("ilk istek %q, /version bekleniyordu", f.requests[0].Path)
+	}
+	// Uzlaşılan sürüm gerçekten yola giriyor mu?
+	if !strings.Contains(f.requests[1].Path, "/v1.4") {
+		t.Errorf("istek yolunda uzlaşılan sürüm yok: %s", f.requests[1].Path)
+	}
+	// İkinci çağrı yeniden uzlaşmamalı (sync.Once).
+	f.requests = nil
+	if err := c.ContainerCreate(context.Background(), validSpec()); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range f.requests {
+		if r.Path == "/version" {
+			t.Error("her istekte yeniden uzlaşılıyor — sync.Once çalışmıyor")
+		}
 	}
 }
 

@@ -184,19 +184,31 @@ jobs:
           done
           sudo chmod 0777 /var/lib/panely/volumes
 
+      # PANELY_E2E_REQUIRE_DOCKER: burada Docker VAR, dolayısıyla test
+      # atlamak bir arızadır ve atlama hakkı kaldırılıyor.
+      #
+      # Bu değişken, ilk koşuda tam olarak gereken şeydi: API sürümü
+      # uyuşmazlığı yüzünden bütün testler sessizce atlandı ve adım YEŞİL
+      # geçti. Atlanan test ile geçen testi ayırt edemeyen bir kontrol,
+      # yeşil rozetten başka bir şey üretmez.
       - name: Docker sürücüsü E2E
+        env:
+          PANELY_E2E_REQUIRE_DOCKER: "1"
         run: go test -tags dockere2e -count=1 -v ./internal/dockerdrv/
 
       # Testin KENDİSİ sınanıyor: sertleştirme kaldırılınca hacim testi
-      # SKIP'e düşmeli, sessizce GEÇMEMELİ. Atlanan test ile geçen testi
-      # ayırt edemeyen bir kontrol, hiç olmayandan kötüdür.
+      # BAŞARISIZ olmalı, sessizce geçmemeli.
       - name: Sertleştirme testi gerçekten ateşliyor mu?
+        env:
+          PANELY_E2E_REQUIRE_DOCKER: "1"
         run: |
           sudo umount /var/lib/panely/volumes
-          out="$(go test -tags dockere2e -count=1 -v -run TestVolumeMountIsHardenedEndToEnd ./internal/dockerdrv/ 2>&1)"
+          out="$(go test -tags dockere2e -count=1 -v -run TestVolumeMountIsHardenedEndToEnd ./internal/dockerdrv/ 2>&1)" && rc=0 || rc=1
           echo "$out"
+          [[ $rc -ne 0 ]] \
+            || { echo "::error::sertleştirme kalkmasına rağmen test GEÇTİ"; exit 1; }
           grep -q "sertleştirilmemiş" <<<"$out" \
-            || { echo "::error::sertleştirme kalkmasına rağmen test bunu fark etmedi"; exit 1; }
+            || { echo "::error::test başarısız oldu ama sebebi sertleştirme değil"; exit 1; }
 
   security:
     name: Güvenlik değişmezleri

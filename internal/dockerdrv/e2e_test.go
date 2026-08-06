@@ -42,10 +42,31 @@ const (
 	e2eSHA    = "0123456789abcdef0123456789abcdef01234567"
 )
 
+// skipOrFail, Docker yoksa testi atlar — AMA Docker'ın var olması
+// GARANTİ edilen ortamda (CI) bunun yerine BAŞARISIZ olur.
+//
+// # Neden gerekli
+//
+// Bu dosyanın ilk hâlinde her koşulda `t.Skip` çağrılıyordu. CI'da API
+// sürümü uyuşmazlığı yüzünden Ping başarısız oldu, TÜM testler sessizce
+// atlandı ve adım YEŞİL geçti — hiçbir şey sınamadan. Sorunu yakalayan
+// şey, tesadüfen eklenmiş ayrı bir tuzak adımıydı.
+//
+// Atlanan test ile geçen testi ayırt edemeyen bir kontrol, yeşil rozetten
+// başka bir şey üretmez. PANELY_E2E_REQUIRE_DOCKER=1 verildiğinde atlama
+// hakkı kalkar.
+func skipOrFail(t *testing.T, format string, args ...any) {
+	t.Helper()
+	if os.Getenv("PANELY_E2E_REQUIRE_DOCKER") != "" {
+		t.Fatalf("Docker zorunlu ama kullanılamıyor: "+format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 func e2eClient(t *testing.T) *Client {
 	t.Helper()
 	if _, err := os.Stat(e2eSocket); err != nil {
-		t.Skipf("Docker soketi yok (%v)", err)
+		skipOrFail(t, "Docker soketi yok (%v)", err)
 	}
 	root := os.Getenv("PANELY_E2E_VOLUME_ROOT")
 	if root == "" {
@@ -53,7 +74,7 @@ func e2eClient(t *testing.T) *Client {
 	}
 	c := New(e2eSocket, root)
 	if _, err := c.Ping(context.Background()); err != nil {
-		t.Skipf("Docker'a ulaşılamadı: %v", err)
+		skipOrFail(t, "Docker'a ulaşılamadı: %v", err)
 	}
 	return c
 }
@@ -87,9 +108,16 @@ func buildTaggedImage(t *testing.T, c *Client, sha, cmd string) {
 		t.Fatal(err)
 	}
 
+	// Uzlaşılan sürümü kullan: sabit bir sürüm yazmak, tam olarak bu
+	// dosyanın yakaladığı hatayı testin içine geri koyardı.
+	ver, err := c.negotiate(context.Background())
+	if err != nil {
+		t.Fatalf("API sürümü uzlaşılamadı: %v", err)
+	}
+
 	q := url.Values{"t": {ImageTag(e2eApp, sha)}}
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
-		c.base+"/"+apiVersion+"/build?"+q.Encode(), &ctxTar)
+		c.base+"/"+ver+"/build?"+q.Encode(), &ctxTar)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -275,7 +303,9 @@ func imageExists(t *testing.T, c *Client, tag string) bool {
 func TestVolumeMountIsHardenedEndToEnd(t *testing.T) {
 	c := e2eClient(t)
 	if err := c.checkVolumeRootHardened(); err != nil {
-		t.Skipf("hacim kökü sertleştirilmemiş, uçtan uca sınanamaz: %v", err)
+		// Burada da sessiz atlama yok: CI hacim kökünü kendisi
+		// sertleştiriyor, dolayısıyla orada atlanması bir arızadır.
+		skipOrFail(t, "hacim kökü sertleştirilmemiş, uçtan uca sınanamaz: %v", err)
 	}
 	ctx := context.Background()
 	buildTestImage(t, c)

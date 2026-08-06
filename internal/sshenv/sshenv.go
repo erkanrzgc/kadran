@@ -4,9 +4,29 @@
 // # Neden ortam değişkenleri güvenilir?
 //
 // Bu değişkenleri sshd, kimlik doğrulaması TAMAMLANDIKTAN SONRA ayarlar.
-// Uzak istemci bunları belirleyemez: `restrict` seçeneği user-rc, X11 ve
-// ortam geçirmeyi (`PermitUserEnvironment`) kapatır, ve zorlanmış komut
-// istemcinin kendi komutunu çalıştırmasını engeller.
+// Uzak istemcinin bunlara karışabileceği İKİ yol vardır ve ikisi de ayrı
+// ayrı kapatılmıştır:
+//
+//  1. authorized_keys'teki `environment="AD=deger"` seçeneği. sshd(8):
+//     "Environment variables set this way override other default
+//     environment values" — yani açık olsaydı sshd'nin KENDİ yazdığı
+//     SSH_AUTH_INFO_0'ı EZERDİ. Bunu kapatan `PermitUserEnvironment no`'dur.
+//  2. İstemcinin `SendEnv` ile gönderdiği değişkenler. Bunları `AcceptEnv`
+//     süzer ve varsayılanı "hiçbirini kabul etme"dir. Eklemeli çalıştığı
+//     için boş bir değerle sıfırlanamaz; bu yüzden bootstrap bilerek hiç
+//     AcceptEnv satırı yazmaz.
+//
+// DİKKAT — burada kolay bir yanlış var: bunları kapatan şey `restrict`
+// DEĞİLDİR. sshd(8), restrict'i "disable port, agent and X11 forwarding,
+// as well as disabling PTY allocation and execution of ~/.ssh/rc" diye
+// tanımlar; ortam işlemesi bu listede YOKTUR. Panely bir zamanlar bunun
+// tersini iddia eden bir yorum taşıyordu (docs/decisions.md K-031).
+//
+// `PermitUserEnvironment no`, bootstrap'ın sshd drop-in'inde GENEL kapsamda
+// açıkça yazılır — `Match` bloğunun içinde değil, çünkü o anahtar kelime
+// Match içinde geçerli değildir ve oraya konması sshd yapılandırmasını
+// bozar. Varsayılanı zaten `no` olsa da yazılır: bu değer denetim izinin
+// doğruluğunu taşır ve dağıtımın genel yapılandırmasına bırakılamaz.
 //
 // Yani `panely-connect` çalıştığında ortamındaki SSH_* değişkenleri sshd'nin
 // kendi gözlemidir — istemcinin iddiası değil.

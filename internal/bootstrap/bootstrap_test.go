@@ -230,6 +230,82 @@ func TestInstallScriptForcesConnectCommand(t *testing.T) {
 	}
 }
 
+// TestSSHDDropInPinsUserEnvironment, denetim kimliğini taklit etmeye açan
+// ayarın kapatıldığını doğrular.
+//
+// panely-connect aktörün parmak izini SSH_AUTH_INFO_0'dan okur.
+// authorized_keys'teki `environment="..."` seçeneği sshd'nin kendi yazdığı
+// değeri EZEBİLİR ("override other default environment values" — sshd(8)),
+// yani açık kalırsa denetim izi taklit edilebilir. Kapatan ayar
+// PermitUserEnvironment'tır; `restrict` DEĞİL (docs/decisions.md K-031).
+func TestSSHDDropInPinsUserEnvironment(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dropIn := between(string(script), "cat > \"$SSHD_DROPIN\"", "SSHD\n")
+
+	if !strings.Contains(dropIn, "PermitUserEnvironment no") {
+		t.Error("sshd drop-in'inde `PermitUserEnvironment no` yok — " +
+			"denetim kimliği authorized_keys üzerinden taklit edilebilir")
+	}
+}
+
+// TestSSHDDropInKeywordsAreValidInTheirScope, drop-in'in sshd tarafından
+// AYRIŞTIRILABİLİR olduğunu doğrular.
+//
+// # Bu test neden var?
+//
+// Somut bir hatayı yakaladı: PermitUserEnvironment `Match` bloğunun içine
+// yazılmıştı. O anahtar kelime Match içinde geçerli DEĞİLDİR ve sshd
+// yapılandırmayı tümden reddeder. install.sh `sshd -t` ile doğruladığı
+// için sunucu kilitlenmezdi — ama bootstrap taze bir sunucuda ölürdü ve
+// bunu ancak gerçek kurulumda görürdük.
+//
+// Match ÖNCESİ satırlar genel kapsamdadır; Match SONRASI satırlar yalnızca
+// Match'in izin verdiği alt kümeden olabilir.
+func TestSSHDDropInKeywordsAreValidInTheirScope(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dropIn := between(string(script), "cat > \"$SSHD_DROPIN\"", "SSHD\n")
+
+	// sshd_config(5): Match içinde KULLANILAMAYAN, bu dosyada geçmesi
+	// muhtemel anahtar kelimeler.
+	invalidInMatch := []string{
+		"PermitUserEnvironment",
+		"AcceptEnv",
+		"UsePAM",
+		"ListenAddress",
+	}
+
+	inMatch := false
+	for line := range strings.Lines(dropIn) {
+		field := strings.Fields(strings.TrimSpace(line))
+		if len(field) == 0 || strings.HasPrefix(field[0], "#") {
+			continue
+		}
+		if strings.EqualFold(field[0], "Match") {
+			inMatch = true
+			continue
+		}
+		if !inMatch {
+			continue
+		}
+		for _, bad := range invalidInMatch {
+			if strings.EqualFold(field[0], bad) {
+				t.Errorf("%q Match bloğunun içinde — sshd yapılandırmayı reddeder, "+
+					"bootstrap taze sunucuda ölür", bad)
+			}
+		}
+	}
+
+	if !inMatch {
+		t.Fatal("drop-in'de hiç Match bloğu bulunamadı — test bir şey ölçmüyor")
+	}
+}
+
 // TestInstallScriptDoesNotUseNologinForClient, istemci kabuğunun
 // nologin OLMADIĞINI doğrular.
 //

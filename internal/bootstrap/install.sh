@@ -194,7 +194,40 @@ chmod 0600 "$auth_file"
 if [ -d /etc/ssh/sshd_config.d ] && grep -qE '^\s*Include\s+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config; then
     cat > "$SSHD_DROPIN" <<'SSHD'
 # Panely tarafından yönetiliyor. Elle düzenlemeyin.
+
+# ── Denetim kimliğinin taklit edilmesini engelleyen satır ────────────
 #
+# panely-connect, aktörün SSH parmak izini SSH_AUTH_INFO_0'dan okur.
+# O değişkeni istemci belirleyebilirse denetim izi yalan söyler.
+#
+# authorized_keys'teki `environment="AD=deger"` seçeneği tam olarak bunu
+# yapardı: sshd(8) bu seçenek için "override other default environment
+# values" diyor — yani sshd'nin KENDİ yazdığı SSH_AUTH_INFO_0'ı ezerdi.
+# Kapatan ayar PermitUserEnvironment'tır.
+#
+# İKİ İNCE NOKTA:
+#
+#   1. Bunu `restrict` KAPATMAZ. sshd(8) restrict'i "disable port, agent
+#      and X11 forwarding, as well as disabling PTY allocation and
+#      execution of ~/.ssh/rc" diye tanımlar; ortam işleme o listede yok.
+#      (docs/decisions.md K-031)
+#
+#   2. PermitUserEnvironment bir `Match` bloğunun İÇİNDE KULLANILAMAZ —
+#      Match'in izin verdiği anahtar kelimeler arasında değildir. Match
+#      altına yazmak sshd yapılandırmasını GEÇERSİZ kılar. Bu yüzden
+#      genel kapsamda, Match'ten ÖNCE duruyor.
+#
+# Varsayılanı zaten `no`; yine de açıkça yazılıyor çünkü bu değer
+# denetim izinin doğruluğunu taşıyor ve bir dağıtımın genel
+# yapılandırmasına bırakılamaz.
+PermitUserEnvironment no
+
+# İstemcinin SendEnv ile gönderdiği değişkenler AcceptEnv ile süzülür.
+# Varsayılanı "hiçbirini kabul etme" olduğu ve AcceptEnv eklemeli
+# (additive) çalıştığı için — boş bir değerle sıfırlanamaz — burada
+# BİLEREK hiç AcceptEnv satırı yazılmıyor. Yazılacak her isim yüzeyi
+# yalnızca genişletirdi.
+
 # ExposeAuthInfo olmadan denetim kaydındaki SSH parmak izi boş kalır.
 Match User panely-client
     ExposeAuthInfo yes

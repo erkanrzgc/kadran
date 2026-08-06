@@ -1,4 +1,4 @@
-# Panely - Akıllı Sunucu Yönetimi ve PaaS Mimari Şartnamesi (Nihai Master Spec)
+# Panely - Akıllı Sunucu Yönetimi ve Dağıtım Mimarisi Şartnamesi (Nihai Master Spec)
 
 Bu doküman; tekil/çoklu Linux sunucuları (Hetzner VPS vb.), ağ trafiği, veritabanları, güvenlik katmanları, yerel yapay zeka modelleri ve felaket senaryolarının uçtan uca yönetilmesi amacıyla geliştirilecek **Panely** platformunun en kapsayıcı teknik ve mimari şartnamesidir.
 
@@ -23,7 +23,7 @@ Bu doküman; tekil/çoklu Linux sunucuları (Hetzner VPS vb.), ağ trafiği, ver
 
 ---
 
-## 2. Kapsayıcı ve Uygulama Yaşam Döngüsü (PaaS Engine)
+## 2. Kapsayıcı ve Uygulama Yaşam Döngüsü (Dağıtım Motoru)
 
 ### 2.1. Uygulama Yayınlama ve Dağıtım
 * **Kesintisiz Yayınlama (Zero-Downtime / Blue-Green Deployment):** Yeni kod sürümleri canlıya alınırken, mevcut çalışan uygulama kopyası yeni kopya tamamen sağlıklı yanıt verene kadar trafiği karşılamaya devam eder.

@@ -2,7 +2,7 @@
 
 # Panely
 
-**A self-hosted PaaS control plane whose panel never runs as root.**
+**A self-hosted deployment platform whose control panel never runs as root.**
 
 [![CI](https://github.com/erkanrzgc/panely/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/panely/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/erkanrzgc/panely.svg)](https://pkg.go.dev/github.com/erkanrzgc/panely)
@@ -19,7 +19,7 @@
 ---
 
 > **Status: pre-release.** Phase 0 (the walking skeleton) is complete and has been
-> verified end-to-end on a real server. Phase 1 — the actual PaaS loop — is in
+> verified end-to-end on a real server. Phase 1 — the actual deployment loop — is in
 > progress. Do not run this in production yet.
 
 ---
@@ -239,6 +239,28 @@ systemd-analyze security panelyd            # target: exposure < 2.0
 go test ./internal/exec                     # every escape attempt must be rejected
 ```
 
+### Verbose logging
+
+All three binaries take `-debug`, or read `PANELY_DEBUG=1`. The environment
+variable exists because the server binaries are started by systemd, where
+adding a flag means editing a unit and reloading:
+
+```bash
+sudo systemctl set-environment PANELY_DEBUG=1 && sudo systemctl restart panelyd
+```
+
+**It is off by default and should stay that way outside of diagnosis.**
+`panelyd` and the executor handle container environment variables, request
+parameters, and caller identities. At debug level those reach the systemd
+journal, where anyone who can read `journalctl` can see them — outside the
+boundary [SECURITY.md](SECURITY.md) draws.
+
+Debug level never changes what is written to the audit chain. The two
+channels are deliberately separate: the chain records the same entry either
+way, and the flag only controls stderr detail. Wiring them together would
+let a switch flipped for troubleshooting write secrets into a permanent,
+hash-chained log.
+
 ---
 
 ## Roadmap
@@ -246,7 +268,7 @@ go test ./internal/exec                     # every escape attempt must be rejec
 | Phase | Scope | Status |
 |---|---|---|
 | **0** | Foundation: proto contract, store, audit chain, executor skeleton, SSH transport, bootstrap, Electron shell, CI | ✅ **done, verified on a real server** |
-| **1** | Core PaaS loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | 🔨 in progress — schema and validators landed |
+| **1** | Core deployment loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | 🔨 in progress — schema and validators landed |
 | 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | ⏳ |
 | 3 | Metrics, alerting, PTY bridge, file manager, editor | ⏳ |
 | 4 | Webhook receiver, deploy-on-push, cron manager | ⏳ |

@@ -860,3 +860,145 @@ yerelde de o koşulmalı. Liste `CONTRIBUTING.md` ve PR şablonuna eklendi;
 Adlandırma değişikliği davranışı etkilemiyor — `ContainerLogChunk` →
 `ContainerLogsResponse`, tek kullanıcısı `internal/exec/container.go`'daki
 akış imzası.
+
+---
+
+## K-031 — `restrict`, ortam değişkeni geçirmeyi KAPATMAZ
+
+`internal/sshenv` paketinin doküman yorumu şunu iddia ediyordu:
+
+> `restrict` seçeneği user-rc, X11 ve ortam geçirmeyi
+> (`PermitUserEnvironment`) kapatır
+
+İkinci yarısı yanlış. sshd(8), restrict'i şöyle tanımlıyor:
+
+> Enable all restrictions, i.e. disable port, agent and X11 forwarding, as
+> well as disabling PTY allocation and execution of ~/.ssh/rc.
+
+Ortam işleme bu listede yok. `environment="AD=deger"` seçeneğini kapatan
+şey ayrı bir sshd_config yönergesidir: `PermitUserEnvironment`.
+
+**Neden önemli?** panely-connect, denetim kaydının aktör kimliğini
+`SSH_AUTH_INFO_0`'dan okuyor. sshd(8) `environment=` için "override other
+default environment values" diyor — yani o seçenek açık olsaydı,
+authorized_keys'e yazılan bir satır sshd'nin KENDİ yazdığı parmak izini
+ezebilirdi. Denetim izi "kim yaptı" sorusuna yalan söylerdi.
+
+Gerçek koruma iki yerden geliyordu ve ikisi de sshd VARSAYILANIYDI:
+
+| Yol | Kapatan | Panely bunu pinliyor muydu? |
+|---|---|---|
+| `authorized_keys`'te `environment=` | `PermitUserEnvironment no` | Hayır — varsayılana güveniliyordu |
+| İstemcinin `SendEnv`'i | `AcceptEnv` (varsayılan: hiçbiri) | Hayır — varsayılana güveniliyordu |
+
+Yani model doğruydu ama **yanlış mekanizmaya atfediliyordu** ve hiçbir
+yerde zorlanmıyordu. Bir dağıtımın genel yapılandırması
+`PermitUserEnvironment yes` deseydi, `restrict` bunu geri almazdı.
+
+**Düzeltme.** `PermitUserEnvironment no` bootstrap'ın sshd drop-in'ine
+açıkça yazıldı. `AcceptEnv` BİLEREK yazılmadı: varsayılanı zaten
+"hiçbirini kabul etme" ve yönerge eklemeli çalıştığı için boş bir değerle
+sıfırlanamaz — yazılacak her isim yüzeyi yalnızca genişletirdi.
+
+**Düzeltme sırasında ikinci bir hata yakalandı.** `PermitUserEnvironment`
+ilk denemede `Match User panely-client` bloğunun İÇİNE konmuştu. O anahtar
+kelime sshd_config(5)'in Match içinde izin verdiği listede DEĞİL; sshd
+yapılandırmanın tamamını reddeder. install.sh yeniden yüklemeden önce
+`sshd -t` çalıştırdığı için sunucu kilitlenmezdi — ama bootstrap taze bir
+sunucuda ölürdü ve bunu ancak gerçek kurulumda görürdük.
+
+Bu yüzden `TestSSHDDropInKeywordsAreValidInTheirScope` yazıldı: Match
+sonrası satırların yalnızca Match'in izin verdiği alt kümeden olduğunu
+denetliyor. Mutasyonla doğrulandı — yönerge Match'in içine taşındığında
+test kırmızıya döndü.
+
+**Sınıf.** Bu, K-025 ve K-030 ile aynı aile: "yerelde çalışıyor" veya
+"varsayılan zaten doğru" ifadeleri, ölçülmediği sürece bilgi taşımıyor.
+Buradaki ek ders şu: bir yorumun güvenlik özelliğini DOĞRU mekanizmaya
+atfetmesi, özelliğin kendisi kadar önemli. Yanlış atıf, sonradan gelen
+birinin gerçek korumayı kaldırmasına zemin hazırlar.
+
+---
+
+## K-032 — Redaksiyon iddia ediliyordu, uygulanmıyordu
+
+`audit.Record.ParamsJSON` alanı şu yorumu taşıyordu:
+
+```go
+ParamsJSON string // sırlar redakte edilmiş hâlde
+```
+
+Kod tabanında redaksiyon yapan **hiçbir fonksiyon yoktu**. `grep -ri
+'redact'` üç sonuç veriyordu ve üçü de test dosyalarındaki `[REDACTED]`
+DİZGİ SABİTİYDİ — yani testler, içinde "[REDACTED]" geçen bir dizginin
+tur attığını doğruluyordu. Hiçbiri redaksiyonun gerçekleştiğini
+ölçmüyordu.
+
+**Neden henüz zarar vermemişti?** Tek gerçek yazma yeri
+`cmd/panelyd/main.go`'daki `daemon.start` kaydı ve o yalnızca sürüm
+numarası taşıyor. İddia, taşıması gereken yükle hiç karşılaşmamıştı.
+
+**Neden şimdi kritik hâle geldi?** Faz 1 dilim 1, şemaya
+`ContainerCreateRequest.env` alanını `map<string,string>` olarak ekledi.
+Sürücü dilimi bu haritayı denetime yazacak. Denetim zinciri
+EKLE-SADECE'dir ve kayıtlar hash'lenir: oraya bir kez düz metin parola
+yazılırsa **geri alınamaz** — silmek zinciri koparır.
+
+**Uygulama.** `internal/audit/redact.go`:
+
+| Fonksiyon | Politika | Kullanım |
+|---|---|---|
+| `RedactEnv` | **Varsayılan REDDET** — her değer gider, anahtar adları kalır | Konteyner ortam değişkenleri |
+| `RedactSensitive` | Seçici — yalnızca adı sır ima eden anahtarlar | Karışık parametreler |
+| `MarshalParams` | Belirlenimci JSON | Her ikisinin çıktısı |
+
+Ortam değişkenlerinde neden sezgisel kullanılmıyor: adlandırmayı kullanıcı
+seçiyor. `CONFIG` veya `SMTP_URL` masum görünür ve altında parola durabilir.
+Sezgisel yalnızca anahtar adlarını bizim ürettiğimiz parametrelerde
+güvenli.
+
+İşaret değerin UZUNLUĞUNU da gizler: `"a"` ve 4096 baytlık bir anahtar aynı
+`[REDACTED]`'a dönüşür. Uzunluk tek başına bilgidir.
+
+**Ölçüm.** İki yönde de mutasyon uygulandı:
+
+| Mutasyon | Sonuç |
+|---|---|
+| `RedactEnv` değerleri olduğu gibi bırakıyor | `TestRedactEnvRemovesEveryValue` KIRMIZI — "hunter2" sızdı |
+| `IsSensitiveKey` her zaman `true` | `TestIsSensitiveKeyLeavesOrdinaryNames` KIRMIZI — PORT, HOST, LANG sır sayıldı |
+
+İkinci mutasyon önemli: pozitif kontrol olmadan `return true` yazan bir
+uygulama "hiçbir sır sızmıyor" testini geçerdi ve denetim kaydını tamamen
+okunmaz hâle getirirdi. Redaksiyonda her iki yön de yanlış olabilir.
+
+**Kural.** Bir alanın yorumu bir güvenlik özelliği iddia ediyorsa, o
+özelliği zorlayan bir fonksiyon ADIYLA anılmalı. "Çağıran dikkat etsin"
+demek yeterli değil — ama en azından dürüst; sessizce doğru varsaymak
+değil.
+
+---
+
+## K-033 — Debug kipi: yetenek evet, varsayılan hayır
+
+`panely-exec` günlük seviyesini `slog.LevelInfo` olarak SABİT tutuyordu;
+`panelyd`'de `-debug` bayrağı vardı. Ayrıntılı günlük sunucuda hiç
+açılamıyordu — çünkü systemd'nin başlattığı bir binary'ye bayrak eklemek
+unit dosyasını düzenleyip `daemon-reload` yapmayı gerektiriyor.
+
+`internal/logutil` üç binary için tek kural koydu: `-debug` bayrağı VEYA
+`PANELY_DEBUG=1` ortam değişkeni. Ortam değişkeni, `systemctl
+set-environment` veya bir drop-in ile bayraktan çok daha kısa bir yol.
+
+**Varsayılan KAPALI ve öyle kalacak.** Gerekçe üslup değil güvenlik:
+panelyd ve executor konteyner ortam değişkenlerini, istek parametrelerini
+ve çağıran kimliklerini işliyor. Debug varsayılan açık olsaydı bunlar
+systemd journal'ına düşerdi ve `journalctl` okuyabilen herkes görürdü —
+SECURITY.md'de çizilen sınırın dışına taşardı.
+
+**Debug, denetim kaydına yazılanı DEĞİŞTİRMEZ.** İki kanal ayrı tutuldu:
+denetim zinciri ne olursa olsun aynı kaydı tutar, bayrak yalnızca stderr'e
+giden ayrıntıyı belirler. Bağlamak, tanılama için açılan bir anahtarın
+kalıcı ve hash'li kayda sır yazmasına yol açardı.
+
+Tanınmayan değerler KAPALI sayılır: `PANELY_DEBUG=hayir` yazan biri kapalı
+bekler. "Boş değilse aç" mantığı bunu sessizce açardı.

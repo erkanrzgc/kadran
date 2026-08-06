@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🔒 Security vulnerability
+    url: https://github.com/erkanrzgc/panely/security/advisories/new
+    about: Never report security issues publicly. Use private advisories — see SECURITY.md.
+  - name: 💬 Question or idea
+    url: https://github.com/erkanrzgc/panely/discussions
+    about: For open-ended questions and design discussion.
+  - name: ☕ Support the project
+    url: https://ko-fi.com/erkanrzgc
+    about: Panely is built by one person in the open.

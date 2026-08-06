@@ -1,0 +1,52 @@
+name: ✨ Feature request
+description: Propose a capability or change in direction.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the roadmap in the README first — many things are planned but not yet built.
+
+        Two proposals will be declined regardless of quality: **a web panel** (it
+        reintroduces the browser attack surface the architecture removes) and anything
+        that gives `panelyd` direct Docker access.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not the solution you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Panely to do?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: privileged
+    attributes:
+      label: Would this require new privileged capability?
+      description: New Docker operations, filesystem writes, or network access from panely-exec.
+      options:
+        - "No — it stays within the existing executor schema"
+        - "Yes — it needs a new privileged RPC"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: threat
+    attributes:
+      label: If privileged — what would a compromised panelyd do with it?
+      description: |
+        This is the question `exec.proto` asks of every field. A convincing answer is
+        the difference between a proposal that can be accepted and one that cannot.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

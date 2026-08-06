@@ -1,0 +1,77 @@
+name: 🐞 Bug report
+description: Something behaves incorrectly. For security issues, use SECURITY.md instead.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **If this crosses a privilege boundary — the daemon reaching Docker, escaping
+        the executor schema, bypassing the forced command, forging the audit chain —
+        stop and report it privately.** See [SECURITY.md](../blob/main/SECURITY.md).
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - panelyd (server daemon)
+        - panely-exec (privileged executor)
+        - panely-connect (forced-command proxy)
+        - panely (CLI / sidecar)
+        - Desktop app (Electron)
+        - bootstrap / systemd units
+        - Build, CI, or tooling
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit SHA
+      placeholder: "f2e3040, or output of `panely version`"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Server OS and architecture
+      placeholder: "Ubuntu 24.04, x86_64 — or N/A if client-side"
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+      description: Paste exact output. Redact IPs, key fingerprints, and secrets.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. panely bootstrap root@...
+        2. panely status panely-client@...
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: |
+        Useful commands — remember that `cmd | tail` reports tail's exit status, not the command's.
+        `journalctl -u panelyd -n 100 --no-pager`
+        `journalctl -u panely-exec -n 100 --no-pager`
+        `systemctl status panelyd panely-exec`
+      render: shell

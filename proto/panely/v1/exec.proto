@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package panely.v1;
 
+import "google/protobuf/timestamp.proto";
 import "panely/v1/common.proto";
 
 option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1";
@@ -56,36 +57,255 @@ service ExecutorService {
   // panelyd bunu kendi zinciriyle karşılaştırmak için okur.
   rpc ReadAuditJournal(ReadAuditJournalRequest) returns (ReadAuditJournalResponse);
 
-  // ── Faz 1'de eklenecek yetenekler ───────────────────────────────
+  // ── Konteyner yaşam döngüsü (Faz 1, dilim 1) ────────────────────
+  //
+  // Bu RPC'lerin HİÇBİRİ konteyner kimliği almaz. Adresleme daima
+  // (app_id, release_id[, replica]) üçlüsüyledir ve executor bunu kendi
+  // etiketlerine çevirerek çözer. Gerekçe için aşağıdaki ContainerRef'e
+  // bakınız.
+
+  // NetworkEnsure, uygulamaya ait iç ağı oluşturur (varsa dokunmaz).
+  rpc NetworkEnsure(NetworkEnsureRequest) returns (NetworkEnsureResponse);
+
+  // ContainerCreate, tek bir replika konteyner oluşturur. Başlatmaz.
+  rpc ContainerCreate(ContainerCreateRequest) returns (ContainerCreateResponse);
+
+  // ContainerStart, seçilen konteynerleri başlatır.
+  rpc ContainerStart(ContainerStartRequest) returns (ContainerStartResponse);
+
+  // ContainerStop, seçilen konteynerleri nazikçe durdurur.
+  rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
+
+  // ContainerRemove, seçilen konteynerleri durdurur ve siler.
+  rpc ContainerRemove(ContainerRemoveRequest) returns (ContainerRemoveResponse);
+
+  // ContainerList, Panely'nin yönettiği konteynerleri sayar. Salt okunur.
+  rpc ContainerList(ContainerListRequest) returns (ContainerListResponse);
+
+  // ContainerLogs, bir replikanın çıktısını akıtır.
+  rpc ContainerLogs(ContainerLogsRequest) returns (stream ContainerLogChunk);
+
+  // ── Sonraki dilimlere bırakılanlar ──────────────────────────────
   //
   //   rpc ImageBuild(ImageBuildRequest) returns (stream BuildEvent);
-  //   rpc ContainerCreate(ContainerCreateRequest) returns (...);
-  //   rpc ContainerStart / Stop / Remove / Logs
-  //   rpc NetworkEnsure(NetworkEnsureRequest) returns (...);
   //
-  // ContainerCreateRequest'in taslak şekli (kural 2 ve 3'ün somut hâli):
-  //
-  //   message ContainerCreateRequest {
-  //     string app_id           = 1;  // hacim ve ad alanlarını kapsar
-  //     string release_id       = 2;
-  //     string image            = 3;  // yalnızca izinli registry'lerden
-  //     repeated string command = 4;  // argv — konteyner İÇİNDE, kabuk yok
-  //     map<string,string> env  = 5;  // kasa tarafından çözülmüş değerler
-  //     ResourceLimits limits   = 6;  // sıfır değer kabul edilmez
-  //     repeated VolumeMount volumes = 7;  // HOST YOLU YOK
-  //     uint32 container_port   = 8;
-  //   }
-  //
-  //   message VolumeMount {
-  //     string volume_name   = 1;  // [a-z0-9-]{1,64}, app_id ile kapsanır
-  //     string container_path = 2; // mutlak, ".." içeremez
-  //     bool read_only       = 3;
-  //   }
-  //
-  // Executor gerçek yolu şöyle kurar ve başka hiçbir yol kabul etmez:
-  //   /var/lib/panely/volumes/<app_id>/<volume_name>
+  // ImageBuild kasten ertelendi: derleme bağlamını KİMİN çektiği henüz
+  // kararlaştırılmadı. panelyd'nin birimi `RestrictAddressFamilies=AF_UNIX`
+  // taşıdığı için git deposunu çekemez; executor çekerse git URL'i root
+  // koduna ulaşır ve git URL'leri (`ext::sh -c`, `--upload-pack=`)
+  // K-024'teki argüman enjeksiyonuyla aynı sınıftır. Bu soru şemayı
+  // değiştirir, dolayısıyla şemayla birlikte kapatılamaz.
   //
   // ─────────────────────────────────────────────────────────────────
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  ADRESLEME
+// ════════════════════════════════════════════════════════════════════
+
+// ReleaseRef, bir uygulamanın tek bir sürümünü adlandırır.
+//
+// Kısıtlar (executor zorlar):
+//   app_id     : ^[a-z][a-z0-9-]{0,31}$
+//   release_id : ^[a-z0-9]{1,64}$
+//
+// Karakter kümesi nokta ve eğik çizgi içermez; bu yüzden bu değerlerden
+// üretilen hiçbir yol dizin dışına çıkamaz. Doğrulanan değil, temsil
+// edilemeyen kaçış.
+message ReleaseRef {
+  string app_id = 1;
+  string release_id = 2;
+}
+
+// ContainerRef, tek bir replikayı adlandırır.
+//
+// ── Neden konteyner kimliği (container_id) YOK ──────────────────────
+//
+// Serbest bir konteyner tutamağı, hostta çalışan HERHANGİ bir konteynere
+// root seviyesinde işaretçidir — Panely'nin yönetmediklerine de. Ele
+// geçirilmiş bir panelyd, `ContainerRemove(id)` ile veritabanı
+// konteynerini ya da başka bir kullanıcının işini silebilirdi.
+//
+// Bunun yerine executor, isteği kendi etiketlerine çevirir:
+//
+//   panely.app_id=<app_id>
+//   panely.release_id=<release_id>
+//   panely.replica=<replica>
+//
+// ve YALNIZCA bu etiketleri taşıyan konteynerlere dokunur. Panely'nin
+// oluşturmadığı bir konteyner bu şemayla adreslenemez.
+message ContainerRef {
+  ReleaseRef release = 1;
+  // 0'dan başlayan replika sırası.
+  uint32 replica = 2;
+}
+
+// ContainerSelector, bir sürümün konteynerlerini seçer.
+//
+// `replica` verilmezse sürümün TÜM replikaları seçilir. Sürüm düzeyi
+// varsayılandır, replika düzeyi daraltmadır — tersi değil. Sebep:
+// panelyd replika sayımını kaybederse (dağıtım ortasında çökme, kayıt
+// düşmesi) yine de sürümün tamamını toplayabilmelidir. Yalnızca
+// replika bazlı silme olsaydı, sayımı bilinmeyen bir sürüm şemayla
+// adreslenemez hâle gelir ve öksüz konteyner belleği tüketirdi.
+message ContainerSelector {
+  ReleaseRef release = 1;
+  optional uint32 replica = 2;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  AĞ
+// ════════════════════════════════════════════════════════════════════
+
+message NetworkEnsureRequest {
+  string app_id = 1;
+}
+
+message NetworkEnsureResponse {
+  // Executor'ın kurduğu ad: "panely-<app_id>". İstemci ağ adı SEÇEMEZ;
+  // seçebilseydi mevcut bir ağa (ör. bir veritabanının ağına) bağlanmak
+  // mümkün olurdu.
+  string network_name = 1;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  KONTEYNER OLUŞTURMA
+// ════════════════════════════════════════════════════════════════════
+
+// VolumeMount, uygulama kapsamlı bir hacmi konteyner içine bağlar.
+//
+// HOST YOLU ALANI YOKTUR. Yol alıp doğrulamak TOCTOU'ya açıktır:
+// doğrulama ile kullanım arasında sembolik bağ değiştirilebilir. Girdiyi
+// hiç almamak kategorik olarak daha güçlüdür.
+message VolumeMount {
+  // ^[a-z0-9][a-z0-9-]{0,63}$ — app_id ile kapsanır.
+  // Executor gerçek yolu kurar ve başkasını kabul etmez:
+  //   /var/lib/panely/volumes/<app_id>/<volume_name>
+  string volume_name = 1;
+
+  // Konteyner İÇİNDEKİ bağlama noktası. Mutlak olmalı, temiz olmalı
+  // (`path.Clean(p) == p`), "/" olamaz, `/proc` `/sys` `/dev` altına
+  // düşemez ve aynı istekteki başka bir bağlama noktasını kapsayamaz.
+  string mount_path = 2;
+
+  bool read_only = 3;
+}
+
+message ContainerCreateRequest {
+  ContainerRef ref = 1;
+
+  // ── İmaj alanı YOKTUR; executor KURAR ─────────────────────────────
+  //
+  // Etiket `panely/<app_id>:<commit_sha>` olarak üretilir. Serbest bir
+  // imaj alanı, ele geçirilmiş panelyd'nin keyfî bir imajı çekip
+  // çalıştırmasına izin verirdi — beyaz listenin tamamını anlamsız kılan
+  // tek alan budur.
+  //
+  // ⚠ release_id ↔ commit_sha bağı bir DAEMON değişmezidir, executor
+  // değişmezi DEĞİLDİR. Executor'ın veritabanı yoktur; R sürümünün
+  // gerçekten X commit'ine karşılık geldiğini doğrulayamaz. Ele
+  // geçirilmiş bir panelyd, konteyneri `release=R` etiketleyip başka bir
+  // commit'in imajını çalıştırabilir ve bu, geri almayı sessizce bozar.
+  // Executor ikisini de kendi günlüğüne yazar; böylece sapma sonradan
+  // denetim zincirlerinin karşılaştırılmasıyla YAKALANABİLİR.
+  string commit_sha = 2;
+
+  // Kasa tarafından çözülmüş ortam değişkenleri.
+  map<string, string> env = 3;
+
+  // Sıfır değer KABUL EDİLMEZ — limitsiz konteyner yoktur.
+  ResourceLimits limits = 4;
+
+  repeated VolumeMount volumes = 5;
+
+  // Uygulamanın konteyner içinde dinlediği port. Host'a yayınlanmaz;
+  // yalnızca uygulama ağı üzerinden Caddy'ye açılır. Host portu
+  // seçilebilseydi ayrıcalıklı portlar (<1024) hedeflenebilirdi.
+  uint32 container_port = 6;
+}
+
+message ContainerCreateResponse {
+  // İstek yankılanır. Konteyner kimliği DÖNMEZ: dönseydi, sonraki bir
+  // RPC'nin onu kabul etmesi kaçınılmaz bir "kolaylık" olurdu.
+  ContainerRef ref = 1;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  YAŞAM DÖNGÜSÜ
+// ════════════════════════════════════════════════════════════════════
+
+message ContainerStartRequest {
+  ContainerSelector selector = 1;
+}
+
+message ContainerStartResponse {
+  uint32 affected = 1;
+}
+
+message ContainerStopRequest {
+  ContainerSelector selector = 1;
+  // SIGTERM ile SIGKILL arasındaki süre. 0 ise executor varsayılanı.
+  uint32 timeout_seconds = 2;
+}
+
+message ContainerStopResponse {
+  uint32 affected = 1;
+}
+
+message ContainerRemoveRequest {
+  ContainerSelector selector = 1;
+}
+
+message ContainerRemoveResponse {
+  uint32 affected = 1;
+}
+
+// ContainerListRequest, yönetilen konteynerleri sayar.
+//
+// `app_id` BOŞ bırakılabilir; o zaman `panely.app_id` etiketi taşıyan
+// TÜM konteynerler dönülür. Bu kasıtlıdır: panelyd bir uygulama kaydını
+// tamamen kaybederse (kayıt düşmesi, elle silme) o uygulamanın adını
+// bilemez ve konteynerlerini bir daha adresleyemezdi. Salt okunur ve
+// Panely'nin kendi etiketiyle sınırlıdır.
+message ContainerListRequest {
+  string app_id = 1;
+}
+
+message ContainerListResponse {
+  repeated ManagedContainer containers = 1;
+}
+
+message ManagedContainer {
+  ContainerRef ref = 1;
+  ContainerState state = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+enum ContainerState {
+  CONTAINER_STATE_UNSPECIFIED = 0;
+  CONTAINER_STATE_CREATED = 1;
+  CONTAINER_STATE_RUNNING = 2;
+  CONTAINER_STATE_PAUSED = 3;
+  CONTAINER_STATE_RESTARTING = 4;
+  CONTAINER_STATE_EXITED = 5;
+  CONTAINER_STATE_DEAD = 6;
+  CONTAINER_STATE_REMOVING = 7;
+}
+
+message ContainerLogsRequest {
+  ContainerRef ref = 1;
+  // Geçmişten kaç satır. 0 ise yalnızca yeni satırlar.
+  uint32 tail_lines = 2;
+  // Akışı açık tut.
+  bool follow = 3;
+  // Bu andan sonrası. Boşsa sınır yok.
+  google.protobuf.Timestamp since = 4;
+}
+
+message ContainerLogChunk {
+  bytes data = 1;
+  // Docker akışları ayırır; istemci stderr'i farklı gösterebilsin.
+  bool is_stderr = 2;
 }
 
 message ExecutorServicePingRequest {}

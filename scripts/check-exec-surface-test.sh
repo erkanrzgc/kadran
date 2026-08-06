@@ -54,31 +54,56 @@ EOF
 bash "$CHECKER" "$WORK/yorumlu.proto" >/dev/null 2>&1
 expect "yorumdaki örnekler yanlış alarm üretmiyor" 0 $?
 
-# ── 3. Gerçek yasak alan YAKALANMALI ─────────────────────────────────
-cat > "$WORK/privileged.proto" <<'EOF'
+# ── 3. YASAK LİSTEDEKİ HER ALAN YAKALANMALI ──────────────────────────
+#
+# Liste elle kopyalanmaz; kontrolün kendisinden okunur. Böylece listeye
+# eklenen bir desenin kanıtsız kalması imkânsızdır — daha önce iki kez
+# bedeli ödenen "hiç ateşlenmeyen kontrol" sınıfı budur.
+mapfile -t forbidden < <(bash "$CHECKER" --list-forbidden)
+
+if [[ ${#forbidden[@]} -eq 0 ]]; then
+    echo "  ✗ yasak alan listesi boş — test bir şey ölçmüyor" >&2
+    fail=1
+fi
+
+for field in "${forbidden[@]}"; do
+    cat > "$WORK/tek.proto" <<EOF
 syntax = "proto3";
 package panely.v1;
 
 message ContainerCreateRequest {
-  string image = 1;
-  bool privileged = 2;
+  string app_id = 1;
+  string ${field} = 2;
 }
 EOF
-bash "$CHECKER" "$WORK/privileged.proto" >/dev/null 2>&1
-expect "privileged alanı yakalandı" 1 $?
+    bash "$CHECKER" "$WORK/tek.proto" >/dev/null 2>&1
+    expect "yasak alan yakalandı: $field" 1 $?
+done
 
-# ── 4. cap_add YAKALANMALI ───────────────────────────────────────────
-cat > "$WORK/capadd.proto" <<'EOF'
+# ── 4. Alan tanımının HER ŞEKLİ yakalanmalı ──────────────────────────
+#
+# 3. adım her alanı yalnızca `string <ad>` şeklinde sınıyor. Asıl risk
+# TİP kısmında: `map<...>` ve `optional` etiketi deseni kırıyordu ve
+# ikisi de gerçek şemada kullanılıyor.
+shape_case() {
+    local name="$1" line="$2"
+    cat > "$WORK/sekil.proto" <<EOF
 syntax = "proto3";
 package panely.v1;
 
 message ContainerCreateRequest {
-  string image = 1;
-  repeated string cap_add = 2;
+  string app_id = 1;
+  ${line}
 }
 EOF
-bash "$CHECKER" "$WORK/capadd.proto" >/dev/null 2>&1
-expect "cap_add alanı yakalandı" 1 $?
+    bash "$CHECKER" "$WORK/sekil.proto" >/dev/null 2>&1
+    expect "$name" 1 $?
+}
+
+shape_case "düz tip: bool privileged"          "bool privileged = 2;"
+shape_case "repeated: repeated string cap_add" "repeated string cap_add = 2;"
+shape_case "map tipi: map<string,string> sysctls" "map<string, string> sysctls = 2;"
+shape_case "optional etiketi: optional bool privileged" "optional bool privileged = 2;"
 
 # ── 5. Serbest argv YAKALANMALI ──────────────────────────────────────
 cat > "$WORK/argv.proto" <<'EOF'

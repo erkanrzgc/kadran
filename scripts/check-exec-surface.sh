@@ -14,10 +14,49 @@
 #
 # Kullanım:
 #   scripts/check-exec-surface.sh [exec.proto yolu]
+#   scripts/check-exec-surface.sh --list-forbidden
 
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# forbidden_fields — ŞEMADA TEMSİL EDİLEMEYECEK alan adları.
+#
+# Bu seçeneklerin temsil edilememesi, doğrulanmasından daha güçlü bir
+# garantidir: temsil edilemeyen bir şey kazara kabul edilemez.
+#
+# Liste betiğin en üstündedir çünkü `--list-forbidden` ile dışa verilir ve
+# check-exec-surface-test.sh her bir öğe için ayrı bir kanıt üretir. Böylece
+# listeye eklenen bir desenin kanıtsız kalması MÜMKÜN DEĞİLDİR — ateşlenmeyen
+# bir kontrol, hiç olmayandan kötüdür.
+forbidden_fields=(
+    # Ayrıcalık yükseltme
+    privileged
+    cap_add
+    capabilities
+    security_opt
+    devices
+    sysctls
+    # Ad alanı kaçışı
+    host_network
+    host_pid
+    host_ipc
+    network_mode
+    pid_mode
+    ipc_mode
+    userns_mode
+    cgroup_parent
+    # Serbest tutamaç: hostta Panely'nin yönetmediği nesnelere işaretçi
+    container_id
+    image
+    host_path
+)
+
+if [[ "${1:-}" == "--list-forbidden" ]]; then
+    printf '%s\n' "${forbidden_fields[@]}"
+    exit 0
+fi
+
 SCHEMA="${1:-$REPO_ROOT/proto/panely/v1/exec.proto}"
 
 # MAX_EXEC_LINES, ayrıcalıklı kodun üst sınırıdır.
@@ -65,22 +104,23 @@ fi
 
 echo
 echo "==> Şemada yasak alanlar"
-# Bu seçeneklerin ŞEMADA temsil edilememesi, doğrulanmasından daha güçlü
-# bir garantidir: temsil edilemeyen bir şey kazara kabul edilemez.
-forbidden_fields=(
-    privileged
-    cap_add
-    capabilities
-    host_network
-    host_pid
-    host_ipc
-    security_opt
-    devices
-    sysctls
-)
+# Alan tanımı: "[etiket] <tip> <ad> = <numara>;"
+#
+# Tip kısmı üç şekli de kapsamalıdır, yoksa kontrol sessizce boşa düşer:
+#
+#   bool privileged = 1;                 → düz tip
+#   map<string,string> sysctls = 2;      → `map` sonrası `<` geliyor; eski
+#                                          desen `[A-Za-z0-9_.]+` ile eşleşip
+#                                          boşluk beklediği için KAÇIRIYORDU
+#   optional bool privileged = 3;        → `optional`ı tip sanıp asıl tipte
+#                                          takılıyordu; KAÇIRIYORDU
+#
+# İkisi de teorik değil: şemada artık `optional uint32 replica` ve
+# `map<string,string> env` var, yani her iki şekil de gerçekten kullanılıyor.
+field_type='(map<[^>]*>|[A-Za-z0-9_.]+)'
+field_label='((repeated|optional)[[:space:]]+)?'
 for field in "${forbidden_fields[@]}"; do
-    # Alan tanımı: "<tip> <ad> = <numara>;"
-    if grep -Eqi "^[[:space:]]*(repeated[[:space:]]+)?[A-Za-z0-9_.]+[[:space:]]+${field}[[:space:]]*=[[:space:]]*[0-9]+" \
+    if grep -Eqi "^[[:space:]]*${field_label}${field_type}[[:space:]]+${field}[[:space:]]*=[[:space:]]*[0-9]+" \
         <<<"$schema_body"; then
         note_failure "exec.proto içinde yasak alan: $field"
     fi

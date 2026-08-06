@@ -727,3 +727,103 @@ süre sınırı dolarsa öldürülüyor. İki test bunu iki yönden kilitliyor:
 
 İkincisi olmadan birincisi "süreci hiç öldürme" diyerek de geçerdi ve her
 bağlantı arkada asılı bir ssh bırakırdı.
+
+---
+
+## K-029 — Faz 1'in ilk dilimi: şema, sürücü değil
+
+Faz 1'in sekiz maddesi tek pushta yapılsaydı CI kızardığında sebebi ayırt
+etmek imkânsız olurdu. İlk dilim **yalnızca sözleşmedir**: konteyner yaşam
+döngüsü RPC'leri, doğrulayıcılar, kaçış testleri ve doğrulayıp
+`Unimplemented` dönen handler'lar. Docker'a dokunan tek satır yok.
+
+Gerekçe sıralamada: şema güvenlik sınırının kendisi. Önce sabitlenirse
+sürücü onu kazara genişletemez. Ters sırada yazılsaydı sürücünün ihtiyaç
+duyduğu her alan şemaya "geçici olarak" eklenir ve beyaz liste erirdi.
+
+### Şemadaki üç karar
+
+**1. `container_id` kabul edilmez.** Serbest konteyner tutamağı, hostta
+çalışan HERHANGİ bir konteynere root seviyesinde işaretçidir. Adresleme
+`(app_id, release_id[, replica])` üçlüsüyle; executor bunu kendi
+`panely.app_id=` etiketine çevirip yalnızca kendi konteynerlerine dokunur.
+
+Bunun doğurduğu yükümlülük: **etiketle adreslenen her konteyner sayılabilir
+ve silinebilir olmalı.** Aksi hâlde dağıtım ortasında çöken panelyd, bir
+daha adresleyemeyeceği öksüz konteyner bırakırdı. Bu yüzden
+`ContainerRemove` varsayılan olarak SÜRÜM düzeyindedir (replika daraltma),
+ve `ContainerList` yalnızca `app_id` alır — hatta boş `app_id` ile
+Panely'nin yönettiği tüm konteynerleri döner. Uygulama kaydı tamamen
+kaybolsa bile temizlik yolu kapanmıyor.
+
+**2. `image` alanı yok, etiket KURULUR.** `panely/<app_id>:<commit_sha>`.
+Serbest imaj alanı, beyaz listenin tamamını anlamsız kılan tek alandı.
+`commit_sha` yalnızca hex; `:` veya `/` girseydi etiket başka bir imaja
+kayabilirdi.
+
+⚠ `release_id ↔ commit_sha` bağı bir **daemon** değişmezidir. Executor'ın
+veritabanı yok; R sürümünün X commit'ine karşılık geldiğini doğrulayamaz.
+Ele geçirilmiş panelyd konteyneri `release=R` etiketleyip başka bir imaj
+çalıştırabilir ve geri almayı sessizce bozar. Executor ikisini de günlüğe
+yazıyor; sapma sonradan yakalanabilir. Bu, proto yorumunda açıkça yazılı —
+okuyanın executor'ın zorladığını sanmaması için.
+
+**3. Host yolu hiç temsil edilmez.** Yalnızca hacim adı. `mount_path`
+konteyner içi ve `path.Clean(p) == p` şartına tabi: bu tek kontrol `..`,
+`//`, `/a/./b` ve sondaki `/` durumlarını birlikte eler. Elenmeselerdi aynı
+yeri gösteren iki farklı yazım, çakışma kontrolünü atlatırdı.
+
+### Yüzey denetçisinde iki gerçek boşluk kapandı
+
+Yasak alan deseni `[A-Za-z0-9_.]+` ile tip eşleştiriyordu ve **iki şekli
+kaçırıyordu**:
+
+| Alan tanımı | Eski desen | Yeni desen |
+|---|---|---|
+| `bool privileged = 1;` | YAKALAR | YAKALAR |
+| `map<string,string> sysctls = 2;` | **KAÇIRIR** | YAKALAR |
+| `optional bool privileged = 3;` | **KAÇIRIR** | YAKALAR |
+
+İkisi de teorik değildi: bu dilim şemaya `map<string,string> env` ve
+`optional uint32 replica` soktu, yani her iki şekil de artık gerçekten
+kullanılıyor. Boşluk grep ile doğrudan ölçüldü (yukarıdaki tablo o ölçümün
+çıktısı), sonra kapatıldı.
+
+Yasak liste artık `--list-forbidden` ile dışa veriliyor ve test betiği her
+öğe için ayrı kanıt üretiyor. **Kanıtsız desen eklemek yapısal olarak
+imkânsız.** 17 desen, 17 kanıt, artı dört şekil kanıtı.
+
+### Testlerin ateşlediği ölçüldü
+
+Üç mutasyon uygulandı, üçü de yakalandı:
+
+| Mutasyon | Sonuç |
+|---|---|
+| `path.Clean` kontrolü kaldırıldı | `/var/./lib` ve `/var/lib/app/..` kabul edildi → FAIL |
+| Çakışma kontrolü kaldırıldı | iç içe bağlamalar kabul edildi → FAIL |
+| `ContainerCreate` doğrulamayı atladı | kötü istek `Unimplemented` aldı → FAIL |
+
+Üçüncüsü en önemlisi: diğer testlerin hepsi doğrulayıcıları DOĞRUDAN
+çağırıyor, yani handler onları hiç çağırmasa da geçerlerdi.
+`TestHandlersValidateBeforeAnythingElse` tam olarak o boşluğu kapatıyor —
+kötü istek `InvalidArgument`, iyi istek `Unimplemented` almalı.
+
+### Sürücü dilimine devredilen yükümlülükler
+
+Doğrulayıcının sağlayamayacağı, çalışma anında verilen kararlar
+`internal/exec/container.go` başında yazılı:
+
+1. **İmaj asla çekilmez.** `panely/<app>:<sha>` kayıtsız bir addır; Docker
+   çözemezse `docker.io/panely/<app>` olarak yorumlar. Engine API'nin
+   `POST /containers/create` ucu kendiliğinden çekmiyor (404 dönüyor) —
+   sürücü buna yaslanmalı, hiçbir yola pull koymamalı.
+2. Ağ adı `panely-<app_id>` olarak kurulur, istekten alınmaz.
+3. Hacimler `nodev,nosuid` ile bağlanmalı.
+4. Etiket eşleşmesi tam olmalı.
+
+`ImageBuild` kasten bu dilimde YOK: derleme bağlamını kimin çektiği
+kararlaştırılmadı. panelyd'nin birimi `RestrictAddressFamilies=AF_UNIX`
+taşıdığı için git çekemez; executor çekerse git URL'i root koduna ulaşır ve
+`ext::sh -c` / `--upload-pack=` K-024'le aynı sınıftır.
+
+Ayrıcalıklı kod: **1242 / 2000 satır.**

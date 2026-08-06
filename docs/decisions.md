@@ -1593,3 +1593,73 @@ bölümün ✓ satırını yutuyordu: tarama geçmesine rağmen çıktıda hiçb
 görünmüyordu. Geçtiğini söylemeyen bir güvenlik kontrolü, okuyana "koştu
 mu, kaldı mı?" sorusu bırakır. Bölüm-yerel sayaca çevrildi (hemen
 altındaki argv bölümü zaten doğru deseni kullanıyordu).
+
+---
+
+## K-041 — Docker API sürümü sabitlenemez; pencere kayıyor
+
+Sürücü `apiVersion = "v1.51"` ile yazıldı — geliştirme sunucusundaki
+Docker 29.1.3'e bakılarak. CI ilk koşuda reddetti:
+
+```
+HTTP 400: client version 1.51 is too new.
+          Maximum supported API version is 1.48
+```
+
+Daemon, kendinden YENİ sürüm isteyen istemciyi tümden reddediyor. Yani o
+pin yalnızca CI'ı değil, **Docker'ı biraz eski olan her sunucuda Panely'yi
+tamamen çalışmaz** kılardı — ve bu ancak o sunucuda ortaya çıkardı.
+
+Uyum için `v1.41`'e düşürüldü (Docker 20.10, 2020). Bu sefer **sunucu**
+reddetti:
+
+```
+HTTP 400: client version 1.41 is too old.
+          Minimum supported API version is 1.44
+```
+
+### İki host, zıt kısıt
+
+| | min | maks |
+|---|---|---|
+| CI runner'ı | 1.24 | **1.48** |
+| Docker 29.1.3 | **1.44** | 1.52 |
+
+Desteklenen aralık bir **pencere** ve o pencere **kayıyor**: Docker tabanı
+bir kez 1.24'ten 1.44'e çekti. Sabit bir pin bugün çalışsa da ileride bir
+hostta kırılır ve arıza kısmi değil **toplam** olur — her istek reddedilir.
+
+### Çözüm: uzlaşma, sabitleme değil
+
+Sürüm ilk kullanımda uzlaşılıyor: daemon'ın bildirdiği
+`[MinAPIVersion, ApiVersion]` ile bizim sınandığımız `[1.44, 1.48]`
+kesiştirilip **ortak en yüksek** sürüm seçiliyor.
+
+Sabitlemenin ASIL gerekçesi korunuyor — sürümsüz istek daemon'ın en
+yenisine düşer ve alan anlamları sürümler arasında değişebilir. Uzlaşma
+bunu bozmuyor: sürüm yine bağlantı başına **sabit**, yalnızca hangisi
+olduğu ölçülerek belirleniyor ve **bizim üst sınırımızı aşamıyor**
+(sınanmamış sürüme çıkılmaz). Örtüşme yoksa **hata** — sessizce sürümsüz
+isteğe düşülmüyor.
+
+Sürüm karşılaştırması sayısal; sözlüksel olsaydı `"1.9" > "1.48"` derdi ve
+uzlaşma sessizce yanlış sürüm seçerdi. Ayrıca test edildi.
+
+### Asıl ders: E2E adımı hiçbir şey sınamadan YEŞİL geçti
+
+Bundan daha önemlisi bu. Testler Ping başarısız olunca `t.Skip` çağırıyordu;
+sürüm uyuşmazlığı yüzünden **hepsi atlandı ve adım başarılı raporlandı.**
+
+Sorunu yakalayan şey asıl test değil, tesadüfen eklenmiş ayrı bir **tuzak
+adımıydı** (sertleştirme kaldırılınca testin ateşlediğini doğrulayan adım).
+O adım olmasaydı sürücü "gerçek Docker'da doğrulandı" sanılarak
+yayınlanacaktı.
+
+`PANELY_E2E_REQUIRE_DOCKER=1` verildiğinde atlama hakkı kalkıyor ve atlama
+**başarısızlık** sayılıyor. CI bunu veriyor: orada Docker var, dolayısıyla
+atlamak bir arızadır.
+
+**Kural:** bağımlılığın var olduğu GARANTİ edilen ortamda `t.Skip`
+yasaktır. Atlanan test ile geçen testi ayırt edemeyen bir kontrol, yeşil
+rozetten başka bir şey üretmez — bu projede aynı sınıfın kaçıncı tekrarı
+olduğu artık sayılmıyor.

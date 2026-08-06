@@ -104,12 +104,24 @@ func SystemActor(origin string) Actor {
 
 // Record, zincirdeki tek bir halkadır.
 type Record struct {
-	Seq        uint64
-	TS         time.Time
-	Actor      Actor
-	Action     string // "app.deploy", "container.create", ...
-	Target     string // "app/blog", "volume/blog-data", ...
-	ParamsJSON string // sırlar redakte edilmiş hâlde
+	Seq    uint64
+	TS     time.Time
+	Actor  Actor
+	Action string // "app.deploy", "container.create", ...
+	Target string // "app/blog", "volume/blog-data", ...
+	// ParamsJSON, eylemin parametreleridir.
+	//
+	// ÇAĞIRAN SORUMLULUĞU: buraya yazmadan önce RedactEnv (ortam
+	// değişkenleri için, varsayılan REDDET) veya RedactSensitive (karışık
+	// parametreler için) uygulanmalı, sonra MarshalParams ile kodlanmalı.
+	//
+	// Zincir ekle-sadece'dir ve kayıtlar hash'lenir: buraya bir kez düz
+	// metin sır yazılırsa GERİ ALINAMAZ — silmek zinciri koparır.
+	//
+	// Bu alan bir zamanlar yalnızca "sırlar redakte edilmiş hâlde" diyen
+	// bir yorum taşıyordu ve redaksiyonu yapan hiçbir kod yoktu; iddia
+	// zorlanmıyordu (docs/decisions.md K-032).
+	ParamsJSON string
 	Outcome    Outcome
 	Detail     string
 	Source     Source

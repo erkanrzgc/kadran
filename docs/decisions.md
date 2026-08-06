@@ -827,3 +827,36 @@ taşıdığı için git çekemez; executor çekerse git URL'i root koduna ulaş�
 `ext::sh -c` / `--upload-pack=` K-024'le aynı sınıftır.
 
 Ayrıcalıklı kod: **1242 / 2000 satır.**
+
+---
+
+## K-030 — `buf generate` geçmesi `buf lint` hakkında hiçbir şey söylemiyor
+
+K-029 push edildiğinde CI kırmızı döndü, yerelde her şey temizken:
+
+```
+proto/panely/v1/exec.proto:86:59: RPC response type "ContainerLogChunk"
+should be named "ContainerLogsResponse" or
+"ExecutorServiceContainerLogsResponse".
+```
+
+Yerelde `buf generate` koşturulmuştu, `buf lint` koşturulmamıştı. İkisi
+farklı iş yapıyor: biri Go kodu üretiyor, diğeri API/stil kurallarını
+zorluyor (`RPC_RESPONSE_STANDARD_NAME`). Generate'in geçmesi lint hakkında
+bilgi taşımıyor.
+
+Boşluk sekiz commit boyunca görünmedi çünkü Faz 0'dan sonra `exec.proto`'ya
+yeni RPC eklenmemişti. İlk yeni RPC kümesi onu anında ortaya çıkardı.
+
+**Bu, K-025'in aynısı.** Orada da "yerelde çalışıyor" bilgi taşımıyordu,
+çünkü yerelde koşturulan şey CI'ın koşturduğu şey değildi. Kural:
+
+> Yerel doğrulama listesi CI iş akışından TÜRETİLİR, hafızadan değil.
+
+`.github/workflows/ci.yml`'deki "Biçim ve statik analiz" işi ne koşuyorsa
+yerelde de o koşulmalı. Liste `CONTRIBUTING.md` ve PR şablonuna eklendi;
+`buf lint` ve `buf format --diff --exit-code` artık açıkça yazılı.
+
+Adlandırma değişikliği davranışı etkilemiyor — `ContainerLogChunk` →
+`ContainerLogsResponse`, tek kullanıcısı `internal/exec/container.go`'daki
+akış imzası.

@@ -39,9 +39,14 @@ var serverBinaries = []string{"panelyd", "panely-exec", "panely-connect"}
 
 // unitFiles, depodan kopyalanan systemd varlıkları.
 var unitFiles = map[string]string{
-	"panelyd.service":      "deploy/systemd/panelyd.service",
-	"panely-exec.service":  "deploy/systemd/panely-exec.service",
-	"panely-tmpfiles.conf": "deploy/systemd/panely-tmpfiles.conf",
+	"panelyd.service":     "deploy/systemd/panelyd.service",
+	"panely-exec.service": "deploy/systemd/panely-exec.service",
+	// Hacim kökünü nodev,nosuid ile bağlar. Adı systemd'nin mount birimi
+	// adlandırmasına UYMAK ZORUNDA (`systemd-escape -p --suffix=mount
+	// /var/lib/panely/volumes`); farklı bir ad verilirse systemd birimi
+	// bağlar ama Where= ile eşleştiremez ve birim asla etkin olmaz.
+	"var-lib-panely-volumes.mount": "deploy/systemd/var-lib-panely-volumes.mount",
+	"panely-tmpfiles.conf":         "deploy/systemd/panely-tmpfiles.conf",
 }
 
 // Options, kurulum parametreleridir.

@@ -145,7 +145,29 @@ step "systemd birimleri"
 
 install -m 0644 -o root -g root "$STAGE/panely-exec.service" /etc/systemd/system/panely-exec.service
 install -m 0644 -o root -g root "$STAGE/panelyd.service"     /etc/systemd/system/panelyd.service
+install -m 0644 -o root -g root "$STAGE/var-lib-panely-volumes.mount" \
+    /etc/systemd/system/var-lib-panely-volumes.mount
 systemctl daemon-reload
+
+# Hacim kökü nodev,nosuid ile bağlanır. Birim ÖNCE etkinleştirilir ki
+# yeniden başlatmadan sonra da bağlansın; `enable` tek başına şimdi
+# bağlamaz, bu yüzden `start` da çağrılır (ikisi de idempotent).
+systemctl enable var-lib-panely-volumes.mount >/dev/null 2>&1 || true
+systemctl restart var-lib-panely-volumes.mount \
+    || die "hacim kökü sertleştirilemedi — uygulama hacimleri nodev,nosuid olmadan bağlanırdı"
+
+# Birimin AKTİF olması yetmez: `Options=` sessizce yok sayılsaydı birim
+# yine "active" görünürdü. Etkin bayraklar ÇEKİRDEKTEN okunur.
+#
+# Bu kontrolün var olma sebebi ölçülmüş bir yanlıştır: Docker'ın local
+# sürücüsüne aynı seçenekler verildiğinde hacim sertleştirilmeden
+# bağlanıyor ve hiçbir hata üretmiyor (docs/decisions.md K-038).
+vol_opts="$(awk '$5=="/var/lib/panely/volumes"{print $6}' /proc/self/mountinfo | head -1)"
+for flag in nodev nosuid; do
+    printf '%s' "$vol_opts" | tr ',' '\n' | grep -qx "$flag" \
+        || die "hacim kökünde $flag ETKİN DEĞİL (etkin: ${vol_opts:-<bağlı değil>})"
+done
+say "hacim kökü sertleştirildi ($vol_opts)"
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
 

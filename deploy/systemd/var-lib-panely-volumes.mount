@@ -1,0 +1,97 @@
+[Unit]
+Description=Panely volume root (nodev,nosuid)
+Documentation=https://github.com/erkanrzgc/panely
+# Dizini tmpfiles oluşturuyor; bu birim onu KENDİ ÜZERİNE bağlayarak
+# yalnızca mount bayraklarını değiştirir.
+#
+# ⚠ `Requires=systemd-tmpfiles-setup.service` YAZILAMAZ ve bu birim
+# `WantedBy=local-fs.target` OLAMAZ. İlk hâli ikisini birden yapıyordu ve
+# YENİDEN BAŞLATMAYI GEÇEMEDİ — kurulum anında sorunsuz görünmesine rağmen
+# (docs/decisions.md K-039). systemd'nin kendi teşhisi:
+#
+#   local-fs.target: Found ordering cycle on var-lib-panely-volumes.mount/start
+#     Found dependency on systemd-tmpfiles-setup.service/start
+#     Found dependency on local-fs.target/start
+#   Job var-lib-panely-volumes.mount/start deleted to break ordering cycle
+#
+# Döngünün sebebi: systemd-tmpfiles-setup.service'in KENDİSİ
+# `After=local-fs.target`. Yani local-fs.target bizi, biz tmpfiles'ı,
+# tmpfiles de local-fs.target'ı bekliyordu. systemd döngüyü bizim işimizi
+# SİLEREK kırdı; hacimler sertleştirilmeden açıldı ve hiçbir hata
+# görünmedi. Ölçüldü: yeniden başlatmadan sonra setuid-root bir ikili
+# hacim kökünde euid=0 ile çalışıyordu.
+#
+# ⚠ tmpfiles'a `After=` DE YAZILAMAZ — zorunluluğu kaldırmak YETMEDİ.
+#
+# İkinci deneme `Requires=`'ı attı, `WantedBy=`'ı multi-user.target'a aldı
+# ve After='ı bıraktı. Döngü YİNE kuruldu, çünkü systemd HER .mount birimine
+# örtük olarak `Before=local-fs.target` ekler (DefaultDependencies):
+#
+#   local-fs.target ← bu mount ← tmpfiles-setup ← local-fs.target
+#
+# Yani halka örtük kenardan kapanıyordu. O turda systemd döngüyü bizim
+# yerimize `local-fs.target/start` işini silerek kırdı; mount tesadüfen
+# ayağa kalktı ve "düzeldi" sanılabilirdi. Journal'da 2 döngü mesajı
+# kalması yakalattı.
+#
+# Doğru çözüm kenarı hiç kurmamak: mount birimi kendi mount noktasını
+# zaten yaratır, dolayısıyla tmpfiles'a sıralama İHTİYACI YOKTU. Dizinin
+# mod/sahipliğini tmpfiles sonradan uygular; kendi üzerine bind olduğu için
+# kaynak ve hedef aynı inode'dur, sıra fark etmez.
+
+# Sürücü hacim bağlamadan önce sertleştirme yerinde olmalı. Bu SIRALAMADIR,
+# zorunluluk değil: birim başarısız olsa bile executor başlar ve durumu
+# bildirebilir. Sertleştirmenin gerçekten var olduğunu çalışma anında
+# executor'ın kendisi doğrular (internal/exec) — systemd'ye güvenilmez,
+# çünkü tam olarak burada sessizce yanılmıştı.
+Before=panely-exec.service
+
+[Mount]
+# Kendi üzerine bind: yeni bir depolama alanı yaratılmıyor, var olan
+# dizine mount bayrağı takılıyor.
+What=/var/lib/panely/volumes
+Where=/var/lib/panely/volumes
+Type=none
+
+# ════════════════════════════════════════════════════════════════════
+#  UYGULAMA HACİMLERİNİN nodev,nosuid OLMASINI SAĞLAYAN TEK YER BURASI
+# ════════════════════════════════════════════════════════════════════
+#
+# # Neden sürücüde değil?
+#
+# İlk tasarım hacim başına Docker `local` sürücüsüyle
+# `--opt o=bind,nodev,nosuid` verecekti. ÖLÇÜLDÜ: bu seçenek SESSİZCE
+# YOK SAYILIYOR (docs/decisions.md K-038). Kontrol hacmiyle sertleştirilmiş
+# hacmin konteyner içindeki etkin seçenekleri bayt bayt aynı çıktı:
+#
+#   kontrol      : rw,relatime
+#   "sertleştirilmiş": rw,relatime      ← fark YOK
+#
+# Sebep: bind mount TEK bir mount(2) çağrısında bayrak değiştiremez;
+# bayraklar kaynak mount'tan miras alınır. Değiştirmek AYRI bir
+# `remount,bind` çağrısı ister. Docker'ın local sürücüsü mount(2)'yi
+# doğrudan çağırdığı için bu ikinci adımı atmaz. mount(8) ve systemd
+# ATAR — bu yüzden aynı seçenek dizgisi burada çalışır, orada çalışmaz.
+#
+# # Neden tek bir üst mount yetiyor?
+#
+# Ölçüldü: sertleştirilmiş bir mount'un ALT DİZİNİ konteynere bind
+# edildiğinde bayrakları MİRAS ALIYOR. Yani buradaki tek birim,
+# /var/lib/panely/volumes altındaki HER hacmi kapsar — sürücünün ileride
+# ekleyeceği, kimsenin aklına gelmeyen yollar dahil. Hacim başına
+# sertleştirmede unutulan tek yol sessizce korumasız kalırdı.
+#
+# # Bayrakların gerçekten etkili olduğu NASIL bilindi?
+#
+# Metinden değil davranıştan: setuid-root bir ikili
+#   /tmp üzerinden çalıştırıldığında          → euid=0  (setuid onurlandırıldı)
+#   bu mount üzerinden çalıştırıldığında      → euid=1000 (yok sayıldı)
+# Aygıt düğümü okuma denemesi de bu mount üzerinde REDDEDİLDİ.
+#
+# `ls -l` ile bakmak İŞE YARAMAZ: o inode'un mod bitini gösterir ve mount
+# bayrağından etkilenmez. İlk denemede tam olarak bu hataya düşüldü.
+Options=bind,nodev,nosuid
+
+[Install]
+# local-fs.target DEĞİL — yukarıdaki döngü notuna bakınız.
+WantedBy=multi-user.target

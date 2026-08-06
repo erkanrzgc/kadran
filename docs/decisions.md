@@ -1369,3 +1369,143 @@ Depo public olduğu için `ubuntu-24.04-arm` runner'ı ücretsiz. Test
 matrisine eklendi ve **ilk koşuda geçti**: `Testler (ubuntu-24.04-arm)
 success`. Tek seferlik bir sunucudan daha iyi — arm64 artık her
 commit'te gerçek donanımda sınanıyor, yalnızca çapraz derlenmiyor.
+
+---
+
+## K-038 — Hacim sertleştirmesi sürücüde değil, mount biriminde
+
+Faz 1 dilim 2'nin devraldığı yükümlülüklerden biri şuydu: *"Hacimler
+`nodev,nosuid`."* Tasarlanan yol, hacim başına Docker `local` sürücüsüyle
+`--opt o=bind,nodev,nosuid` vermekti.
+
+**Ölçüldü, çalışmıyor.** Kontrol hacmi ile "sertleştirilmiş" hacmin
+konteyner içindeki etkin seçenekleri bayt bayt aynı çıktı:
+
+| hacim | konteyner içindeki etkin seçenekler |
+|---|---|
+| `o=bind` (kontrol) | `rw,relatime` |
+| `o=bind,nodev,nosuid` | `rw,relatime` ← **fark yok** |
+
+Docker hata vermiyor, hacmi oluşturuyor, konteyner çalışıyor. Yalnızca
+koruma yok.
+
+### Sebep
+
+Bind mount **tek bir `mount(2)` çağrısında bayrak değiştiremez**;
+bayraklar kaynak mount'tan miras alınır. Değiştirmek AYRI bir
+`remount,bind` çağrısı ister. Docker'ın local sürücüsü `mount(2)`'yi
+doğrudan çağırdığı için ikinci adımı atmaz. `mount(8)` ve systemd
+atar — bu yüzden **aynı seçenek dizgisi** systemd'de çalışır, Docker'da
+çalışmaz. Ölçmeden bunu ayırt etmenin yolu yoktu.
+
+### Yerine ne yapıldı
+
+Sertleştirme tek bir systemd `.mount` birimine taşındı:
+`/var/lib/panely/volumes` kendi üzerine `bind,nodev,nosuid` ile bağlanır.
+
+Ölçülen iki özellik bunu yeterli kılıyor:
+
+1. **Alt dizinler bayrakları miras alıyor.** Sertleştirilmiş bir mount'un
+   alt dizini konteynere bind edildiğinde `nodev,nosuid` taşıyor. Yani tek
+   birim, o kökün altındaki HER hacmi kapsar — sürücünün ileride
+   ekleyeceği, kimsenin aklına gelmeyen yollar dahil. Hacim başına
+   sertleştirmede unutulan tek yol sessizce korumasız kalırdı.
+2. **Düz `Binds` yetiyor.** Engine API ile oluşturulan konteynerde
+   `/var/lib/panely/volumes/...:/data` bağlaması `rw,nosuid,nodev` geliyor.
+   Sürücünün hacim oluşturma koduna hiç ihtiyacı yok.
+
+İkincisi ayrıcalıklı yüzey bütçesinde de kazanç: sürücü hacim tarafında
+kod TAŞIMIYOR.
+
+### Bayrakların etkili olduğu nasıl bilindi
+
+Metinden değil davranıştan. setuid-root bir ikili:
+
+```
+/tmp üzerinden           -> euid=0     (setuid onurlandırıldı)
+hacim kökü üzerinden     -> euid=1000  (yok sayıldı)
+```
+
+Aygıt düğümü okuma denemesi de bu mount üzerinde reddedildi.
+
+⚠ İlk denemede `ls -l` ile bakılmıştı ve setuid biti görünüyordu. **O test
+hiçbir şey ölçmez:** `ls -l` inode'un mod bitini gösterir ve mount
+bayrağından etkilenmez. Doğru ölçüm çalıştırıp euid'e bakmaktır.
+
+### Zorlanması
+
+`systemctl is-active` yetmez — birim "active" görünürken bayraklar yok
+sayılmış olabilir (yukarıdaki Docker durumunun tam olarak sessiz hâli).
+Bu yüzden `install.sh` bayrakları `/proc/self/mountinfo`'dan, yani
+çekirdekten okur ve eksikse `die` ile durur.
+
+---
+
+## K-039 — Birim kurulumu geçti, YENİDEN BAŞLATMAYI geçmedi
+
+K-038'in mount birimi kurulumda kusursuz göründü: `systemctl is-active`
+-> active, çekirdekten okunan bayraklar -> `rw,nosuid,nodev`, davranış
+testi -> euid=1000. Üç bağımsız kontrol de yeşildi.
+
+**Yeniden başlatmadan sonra koruma yoktu.** Birim `inactive`, bayrak yok,
+hacim kökünde setuid-root ikili euid=**0** ile çalışıyordu.
+
+systemd'nin kendi teşhisi:
+
+```
+local-fs.target: Found ordering cycle on var-lib-panely-volumes.mount/start
+  Found dependency on systemd-tmpfiles-setup.service/start
+  Found dependency on local-fs.target/start
+Job var-lib-panely-volumes.mount/start deleted to break ordering cycle
+```
+
+### İki turda çözüldü — birincisi düzelmiş gibi göründü
+
+**Tur 1.** Birim `WantedBy=local-fs.target` + tmpfiles'a `Requires=`
+taşıyordu. `systemd-tmpfiles-setup.service`'in KENDİSİ
+`After=local-fs.target` olduğu için halka kapandı.
+
+Düzeltme: `Requires=` atıldı, `WantedBy=multi-user.target` yapıldı,
+`After=systemd-tmpfiles-setup.service` bırakıldı. Yeniden başlatıldı ->
+birim **active**, bayraklar doğru, davranış testi geçti.
+
+**Ama journal'da hâlâ 2 döngü mesajı vardı.** Sonuç doğru göründüğü için
+buna bakılmasaydı iş burada "bitmiş" sayılacaktı.
+
+**Tur 2.** Döngü duruyordu, çünkü systemd HER `.mount` birimine örtük
+`Before=local-fs.target` ekler (DefaultDependencies). Halka örtük kenardan
+kapanıyordu:
+
+```
+local-fs.target <- bu mount <- tmpfiles-setup <- local-fs.target
+```
+
+O turda systemd döngüyü **bizim mount'umuzu değil** `local-fs.target/start`
+işini silerek kırmıştı. Yani mount tesadüfen ayağa kalkmıştı: doğru
+sonuç, yanlış sebep. Aynı yapılandırma başka bir makinede ters seçimle
+kırılabilirdi.
+
+Gerçek çözüm kenarı hiç kurmamak: `.mount` birimi kendi mount noktasını
+zaten yaratır, dolayısıyla tmpfiles'a sıralama **hiç gerekmiyordu**.
+`After=` de kaldırıldı -> üçüncü yeniden başlatmada **0 döngü**, birim
+active, euid=1000, dizin modu `751 root:panely`.
+
+### Çıkarılan kural
+
+**Bir systemd biriminin kabul ölçütü "kurulumdan sonra active" değil,
+"yeniden başlatmadan sonra active VE journal'da 0 döngü"dür.**
+
+Bu, K-030'un (`-` öneki, `226/NAMESPACE`) aynı sınıfı: birim kurulu
+makinede çalışır, açılışta çalışmaz. Birim testleri, WSL ve CI'ın
+hiçbiri yakalayamaz — hiçbiri gerçek bir önyükleme yapmıyor.
+
+⚠ Ayrıca: **"sonuç doğru" ile "sebep doğru" aynı şey değildir.** Tur 1'de
+üç davranış kontrolü de yeşildi ve yapılandırma yine hatalıydı. Yakalatan
+tek şey, beklenmeyen bir sayacın (journal'daki döngü sayısı) sıfır
+olmamasıydı.
+
+### Kalıcı savunma
+
+Sertleştirmenin varlığı systemd'ye bırakılmıyor: executor hacim
+bağlamadan önce etkin bayrakları çalışma anında kendisi doğrular. Bir
+sıralama inceliği güvenlik özelliğini sessizce düşürememeli.

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -321,6 +322,180 @@ func TestInstallScriptDoesNotUseNologinForClient(t *testing.T) {
 	clientBlock := between(string(script), "--gid panely-client", "panely-client")
 	if strings.Contains(clientBlock, "NOLOGIN") {
 		t.Error("istemci kullanıcısına nologin verilmiş — zorlanmış komut çalışmaz")
+	}
+}
+
+// ── Hacim kökünün sertleştirilmesi ───────────────────────────────────
+
+// volumeRoot, uygulama hacimlerinin altında toplandığı dizindir.
+const volumeRoot = "/var/lib/panely/volumes"
+
+func readVolumeMountUnit(t *testing.T) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd",
+		"var-lib-panely-volumes.mount"))
+	if err != nil {
+		t.Fatalf("hacim mount birimi okunamadı: %v", err)
+	}
+	return string(b)
+}
+
+// TestVolumeMountUnitCarriesHardeningFlags, birimin nodev ve nosuid
+// taşıdığını doğrular.
+//
+// Bu bayraklar uygulama hacimlerindeki TEK savunmadır: sürücü konteyneri
+// düz bir bind ile bağlıyor ve bind mount bayrakları kaynak mount'tan
+// MİRAS ALIYOR. Buradan düşerlerse, kullanıcının yüklediği setuid-root bir
+// dosya konteyner içinde gerçekten setuid çalışır.
+func TestVolumeMountUnitCarriesHardeningFlags(t *testing.T) {
+	unit := readVolumeMountUnit(t)
+
+	var options string
+	for line := range strings.Lines(unit) {
+		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "Options="); ok {
+			options = strings.TrimSpace(rest)
+		}
+	}
+	if options == "" {
+		t.Fatal("birimde Options= satırı yok — test bir şey ölçmüyor")
+	}
+
+	got := strings.Split(options, ",")
+	for _, want := range []string{"bind", "nodev", "nosuid"} {
+		if !slices.Contains(got, want) {
+			t.Errorf("Options= içinde %q yok (var olan: %s)", want, options)
+		}
+	}
+}
+
+// TestVolumeMountUnitFileNameMatchesMountPoint, dosya adının systemd'nin
+// kaçışlamasıyla birebir aynı olduğunu doğrular.
+//
+// systemd bir mount biriminin adını Where= değerinden TÜRETİR. Ad
+// uyuşmazsa birim yüklenir, `systemctl status` onu gösterir, ama ASLA
+// etkinleşmez — yani hacimler sessizce sertleştirilmeden kalır. Sessiz
+// olduğu için bu testin var olması gerekiyor.
+func TestVolumeMountUnitFileNameMatchesMountPoint(t *testing.T) {
+	// systemd-escape -p --suffix=mount /var/lib/panely/volumes
+	want := strings.TrimPrefix(volumeRoot, "/")
+	want = strings.ReplaceAll(want, "/", "-") + ".mount"
+
+	src, ok := unitFiles[want]
+	if !ok {
+		t.Fatalf("unitFiles içinde %q yok — systemd bu birimi Where= ile eşleştiremez", want)
+	}
+	if !strings.HasSuffix(src, want) {
+		t.Errorf("depo yolu %q, beklenen sonek %q", src, want)
+	}
+
+	unit := readVolumeMountUnit(t)
+	for _, key := range []string{"What=", "Where="} {
+		if !strings.Contains(unit, key+volumeRoot+"\n") {
+			t.Errorf("birimde %s%s satırı yok", key, volumeRoot)
+		}
+	}
+}
+
+// TestVolumeMountUnitAvoidsEarlyBootCycle, birimi yeniden başlatmada
+// öldüren sıralama döngüsünün geri gelmediğini doğrular.
+//
+// Birimin ilk hâli `WantedBy=local-fs.target` + tmpfiles'a `Requires=`
+// taşıyordu. Kurulumda kusursuz göründü — ama YENİDEN BAŞLATMAYI GEÇEMEDİ:
+// systemd-tmpfiles-setup.service'in kendisi `After=local-fs.target` olduğu
+// için döngü oluştu ve systemd bizim mount işimizi SİLDİ. Sonuç sessizdi;
+// hacimler sertleştirilmeden açıldı (docs/decisions.md K-039).
+//
+// Bu testin yakaladığı şey birleşimdir: ikisinden biri tek başına
+// zararsız, ikisi birlikte önyüklemeyi bozuyor.
+func TestVolumeMountUnitAvoidsEarlyBootCycle(t *testing.T) {
+	directives := unitDirectives(readVolumeMountUnit(t))
+	if len(directives) == 0 {
+		t.Fatal("birimde hiç direktif yok — test bir şey ölçmüyor")
+	}
+
+	var wantedBy int
+	for _, d := range directives {
+		// tmpfiles'a HİÇBİR bağımlılık kurulamaz — sıralama bile.
+		//
+		// `Requires=`'ı atıp `After=`'ı bırakmak YETMEDİ: systemd her
+		// .mount birimine örtük `Before=local-fs.target` ekler, dolayısıyla
+		// tmpfiles'a herhangi bir sıralama kenarı halkayı yine kapatır.
+		for _, dep := range []string{"Requires=", "BindsTo=", "Requisite=", "After=", "Wants="} {
+			if strings.HasPrefix(d, dep) && strings.Contains(d, "tmpfiles") {
+				t.Errorf("%q tmpfiles'a bağımlılık kuruyor — .mount birimlerinin "+
+					"örtük Before=local-fs.target'ı yüzünden erken önyükleme döngüsü", d)
+			}
+		}
+		if strings.HasPrefix(d, "WantedBy=") {
+			wantedBy++
+			// local-fs.target erken önyüklemededir ve tmpfiles ondan SONRA
+			// koşar; ikisini birleştirmek döngü kurar.
+			if strings.Contains(d, "local-fs.target") {
+				t.Errorf("%q — bu birim tmpfiles'tan sonra gelmeli, aksi hâlde "+
+					"systemd döngüyü kırarken mount işini siler", d)
+			}
+		}
+	}
+	if wantedBy == 0 {
+		t.Error("birimde [Install] WantedBy= yok — `enable` hiçbir şey yapmaz " +
+			"ve birim yeniden başlatmadan sonra HİÇ bağlanmaz")
+	}
+}
+
+// unitDirectives, birim dosyasının YORUM OLMAYAN satırlarını döndürür.
+//
+// Neden gerekli: bu birimin yorumları, yasaklanan direktiflerin metnini
+// (`WantedBy=local-fs.target`) gerekçeleriyle birlikte ANIYOR. Dosyanın
+// tamamında düz metin araması yapan ilk sürüm bu yüzden kendi
+// açıklamasını ihlal sanıp yanlış alarm verdi.
+func unitDirectives(unit string) []string {
+	var out []string
+	for line := range strings.Lines(unit) {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// TestInstallScriptVerifiesVolumeHardeningFromKernel, kurulumun bayrakları
+// ÇEKİRDEKTEN okuduğunu doğrular.
+//
+// `systemctl is-active` yeterli DEĞİLDİR ve bu boş bir titizlik değil:
+// Docker'ın local sürücüsüne aynı seçenekler verildiğinde hacim
+// sertleştirilmeden bağlanıyor ve hiçbir hata üretmiyor — ölçüldü
+// (docs/decisions.md K-038). Aynı sessiz arıza systemd tarafında da
+// olabilirdi; ayıran tek şey etkin bayrakları okumaktır.
+func TestInstallScriptVerifiesVolumeHardeningFromKernel(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+
+	if !strings.Contains(text, "/proc/self/mountinfo") {
+		t.Error("kurulum etkin mount bayraklarını çekirdekten okumuyor")
+	}
+	for _, flag := range []string{"nodev", "nosuid"} {
+		if !strings.Contains(text, flag) {
+			t.Errorf("kurulum %q bayrağını doğrulamıyor", flag)
+		}
+	}
+	// Doğrulama BAŞARISIZ olduğunda kurulum DURMALI; uyarıp devam etmek
+	// tam olarak "korumayı iddia et ama zorlama" durumudur.
+	//
+	// Kapsam dar tutuluyor: bu kontrolün ilk hâli `die`'ı mountinfo
+	// satırından SONRAKİ tüm metinde arıyordu ve install.sh'ın ilerideki
+	// başka `die` çağrıları yüzünden fail-open mutasyonunu KAÇIRDI —
+	// mutasyon testinde yakalandı. Yalnızca doğrulama bloğuna bakılır.
+	block := between(text, `vol_opts="$(awk`, `say "hacim kökü`)
+	if block == "" {
+		t.Fatal("kurulumda hacim doğrulama bloğu bulunamadı — test bir şey ölçmüyor")
+	}
+	if !strings.Contains(block, "die ") {
+		t.Error("bayrak doğrulaması başarısız olunca kurulum durmuyor (fail-open)")
 	}
 }
 

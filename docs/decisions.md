@@ -1253,3 +1253,119 @@ azalttı. İkisinin de gerekçesi metriğin yanlış şeyi saymasıydı, ama bu
 desen kendi başına bir uyarı işareti. Üçüncü bir ölçüm değişikliği
 gerekirse önce "gerçekten metrik mi yanlış, yoksa kod mu fazla büyüdü"
 sorusu açıkça yanıtlanmalı.
+
+---
+
+## K-037 — Gerçek sunucuda kapatılan dört boşluk (biri notu yanlışladı)
+
+Kullanıcı "işini garanti yap, masraf korkma" dedi. Ölçülmemiş dört iddia
+gerçek Hetzner sunucusunda (Ubuntu 24.04, cx23) sınandı.
+
+### 1. Bugünkü sshd değişikliği gerçek sshd'den geçti
+
+`PermitUserEnvironment no` (K-031) yalnızca betik METNİ üzerinden test
+ediliyordu. Bootstrap gerçek sunucuda koşturuldu:
+
+```
+sshd -t OK
+sshd -T -C user=panely-client → permituserenvironment no
+                                 acceptenv LANG / LC_*
+                                 exposeauthinfo yes
+```
+
+`sshd -T` ETKİN değeri gösteriyor, dosyadaki metni değil. `acceptenv`
+yalnızca `LANG`/`LC_*` — yani `SSH_AUTH_INFO_0` istemciden gelemiyor.
+Değişiklik gerçekten koruyor.
+
+Bootstrap idempotanlığı da doğrulandı: kurulu bir sunucuda yeniden
+koştu, altı kurulum-sonrası kontrolün hepsi geçti.
+
+### 2. NOT YANLIŞTI: Docker'ı sonradan kurmak soketi VERİYOR
+
+Hafızadaki ve dilim-1 notlarındaki iddia şuydu:
+
+> Docker'ı executor çalışırken kurmak soketi VERMEZ.
+> `BindReadOnlyPaths=-/run/docker.sock` eksik kaynağı yalnızca
+> BAŞLANGIÇTA atlar. Docker'ı kuran ne ise ardından
+> `systemctl restart panely-exec` yapmalı — bu sıralama bootstrap'a
+> girmeli.
+
+**Ölçüldü, yanlış.** Temiz düzenek: docker durduruldu ve soket silindi →
+executor soket YOKKEN yeniden başlatıldı → docker başlatıldı → executor
+YENİDEN BAŞLATILMADAN sokete bağlanabildi.
+
+Sebep: `-` öneki bind mount'u atlıyor ama `/run` zaten paylaşımlı bir
+tmpfs ve `ProtectSystem=strict` onu kapsamıyor (unit dosyasının kendi
+yorumu da bunu söylüyor). Sonradan oluşan soket ad alanında görünüyor.
+
+**Bootstrap'a sıralama kısıtı EKLENMEDİ**, çünkü gerek yok.
+
+### 3. Ters yön de sınandı — asıl risk buradaydı
+
+Not yanlışlanınca daha tehlikeli bir soru çıktı: soket başlangıçta VARSA
+bind mount **salt-okunur** uygulanır. `connect()` bir sokete yazma izni
+ister — read-only mount bunu engeller mi? Engelleseydi hata NORMAL
+durumda (Docker zaten kurulu) çıkardı, yani test edilen durumda değil.
+
+```
+/run/docker.sock tmpfs[/docker.sock] ro,nosuid,nodev,noexec
+→ curl --unix-socket ... /version
+  {"Version":"29.1.3","ApiVersion":"1.52",...}
+```
+
+Salt-okunur bind mount `connect()`'i ENGELLEMİYOR. Her iki sıra da
+çalışıyor.
+
+### 4. K-035'in açık maddesi kapandı: GERÇEK systemd altında
+
+WSL ölçümü `unshare -n` kullanıyordu. Gerçek soruda kısıt
+`RestrictAddressFamilies=AF_UNIX`'ti. `panely-exec.service` ile aynı
+sertleştirmeyi taşıyan geçici bir `systemd-run` birimiyle sınandı:
+
+| Adım | Sonuç |
+|---|---|
+| Pozitif kontrol: birimden `https://github.com` | BAŞARISIZ (ağ gerçekten kapalı) |
+| Aynı birimden `POST /build?remote=<git-url>` | `{"message":"Cannot locate specified Dockerfile: Dockerfile"}` |
+
+Hata Dockerfile hakkında, ağ hakkında değil → **daemon depoyu çekti.**
+K-035'in tasarımı gerçek systemd altında doğrulandı.
+
+### 5. Yetki izolasyonu artık BOŞ YERE geçmiyor
+
+Docker kurulmadan önce "panely kullanıcısı Docker'a erişemiyor" kontrolü
+boş yere geçiyordu — erişilecek bir Docker yoktu. Docker ÇALIŞIRKEN
+tekrarlandı:
+
+- `sudo -u panely docker ps` → başarısız ✓
+- `sudo -u panely-client docker ps` → başarısız ✓
+- `panely` kullanıcısı `docker` grubunda değil ✓
+
+Uçtan uca: `panely status panely-client@<sunucu>` artık `Docker 29.1.3`
+gösteriyor — SSH → zorlanmış komut → panelyd → executor → Docker soketi
+zincirinin tamamı çalışıyor. Denetim zinciri geçerli.
+
+### Ölçüm düzeneğinin kendisi iki kez bozuldu
+
+Kayda değer, çünkü ikisi de sessizce yanlış sonuç verirdi:
+
+1. Birinci turda geçici birim `PrivateTmp=yes` taşıyordu ve `curl -o
+   /tmp/out` çıktıyı birimin ÖZEL /tmp'sine yazdı; dış kabuk boş dosya
+   okudu ve "belirsiz" dedi. Çıktı `--pipe` ile stdout'a alındı.
+2. ARM kapasitesi taranırken sonuç çıkış kodu yerine METİNDE arandı;
+   "unsupported location" mesajı `error` kelimesi içermediği için
+   "OLUŞTU" sanıldı. Çıkış koduna geçildi.
+
+İkincisi bu oturumda üçüncü kez tekrarlanan sınıf (bkz. `| tail`
+çıkış kodunu maskeleme). Kural: **ölçüm sonucu metinden değil çıkış
+kodundan okunur.**
+
+### arm64: kapasite yoktu, çözüm CI'da
+
+Gerçek ARM donanımı için Hetzner denendi — `cax11` nbg1, fsn1 ve
+hel1'in ÜÇÜNDE de `resource_unavailable` (ARM yalnızca EU
+konumlarında). Boşluk parayla değil kapasiteyle kapalıydı.
+
+Depo public olduğu için `ubuntu-24.04-arm` runner'ı ücretsiz. Test
+matrisine eklendi ve **ilk koşuda geçti**: `Testler (ubuntu-24.04-arm)
+success`. Tek seferlik bir sunucudan daha iyi — arm64 artık her
+commit'te gerçek donanımda sınanıyor, yalnızca çapraz derlenmiyor.

@@ -86,6 +86,26 @@ ReadWritePaths=/run/panely-exec
 # Executor Docker yokluğunu zaten çalışma anında bildiriyor
 # (internal/exec/dockerprobe.go); başlamamak yerine "Docker yok"
 # demek doğru davranış.
+#
+# # İki sıra da ÖLÇÜLDÜ (docs/decisions.md K-037)
+#
+# Bir dönem şu varsayılıyordu: `-` kaynağı atladığı için, Docker
+# SONRADAN kurulursa executor soketi göremez ve `systemctl restart
+# panely-exec` şart olur. **Yanlış çıktı.** Gerçek sunucuda ölçüldü:
+#
+#   soket YOKKEN başlat → docker'ı başlat → executor sokete yeniden
+#   başlatılmadan ULAŞIYOR
+#
+# Sebep: `/run` paylaşımlı bir tmpfs ve ProtectSystem=strict onu
+# kapsamıyor; sonradan oluşan soket ad alanında görünüyor. Bu yüzden
+# bootstrap'a "Docker'dan sonra executor'ı yeniden başlat" kısıtı
+# EKLENMEDİ — gereksiz.
+#
+# Ters yön daha kritikti ve o da ölçüldü: soket başlangıçta VARSA bind
+# mount `ro,nosuid,nodev,noexec` olarak uygulanır. `connect()` sokete
+# yazma izni ister, yani salt-okunur mount bunu engelleyebilirdi — ve
+# bu, NORMAL durumda (Docker zaten kurulu) patlardı. Engellemiyor:
+# salt-okunur bind mount üzerinden Docker API sürüm yanıtı alındı.
 BindReadOnlyPaths=-/run/docker.sock
 
 UMask=0027

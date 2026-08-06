@@ -23,6 +23,7 @@ import (
 	"github.com/erkanrzgc/panely/internal/audit"
 	"github.com/erkanrzgc/panely/internal/execclient"
 	"github.com/erkanrzgc/panely/internal/grpcserve"
+	"github.com/erkanrzgc/panely/internal/logutil"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/sdnotify"
 	"github.com/erkanrzgc/panely/internal/sockets"
@@ -51,7 +52,7 @@ func run() error {
 		dbPath      = flag.String("db", defaultDB, "SQLite veritabanı yolu")
 		clientGroup = flag.String("client-group", defaultClientGroup, "api.sock'a erişebilecek grup")
 		showVersion = flag.Bool("version", false, "sürümü yazdır ve çık")
-		debug       = flag.Bool("debug", false, "ayrıntılı günlük")
+		debug       = flag.Bool("debug", false, "ayrıntılı günlük (PANELY_DEBUG=1 ile de açılır)")
 	)
 	flag.Parse()
 
@@ -60,11 +61,9 @@ func run() error {
 		return nil
 	}
 
-	level := slog.LevelInfo
-	if *debug {
-		level = slog.LevelDebug
-	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: logutil.Level(*debug, os.Getenv),
+	})))
 
 	// ── Ürünün merkezî iddiası ───────────────────────────────────────
 	// panelyd root çalışıyorsa executor ayrımı dekoratiftir: ele geçirilen

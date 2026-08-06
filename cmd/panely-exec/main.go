@@ -25,6 +25,7 @@ import (
 
 	panelyexec "github.com/erkanrzgc/panely/internal/exec"
 	"github.com/erkanrzgc/panely/internal/grpcserve"
+	"github.com/erkanrzgc/panely/internal/logutil"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/peercred"
 	"github.com/erkanrzgc/panely/internal/sdnotify"
@@ -54,6 +55,7 @@ func run() error {
 		allowUser    = flag.String("allow-user", defaultAllowedUser, "bağlanmasına izin verilen tek kullanıcı")
 		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "soket ve günlük dosyasının grubu")
 		showVersion  = flag.Bool("version", false, "sürümü yazdır ve çık")
+		debug        = flag.Bool("debug", false, "ayrıntılı günlük (PANELY_DEBUG=1 ile de açılır)")
 	)
 	flag.Parse()
 
@@ -62,8 +64,9 @@ func run() error {
 		return nil
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+		Level: logutil.Level(*debug, os.Getenv),
+	})))
 
 	// Executor'ın root çalıştığını doğrula. Root DEĞİLSE Docker'a
 	// erişemez ve her ayrıcalıklı işlem anlaşılmaz hatalarla başarısız

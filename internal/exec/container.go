@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"strconv"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -289,11 +290,47 @@ func containerStateToProto(state string) panelyv1.ContainerState {
 }
 
 // ContainerLogs, bir replikanın çıktısını akıtır.
-func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, _ grpc.ServerStreamingServer[panelyv1.ContainerLogsResponse]) error {
-	if err := validateContainerRef(req.GetRef()); err != nil {
+//
+// # Neden denetime YAZILMIYOR
+//
+// Salt okunur bir çağrıdır ve server.go'daki politika yalnızca durum
+// değiştiren işlemleri kaydeder — ContainerList ile aynı gerekçe: panelyd
+// bu ucu sürekli çağırır (GUI'de akan günlük penceresi) ve her açılışı
+// kaydetmek zinciri gürültüyle doldurup asıl ayrıcalıklı işlemleri
+// görünmez kılardı.
+//
+// Bu, §8.1'in terminaliyle KASITLI bir asimetridir: PTYOpen çalıştırma
+// yeteneği verir, kendi denetim kaydı ve TOTP kapısı vardır. Günlük okumak
+// yalnızca gözlemdir.
+func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, stream grpc.ServerStreamingServer[panelyv1.ContainerLogsResponse]) error {
+	ref := req.GetRef()
+	if err := validateContainerRef(ref); err != nil {
 		return invalidArgument(err)
 	}
-	return notYetImplemented("ContainerLogs")
+
+	replica := ref.GetReplica()
+	sel := dockerdrv.Selector{
+		AppID:     ref.GetRelease().GetAppId(),
+		ReleaseID: ref.GetRelease().GetReleaseId(),
+		// Günlük TEK replikanındır; seçici tekilleştirilmiş olmalı.
+		Replica: &replica,
+	}
+
+	// since verilmemişse sıfır zaman gider ve sürücü parametreyi hiç koymaz.
+	var since time.Time
+	if ts := req.GetSince(); ts != nil {
+		since = ts.AsTime()
+	}
+
+	err := s.docker.ContainerLogs(stream.Context(), sel,
+		req.GetTailLines(), req.GetFollow(), since,
+		func(data []byte, isStderr bool) error {
+			return stream.Send(&panelyv1.ContainerLogsResponse{Data: data, IsStderr: isStderr})
+		})
+	if err != nil {
+		return internalError(err)
+	}
+	return nil
 }
 
 // ImageBuild, bir sürümün imajını uzak git bağlamından derletir.
@@ -316,17 +353,63 @@ func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, _ grpc.Server
 //     ölçüldü: çekme aşamasındaki hata HTTP 500, derleme ORTASINDAKİ hata
 //     HTTP 200 + akışın son karesinde `{"error":...}`. HTTP kodunu
 //     kontrol etmek başarısız her derlemeyi BAŞARILI göstermeye yeter.
-func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, _ grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+//  6. Başarı ölçütü POZİTİF olmalı: sürücü `aux` karesini şart koşuyor,
+//     "hata karesi görmedim"i yeterli saymıyor (dockerdrv/build.go).
+func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+	const action = "image.build"
+	rel := req.GetRelease()
+	tgt := target(rel.GetAppId(), rel.GetReleaseId())
+	params := buildAuditParams(req)
+
 	if err := validateImageBuild(req, s.allowedGitHosts); err != nil {
-		return invalidArgument(err)
+		return s.denied(action, tgt, params, err)
 	}
-	return notYetImplemented("ImageBuild")
+
+	// ⚠ Bu çağrı ile completed() arasına ERKEN DÖNÜŞ KONULAMAZ.
+	//
+	// Akış dört yoldan biter: başarı, hata karesi, taşıma hatası ve
+	// istemcinin kopması / bağlam iptali. Dördüncüsü sinsi olanıdır —
+	// derleme gerçekten koşmuş, imaj üretilmiş ama kayıt yazılmamış
+	// olabilirdi. Kayıt her dört yolda da yazılsın diye tek çıkış var.
+	imageID, opErr := s.docker.ImageBuild(stream.Context(), dockerdrv.BuildSpec{
+		AppID:      rel.GetAppId(),
+		CommitSHA:  req.GetSource().GetCommitSha(),
+		ContextURL: BuildContextURL(req.GetSource()),
+		Dockerfile: req.GetDockerfilePath(),
+		BuildArgs:  req.GetBuildArgs(),
+	}, func(data []byte, isStderr bool) error {
+		// ⚠ Derleme ÇIKTISI istemciye akar ama denetime GİRMEZ: kullanıcının
+		// deposundan gelir ve zincir ekle-sadece'dir.
+		return stream.Send(&panelyv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
+	})
+
+	// image_id kaydın YANLIŞLANABİLİR olmasını sağlayan alandır: hangi
+	// imajın gerçekten üretildiği sonradan hostta kontrol edilebilir.
+	if imageID != "" {
+		params["image_id"] = imageID
+	}
+	if err := s.completed(action, tgt, params, opErr); err != nil {
+		return internalError(err)
+	}
+	return nil
 }
 
-// notYetImplemented, doğrulaması geçen ama sürücüsü henüz yazılmamış bir
-// ucu bildirir. Unimplemented ile InvalidArgument'ı ayırmak önemlidir:
-// ilki "bu sürüm yapmıyor", ikincisi "istek reddedildi" demektir.
-func notYetImplemented(rpc string) error {
-	return status.Errorf(codes.Unimplemented,
-		"exec: %s doğrulandı ama sürücü henüz yok (Faz 1, derleme dilimi)", rpc)
+// buildAuditParams, derleme isteğinin denetime yazılacak parametreleridir.
+//
+// Kaynak üçlüsü ve commit_sha AÇIK yazılır — denetimin asıl işi "hangi
+// koddan hangi imaj çıktı" sorusudur. Derleme argümanlarının DEĞERLERİ
+// yazılmaz: exec.proto onların sır taşımaması gerektiğini söylüyor, ama
+// "gerekiyor" ile "öyle" aynı şey değil ve zincire bir kez giren sır geri
+// alınamaz.
+func buildAuditParams(req *panelyv1.ImageBuildRequest) map[string]string {
+	src := req.GetSource()
+	params := map[string]string{
+		"source":          src.GetHost() + "/" + src.GetOwner() + "/" + src.GetRepo(),
+		"commit_sha":      src.GetCommitSha(),
+		"dockerfile_path": req.GetDockerfilePath(),
+	}
+	for k, v := range audit.RedactEnv(req.GetBuildArgs()) {
+		params["build_arg."+k] = v
+	}
+	return params
 }

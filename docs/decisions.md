@@ -1663,3 +1663,122 @@ atlamak bir arızadır.
 yasaktır. Atlanan test ile geçen testi ayırt edemeyen bir kontrol, yeşil
 rozetten başka bir şey üretmez — bu projede aynı sınıfın kaçıncı tekrarı
 olduğu artık sayılmıyor.
+
+---
+
+## K-042 — Derlemede başarı ölçütü POZİTİF olmalı: `aux` karesi
+
+Derleme dilimine başlamadan önce tek bir soru bütün tasarımı belirledi:
+`POST /build`'e hangi derleyici cevap veriyor?
+
+İki ihtimal vardı ve aralarındaki fark bu dilimin yapılabilir olup
+olmamasıydı:
+
+| | çıktı | maliyet |
+|---|---|---|
+| klasik derleyici (`version=1`) | satır ayrılmış JSON | ~100 satır |
+| BuildKit (`version=2`) | ele geçirilmiş bağlantı üzerinden gRPC oturumu | bütçeye SIĞMAZ |
+
+Klasik derleyici Docker 23'te kullanımdan kaldırılmış (deprecated) ilan
+edildi. Kalan bütün ölçümlerimiz onun çıktı biçimine dayanıyordu; hâlâ
+cevap vermiyorsa dilim boşlukta duruyordu demekti.
+
+**Ölçüldü (Docker 29.1.3):** klasik derleyici cevap veriyor, kaldırılmamış.
+
+### Üç başarısızlık biçimi, yalnızca biri HTTP hatası
+
+Yerel bir `git daemon` ile kurulan üç depoya karşı ölçüldü:
+
+| durum | HTTP | akış |
+|---|---|---|
+| çekme aşamasında hata | **500** | `{"message":"error fetching: ..."}` |
+| derleme ORTASINDA hata | **200** | son karede `{"error":...}`, **aux YOK** |
+| başarı | **200** | `{"aux":{"ID":"sha256:..."}}`, **error YOK** |
+
+Yani durum koduna bakan bir sürücü, derleme ortasında ölen HER derlemeyi
+başarılı sayardı: bozuk imaj etiketlenir, dağıtıma girer ve arıza ancak
+üretimde görünürdü.
+
+### "Hata karesi yok" YETERLİ DEĞİL
+
+İlk tasarım kabul ölçütü olarak hata karesinin YOKLUĞUNU alıyordu. Bu bir
+OLUMSUZUN YOKLUĞUDUR ve üç şekilde sessizce yanılır: ayrıştırıcıda bir
+hata olursa, akış sessizce kesilirse, ya da Docker dördüncü bir
+başarısızlık biçimi eklerse.
+
+Ölçüm daha iyisini verdi: `aux` karesi başarıda **daima** geliyor, ortada
+ölen derlemede **hiç** gelmiyor. Ölçüt bu yüzden POZİTİF:
+
+> aux karesi görülmediyse derleme başarısızdır — hata karesi hiç gelmemiş
+> olsa bile.
+
+Bu, "imaj var mı?" diye sormaktan da güçlü. Etiket `panely/<app>:<sha>`
+ve aynı commit daha önce derlenmiş olabilir; o durumda başarısız bir
+derlemeden sonra **eski** imaj bulunur ve kontrol yanılırdı. aux karesi
+**bu** derlemenin ürettiği kimliktir ve denetim kaydına o yazılıyor —
+kaydı sonradan yanlışlanabilir kılan alan da bu.
+
+### Yanında doğrulanan iki şey
+
+- **`build_args` değerleri imaj geçmişinde düz metin görünüyor.**
+  `docker history` çıktısında `GIZLI_ARG=deger-42` okundu. exec.proto bunu
+  zaten yazıyordu; artık iddia değil ölçüm. Denetim zincirine
+  `audit.RedactEnv` ile yalnızca ADLAR giriyor: aynı sızıntıyı
+  ekle-sadece bir zincire kopyalamanın anlamı yok.
+- **GitHub tam SHA ile fetch'e izin veriyor.** `BuildContextURL` daima
+  `#<40-hex>` üretiyor; GitHub `allowReachableSHA1InWant` desteklemeseydi
+  üretimdeki her derleme kırılırdı. Gerçek GitHub'a karşı ölçüldü.
+
+### Günlük çerçevelemesi
+
+`ContainerLogs` için de baytlar okundu, belge okunmadı:
+
+```
+01 00 00 00  00 00 00 0d  "cikti-satiri\n"
+02 00 00 00  00 00 00 0c  "hata-satiri\n"
+```
+
+bayt 0 akış türü, 1-3 dolgu, 4-7 **büyük-uçlu** uzunluk. Uzunluk telden
+geldiği için kare tek seferde tamponlanmıyor: sabit 32 KiB'lik tampondan
+parçalanarak akıtılıyor. Aksi hâlde bozuk bir daemon AYRICALIKLI süreçte
+4 GiB ayırtabilirdi.
+
+---
+
+## K-043 — Test, kurduğu bağımlılığın DOĞRU İÇERİĞİ sunduğunu doğrulamalı
+
+Derleme E2E testi kendi git sunucusunu kuruyor. İlk hâli iki kestirme
+yapıyordu: git'in **varsayılan portunu** (9418) kullanmak ve `cmd.Start()`
+başarılı dönünce daemon'ı çalışıyor saymak.
+
+İkisi birlikte şunu üretti: makinede önceki ölçümlerden kalmış bir git
+daemon aynı portu tutuyordu. Yeni daemon başladı, "address already in
+use" ile öldü — ama `Start()` bunu görmez, çünkü süreç gerçekten
+başlamıştı. Test sessizce **eski** daemon'a bağlandı ve kendi yazdığı
+Dockerfile yerine **bambaşka bir deponun** içeriğini derledi.
+
+Test kırmızı oldu, ama doğru sebeple değil: yalnızca çıktı beklenen izi
+taşımadığı için. İçerik tesadüfen uyuşsaydı **yeşil geçecek ve hiçbir şey
+kanıtlamayacaktı.**
+
+**Düzeltme:** port işletim sisteminden isteniyor (`127.0.0.1:0`) ve
+daemon'ın **bizim depomuzu** yayınladığı `git ls-remote` ile doğrulanana
+kadar teste başlanmıyor.
+
+**Kural:** bir test kendi kurduğu bağımlılığı kullanacaksa, "başlattım"
+kabul ölçütü değildir. Ölçüt, o bağımlılığın **beklenen içeriği
+sunduğunun** gözlenmesidir. Aynı sınıf K-039'da systemd birimi için
+("kurulumdan sonra active" yetmedi, yeniden başlatma gerekti) ve K-041'de
+atlanan testler için görülmüştü.
+
+### Mutasyon sınaması bir boşluk daha buldu
+
+`ContainerLogs` tekil eşleşme kontrolü (`len(matches) != 1`) `< 1` yapıldı
+ve test YİNE geçti. Sebep: iki eşleşmeli durumda çağrı gerçekten hata
+döndürüyordu — ama çokluk kontrolünden değil, sahte daemon'ın günlük
+biçiminde olmayan gövdesinden. Test **doğru sonucu yanlış sebeple**
+geçiyordu.
+
+`if err == nil { t.Error }` zayıf bir iddiadır: herhangi bir hata onu
+tatmin eder. Ayırt edici ölçüt davranışsal olmalıydı — istek **tele hiç
+çıkmamalı**. Kontrol o hâle getirildi ve mutasyon yakalandı (11/11).

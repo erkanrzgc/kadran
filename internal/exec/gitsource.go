@@ -162,7 +162,9 @@ func BuildContextURL(src *panelyv1.GitSource) string {
 		src.GetHost(), src.GetOwner(), src.GetRepo(), src.GetCommitSha())
 }
 
-// ImageTag, imaj etiketini kurar. Etiket de istekten alınmaz.
-func ImageTag(appID, commitSHA string) string {
-	return fmt.Sprintf("panely/%s:%s", appID, commitSHA)
-}
+// Etiketi kuran fonksiyon BURADA DEĞİL, dockerdrv.ImageTag'dedir.
+//
+// Bir dönem burada da bir kopyası vardı. İki tanım, adı üreten iki ayrı
+// yer demektir; biri değişip diğeri değişmediğinde derleme bir etiketle
+// yapılır, konteyner başka bir etiketi arar ve arıza derleme anında değil
+// ÇALIŞTIRMA anında ortaya çıkar. Tek tanım bu sınıfı kapatıyor.

@@ -1,14 +1,48 @@
 package exec
 
 import (
+	"context"
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/panely/internal/audit"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 )
+
+// fakeStream, akış uçlarını test etmek için asgari bir sunucu akışı.
+//
+// grpc.ServerStream gömülü ve NIL: yalnızca Context ve Send çağrılıyor.
+// Başka bir metoda dokunan bir değişiklik burada panikler ve bu iyidir —
+// sessizce farklı bir şey test etmektense gürültülü kırılsın.
+type fakeStream[T any] struct {
+	grpc.ServerStream
+	ctx  context.Context
+	sent []*T
+	// fail, dolu ise Send bu hatayı döndürür (istemcinin kopması).
+	fail error
+}
+
+func (f *fakeStream[T]) Context() context.Context { return f.ctx }
+
+func (f *fakeStream[T]) Send(m *T) error {
+	if f.fail != nil {
+		return f.fail
+	}
+	f.sent = append(f.sent, m)
+	return nil
+}
+
+func newBuildStream() *fakeStream[panelyv1.ImageBuildResponse] {
+	return &fakeStream[panelyv1.ImageBuildResponse]{ctx: context.Background()}
+}
+
+func newLogStream() *fakeStream[panelyv1.ContainerLogsResponse] {
+	return &fakeStream[panelyv1.ContainerLogsResponse]{ctx: context.Background()}
+}
 
 const testSHA = "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
 
@@ -185,11 +219,8 @@ func TestBuildContextURLCannotBePoisoned(t *testing.T) {
 	}
 }
 
-func TestImageTagIsConstructed(t *testing.T) {
-	if got, want := ImageTag("blog", testSHA), "panely/blog:"+testSHA; got != want {
-		t.Errorf("etiket %q, beklenen %q", got, want)
-	}
-}
+// ImageTag'in testi BURADA DEĞİL, dockerdrv paketindedir — tanımı da
+// oradadır. Etiketi kuran tek bir yer var; testi de tek yerde duruyor.
 
 // TestDockerfilePathStaysInsideRepo, Dockerfile yolunun depo kökünden
 // çıkamayacağını doğrular.
@@ -220,22 +251,82 @@ func TestDockerfilePathStaysInsideRepo(t *testing.T) {
 // çağırmayan bir handler bu dosyayı olduğu gibi geçirirdi.
 //
 // Ayırt edici sinyal iki kodun FARKLI olması: bozuk istek
-// InvalidArgument, geçerli istek Unimplemented almalı.
+// InvalidArgument almalı, geçerli istek ALMAMALI. Geçerli istek burada
+// yine de başarısız olur (Docker soketi kasten ulaşılamaz) ama başka bir
+// kodla — doğrulamanın çağrıldığını gösteren şey bu fark.
 func TestImageBuildHandlerValidatesFirst(t *testing.T) {
-	srv, err := NewServer(ServerOptions{Journal: &Journal{}})
-	if err != nil {
-		t.Fatal(err)
-	}
+	srv := newTestServer(t)
 
 	bad := validBuildRequest()
 	bad.Source.CommitSha = "main" // dal adı — reddedilmeli
 
-	if got := status.Code(srv.ImageBuild(bad, nil)); got != codes.InvalidArgument {
+	if got := status.Code(srv.ImageBuild(bad, newBuildStream())); got != codes.InvalidArgument {
 		t.Errorf("bozuk istek %q döndü, InvalidArgument bekleniyordu — "+
 			"handler doğrulamayı çağırmıyor olabilir", got)
 	}
 
-	if got := status.Code(srv.ImageBuild(validBuildRequest(), nil)); got != codes.Unimplemented {
-		t.Errorf("geçerli istek %q döndü, Unimplemented bekleniyordu", got)
+	if got := status.Code(srv.ImageBuild(validBuildRequest(), newBuildStream())); got == codes.InvalidArgument {
+		t.Error("geçerli istek InvalidArgument döndü — doğrulama fazla reddediyor")
+	}
+}
+
+// TestImageBuildWritesAuditWithoutBuildArgValues, derleme kaydının
+// zincire girdiğini VE argüman değerlerinin girmediğini doğrular.
+//
+// Zincir ekle-sadece'dir: bir kez yazılan sır geri alınamaz (silmek
+// zinciri koparır). Ölçüldü ki derleme argümanları imaj geçmişinde zaten
+// düz metin görünüyor — o sızıntıyı bir de denetim zincirine kopyalamanın
+// anlamı yok.
+func TestImageBuildWritesAuditWithoutBuildArgValues(t *testing.T) {
+	srv := newTestServer(t)
+	req := validBuildRequest()
+	req.BuildArgs = map[string]string{"NPM_TOKEN": "cok-gizli-deger-42"}
+
+	// Docker ulaşılamaz olduğu için işlem başarısız olacak; ölçtüğümüz şey
+	// KAYDIN yazılıp yazılmadığı ve İÇİNDE NE OLDUĞU.
+	_ = srv.ImageBuild(req, newBuildStream())
+
+	records, err := srv.journal.Read(0, 100)
+	if err != nil {
+		t.Fatalf("günlük okunamadı: %v", err)
+	}
+	if len(records) == 0 {
+		t.Fatal("derleme denetim zincirine hiç yazılmadı")
+	}
+	last := records[len(records)-1]
+	if last.Action != "image.build" {
+		t.Errorf("eylem %q, image.build bekleniyordu", last.Action)
+	}
+	if strings.Contains(last.ParamsJSON, "cok-gizli-deger-42") {
+		t.Errorf("derleme argümanının DEĞERİ zincire yazıldı: %s", last.ParamsJSON)
+	}
+	// Anahtar adı kalmalı: hangi argümanın verildiği denetlenebilir olmalı.
+	if !strings.Contains(last.ParamsJSON, "NPM_TOKEN") {
+		t.Errorf("argüman adı kayda girmedi: %s", last.ParamsJSON)
+	}
+	// Kaynak üçlüsü kaydın asıl bilgisi.
+	if !strings.Contains(last.ParamsJSON, testSHA) {
+		t.Errorf("commit_sha kayda girmedi: %s", last.ParamsJSON)
+	}
+}
+
+// TestImageBuildRecordsDeniedRequests, reddedilen derlemenin de zincire
+// girdiğini doğrular — reddetme, güvenlik modelinin devreye girdiği andır.
+func TestImageBuildRecordsDeniedRequests(t *testing.T) {
+	srv := newTestServer(t)
+	bad := validBuildRequest()
+	bad.Source.Host = "kotu-sunucu.example.com" // beyaz listede değil
+
+	_ = srv.ImageBuild(bad, newBuildStream())
+
+	records, err := srv.journal.Read(0, 100)
+	if err != nil {
+		t.Fatalf("günlük okunamadı: %v", err)
+	}
+	if len(records) == 0 {
+		t.Fatal("reddedilen derleme kaydedilmedi — beyaz listeyi zorlama denemesi görünmez olurdu")
+	}
+	if got := records[len(records)-1].Outcome; got != audit.OutcomeDenied {
+		t.Errorf("sonuç %q, DENIED bekleniyordu", got)
 	}
 }

@@ -369,12 +369,12 @@ func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
 		{
 			"ContainerLogs",
 			func() error {
-				return srv.ContainerLogs(&panelyv1.ContainerLogsRequest{Ref: kotuRef}, nil)
+				return srv.ContainerLogs(&panelyv1.ContainerLogsRequest{Ref: kotuRef}, newLogStream())
 			},
 			func() error {
 				return srv.ContainerLogs(&panelyv1.ContainerLogsRequest{
 					Ref: &panelyv1.ContainerRef{Release: iyiSel.GetRelease()},
-				}, nil)
+				}, newLogStream())
 			},
 		},
 	}

@@ -1,9 +1,7 @@
 // Command panely-caddy, Panely'nin ters vekilidir: Caddy'nin YALNIZCA
 // ihtiyaç duyulan modülleriyle derlenmiş hâli.
 //
-// ════════════════════════════════════════════════════════════════════
-//  NEDEN STOK CADDY DEĞİL
-// ════════════════════════════════════════════════════════════════════
+// ── NEDEN STOK CADDY DEĞİL ──────────────────────────────────────────
 //
 // panelyd, Caddy'nin admin soketine doğrudan yazıyor (docs/decisions.md
 // K-050). Bu yetkinin ne anlama geldiği ÖLÇÜLDÜ, varsayılmadı:
@@ -76,9 +74,7 @@ import (
 	_ "github.com/caddyserver/caddy/v2/modules/logging"
 )
 
-// ════════════════════════════════════════════════════════════════════
-//  KASTEN DIŞARIDA BIRAKILANLAR
-// ════════════════════════════════════════════════════════════════════
+// ── KASTEN DIŞARIDA BIRAKILANLAR ────────────────────────────────────
 //
 // Bu liste bir "yapılacaklar" değil, bir GÜVENLİK SINIRIDIR. Buraya bir
 // modül eklemek, panelyd'nin yazabildiği yapılandırmanın yapabileceklerini

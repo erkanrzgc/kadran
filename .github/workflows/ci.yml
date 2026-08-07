@@ -133,6 +133,25 @@ jobs:
           done
           ls -la dist/
 
+      # panely-caddy AYRI bir Go modülü (build/caddy/go.mod), yani
+      # `go build ./...` onu KAPSAMAZ ve kök modülün testleri de görmez.
+      # Ayrı derlenmezse sessizce çürür: Caddy'nin modül yolları sürüm
+      # atlarında değişebiliyor ve arıza ancak sunucuda kurulum sırasında
+      # görülürdü.
+      #
+      # ⚠ Bu binary bir GÜVENLİK SINIRI taşıyor: dosya servis eden
+      # modüller kasten dışarıda (docs/decisions.md K-050). Derlemenin
+      # CI'da koşması, o sınırın hâlâ derlenebilir olduğunu garanti eder;
+      # sınırın hâlâ ETKİLİ olduğu ise sunucuda ölçülüyor.
+      - name: Ters vekili derle (ayrı modül)
+        working-directory: build/caddy
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          go build -trimpath -ldflags "-s -w" -o "../../dist/panely-caddy" .
+          ls -la ../../dist/panely-caddy
+
       - uses: actions/upload-artifact@v4
         with:
           name: panely-linux-${{ matrix.arch }}

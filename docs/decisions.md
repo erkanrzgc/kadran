@@ -2135,3 +2135,152 @@ mevcut kuruluma karşı yeniden koşturulabilir olmalı ve sonucu yine
 Aynı ailenin üçüncü örneği: "kurulumdan sonra active" kabul ölçütü değil
 (systemd birimi yeniden başlatmayı geçmeli), garanti ortamda `t.Skip`
 yasak, ve şimdi bu.
+
+---
+
+## K-050 — Caddy'ye panelyd konuşur; yetkinin sınırı BINARY'de çizildi
+
+Dilim 4b'nin ilk sorusu "Caddy admin soketine kim konuşuyor"du. İki aday
+vardı: panelyd doğrudan (bütçe maliyeti yok) veya executor üzerinden
+(şema beyaz listesi, ama bütçeyi kesin aşar — 2497/2500).
+
+Soru kod yazmadan ÖLÇÜLDÜ ve ölçüm ikisini de değiştirdi.
+
+### Ölçüm 1 — dosya izinleri zaten bir sınır çiziyor
+
+| kullanıcı | exec.sock | api.sock |
+|---|---|---|
+| `nobody` (≈ caddy) | ENGELLENDİ | ENGELLENDİ |
+| `panely` | bağlandı | bağlandı |
+
+Yani "ele geçirilmiş panelyd, Caddy'ye `reverse_proxy unix//…/exec.sock`
+yazıp executor'ı internete açar" senaryosu, Caddy `panely` grubuna
+girmediği sürece **dosya sistemi tarafından** kapalı.
+
+### Ölçüm 2 — asıl tehdit başkaydı: TLS özel anahtarı
+
+Stok Caddy'ye admin soketinden şu yüklendi:
+
+```json
+{"handler":"file_server","root":"/var/lib/caddy/.local/share/caddy","browse":{}}
+```
+
+ve o dizindeki dosya **düz HTTP üzerinden servis edildi**. Orada alan
+adlarının TLS özel anahtarları durur.
+
+Yani stok Caddy ile "panelyd ters vekili yapılandırabilir" yetkisi,
+sessizce "panelyd ele geçirilirse alan adının özel anahtarı KALICI olarak
+çalınabilir" demek oluyordu. Ele geçirilmiş bir panelyd zaten hangi
+sürümün aktif olduğuna karar veriyor (yani alan adında istediği içeriği
+servis edebiliyor); anahtarın çalınabilmesi bunun ÜSTÜNE eklenen ve
+sunucu kurtarıldıktan sonra da süren gerçek bir delta.
+
+⚠ Bu ölçümün ilk iki denemesi YANLIŞ "güvenli" raporladı — bkz. K-051.
+
+### Karşı önlem olarak "veri dizinini kısıtla" ÇALIŞMIYOR
+
+`file_server` dosyayı Caddy'nin KENDİ kimliğiyle okuyor: aynı süreç,
+aynı uid. Süreç içinde sınır yok. systemd sertleştirmesi de yardım etmez,
+çünkü Caddy o dizini okuyabilmek zorunda.
+
+### Çözüm: sınır BINARY'de
+
+`build/caddy` — Caddy'nin yalnızca gereken modülleriyle derlenmiş hâli.
+`file_server`, `templates` ve `caddyfs` **binary'de hiç yok**.
+Doğrulanan değil, TEMSİL EDİLEMEYEN bir yetenek; exec.proto'daki "host
+yolu kabul EDİLMEZ, hiç alınmaz" kararının aynısı.
+
+Bedava değildi ama zaten gerekiyordu: Ubuntu'nun Caddy'si 2.6.2 (Kasım
+2022) ve admin soketinin modunu ayarlayamıyor (`|0660` sözdizimi 2.7'de
+geldi), Faz 2'nin `caddy-dns/cloudflare` eklentisi de özel derleme
+istiyor. xcaddy tek başına yetmezdi: o yalnızca modül EKLEYEBİLİYOR,
+ÇIKARMAK için özel bir main.go şart.
+
+Ayrı bir Go modülü (`build/caddy/go.mod`): Caddy'nin bağımlılık ağacı
+panely'nin go.mod'unu ve `go test ./...` süresini şişirmesin.
+
+### Soket sahipliği: üyelik DEĞİL, grup sahipliği
+
+Caddy soketi kendisi yaratırsa grup olarak kendi birincil grubunu
+kullanıyor — ölçüldü: `srw-rw---- caddy:caddy`, panely bağlanamıyor.
+(Unix soketine bağlanmak YAZMA izni ister.)
+
+Çözüm systemd soket aktivasyonu: soketi systemd yaratıyor
+(`SocketUser=caddy SocketGroup=panely SocketMode=0660`), Caddy `fd/3`
+olarak devralıyor. Caddy `panely` grubuna GİRMİYOR; yalnızca soketin
+grup sahibi panely.
+
+Değerlendirilen alternatif `ExecStartPost` ile root'un `chgrp` yapmasıydı;
+çalışıyor ama doğru izinler Caddy başladıktan SONRA oturuyor ve kurulum
+bir zamanlama yarışına bağlanıyor. Soket aktivasyonunda pencere yok.
+
+⚠ `.socket` birimi varsayılan olarak aynı adlı `.service`'i tetikliyor;
+`Service=caddy.service` satırı olmadan birim hiç başlamıyor (ölçüldü).
+
+### Nihai tasarımın ölçümü (altısı birlikte)
+
+| # | özellik | sonuç |
+|---|---|---|
+| 1 | soket `caddy:panely` 0660 | ✓ |
+| 2 | caddy `panely` grubunda DEĞİL | ✓ |
+| 3 | panely admin API'ye ulaşıyor | ✓ |
+| 4 | caddy exec.sock'a ulaşAMIYOR | ✓ |
+| 5 | `file_server` yapılandırması REDDEDİLİYOR | ✓ HTTP 400 |
+| 6 | `reverse_proxy` ÇALIŞIYOR | ✓ |
+
+6. satır olmadan ölçüm hiçbir şey kanıtlamazdı: her yapılandırmayı
+reddeden bozuk bir binary de 5.'i geçerdi.
+
+### Kalan yüzey (açıkça yazılıyor)
+
+Ele geçirilmiş bir panelyd hâlâ trafiği istediği upstream'e
+yönlendirebilir. Bu bir kayıp değil: zaten hangi sürümün aktif olduğuna
+o karar veriyor. Kapatılan şey, bunun ÜSTÜNE gelen kalıcı anahtar
+hırsızlığıydı.
+
+`build/caddy/main.go`'daki dışlama listesi bir "yapılacaklar" değil
+GÜVENLİK SINIRIDIR; oraya modül eklemeden önce yukarıdaki ölçüm
+tekrarlanmalı.
+
+---
+
+## K-051 — Bir güvenlik ölçümü, ÖLÇEBİLDİĞİNİ kanıtlamadan sonuç vermemeli
+
+K-050'nin sızdırma testi **üç kez** koştu ve ilk ikisi YANLIŞ "güvenli"
+raporladı:
+
+| deneme | gerçekte olan | betiğin dediği |
+|---|---|---|
+| 1 | Caddy hiç başlamamıştı (`bind: permission denied`) | "✓ SIZDIRILAMIYOR" |
+| 2 | `/load` 403 aldı, sonra Caddy düştü; istek HTTP 000 | "✓ REDDEDILDI" |
+| 3 | gerçekten ölçüldü | ⚠ SIZDIRILABILIYOR |
+
+Her iki yanlış geçişte de mekanizma aynı: **cevapsızlık istenen cevap
+sayıldı**. Boş gövde "anahtar servis edilmedi" gibi, HTTP 000 "yapılandırma
+reddedildi" gibi okundu.
+
+Bu, bu oturumda görülen diğer iki örnekle aynı aile:
+`panelyd -version` boş çıktı verdi (dosya yoktu, `|| true` yuttu) ve
+`os._exit()` stdio tamponunu boşaltmadığı için alt süreçlerin çıktısı hiç
+görünmedi. Üçünde de "hiçbir şey duymadım" → "sorun yok".
+
+**Why:** Bir güvenlik kontrolünde bu yön ÖLÜMCÜL. Sıradan bir testte
+yanlış negatif zaman kaybettirir; güvenlik ölçümünde açık bir deliği
+kapalı ilan ettirir.
+
+**How to apply:** Ölçüm betiği, sonucu raporlamadan önce ÖLÇEBİLDİĞİNİ
+kanıtlamalı:
+
+```bash
+require_live() {
+    code=$(curl -s -o /dev/null -w "%{http_code}" ... /config/)
+    [ "$code" = "200" ] || { echo "OLCUM GECERSIZ"; exit 1; }
+}
+```
+
+Ve sonuç kodları AÇIKÇA ayrılmalı — `case` ile 200/400/diğer; "200
+değilse reddedilmiştir" varsayımı tam olarak yukarıdaki 2. satırdır.
+
+Ayrıca her güvenlik ölçümünün bir KARŞI KONTROLÜ olmalı: "tehdit
+kapandı" ölçümünün yanında "sistem hâlâ işini yapıyor" ölçümü. K-050'de
+bu 6. satır; onsuz bozuk bir binary de güvenli görünürdü.

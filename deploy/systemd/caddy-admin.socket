@@ -1,0 +1,47 @@
+[Unit]
+Description=Panely ters vekili — admin soketi
+Documentation=https://github.com/erkanrzgc/panely
+
+# ══════════════════════════════════════════════════════════════════════
+#  Soketi neden systemd yaratıyor, Caddy değil?
+# ══════════════════════════════════════════════════════════════════════
+#
+# panelyd bu sokete yazıyor (K-050), yani sokete `panely` kullanıcısının
+# ERİŞEBİLMESİ ama Caddy'nin `panely` GRUBUNA GİRMEMESİ gerekiyor. İkisi
+# aynı şey değil ve fark kritik: Caddy panely grubuna girseydi
+# `/run/panely-exec/exec.sock`'a (0660 root:panely) ulaşabilirdi — yani
+# ters vekil, ayrıcalıklı executor'a konuşabilir hâle gelirdi.
+#
+# Caddy soketi kendisi yaratırsa GRUP olarak kendi birincil grubunu
+# (caddy) kullanır. `unix//path|0660` sözdizimi MODU ayarlar ama GRUBU
+# ayarlamaz — bu ölçüldü: soket `srw-rw---- caddy:caddy` çıkıyor ve
+# panely bağlanamıyor.
+#
+# systemd soket aktivasyonu bunu temiz çözüyor: soketi systemd (root)
+# doğru sahiplik ve modla yaratıyor, Caddy onu `fd/3` olarak devralıyor.
+#
+# Değerlendirilen alternatif: ExecStartPost ile root'un `chgrp` yapması.
+# Çalışıyor ama soketin doğru gruba geçmesi Caddy'nin başlamasından
+# SONRAYA kalıyor ve bu, kurulum sırasını bir zamanlama yarışına bağlıyor.
+# Soket aktivasyonunda böyle bir pencere yok: soket, Caddy hiç başlamadan
+# önce doğru izinlerle hazır.
+
+[Socket]
+ListenStream=/run/caddy/admin.sock
+
+# Sahip Caddy, grup panely.
+#
+# ⚠ Bu satır Caddy'yi panely grubunun ÜYESİ YAPMAZ. Yalnızca bu soketin
+# grup sahipliğini belirler. Caddy'nin kendi grup üyeliği caddy.service'te
+# (`Group=caddy`) ve orası DEĞİŞTİRİLMEMELİDİR.
+SocketUser=caddy
+SocketGroup=panely
+SocketMode=0660
+
+# .socket birimi varsayılan olarak aynı adlı .service'i tetikler;
+# bizimki caddy.service. Bu satır olmadan birim "caddy-admin.service
+# bulunamadı" diye başlamıyor (ölçüldü).
+Service=caddy.service
+
+[Install]
+WantedBy=sockets.target

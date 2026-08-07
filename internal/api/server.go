@@ -11,6 +11,7 @@ import (
 	"errors"
 	"os"
 	"os/user"
+	"reflect"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -67,8 +68,8 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Store == nil {
 		return nil, errors.New("api: veritabanı zorunludur")
 	}
-	if opts.Executor == nil {
-		return nil, errors.New("api: executor istemcisi zorunludur")
+	if err := checkExecutor(opts.Executor); err != nil {
+		return nil, err
 	}
 
 	// Hangi kullanıcı olarak çalıştığımız durum ekranında gösterilir:
@@ -84,6 +85,36 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		startedAt: time.Now(),
 		runAsUser: runAs,
 	}, nil
+}
+
+// checkExecutor, executor bağımlılığının gerçekten kullanılabilir
+// olduğunu doğrular.
+//
+// ── Neden düz bir `== nil` yetmiyor? ────────────────────────────────
+//
+// Alan somut bir tipken (*execclient.Client) bu kontrol yeterliydi.
+// Arayüze çevrilince YENİ bir hatalı durum TEMSİL EDİLEBİLİR hale geldi:
+// arayüz içine konmuş TİPLİ bir nil.
+//
+//	var c *execclient.Client          // nil
+//	NewServer(ServerOptions{Executor: c})
+//
+// Burada `opts.Executor == nil` FALSE'tur — arayüzün tip sözcüğü dolu,
+// yalnızca değer sözcüğü nil. Kurucu geçer, hata ilk RPC'de nil
+// başvurusu olarak patlar; yani hata kurulum yerinden UZAKTA görünür.
+//
+// Arayüze geçmek testleri mümkün kıldı (bkz. Executor); bu kontrol, o
+// değişikliğin yan etkisini kapatıyor. Kurucuda yakalamak, panelyd'yi
+// hatalı kablolamayla ayağa kaldırıp ilk isteği bekletmekten iyidir.
+func checkExecutor(e Executor) error {
+	if e == nil {
+		return errors.New("api: executor istemcisi zorunludur")
+	}
+	if v := reflect.ValueOf(e); v.Kind() == reflect.Pointer && v.IsNil() {
+		return errors.New(
+			"api: executor istemcisi tipli nil — arayüze nil bir işaretçi konmuş")
+	}
+	return nil
 }
 
 // Ping, bağlantı canlılığını ve sürüm uyumunu doğrular.

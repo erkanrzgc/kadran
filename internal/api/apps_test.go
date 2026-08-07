@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -9,7 +10,9 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/panely/internal/execclient"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/panely/internal/store"
 )
 
 func TestCreateAppRoundTripsThroughGetApp(t *testing.T) {
@@ -240,5 +243,37 @@ func TestReadOnlyQueriesStayOutOfTheChain(t *testing.T) {
 
 	if after := len(auditActions(t, db)); after != before {
 		t.Errorf("salt okunur çağrılar zincire %d kayıt ekledi", after-before)
+	}
+}
+
+// TestNewServerRejectsTypedNilExecutor, arayüze konmuş TİPLİ bir nil'in
+// kurucuda yakalandığını doğrular.
+//
+// Bu hatalı durum, Executor somut tipten arayüze çevrilince TEMSİL
+// EDİLEBİLİR hale geldi. Düz `== nil` onu YAKALAMAZ: arayüzün tip sözcüğü
+// dolu, yalnızca değeri nil. Kontrol olmasaydı panelyd hatalı kablolamayla
+// ayağa kalkar ve ilk RPC'de nil başvurusuyla düşerdi — yani hata kurulum
+// yerinden uzakta görünürdü.
+func TestNewServerRejectsTypedNilExecutor(t *testing.T) {
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	if err != nil {
+		t.Fatalf("veritabanı açılamadı: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+
+	var typedNil *execclient.Client // nil işaretçi, arayüze konuyor
+
+	// Tehlikenin gerçek olduğu ÇALIŞMA ZAMANINDA iddia edilmiyor, çünkü
+	// gerek yok: staticcheck bunu STATİK olarak kanıtlıyor. Aynı değeri
+	// bir Executor'a atayıp `== nil` ile karşılaştıran bir satır SA4023
+	// veriyor — "this comparison is never true". Yani düz `== nil`
+	// kontrolünün bu durumu asla yakalayamayacağı derleyici tarafından
+	// doğrulanmış bir olgu.
+	//
+	// Testin ayırt ediciliği ayrıca mutasyonla sınandı: checkExecutor'daki
+	// reflect kontrolü silindiğinde bu test KIRMIZIYA döndü.
+
+	if _, err := NewServer(ServerOptions{Store: db, Executor: typedNil}); err == nil {
+		t.Fatal("tipli nil executor kabul edildi — ilk RPC'de nil başvurusu olurdu")
 	}
 }

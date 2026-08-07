@@ -174,6 +174,13 @@ type Container struct {
 	Replica   uint32
 	State     string
 	CreatedAt time.Time
+
+	// IPAddress, konteynerin UYGULAMA AĞINDAKİ adresi. Durmuş
+	// konteynerlerde boştur — Docker adresi ancak çalışırken atar.
+	//
+	// Ters vekil hostta çalıştığı ve konteynerler host portu yayınlamadığı
+	// için panelyd'nin vekile verecek adresi yalnızca buradan öğrenilir.
+	IPAddress string
 }
 
 // listEntry, `GET /containers/json` yanıtının kullanılan alanlarıdır.
@@ -186,6 +193,14 @@ type listEntry struct {
 	State   string            `json:"State"`
 	Created int64             `json:"Created"`
 	Labels  map[string]string `json:"Labels"`
+
+	// Yalnızca uygulama ağındaki adres okunur; Docker'ın ağ nesnesinin
+	// tamamı alınmaz (aynı gerekçe: dar yapı, sessiz anlam kazanma yok).
+	NetworkSettings struct {
+		Networks map[string]struct {
+			IPAddress string `json:"IPAddress"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
 }
 
 // ContainerList, Panely'nin yönettiği konteynerleri döndürür.
@@ -225,14 +240,19 @@ func (c *Client) ContainerList(ctx context.Context, appID string) ([]Container, 
 		if appID != "" && id.AppID != appID {
 			continue
 		}
-		out = append(out, Container{
+		ct := Container{
 			ID:        e.ID,
 			AppID:     id.AppID,
 			ReleaseID: id.ReleaseID,
 			Replica:   id.Replica,
 			State:     e.State,
 			CreatedAt: time.Unix(e.Created, 0).UTC(),
-		})
+		}
+		// Adres YALNIZCA uygulamanın kendi ağından okunur. Konteyner
+		// başka bir ağa da bağlıysa oradaki adresi bilerek göz ardı
+		// ediliyor: vekilin ulaşması gereken yer uygulama ağıdır.
+		ct.IPAddress = e.NetworkSettings.Networks[NetworkName(id.AppID)].IPAddress
+		out = append(out, ct)
 	}
 	return out, nil
 }

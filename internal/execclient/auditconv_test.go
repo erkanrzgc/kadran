@@ -1,10 +1,19 @@
-package pbconv
+// Gidiş-dönüş testleri BU pakette, pbconv'da değil.
+//
+// Çözümleme yönü (protobuf → iç kayıt) buraya taşındı: ayrıcalıklı
+// binary onu hiç çalıştırmıyordu ve `internal/pbconv` root süreç
+// bütçesine yazılıyor (docs/decisions.md K-053). Gidiş-dönüş testi iki
+// yöne de ihtiyaç duyduğu için, ikisinin de görünür olduğu tek yer
+// burası.
+
+package execclient
 
 import (
 	"testing"
 	"time"
 
 	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/panely/internal/pbconv"
 )
 
 // TestRoundTripPreservesChainIntegrity, çevirinin zinciri BOZMADIĞINI
@@ -32,7 +41,7 @@ func TestRoundTripPreservesChainIntegrity(t *testing.T) {
 		Source:     audit.SourceExecutor,
 	}, 7, [audit.HashSize]byte{1, 2, 3})
 
-	got := AuditRecordFromProto(AuditRecordToProto(original))
+	got := auditRecordFromProto(pbconv.AuditRecordToProto(original))
 
 	if got.Hash != original.Hash {
 		t.Error("hash gidiş-dönüşte korunmadı")
@@ -59,7 +68,7 @@ func TestRoundTripPreservesEveryField(t *testing.T) {
 		Source:     audit.SourceDaemon,
 	}, 3, [audit.HashSize]byte{9})
 
-	got := AuditRecordFromProto(AuditRecordToProto(original))
+	got := auditRecordFromProto(pbconv.AuditRecordToProto(original))
 
 	if got.Seq != original.Seq {
 		t.Errorf("seq = %d, beklenen %d", got.Seq, original.Seq)
@@ -90,7 +99,7 @@ func TestAllOutcomesRoundTrip(t *testing.T) {
 		audit.OutcomeSuccess, audit.OutcomeFailure, audit.OutcomeDenied,
 	} {
 		rec := audit.Record{TS: time.Now().UTC(), Action: "x", Outcome: o, Source: audit.SourceDaemon}
-		if got := AuditRecordFromProto(AuditRecordToProto(rec)); got.Outcome != o {
+		if got := auditRecordFromProto(pbconv.AuditRecordToProto(rec)); got.Outcome != o {
 			t.Errorf("outcome %v gidiş-dönüşte %v oldu", o, got.Outcome)
 		}
 	}
@@ -99,7 +108,7 @@ func TestAllOutcomesRoundTrip(t *testing.T) {
 func TestAllSourcesRoundTrip(t *testing.T) {
 	for _, s := range []audit.Source{audit.SourceDaemon, audit.SourceExecutor} {
 		rec := audit.Record{TS: time.Now().UTC(), Action: "x", Outcome: audit.OutcomeSuccess, Source: s}
-		if got := AuditRecordFromProto(AuditRecordToProto(rec)); got.Source != s {
+		if got := auditRecordFromProto(pbconv.AuditRecordToProto(rec)); got.Source != s {
 			t.Errorf("source %v gidiş-dönüşte %v oldu", s, got.Source)
 		}
 	}
@@ -112,7 +121,7 @@ func TestAllSourcesRoundTrip(t *testing.T) {
 // sokardı. Geçersiz kalması doğrudur: audit.Verifier onu reddeder.
 func TestUnspecifiedEnumsStayInvalid(t *testing.T) {
 	var zero audit.Record
-	got := AuditRecordFromProto(AuditRecordToProto(zero))
+	got := auditRecordFromProto(pbconv.AuditRecordToProto(zero))
 
 	if got.Outcome.Valid() {
 		t.Error("tanımsız outcome geçerli bir değere eşlendi")
@@ -123,16 +132,16 @@ func TestUnspecifiedEnumsStayInvalid(t *testing.T) {
 }
 
 func TestNilProtoIsSafe(t *testing.T) {
-	if got := AuditRecordFromProto(nil); got.Seq != 0 {
+	if got := auditRecordFromProto(nil); got.Seq != 0 {
 		t.Error("nil mesaj boş kayıt döndürmeli")
 	}
 }
 
 func TestEmptySlicesRoundTrip(t *testing.T) {
-	if got := AuditRecordsToProto(nil); got != nil {
+	if got := pbconv.AuditRecordsToProto(nil); got != nil {
 		t.Error("boş dilim nil döndürmeli")
 	}
-	if got := AuditRecordsFromProto(nil); got != nil {
+	if got := auditRecordsFromProto(nil); got != nil {
 		t.Error("boş dilim nil döndürmeli")
 	}
 }
@@ -156,7 +165,7 @@ func TestSliceRoundTripKeepsChainVerifiable(t *testing.T) {
 		chain = append(chain, rec)
 	}
 
-	got := AuditRecordsFromProto(AuditRecordsToProto(chain))
+	got := auditRecordsFromProto(pbconv.AuditRecordsToProto(chain))
 
 	checked, err := audit.VerifyAll(got)
 	if err != nil {

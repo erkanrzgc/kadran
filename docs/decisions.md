@@ -2364,3 +2364,69 @@ dizinin sessizce kaybolacağı anlamına geliyordu.
 artefaktlardan kurulmuş, (2) yeniden başlatmayı geçmiş olmalı. Elle
 biriktirilmiş durum üzerinde alınan ölçüm, o durumun kendisi hakkındadır
 — gönderilecek olan hakkında değil.
+
+---
+
+## K-053 — Bütçe freni çalıştı: yükseltilmedi, KÜÇÜLTÜLDÜ
+
+Ters vekil hostta çalışıyor ve konteynerler host portu yayınlamıyor;
+Docker'ın gömülü DNS'i de yalnızca ağın içinden çözüyor. Dolayısıyla
+panelyd'nin Caddy'ye verecek bir upstream adresi yok — `ManagedContainer`
+adres taşımıyordu.
+
+Eklemenin maliyeti ölçüldü: **~11 kod satırı** (dar `NetworkSettings`
+yapısı + çıkarım + proto alanı). Bütçe 2497/2500'dü, yani **aşacaktı**.
+
+### K-040'ın freni: önce küçültmeyi ara
+
+Kural "sınır aşılamaz" değil; "yükseltmeden ÖNCE küçültme seçeneğinin
+neden reddedildiği YAZILI olarak gerekçelendirilmeli". Arandı ve bulundu.
+
+`internal/pbconv` her iki dönüşüm yönünü de taşıyordu ve
+`cmd/panely-exec`'in içe aktarma grafiğindeydi. Ama ölçüldü:
+
+```
+executor   → yalnızca pbconv.AuditRecordsToProto   (kendi günlüğünü dışa yazar)
+execclient → yalnızca pbconv.AuditRecordsFromProto (executor'ın yanıtını okur)
+```
+
+Çözümleme yönü — `AuditRecordFromProto`, `AuditRecordsFromProto`,
+`outcomeFromProto`, `sourceFromProto` — **58 kod satırı** ve root süreçte
+**hiç çalışmıyor**. Ayrıcalıklı binary'nin çalıştırmadığı kodu taşıması
+için bir sebep yok: hem bütçeyi hem elle denetlenecek yüzeyi büyütüyordu.
+
+`internal/execclient/auditconv.go`'ya taşındı (dışa aktarılmadan).
+
+### Sonuç
+
+| adım | bütçe |
+|---|---|
+| başlangıç | 2497 |
+| pbconv çözümleme yönü taşındı | **2439** |
+| `ip_address` eklendi | **2448** |
+
+Sınıra **dokunulmadı**; boşluk 3 satırdan 52'ye çıktı.
+
+### Eklenen alan neden yeni bir YETKİ değil
+
+`ip_address` SALT OKUNUR ve zaten var olan salt okunur bir RPC'ye
+ekleniyor. Ele geçirilmiş bir panelyd'ye yeni bir şey yaptırmıyor:
+konteynerleri zaten listeleyebiliyordu ve Docker ağları hosttan zaten
+erişilebilir. Öğrendiği şey "hangi adres", "neye izinli" değil.
+
+Adresi **executor doldurur**, panelyd'den alınmaz — ve yalnızca
+uygulamanın KENDİ ağındaki adres okunur. Konteyner başka bir ağa da
+bağlıysa oradaki adres bilerek göz ardı ediliyor.
+
+### Yan kazanç: testin yeri düzeldi
+
+Gidiş-dönüş testleri artık `internal/execclient`'ta — iki yönün de
+görünür olduğu tek yer. `pbconv` test dosyasız kaldı ama yönü sınanmıyor
+değil: gidiş-dönüş testi `pbconv.AuditRecordsToProto`'yu çağırıyor.
+
+### Bu, metriğin DÖRDÜNCÜ değişimi DEĞİL
+
+K-040 "ölçtüğü şeye uyacak şekilde sürekli ayarlanan bir metrik, ölçmeyi
+bırakır" diyordu. Burada metrik değişmedi — kapsam, birim ve sınır aynı.
+Değişen şey ÖLÇÜLEN KOD: ayrıcalıklı grafikten oraya ait olmayan bir
+parça çıkarıldı. Kural tam olarak bunu üretmek için yazılmıştı.

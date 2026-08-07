@@ -258,6 +258,7 @@ func managedToProto(list []dockerdrv.Container) []*panelyv1.ManagedContainer {
 			},
 			State:     containerStateToProto(c.State),
 			CreatedAt: timestamppb.New(c.CreatedAt),
+			IpAddress: c.IPAddress,
 		})
 	}
 	return out

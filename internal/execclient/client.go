@@ -13,7 +13,6 @@ import (
 
 	"github.com/erkanrzgc/panely/internal/audit"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/pbconv"
 	"github.com/erkanrzgc/panely/internal/version"
 )
 
@@ -123,7 +122,7 @@ func (c *Client) ReadJournal(ctx context.Context, afterSeq uint64, limit uint32)
 		return JournalPage{}, fmt.Errorf("executor denetim günlüğü okunamadı: %w", err)
 	}
 	return JournalPage{
-		Records:   pbconv.AuditRecordsFromProto(resp.GetRecords()),
+		Records:   auditRecordsFromProto(resp.GetRecords()),
 		LatestSeq: resp.GetLatestSeq(),
 	}, nil
 }

@@ -268,6 +268,28 @@ message ManagedContainer {
   ContainerRef ref = 1;
   ContainerState state = 2;
   google.protobuf.Timestamp created_at = 3;
+
+  // Konteynerin UYGULAMA AĞINDAKİ adresi. Durmuş konteynerlerde boştur.
+  //
+  // ── Neden gerekli ────────────────────────────────────────────────
+  //
+  // Ters vekil (Caddy) HOST'ta çalışıyor, konteyner ağının içinde değil;
+  // Docker'ın gömülü DNS'i yalnızca ağın içinden çözüyor. Konteynerler de
+  // host portu YAYINLAMIYOR (bilerek: seçilebilseydi ayrıcalıklı portlar
+  // hedeflenebilirdi). Dolayısıyla panelyd'nin vekile verecek bir adresi
+  // ancak buradan öğrenmesi mümkün.
+  //
+  // ── Neden yeni bir YETKİ değil ───────────────────────────────────
+  //
+  // Alan SALT OKUNUR ve zaten var olan salt okunur bir RPC'ye ekleniyor.
+  // Ele geçirilmiş bir panelyd'ye yeni bir şey yaptırmıyor: konteynerleri
+  // zaten listeleyebiliyordu ve Docker ağları hosttan zaten erişilebilir.
+  // Öğrendiği şey "hangi adres", "neye izinli" değil.
+  //
+  // ⚠ Adresi executor DOLDURUR, panelyd'den ALINMAZ. Vekilin `dial`
+  // hedefi bu değerden KURULUR; çağıranın verdiği bir dizeden değil
+  // (docs/decisions.md K-050'nin yükümlülüğü).
+  string ip_address = 4;
 }
 
 enum ContainerState {

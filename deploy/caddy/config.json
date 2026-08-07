@@ -1,0 +1,13 @@
+{
+  "admin": {
+    "listen": "fd/3",
+    "origins": ["localhost"]
+  },
+  "logging": {
+    "logs": {
+      "default": {
+        "level": "INFO"
+      }
+    }
+  }
+}

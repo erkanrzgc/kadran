@@ -2233,10 +2233,37 @@ reddeden bozuk bir binary de 5.'i geçerdi.
 
 ### Kalan yüzey (açıkça yazılıyor)
 
-Ele geçirilmiş bir panelyd hâlâ trafiği istediği upstream'e
-yönlendirebilir. Bu bir kayıp değil: zaten hangi sürümün aktif olduğuna
-o karar veriyor. Kapatılan şey, bunun ÜSTÜNE gelen kalıcı anahtar
-hırsızlığıydı.
+Kapatılan şey kalıcı anahtar hırsızlığıydı. Kapatılmayan şey `dial`
+hedefinin serbest olması — ve bu, ilk yazdığımdan DAHA GENİŞ:
+
+> ⚠ İlk hâli "panelyd zaten trafiği istediği yere yönlendirebiliyordu"
+> diyordu. Yanlış. Önceden yönlendirebildiği şey KENDİ YÖNETTİĞİ
+> KONTEYNERLERDİ; Caddy admin erişimiyle `dial` alanına herhangi bir
+> adres yazabiliyor — `127.0.0.1:<herhangi bir port>` dahil.
+>
+> Yani host'ta yerel çağıranlara güvenen bir servis çalışıyorsa, Caddy
+> ona açılan public bir köprü hâline gelir. Bugün hostta öyle bir servis
+> yok (kontrol düzlemi unix soketlerinde ve onlara Caddy erişemiyor —
+> ölçüldü), bu yüzden acil değil. Ama denklik iddiası fazlaydı ve
+> düzeltiliyor.
+
+**Yükümlülük (dilim 4b, `internal/proxydrv`):** `dial` alanı çağırandan
+ALINMAZ; Panely'nin yönettiği konteyner adreslerinden KURULUR. Aynı
+desen ContainerCreate'te imaj alanının olmamasıyla aynı:
+
+	"Serbest bir tutamaç, hostta çalışan HERHANGİ bir şeye işaretçidir."
+
+### İkinci yükümlülük: yükledikten sonra GERİ OKU
+
+`POST /load` 200 dönmesi, canlı yapılandırmanın gönderdiğimiz şey olduğunu
+kanıtlamaz. Admin soketine `panely` olarak (veya root olarak) çalışan
+başka bir süreç de yazabilir ve kontrol düzlemi bunu göremez; o zaman
+SQLite'taki "gerçeğin kaynağı" canlı olmayan bir şeyi tarif eder.
+
+proxydrv, yüklemeden sonra `GET /config/` ile geri okuyup gönderdiğiyle
+karşılaştırmalı. Bu, `aux` → `image_id` → `DeploySucceeded` zincirinin
+ters vekildeki karşılığı: "hata almadım" değil, "istediğim durumu
+doğruladım".
 
 `build/caddy/main.go`'daki dışlama listesi bir "yapılacaklar" değil
 GÜVENLİK SINIRIDIR; oraya modül eklemeden önce yukarıdaki ölçüm
@@ -2284,3 +2311,56 @@ değilse reddedilmiştir" varsayımı tam olarak yukarıdaki 2. satırdır.
 Ayrıca her güvenlik ölçümünün bir KARŞI KONTROLÜ olmalı: "tehdit
 kapandı" ölçümünün yanında "sistem hâlâ işini yapıyor" ölçümü. K-050'de
 bu 6. satır; onsuz bozuk bir binary de güvenli görünürdü.
+
+---
+
+## K-052 — Doğrulanan yapılandırma ile GÖNDERİLEN yapılandırma aynı olmalı
+
+K-050'nin altı ölçümü geçti — ama **elle kurulmuş bir durum üzerinde**.
+Beş ayrı probe betiği sırayla `/etc/tmpfiles.d/`, birim drop-in'leri ve
+`/etc/caddy/config.json` yazmıştı; hiçbiri repoda yoktu.
+
+Bu, K-049'un bir üst seviyesi. Orada "servis active ama ikili eski"ydi;
+burada "ölçüm geçti ama ölçülen artefakt gönderilecek olan değil".
+
+### Ölçüm: iki gerçek boşluk
+
+`enable` edilmemişti — yalnızca `start`. Repo artefaktları kurulurken
+çıktı bunu gösterdi:
+
+```
+Created symlink /etc/systemd/system/sockets.target.wants/caddy-admin.socket → …
+```
+
+Yani ilk yeniden başlatmada soket hiç yaratılmayacak ve Caddy `fd/3`
+üzerinde `getsockopt: socket operation on non-socket` ile ölecekti.
+
+`/etc/caddy/config.json` de yalnızca bir probe betiğinin ürünüydü. İçindeki
+`"origins": ["localhost"]` **taşıyıcı bir alan**: onsuz panelyd'nin her
+`POST /load` isteği HTTP 403 "host not allowed" alıyor (ölçüldü).
+
+### Kabul ölçütü: YENİDEN BAŞLATMA
+
+Artefaktlar repoya alındı (`deploy/caddy/config.json`,
+`deploy/systemd/panely-caddy-tmpfiles.conf`), sunucuya onlar kuruldu,
+elle kurulmuş durum SİLİNDİ ve makine yeniden başlatıldı.
+
+Yeniden başlatma sonrası, kimse bir şeye dokunmadan:
+
+| kontrol | sonuç |
+|---|---|
+| `caddy-admin.socket`, `caddy`, `panelyd`, `panely-exec` | dördü de `active` |
+| `/run/caddy` | `drwxr-x--- caddy panely` (tmpfiles yeniden kurdu) |
+| soket | `srw-rw---- caddy panely` |
+| journal'da yeniden başlatma döngüsü | 0 |
+| K-050'nin altı ölçümü | altısı da geçti |
+| dilim 4a regresyonu (`panely deploy`) | r3 derlendi, çıkış 0 |
+
+`/run` bir tmpfs; dizin yeniden başlatmayı geçmiyor ve `systemd-tmpfiles`
+onu her açılışta yeniden kuruyor. Bu, elle `mkdir` ile kurulmuş bir
+dizinin sessizce kaybolacağı anlamına geliyordu.
+
+**Kural:** bir yapılandırma "doğrulandı" sayılmadan önce (1) repodaki
+artefaktlardan kurulmuş, (2) yeniden başlatmayı geçmiş olmalı. Elle
+biriktirilmiş durum üzerinde alınan ölçüm, o durumun kendisi hakkındadır
+— gönderilecek olan hakkında değil.

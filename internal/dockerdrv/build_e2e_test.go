@@ -228,6 +228,21 @@ func TestContainerLogsSeparatesStreamsOnRealDocker(t *testing.T) {
 	cleanup(t, c)
 	t.Cleanup(func() { cleanup(t, c) })
 
+	// ⚠ AĞI BU TEST KURAR — devralmaz.
+	//
+	// İlk hâlinde bu satır yoktu ve test geliştirme sunucusunda GEÇTİ:
+	// `panely-e2etest` ağı önceki koşulardan KALMIŞTI. CI'da temiz bir
+	// runner'da düştü (`network panely-e2etest not found`), çünkü dosya
+	// adı sırası bu testi ağı kuran yaşam döngüsü testinden ÖNCE koşturuyor.
+	//
+	// Yani test geçmiyordu; ARTIK KALMIŞ DURUMA yaslanıyordu. Bir testin
+	// yeşili, ancak kendi ön koşullarını kendisi kurduğunda bir şey ifade
+	// eder — K-043'ün aynı sınıfı (o da bağımlılığın hazır olduğunu
+	// varsaymıştı).
+	if _, err := c.NetworkEnsure(ctx, e2eApp); err != nil {
+		t.Fatalf("NetworkEnsure: %v", err)
+	}
+
 	spec := CreateSpec{
 		AppID: e2eApp, ReleaseID: "r1", Replica: 0, CommitSHA: e2eSHA,
 		MemoryBytes: 64 << 20, CPUMillis: 250, BlkioWeight: 500,

@@ -1782,3 +1782,96 @@ geçiyordu.
 `if err == nil { t.Error }` zayıf bir iddiadır: herhangi bir hata onu
 tatmin eder. Ayırt edici ölçüt davranışsal olmalıydı — istek **tele hiç
 çıkmamalı**. Kontrol o hâle getirildi ve mutasyon yakalandı (11/11).
+
+### Aynı sınıfın üçüncü örneği: ARTIK KALMIŞ duruma yaslanmak
+
+Günlük E2E testi konteyneri oluşturup başlatıyor ama ağı kurmuyordu.
+Geliştirme sunucusunda **geçti** — `panely-e2etest` ağı önceki
+koşulardan kalmıştı. CI'da taze bir runner'da düştü:
+
+```
+ContainerStart: HTTP 404: failed to set up container networking:
+                network panely-e2etest not found
+```
+
+Dosya adı sırası (`build_e2e_test.go` < `e2e_test.go`) bu testi, ağı
+kuran yaşam döngüsü testinden **önce** koşturuyor. Yani test hiçbir zaman
+kendi başına çalışmıyordu; yalnızca sıra ve artık durum sayesinde yeşildi.
+
+Bu, "gerçek sunucuda koştu" ifadesinin **CI'da koşacak** anlamına
+gelmediğinin doğrudan kanıtı: geliştirme sunucusu aylardır birikmiş
+durum taşıyor, taze runner taşımıyor.
+
+**Kural:** E2E testi kendi ön koşullarını **kendisi** kurmalı ve tam
+temizlenmiş bir daemon'da koşturularak doğrulanmalı. Doğrulama böyle
+yapıldı: tüm `panely/*` imajları ve ağları silindikten sonra 33 testin
+tamamı yeşil.
+
+---
+
+## K-044 — `http.Client.Timeout` gövde okumasını da kapsıyor; akış uçları onunla ölür
+
+Sürücü istemcisi şöyle kuruluyordu:
+
+```go
+http: &http.Client{
+    // Akış uçları (logs, build) kendi bağlamlarıyla yönetilir; bu
+    // zaman aşımı yalnızca istek/yanıt turları içindir.
+    Timeout: 60 * time.Second,
+    ...
+}
+```
+
+Yorum **yanlıştı**. `http.Client.Timeout` bağlantı kurmayı, yönlendirmeleri
+**ve gövdenin okunmasını** kapsar — akıp akmadığına bakmaz.
+
+**Ölçüldü** (300 ms sınır, kare kare akan bir yanıt):
+
+```
+okunan bayt: 15, hata: context deadline exceeded
+             (Client.Timeout or context cancellation while reading body)
+```
+
+Üç kare okundu, sonra akış öldü. 60 sn'lik sınır iki şeyi sessizce
+bozardı:
+
+- `panely logs -f` **her dakika kopardı**
+- 60 sn'den uzun süren **hiçbir derleme başarılı olamazdı** — ki Faz 1'in
+  var olma sebebi derleme yapmak. Arıza da kısmi görünmezdi: derleme
+  yarıda kesileceği için `aux` karesi hiç gelmez ve K-042'nin pozitif
+  ölçütü onu "başarısız" sayardı. Yani kullanıcı, düzgün bir derlemenin
+  neden başarısız olduğunu gösteren hiçbir ipucu görmezdi.
+
+### Çözüm
+
+Sınır istemciden kaldırıldı, **akış olmayan** yollara bağlam üzerinden
+kondu (`doJSON`, `negotiate`). Akış uçları (`ImageBuild`, `ContainerLogs`)
+`do()`'yu doğrudan çağırıyor ve çağıranın bağlamıyla yönetiliyor —
+istemci koparsa ctx zaten iptal olur.
+
+Sınırın tamamen silinmesi **yanlış** olurdu: asılı kalan bir daemon
+ayrıcalıklı süreci sonsuza kadar bekletirdi. İki taraf da teste bağlandı:
+akış uzun sürebilmeli, akış olmayan çağrı sürememeli.
+
+### Bu, yorumun andığı mekanizmanın gerçek olmaması sınıfının tekrarı
+
+Aynı sınıf daha önce iki kez görüldü: `restrict` niteleyicisi ve
+"redakte edilmiş" iddiası. Kural yine aynı: bir yorum bir mekanizmaya
+dayanıyorsa, o mekanizmayı **yanlışlayacak** bir deney yazılmalı.
+
+### Mutasyon sınaması testin KÖRLÜĞÜNÜ gösterdi
+
+İlk regresyon testi `httptest`'in istemcisiyle kurulmuş bir `Client`
+kullanıyordu. Blanket `Timeout` **geri konduğunda test yine geçti** —
+çünkü hatanın yaşadığı yer `New()`'di ve test `New()`'i hiç çağırmıyordu.
+
+Testin doğru şeyi ölçmesi için ayırt edici kontrol doğrudan oraya
+bakmak zorundaydı:
+
+```go
+if to := New("/yok.sock", "/yok").http.Timeout; to != 0 { ... }
+```
+
+**Ders:** bir regresyon testi, hatanın YAŞADIĞI kod yolunu çalıştırdığını
+kanıtlamalı. Aynı davranışı taklit eden bir kurulum üzerinden geçen test,
+o kurulum hatalı olan yeri içermiyorsa hiçbir şey korumaz.

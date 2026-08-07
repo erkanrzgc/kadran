@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -184,6 +186,104 @@ func TestBuildTagAndContextAreNotTakenFromCaller(t *testing.T) {
 	// Ara konteynerler her durumda temizlenmeli.
 	if q.Get("rm") != "true" || q.Get("forcerm") != "true" {
 		t.Errorf("rm/forcerm ayarlanmadı: %q", op.Query)
+	}
+}
+
+// TestStreamsOutliveTheRequestTimeout, akış uçlarının sabit bir zaman
+// aşımına TAKILMADIĞINI, akış olmayanların ise TAKILDIĞINI doğrular.
+//
+// # Bu test neden var
+//
+// İstemcide `http.Client{Timeout: 60s}` vardı ve yanındaki yorum
+// "yalnızca istek/yanıt turları içindir" diyordu. ÖLÇÜLDÜ ki yanlış:
+// Timeout gövde okumasını da kapsıyor. Yani `logs -f` her dakika kopar,
+// 60 sn'den uzun hiçbir derleme başarılı olamazdı.
+//
+// Yorumun andığı mekanizmanın gerçek olması gerekiyor; bu test onu
+// gerçek tutuyor.
+func TestStreamsOutliveTheRequestTimeout(t *testing.T) {
+	// Sınırı kısalt ki test 60 sn beklemesin.
+	old := requestTimeout
+	requestTimeout = 150 * time.Millisecond
+	t.Cleanup(func() { requestTimeout = old })
+
+	// Sınırdan UZUN süren, kare kare akan bir günlük ucu.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/version" {
+			_, _ = w.Write([]byte(
+				`{"Version":"29.1.3","ApiVersion":"1.48","MinAPIVersion":"1.44"}`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/containers/json") {
+			_, _ = w.Write([]byte(`[{"Id":"aaa","State":"running","Created":0,"Labels":` +
+				`{"panely.app_id":"blog","panely.release_id":"r1","panely.replica":"0"}}]`))
+			return
+		}
+		fl, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("flush edilemiyor")
+			return
+		}
+		for range 6 {
+			_, _ = w.Write(frame(1, "tik\n"))
+			fl.Flush()
+			time.Sleep(60 * time.Millisecond)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	c := &Client{http: srv.Client(), base: srv.URL, volumeRoot: "/var/lib/panely/volumes"}
+	replica := uint32(0)
+	var got collector
+	err := c.ContainerLogs(context.Background(),
+		Selector{AppID: "blog", ReleaseID: "r1", Replica: &replica},
+		0, true, time.Time{}, got.sink)
+	if err != nil {
+		t.Fatalf("akış sınıra takıldı — logs -f her %v'de bir koparadı: %v", requestTimeout, err)
+	}
+	// 6 kare × 60 ms = ~360 ms; 150 ms'lik sınırın belirgin şekilde üstünde.
+	if n := strings.Count(got.out.String(), "tik"); n != 6 {
+		t.Errorf("%d kare alındı, 6 bekleniyordu — akış erken kesildi", n)
+	}
+
+	// ⚠ Yukarısı New()'i GÖRMÜYOR: httptest'in istemcisini kullanıyor.
+	//
+	// Mutasyon sınaması bu boşluğu gösterdi — `New()`'e blanket bir
+	// Timeout geri konduğunda üstteki iddia yine geçti. Oysa hatanın
+	// yaşadığı yer tam olarak New()'di. Ayırt edici kontrol doğrudan
+	// oraya bakmalı.
+	if to := New("/yok.sock", "/yok").http.Timeout; to != 0 {
+		t.Errorf("New() istemciye %v'lik blanket Timeout koydu — "+
+			"akış uçları (logs -f, uzun derlemeler) bu sınırda kopar", to)
+	}
+}
+
+// TestNonStreamingCallsStayBounded, sınırın KALDIRILMADIĞINI doğrular.
+//
+// Üstteki testi geçirmenin ucuz yolu her sınırı silmekti; o zaman asılı
+// kalan bir daemon ayrıcalıklı süreci sonsuza kadar bekletirdi.
+func TestNonStreamingCallsStayBounded(t *testing.T) {
+	old := requestTimeout
+	requestTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { requestTimeout = old })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/version" {
+			_, _ = w.Write([]byte(
+				`{"Version":"29.1.3","ApiVersion":"1.48","MinAPIVersion":"1.44"}`))
+			return
+		}
+		time.Sleep(2 * time.Second) // asılı kalan daemon
+	}))
+	t.Cleanup(srv.Close)
+
+	c := &Client{http: srv.Client(), base: srv.URL, volumeRoot: "/var/lib/panely/volumes"}
+	start := time.Now()
+	if _, err := c.ContainerList(context.Background(), "blog"); err == nil {
+		t.Fatal("asılı kalan daemon çağrısı hiç zaman aşımına uğramadı")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("çağrı %v sürdü — sınır uygulanmıyor", elapsed)
 	}
 }
 

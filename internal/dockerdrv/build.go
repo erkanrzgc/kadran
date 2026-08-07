@@ -105,9 +105,11 @@ func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (str
 	// ölçüldü (`docker history` çıktısında düz metin). exec.proto bunu
 	// yazıyor; burada tekrar ediliyor çünkü değerleri tele koyan yer burası.
 	if len(spec.BuildArgs) > 0 {
-		if err := setJSONParam(q, "buildargs", spec.BuildArgs); err != nil {
-			return "", err
+		args, err := json.Marshal(spec.BuildArgs)
+		if err != nil {
+			return "", fmt.Errorf("docker: buildargs kodlanamadı: %w", err)
 		}
+		q.Set("buildargs", string(args))
 	}
 
 	resp, err := c.do(ctx, http.MethodPost, "/build", q, nil)
@@ -117,16 +119,6 @@ func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (str
 	defer func() { _ = resp.Body.Close() }()
 
 	return consumeBuild(resp.Body, sink)
-}
-
-// setJSONParam, bir haritayı JSON olarak sorgu parametresine koyar.
-func setJSONParam(q url.Values, key string, m map[string]string) error {
-	b, err := json.Marshal(m)
-	if err != nil {
-		return fmt.Errorf("docker: %s kodlanamadı: %w", key, err)
-	}
-	q.Set(key, string(b))
-	return nil
 }
 
 // consumeBuild, derleme akışını tüketir ve imaj kimliğini döndürür.

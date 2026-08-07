@@ -170,9 +170,22 @@ type Client struct {
 func New(socketPath, volumeRoot string) *Client {
 	return &Client{
 		http: &http.Client{
-			// Akış uçları (logs, build) kendi bağlamlarıyla yönetilir; bu
-			// zaman aşımı yalnızca istek/yanıt turları içindir.
-			Timeout: 60 * time.Second,
+			// ⚠ BURAYA `Timeout` KONULAMAZ — bir dönem konulmuştu ve
+			// yanındaki yorum "yalnızca istek/yanıt turları içindir"
+			// diyordu. YANLIŞTI.
+			//
+			// ÖLÇÜLDÜ: http.Client.Timeout GÖVDE OKUMASINI DA kapsıyor.
+			// 300 ms'lik bir sınırla akan bir yanıttan yalnızca 15 bayt
+			// okunabildi, sonra "Client.Timeout ... while reading body".
+			//
+			// Yani 60 sn'lik sınır iki şeyi sessizce bozardı:
+			//   • `panely logs -f` her dakika kopardı
+			//   • 60 sn'den uzun süren HİÇBİR derleme başarılı olamazdı
+			//     — ki Faz 1'in var olma sebebi derleme yapmak.
+			//
+			// Sınır artık akış OLMAYAN çağrılara, bağlam üzerinden
+			// uygulanıyor (doJSON/negotiate). Akış uçları çağıranın
+			// bağlamıyla yönetiliyor: istemci kopunca ctx iptal olur.
 			Transport: &http.Transport{
 				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 					var d net.Dialer
@@ -257,8 +270,21 @@ func decodeMessage(r io.Reader) string {
 	return string(bytes.TrimSpace(b))
 }
 
+// requestTimeout, akış OLMAYAN çağrıların üst sınırı.
+//
+// Değişken çünkü testler kısaltıyor: 60 sn bekleyen bir test, sınırın
+// gerçekten uygulandığını makul sürede gösteremez.
+var requestTimeout = 60 * time.Second
+
 // doJSON, isteği gönderir ve JSON yanıtını out'a çözer. out nil olabilir.
+//
+// Sınır BURADA uygulanıyor, istemcide değil: bu yol gövdeyi tamamen okur
+// ve sonlanır. Akış uçları (build, logs) do()'yu doğrudan çağırdığı için
+// bu sınıra takılmaz.
 func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, body, out any) error {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
 	resp, err := c.do(ctx, method, path, q, body)
 	if err != nil {
 		return err
@@ -280,6 +306,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, 
 // Yalnızca uzlaşma için var: normal uçlar daima do/doJSON üzerinden,
 // yani uzlaşılmış sürümle gider.
 func (c *Client) getJSON(ctx context.Context, url string, out any) error {
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return fmt.Errorf("docker: istek kurulamadı: %w", err)

@@ -37,7 +37,8 @@ func (c *cli) runDeploy(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely deploy <uygulama> [hedef] [-commit sha | -branch dal]")
+		return c.usageError("kullanım: panely deploy [-commit sha | -branch dal] " +
+			"<uygulama> [hedef] — seçenekler uygulama adından ÖNCE gelir")
 	}
 	appID, target := fs.Arg(0), fs.Arg(1)
 

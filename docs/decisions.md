@@ -2015,6 +2015,21 @@ Model de zaten bunu istiyor: uygulama bir DALA bakar (hareket eder),
 sürüm bir COMMIT'tir (donmuştur). Bu yüzden `AppSpec` `git_branch`,
 `GitSource` `commit_sha` taşıyor ve ikisi aynı mesaj değil.
 
+### Kısıt ÖLÇÜLDÜ, birim dosyasından okunmadı
+
+Bir `RestrictAddressFamilies=` satırının orada YAZMASI, çekirdeğin onu
+zorladığını kanıtlamaz. Gerçek sunucuda A/B (aynı kullanıcı, tek fark
+kısıt):
+
+| koşum | TCP bağlantısı (`/dev/tcp/github.com/443`) |
+|---|---|
+| A — kısıt YOK | `exit=0` (bağlandı) |
+| B — `RestrictAddressFamilies=AF_UNIX` | `exit=1` (engellendi) |
+| C — B ile aynı, unix soketi | erişilebilir |
+
+C satırı önemli: kısıt yalnızca ağı kesiyor, daemon'ın kendi soketini
+değil. Yani "panelyd ağa çıkamaz ama işini yapabilir" ölçülmüş bir olgu.
+
 ### Bu bir eksiklik değil, ölçülebilir en-az-yetki
 
 Faz 4'ün webhook akışı da bunu bozmuyor: GitHub'ın yükü zaten commit
@@ -2061,3 +2076,62 @@ Kopyalanan şey **karakter kümesi**, kopyalanmayan şey **politika**.
 Aynı ayrım göç 0002'deki CHECK'ler için de geçerli — orası ÜÇÜNCÜ katman
 ve bazı kısıtlar (`CHECK (status != 2 OR image_id != '')`) yalnızca orada
 zorlanabiliyor: uygulama katmanındaki bir hata bile o satırı yazamaz.
+
+---
+
+## K-049 — "active" ikilinin değiştiğini KANITLAMAZ
+
+Dilim 4a'yı gerçek sunucuda koşturmadan önce yeni ikililer kuruldu. Kurulum
+betiği `/usr/local/bin` altına yazdı, `systemctl restart` koştu ve şunu
+raporladı:
+
+```
+== sonra: durum ==
+active
+active
+```
+
+Journal da temizdi: "daemon hazır", hata yok. **Hiçbir şey değişmemişti.**
+Birimler `/usr/local/lib/panely/` altını çalıştırıyor:
+
+```
+ExecStart=/usr/local/lib/panely/panelyd \
+```
+
+Yani eski ikili çalışmaya devam ediyordu ve göç 0002 hiç uygulanmadı.
+
+### Arıza NASIL yakalandı
+
+Yeşil sinyallerle değil, **beklenen bir sonucun yokluğuyla**: yeni tabloların
+(`apps`, `releases`) var olması gerekiyordu, yoktular. Kurulumun kendisine
+bakan hiçbir kontrol bunu göremezdi — üç sinyal de (exit 0, `is-active`,
+temiz journal) doğruydu ve hepsi yanlış soruyu yanıtlıyordu.
+
+Kodun sağlam olduğu ayrıca ölçüldü: aynı göç mantığı sunucu
+veritabanının bir KOPYASINA karşı koşturulunca tabloları sorunsuz yarattı.
+Yani sorun kodda değil, **değiştirdiğimizi sandığımız dosyadaydı**.
+
+### Kural
+
+Kurulum betiği hedefi TAHMİN ETMEZ, birimden OKUR; ve sonucu ÇALIŞAN
+SÜREÇTEN doğrular, kurduğu yoldan değil:
+
+```bash
+DEST=$(systemctl cat panelyd | sed -n 's|^ExecStart=\(.*\)/panelyd .*|\1|p' | head -1)
+...
+pid=$(pgrep -x panelyd)
+md5sum "$(readlink /proc/$pid/exe)" "/tmp/panelyd"
+```
+
+İki md5 eşitse ve `readlink` beklenen yolu gösteriyorsa, çalışan şey
+gerçekten kurduğumuz şeydir. Bu, "servis active" ile
+"servis DOĞRU İKİLİYİ çalıştırıyor" arasındaki farkı kapatan tek kontrol.
+
+⚠ **Dilim 4b bunu devralıyor.** `internal/bootstrap/install.sh`'a Caddy
+eklenecek ve Hetzner kutusu ZATEN bootstrap'lanmış durumda: yani betik
+mevcut kuruluma karşı yeniden koşturulabilir olmalı ve sonucu yine
+çalışan süreçten doğrulanmalı.
+
+Aynı ailenin üçüncü örneği: "kurulumdan sonra active" kabul ölçütü değil
+(systemd birimi yeniden başlatmayı geçmeli), garanti ortamda `t.Skip`
+yasak, ve şimdi bu.

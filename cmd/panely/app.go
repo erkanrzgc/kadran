@@ -48,7 +48,12 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely app create <ad> [hedef] -repo host/sahip/depo")
+		// Seçeneklerin addan ÖNCE gelmesi Go'nun flag paketinin kuralı:
+		// ilk konumsal argümanda ayrıştırma durur. Kullanım metni bunu
+		// açıkça söylüyor, çünkü tersini deneyen biri "-repo zorunlu"
+		// hatası alır ve sebebini göremez.
+		return c.usageError("kullanım: panely app create -repo host/sahip/depo " +
+			"[seçenekler] <ad> [hedef] — seçenekler addan ÖNCE gelir")
 	}
 
 	host, owner, name, err := splitRepo(*repo)
@@ -169,7 +174,7 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely app show <ad> [hedef]")
+		return c.usageError("kullanım: panely app show [seçenekler] <ad> [hedef]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)

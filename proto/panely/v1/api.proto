@@ -39,7 +39,35 @@ service PanelyService {
   // VerifyAuditChain, zincirin tamamını yürür ve kurcalama tespit eder.
   // Hem daemon hem executor zincirini doğrular ve ikisini karşılaştırır.
   rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse);
+
+  // ── Uygulamalar ────────────────────────────────────────────────────
+
+  // CreateApp, yeni bir uygulama tanımı kaydeder. Hiçbir şey derlemez
+  // veya çalıştırmaz; yalnızca kontrol düzlemi durumunu yazar.
+  rpc CreateApp(CreateAppRequest) returns (CreateAppResponse);
+
+  // ListApps, tanımlı uygulamaları döner.
+  rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
+
+  // GetApp, tek bir uygulamayı ve sürüm geçmişini döner.
+  rpc GetApp(GetAppRequest) returns (GetAppResponse);
+
+  // Deploy, bir commit'i derler ve sürüm olarak kaydeder.
+  //
+  // ⚠ Bu dilimde Deploy TRAFİK TAŞIMAZ: imaj üretilir ve sürüm
+  // kaydedilir, ama konteyner başlatılmaz ve ters vekil dokunulmaz.
+  // Blue-green geçişi Caddy'ye bağlı ve o henüz hostta kurulu değil.
+  rpc Deploy(DeployRequest) returns (stream DeployResponse);
 }
+
+// DeleteApp KASTEN YOK.
+//
+// Uygulama silmek geri alınamaz bir işlemdir ve şartname §1.3 bu sınıfı
+// TOTP onay kapısının arkasına koyar. Kapı Faz 2'de geliyor. Silmeyi
+// şimdi eklemek, kapısı olmayan bir yıkıcı işlem bırakırdı — sonradan
+// kapı eklemek, var olan bir RPC'yi kısıtlamak demektir ve kısıtlanan
+// arayüzler geriye dönük uyumsuzdur. Yokluğu bir eksik değil, sıralama
+// kararıdır.
 
 message PingRequest {
   // İstemcinin sürümü. Sunucu uyumsuzluk durumunda uyarı döner.
@@ -121,4 +149,198 @@ message VerifyAuditChainResponse {
   ChainStatus executor_status = 8;
   uint64 executor_records_checked = 9;
   string executor_detail = 6;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  UYGULAMA MODELİ
+// ════════════════════════════════════════════════════════════════════
+
+// AppSpec, bir uygulamanın kullanıcı tarafından belirlenen tanımıdır.
+//
+// ── Neden GitSource (exec.proto) yeniden kullanılmıyor? ─────────────
+//
+// GitSource `commit_sha` taşır; AppSpec `git_branch` taşır. Bu fark
+// tesadüf değil, modelin kendisi:
+//
+//   uygulama → bir DALA bakar (hareket eder)
+//   sürüm    → bir COMMIT'tir (donmuştur)
+//
+// Aynı mesajı ikisine de zorlamak, ya uygulamaya anlamsız bir sha ya da
+// sürüme hareketli bir dal alanı verirdi. Executor'a giden GitSource,
+// AppSpec + çözülmüş sha'dan daemon tarafında KURULUR.
+//
+// ── Dalı commit'e kim çözer? İSTEMCİ ────────────────────────────────
+//
+// panelyd çözemez: systemd birimi `RestrictAddressFamilies=AF_UNIX`
+// ile çalışıyor, yani TCP soketi AÇAMAZ — `git ls-remote` de HTTPS de
+// mümkün değil. Bu bir eksiklik değil, en-az-yetkinin ölçülebilir hâli:
+// kontrol düzlemi süreci ağa hiç çıkmaz.
+//
+// Dolayısıyla Deploy TAM 40 haneli bir sha alır ve çözümü iş
+// istasyonundaki istemci yapar. Faz 4'ün webhook akışı da bunu bozmaz:
+// GitHub'ın yükü zaten commit sha'sını taşır.
+message AppSpec {
+  // ^[a-z][a-z0-9-]{0,31}$ — executor'ın app_id kısıtıyla aynı.
+  string app_id = 1;
+
+  // Kaynak depo. Host, executor'ın `-allow-git-host` beyaz listesinde
+  // OLMALIDIR; daemon bunu bilmez ve bilmemelidir (liste bir işletme
+  // kararıdır ve ele geçirilmiş bir panelyd ona ekleme yapamamalıdır).
+  string git_host = 2;
+  string git_owner = 3;
+  string git_repo = 4;
+  // Varsayılan dal. Yalnızca istemcinin sha çözümü için bir ipucudur;
+  // sunucu tarafında hiçbir yere geçirilmez.
+  string git_branch = 5;
+
+  // Depo köküne göreli. Boşsa "Dockerfile".
+  string dockerfile_path = 6;
+
+  // ⚠ Derleme argümanlarının DEĞERLERİ `docker history` çıktısında düz
+  // metin görünür — bu ölçüldü, varsayım değil. Sır TAŞIMAMALIDIR.
+  // Denetim kaydına yalnızca ADLARI yazılır.
+  map<string, string> build_args = 7;
+
+  // Uygulamanın konteyner içinde dinlediği port. Host'a yayınlanmaz.
+  uint32 container_port = 8;
+
+  // Çalıştırılacak replika sayısı.
+  uint32 replicas = 9;
+
+  // Sağlık yoklaması yolu ("/healthz"). Dilim 4b'de kullanılacak.
+  string health_path = 10;
+
+  // Uygulamanın yayınlanacağı alan adı. Dilim 4b'de Caddy'ye geçecek;
+  // şimdi yalnızca saklanıyor.
+  string domain = 11;
+
+  // Sıfır değer KABUL EDİLMEZ — limitsiz konteyner yoktur.
+  ResourceLimits limits = 12;
+}
+
+// App, AppSpec artı sunucu tarafından üretilen alanlar.
+message App {
+  AppSpec spec = 1;
+  google.protobuf.Timestamp created_at = 2;
+  google.protobuf.Timestamp updated_at = 3;
+  // Şimdiye kadar üretilmiş sürüm sayısı. Sıradaki sürümün adı bundan
+  // türetilir ("r" + (count+1)).
+  uint32 release_count = 4;
+}
+
+// ReleaseStatus, bir sürümün yaşam döngüsündeki yeridir.
+//
+// Bool DEĞİL: "derleniyor" ile "derlenemedi" farklı durumlar ve ikisi de
+// "çalışmıyor". Tek bir bayrağa sıkıştırmak, yarıda kalmış bir derlemeyi
+// başarısız bir derlemeden ayırt edilemez yapardı.
+enum ReleaseStatus {
+  RELEASE_STATUS_UNSPECIFIED = 0;
+  // Sürüm kaydedildi, derleme sürüyor.
+  RELEASE_STATUS_BUILDING = 1;
+  // İmaj üretildi ve kimliği (aux karesi) kaydedildi.
+  RELEASE_STATUS_BUILT = 2;
+  // Derleme başarısız. detail sebebi taşır.
+  RELEASE_STATUS_FAILED = 3;
+}
+
+message Release {
+  string release_id = 1;
+  string app_id = 2;
+  // TAM 40 haneli küçük harf onaltılık.
+  string commit_sha = 3;
+  ReleaseStatus status = 4;
+  // Docker'ın aux karesinden gelen imaj kimliği ("sha256:...").
+  //
+  // ⚠ BOŞ ise başarı İDDİA EDİLEMEZ. Docker klasik derleyicisi, derleme
+  // ortasında ölen bir yapı için de HTTP 200 döner; başarının tek pozitif
+  // kanıtı bu alandır (docs/decisions.md K-042).
+  string image_id = 5;
+  google.protobuf.Timestamp started_at = 6;
+  google.protobuf.Timestamp finished_at = 7;
+  string detail = 8;
+}
+
+message CreateAppRequest {
+  AppSpec spec = 1;
+}
+
+message CreateAppResponse {
+  App app = 1;
+}
+
+message ListAppsRequest {}
+
+message ListAppsResponse {
+  repeated App apps = 1;
+}
+
+message GetAppRequest {
+  string app_id = 1;
+  // Döndürülecek en fazla sürüm (en yeniden eskiye). 0 = varsayılan 20.
+  uint32 release_limit = 2;
+}
+
+message GetAppResponse {
+  App app = 1;
+  repeated Release releases = 2;
+}
+
+message DeployRequest {
+  string app_id = 1;
+
+  // TAM 40 haneli küçük harf onaltılık. Dal veya etiket adı KABUL
+  // EDİLMEZ — bkz. AppSpec'teki "dalı kim çözer" notu ve exec.proto'daki
+  // GitSource.commit_sha gerekçesi (tekrarlanabilirlik + fragment kaçışı).
+  string commit_sha = 2;
+}
+
+// DeployResponse, dağıtım akışının tek bir olayıdır.
+//
+// ── Neden oneof, neden ayrı bir "başarıldı" mesajı? ─────────────────
+//
+// K-042: Docker'ın klasik derleyicisinde başarının ölçütü POZİTİF bir
+// `aux` karesidir, "hata karesi görmedim" değil. Akışı istemciye taşımak
+// bu ölçütü KENDİLİĞİNDEN taşımaz: yalnızca günlük baytları iletilseydi,
+// istemci derleme ortasında ölen bir yapıyı başarılı olandan ayırt
+// edemezdi (ikisi de "biraz çıktı, sonra akış bitti" gibi görünür).
+//
+// Bu yüzden aynı ölçüt bir katman yukarıda TEKRARLANIYOR:
+//
+//   başarı  = akışın SON mesajı DeploySucceeded'dır
+//   hata    = gRPC hata durumu (detail ile)
+//
+// DeploySucceeded görmeden biten bir akış BAŞARISIZDIR. Bu, "olumsuzun
+// yokluğu"na değil olumlunun varlığına dayanır ve istemci tarafında da
+// aynı şekilde iddia edilebilir.
+message DeployResponse {
+  oneof event {
+    // İlk mesaj, tam bir kez. Sürüm kaydı derleme BAŞLAMADAN yazılır;
+    // böylece istemci düşse bile sürüm veritabanında adreslenebilir.
+    DeployAccepted accepted = 1;
+
+    // Derleyicinin ham çıktısı. Sırasıyla akar.
+    BuildOutput output = 2;
+
+    // Son mesaj, YALNIZCA başarıda.
+    DeploySucceeded succeeded = 3;
+  }
+}
+
+message DeployAccepted {
+  string release_id = 1;
+  string app_id = 2;
+  string commit_sha = 3;
+}
+
+message BuildOutput {
+  bytes data = 1;
+  // Docker akış çerçevelemesinden gelir (bayt 0: 01=stdout, 02=stderr).
+  // Derleyicinin hata karesi de buradan, stderr olarak geçer.
+  bool is_stderr = 2;
+}
+
+message DeploySucceeded {
+  string release_id = 1;
+  // Boş OLAMAZ. Boşsa sunucu bu mesajı hiç göndermez, hata döner.
+  string image_id = 2;
 }

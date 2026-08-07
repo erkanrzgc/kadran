@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
@@ -75,6 +77,32 @@ func (s *stubService) GetSystemInfo(context.Context, *panelyv1.GetSystemInfoRequ
 
 func (s *stubService) ListAuditRecords(context.Context, *panelyv1.ListAuditRecordsRequest) (*panelyv1.ListAuditRecordsResponse, error) {
 	return &panelyv1.ListAuditRecordsResponse{}, nil
+}
+
+// ── Faz 1 uygulama RPC'leri ─────────────────────────────────────────
+//
+// Bu saplamalar HİÇBİR ŞEY YAPMAZ ve yapmamalı: bu paketin testi taşıma
+// katmanını sınıyor (önsöz + gRPC aynı bağlantıda), iş mantığını değil.
+//
+// Var olma sebepleri buf.gen.yaml'daki `require_unimplemented_servers=false`:
+// UnimplementedPanelyServiceServer gömülmediği için şemaya eklenen her yeni
+// RPC DERLEMEYİ KIRAR. Kırıldı — tam da tasarlandığı gibi. Gömüp geçmek,
+// tripwire'ı bu paket için kalıcı olarak devre dışı bırakırdı.
+
+func (s *stubService) CreateApp(context.Context, *panelyv1.CreateAppRequest) (*panelyv1.CreateAppResponse, error) {
+	return &panelyv1.CreateAppResponse{}, nil
+}
+
+func (s *stubService) ListApps(context.Context, *panelyv1.ListAppsRequest) (*panelyv1.ListAppsResponse, error) {
+	return &panelyv1.ListAppsResponse{}, nil
+}
+
+func (s *stubService) GetApp(context.Context, *panelyv1.GetAppRequest) (*panelyv1.GetAppResponse, error) {
+	return &panelyv1.GetAppResponse{}, nil
+}
+
+func (s *stubService) Deploy(*panelyv1.DeployRequest, grpc.ServerStreamingServer[panelyv1.DeployResponse]) error {
+	return status.Error(codes.Unimplemented, "saplama dağıtım yapmaz")
 }
 
 func (s *stubService) VerifyAuditChain(context.Context, *panelyv1.VerifyAuditChainRequest) (*panelyv1.VerifyAuditChainResponse, error) {

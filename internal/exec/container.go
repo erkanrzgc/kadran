@@ -385,8 +385,17 @@ func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, stream grpc.ServerS
 
 	// image_id kaydın YANLIŞLANABİLİR olmasını sağlayan alandır: hangi
 	// imajın gerçekten üretildiği sonradan hostta kontrol edilebilir.
+	//
+	// Aynı değer panelyd'ye de gönderilir: başarının pozitif kanıtı
+	// yalnızca burada kalsaydı, daemon'ın elinde "hata almadım"dan başka
+	// bir ölçüt olmazdı (bkz. exec.proto, ImageBuildResponse.image_id).
+	// Gönderim başarısız olursa opErr dolar ve kayıt FAILURE yazar —
+	// doğru yön: panelyd kimliği öğrenmediyse sürümü mühürleyemez.
 	if imageID != "" {
 		params["image_id"] = imageID
+		if opErr == nil {
+			opErr = stream.Send(&panelyv1.ImageBuildResponse{ImageId: imageID})
+		}
 	}
 	if err := s.completed(action, tgt, params, opErr); err != nil {
 		return internalError(err)

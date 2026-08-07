@@ -31,9 +31,26 @@ import (
 // docs/decisions.md K-011'e bakın.
 type Server struct {
 	store     *store.Store
-	exec      *execclient.Client
+	exec      Executor
 	startedAt time.Time
 	runAsUser string
+}
+
+// Executor, panelyd'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
+//
+// Arayüz KULLANILDIĞI yerde tanımlanıyor, uygulandığı yerde değil:
+// *execclient.Client onu kendiliğinden karşılıyor.
+//
+// Gerekçe testten geliyor ve gerçek: dağıtım akışının davranışları
+// (derleme yarıda ölürse sürüm mühürleniyor mu, istemci koparsa ne
+// oluyor) yalnızca executor'ın cevabı KONTROL EDİLEBİLİRSE sınanabilir.
+// Somut tipe bağlı kalsaydık, bu yolları sınamanın tek yolu gerçek bir
+// Docker daemon'ı olurdu — yani birim testinde HİÇ sınanmazdı.
+type Executor interface {
+	Ping(ctx context.Context) (execclient.PingResult, error)
+	HostInfo(ctx context.Context) (*panelyv1.HostInfo, error)
+	ReadJournal(ctx context.Context, afterSeq uint64, limit uint32) (execclient.JournalPage, error)
+	ImageBuild(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
 }
 
 // ServerOptions, API sunucusunu yapılandırır.
@@ -42,7 +59,7 @@ type ServerOptions struct {
 	Store *store.Store
 
 	// Executor, ayrıcalıklı executor istemcisi. Zorunlu.
-	Executor *execclient.Client
+	Executor Executor
 }
 
 // NewServer, API servisini oluşturur.

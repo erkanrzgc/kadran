@@ -1875,3 +1875,189 @@ if to := New("/yok.sock", "/yok").http.Timeout; to != 0 { ... }
 **Ders:** bir regresyon testi, hatanın YAŞADIĞI kod yolunu çalıştırdığını
 kanıtlamalı. Aynı davranışı taklit eden bir kurulum üzerinden geçen test,
 o kurulum hatalı olan yeri içermiyorsa hiçbir şey korumaz.
+
+---
+
+## K-045 — Bütçe kapsamı ÖLÇÜLDÜ: üretilen kod dışarıda, `pbconv` içeride
+
+Faz 1 dilim 4a, panelyd tarafına dört yeni RPC ve iki tablo ekliyor. Kod
+yazmadan önce yanıtlanması gereken soru şuydu: **api.proto'yu büyütmek
+ayrıcalıklı yüzey bütçesini harcar mı?**
+
+Soru boş değil. `internal/pb/panely/v1` **tek bir Go paketidir** ve hem
+`api.pb.go` hem `exec.pb.go` oradadır; paket `cmd/panely-exec`'in içe
+aktarma grafiğindedir. Cevap "evet" olsaydı, dört RPC ve beş mesaj
+eklemek altı satırlık kalan bütçeyi ilk adımda bitirirdi ve çözüm yapısal
+olurdu (`go_package` ayırmak) — yani RPC'ler yazıldıktan SONRA değil,
+ÖNCE bilinmesi gereken bir şey.
+
+### Ölçüm
+
+`scripts/check-exec-surface.sh` satır 192-199, `internal/pb/*` ile
+başlayan her dizinde `continue` ediyor. Doğrulandı:
+
+```
+go list -deps ./cmd/panely-exec | grep panely/  →  12 modül-içi paket
+scripts/check-exec-surface.sh                   →  "11 paket"
+```
+
+Fark tam olarak `internal/pb/panely/v1`. Ampirik olarak da doğrulandı:
+api.proto'ya mesajlar ve RPC'ler eklendi, `buf generate` koşuldu, sayaç
+**2494'te kaldı**.
+
+### Asıl tuzak proto değil, `internal/pbconv`
+
+`pbconv` (116 kod satırı) `internal/pb/` ALTINDA DEĞİL, yani **bütçeye
+yazılıyor** — ve üç tarafın hepsi onu içe aktarıyor:
+
+| dosya | taraf |
+|---|---|
+| `internal/exec/server.go` | ayrıcalıklı |
+| `internal/execclient/client.go` | daemon |
+| `internal/api/server.go` | daemon |
+
+Ortak adı ("dönüşümler burada") oraya yeni dönüştürücü koymayı doğal
+gösteriyor. App/release dönüştürücüleri oraya konsaydı, root süreçle
+hiçbir ilgisi olmayan kod root bütçesinden harcanırdı.
+
+**Kural:** yalnızca panelyd'nin kullandığı dönüşümler `internal/api`
+içinde kalır. Bu dilimin dönüştürücüleri `internal/api/apps.go`'da.
+
+### Bu dilimin bütçeye maliyeti: 3 satır (2494 → 2497)
+
+Tek kalem: `internal/exec/container.go`, imaj kimliğini panelyd'ye
+gönderen üç satır (bkz. K-046). Sınıra DOKUNULMADI; K-040'ın freni bu
+yüzden devreye girmedi.
+
+⚠ **2497/2500 — 3 satır kaldı.** Dilim 4b'nin ilk kararı bu yüzden
+"Caddy'ye kim konuşuyor" olmalı: executor üzerinden gitmek bütçeyi kesin
+olarak aşar ve K-040 gereği yazılı gerekçe ister.
+
+---
+
+## K-046 — Başarının kanıtı KATMAN ATLAYAMAZ: `image_id` akışa eklendi
+
+Dilim 3, Docker'ın klasik derleyicisinde başarının ölçütünün pozitif
+`aux` karesi olduğunu saptadı (K-042) ve executor bunu doğru uyguladı.
+Ama kimlik **yalnızca executor'ın kendi denetim günlüğüne** yazılıyordu;
+`ImageBuildResponse` sadece `data` ve `is_stderr` taşıyordu.
+
+Yani panelyd'nin elindeki tek ölçüt "akış hatasız bitti"ydi — **olumsuzun
+yokluğu**, tam olarak K-042'nin reddettiği şey.
+
+### Eksik, sözleşmeyi KULLANMAYA çalışınca ortaya çıktı
+
+Kontrol düzlemi şeması (göç 0002) imaj kimliği olmayan bir `BUILT`
+satırını kabul etmiyor:
+
+```sql
+CHECK (status != 2 OR image_id != '')
+```
+
+panelyd bir sürümü mühürlemeye kalkınca kimliğin hiç gelmediği görüldü.
+Şema, eksik bir sözleşmeyi ilk kullanımda görünür kıldı — kısıtı
+veritabanına koymanın beklenmedik getirisi.
+
+### Çözüm ve maliyeti
+
+`ImageBuildResponse.image_id` eklendi; yalnızca SON mesajda ve yalnızca
+başarıda dolu. Executor tarafındaki değişiklik üç satır:
+
+```go
+if imageID != "" {
+    params["image_id"] = imageID
+    if opErr == nil {
+        opErr = stream.Send(&panelyv1.ImageBuildResponse{ImageId: imageID})
+    }
+}
+```
+
+Gönderim başarısız olursa `opErr` doluyor ve kayıt FAILURE yazıyor. Yön
+doğru: panelyd kimliği öğrenmediyse sürümü mühürleyemez, dolayısıyla
+sistem açısından derleme teslim edilmemiştir.
+
+### Aynı ölçüt ÜÇ katmanda tekrarlanıyor
+
+| katman | pozitif kanıt |
+|---|---|
+| dockerdrv | Docker'ın `aux` karesi |
+| execclient → api | `ImageBuildResponse.image_id` |
+| api → istemci | son mesaj `DeploySucceeded` |
+
+Üçü de "hata görmedim" değil, "kanıtı gördüm" diyor. Tekrar israf değil:
+bir katman sessizce gevşerse diğerleri yakalar, ve her katmanın kendi
+testi var.
+
+---
+
+## K-047 — panelyd ağa çıkamaz; dal→commit çözümü İSTEMCİDE
+
+`deploy/systemd/panelyd.service` satır 92:
+
+```
+RestrictAddressFamilies=AF_UNIX
+```
+
+panelyd **TCP soketi açamaz**. Bu, uygulama modelinin şeklini belirledi:
+`git ls-remote` de HTTPS de mümkün değil, dolayısıyla "hangi commit"
+sorusunu daemon yanıtlayamaz.
+
+### Sonuç: `Deploy` TAM 40 haneli sha alır
+
+Çözümü iş istasyonundaki istemci yapıyor (`cmd/panely/gitref.go`), git'in
+smart-HTTP keşif ucuyla. `git` ikilisine kabuk çağrısı YOK: iş
+istasyonunda git kurulu olmayabilir ve bir alt sürece dal adı geçirmek,
+projenin baştan beri kaçındığı serbest-argv sınıfını istemci tarafında
+geri getirirdi. Dal adı burada bir sorgu parametresi bile değil; yalnızca
+yanıtta ARANAN bir dize.
+
+Model de zaten bunu istiyor: uygulama bir DALA bakar (hareket eder),
+sürüm bir COMMIT'tir (donmuştur). Bu yüzden `AppSpec` `git_branch`,
+`GitSource` `commit_sha` taşıyor ve ikisi aynı mesaj değil.
+
+### Bu bir eksiklik değil, ölçülebilir en-az-yetki
+
+Faz 4'ün webhook akışı da bunu bozmuyor: GitHub'ın yükü zaten commit
+sha'sını taşıyor. Yani daemon'ın ağa çıkması için bilinen bir gerekçe
+kalmıyor.
+
+⚠ **Dilim 4b bunu değiştirmek zorunda kalacak.** Sağlık denetçisi
+konteynerlere HTTP yoklaması atacak; birimin kendi yorumu bunu zaten
+yazıyor ("Faz 1'de … AF_INET AF_INET6 eklenecek"). O an, gevşetmenin
+gerekçesi ayrıca yazılmalı — Caddy'nin admin ucu unix soketi olduğu için
+gevşetmenin TEK sebebi sağlık yoklamasıdır.
+
+---
+
+## K-048 — Doğrulama kopyası: ne zaman kabul edilir
+
+Daemon, uygulama tanımını `internal/api/appvalidate.go`'da doğruluyor ve
+aynı desenler executor'ın doğrulayıcılarında da var. Dilim 3'te
+`ImageTag`'in kopyası tam da "iki tanım" gerekçesiyle SİLİNMİŞTİ. İkisi
+neden farklı?
+
+### Ayırt edici soru: sapma NE ÜRETİR?
+
+| kopya | sapmanın sonucu |
+|---|---|
+| `ImageTag` (silindi) | derleme bir etiketle, konteyner başka etiketle → **sessiz çalışma-zamanı uyuşmazlığı** |
+| doğrulayıcı (korundu) | biri daha katı → **istek reddedilir** |
+
+Doğrulayıcıda sapma her iki yönde de yalnızca redde yol açıyor; hiçbir
+yönde bir kaçış üretmiyor. Ret gürültülüdür ve hemen görülür.
+
+Kopyanın karşılığında alınan şey gerçek: `app create` anında hatalı bir
+tanım yakalanıyor. Kopya olmasaydı hata ancak ilk `deploy`'da, executor
+tarafında görünürdü.
+
+### Politika ASLA kopyalanmıyor
+
+Daemon "bu bir host adına benziyor mu" diyor; **izinli host listesini
+bilmiyor ve bilmemeli**. Liste executor'ın `-allow-git-host` bayrağında
+ve bir işletme kararı: ele geçirilmiş bir panelyd ona ekleme yapamamalı.
+
+Kopyalanan şey **karakter kümesi**, kopyalanmayan şey **politika**.
+
+Aynı ayrım göç 0002'deki CHECK'ler için de geçerli — orası ÜÇÜNCÜ katman
+ve bazı kısıtlar (`CHECK (status != 2 OR image_id != '')`) yalnızca orada
+zorlanabiliyor: uygulama katmanındaki bir hata bile o satırı yazamaz.

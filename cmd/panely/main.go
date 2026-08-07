@@ -80,6 +80,8 @@ type command struct {
 func commands() []command {
 	return []command{
 		{"status", "[hedef]", "sunucu ve daemon durumunu gösterir", (*cli).runStatus},
+		{"app", "<create|list|show> …", "uygulama tanımlarını yönetir", (*cli).runApp},
+		{"deploy", "<uygulama> [hedef]", "bir commit'i derler ve sürüm kaydeder", (*cli).runDeploy},
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
 		{"bootstrap", "root@sunucu", "sunucuyu sıfırdan kurar (tek seferlik)", (*cli).runBootstrap},

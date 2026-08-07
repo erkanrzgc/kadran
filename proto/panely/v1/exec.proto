@@ -410,6 +410,24 @@ message ImageBuildResponse {
   // BuildKit'in ilerleme çıktısı. Ham bayt; istemciye akar.
   bytes data = 1;
   bool is_stderr = 2;
+
+  // İmaj kimliği. YALNIZCA son mesajda ve YALNIZCA başarıda doludur;
+  // günlük mesajlarında her zaman boştur.
+  //
+  // ── Neden akışta bir alan, hata yokluğu değil? ────────────────────
+  //
+  // Executor, Docker'ın `aux` karesini görmeden başarı saymıyor (K-042).
+  // Ama bu bilgi bir dönem YALNIZCA executor'ın kendi denetim günlüğüne
+  // yazılıyordu; panelyd'ye ulaşan tek şey "akış hatasız bitti"ydi.
+  // O da olumsuzun yokluğudur ve K-042'nin reddettiği ölçütün ta kendisi.
+  //
+  // Somut sonucu: panelyd bir sürümü BUILT işaretleyemezdi, çünkü
+  // kontrol düzlemi şeması imaj kimliği olmayan BUILT satırını kabul
+  // etmiyor (göç 0002'deki CHECK). Eksik, sözleşmeyi bir üst katmandan
+  // KULLANMAYA çalışınca ortaya çıktı.
+  //
+  // Alan boş gelirse panelyd başarı İDDİA EDEMEZ — ve etmemelidir.
+  string image_id = 3;
 }
 
 message ExecutorServicePingRequest {}

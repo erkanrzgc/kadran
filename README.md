@@ -142,7 +142,7 @@ metadata, which the remote client controls and could forge.
 |---|---|
 | panelyd API | `/run/panely/api.sock` (unix socket) |
 | Executor | `/run/panely-exec/exec.sock` (unix socket) |
-| Caddy admin | `/run/caddy/admin.sock` (unix socket) |
+| Reverse proxy admin | `/run/panely-caddy/admin.sock` (unix socket) |
 | GUI ↔ sidecar | stdio (process pipes) |
 
 The only route to the control plane is **sshd**. There is no port to hide, no

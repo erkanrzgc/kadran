@@ -31,16 +31,33 @@ import (
 //go:embed install.sh
 var installScript embed.FS
 
-// serverBinaries, sunucuya kurulan üç binary'dir.
+// serverBinaries, sunucuya kurulan binary'lerdir.
 //
 // `panely` (iş istasyonu aracı) burada YOK: sunucuda işi olmayan bir
 // binary'yi kurmak, ayrıcalıklı makinedeki yüzeyi gereksiz büyütür.
-var serverBinaries = []string{"panelyd", "panely-exec", "panely-connect"}
+//
+// `panely-caddy` AYRI bir Go modülünden geliyor (build/caddy/go.mod);
+// scripts/build-release.sh onu da aynı `bin/linux-<arch>/` dizinine
+// üretiyor, yani burada özel bir muamele gerekmiyor.
+var serverBinaries = []string{
+	"panelyd", "panely-exec", "panely-connect", "panely-caddy",
+}
 
 // unitFiles, depodan kopyalanan systemd varlıkları.
+//
+// Hepsi tar'a DÜZ isimlerle giriyor; alt dizin yok. Ters vekil bir
+// drop-in yerine KENDİ birimiyle geldiği için buna ihtiyaç da kalmadı
+// (gerekçe panely-caddy.service'in başında).
 var unitFiles = map[string]string{
 	"panelyd.service":     "deploy/systemd/panelyd.service",
 	"panely-exec.service": "deploy/systemd/panely-exec.service",
+
+	// Ters vekil: kendi birimi, kendi admin soketi, kendi tmpfiles
+	// kuralı ve yol açıcı yapılandırması.
+	"panely-caddy.service":       "deploy/systemd/panely-caddy.service",
+	"panely-caddy-admin.socket":  "deploy/systemd/panely-caddy-admin.socket",
+	"panely-caddy-tmpfiles.conf": "deploy/systemd/panely-caddy-tmpfiles.conf",
+	"caddy.json":                 "deploy/caddy/config.json",
 	// Hacim kökünü nodev,nosuid ile bağlar. Adı systemd'nin mount birimi
 	// adlandırmasına UYMAK ZORUNDA (`systemd-escape -p --suffix=mount
 	// /var/lib/panely/volumes`); farklı bir ad verilirse systemd birimi

@@ -37,6 +37,20 @@ for arch in "${ARCHES[@]}"; do
             go build -trimpath -ldflags "$LDFLAGS" -o "$out/$binary" "./cmd/$binary"
         printf '    %s\n' "$out/$binary"
     done
+
+    # ── Ters vekil: AYRI Go modülü ──────────────────────────────────
+    #
+    # build/caddy'nin kendi go.mod'u var, yani `./cmd/...` onu KAPSAMAZ
+    # ve ayrı derlenmesi gerekiyor. LDFLAGS de geçirilmiyor: sürüm
+    # değişkenleri kök modülün `internal/version` paketinde ve o paket
+    # bu modülde yok — geçirilseydi bağlayıcı sessizce yok sayardı.
+    #
+    # ⚠ Bu binary bir GÜVENLİK SINIRI taşıyor: dosya servis eden modüller
+    # kasten dışarıda (K-050). Kurulum betiği onu hostta ARAR ve
+    # bulamazsa durur; burada üretilmezse bootstrap yarıda kalır.
+    ( cd build/caddy && GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
+        go build -trimpath -ldflags "-s -w" -o "../../$out/panely-caddy" . )
+    printf '    %s\n' "$out/panely-caddy"
 done
 
 # İş istasyonu aracı yerel platforma derlenir: bootstrap'ı ve GUI'yi

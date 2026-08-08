@@ -2489,3 +2489,106 @@ yani sonuç geçerli — derlenmeyen bir mutant "yakalandı" sayılmaz (K-043).
 Dağıtım akışı, yapılandırmayı **TÜM uygulamaların** aktif sürümlerinden
 üretmek zorunda. Tek uygulamadan üretmek artık sessizce geçmiyor —
 yükleme hata veriyor — ama doğru davranış zaten baştan buydu.
+
+---
+
+## K-055 — Ters vekil dağıtım paketine bağlanmıyor; birim de depodan geliyor
+
+Önceki tasarım `apt install caddy` yapıp bir systemd drop-in ile
+`ExecStart`'ı `panely-caddy`'ye çeviriyordu. Bırakıldı; yerine
+`panely-caddy.service`, `panely-caddy-admin.socket`, tmpfiles kuralı ve
+`caddy.json` **depodan** gidiyor.
+
+### ÖNCE çürütülen gerekçe
+
+Bırakma sebebi olarak akla ilk gelen şey şuydu: "paket güncellenirse
+çalışan ikili stok Caddy'ye döner." Yazılmadı, çünkü **ölçüldü ve YANLIŞ
+çıktı**:
+
+```
+ÖNCE : /usr/local/lib/panely/panely-caddy
+apt-get install --reinstall -y caddy   → exit 0
+SONRA: /usr/local/lib/panely/panely-caddy
+```
+
+Drop-in mekanizması sağlamdı; dpkg `/etc/systemd/system/` altına
+dokunmuyor. Ölçülmeseydi bu, gerekçe diye yazılmış bir yanlış olurdu.
+
+### Gerçek gerekçeler
+
+1. **Taşınabilirlik.** `caddy`, Ubuntu'da `universe` bileşeninde
+   (ölçüldü: `noble-updates/universe`), Debian'ın kendi depolarında ise
+   hiç yok. `panely bootstrap` bir dağıtım paketinin varlığına bağlı
+   olamaz.
+
+2. **K-052.** Doğrulanan yapılandırmanın TAMAMI depoda olmalı. Devralınan
+   birimin içeriği depoda değildi: dağıtım onu güncellediğinde
+   doğruladığımız kurulum sessizce değişirdi.
+
+3. **Paketin verdiği tek şey** bir kullanıcı, üç dizin ve ezdiğimiz bir
+   birimdi. Çalıştırdığımız ikili zaten bizimki. Bu bir bağımlılık değil,
+   tören — ve yanında hiç çalıştırmadığımız, dosya servis eden modüller
+   içeren bir binary'yi diskte tutuyordu.
+
+Yan kazanç: drop-in bir ALT DİZİN gerektiriyordu
+(`caddy.service.d/10-panely.conf`), oysa bootstrap'ın tar üreticisi düz
+bir `ad → yol` haritası kullanıyor. Kendi birimimizle bu sorun tamamen
+ortadan kalktı.
+
+### Kurulum artık K-050 SINIRINI ÖLÇÜYOR
+
+En değerli parça bu. install.sh, kurduğu binary'ye `list-modules`
+soruyor ve dosya servis eden bir modül bulursa **duruyor**. Sınır artık
+yalnızca `build/caddy/main.go`'da iddia edilmiyor; kurulum anında,
+çalıştırılacak ikilinin üzerinde ölçülüyor.
+
+⚠ **Pozitif kontrol ÖNCE.** Doğrudan "file_server var mı" diye sormak,
+binary hiç çalışmasa bile "yok" cevabı üretirdi — boş çıktıda grep hiçbir
+şey bulmaz. Bu yüzden önce `http.handlers.reverse_proxy`'nin VARLIĞI
+kanıtlanıyor; ancak ondan sonra yokluk iddiası anlam taşıyor. Sıra bir
+testle zorlanıyor (`TestInstallScriptProvesTheModuleBoundaryWasMeasured`),
+çünkü K-051 aynı hatayı üç kez üretti.
+
+Gerçek sunucuda: **114 modül, dosya servisi 0, reverse_proxy var.**
+
+### `--resume` KULLANILMIYOR — ve bunun bir bedeli var
+
+Caddy `--resume` ile son API yapılandırmasını diskten geri yükler.
+Kullanılsaydı Caddy'nin diski ile SQLite ayrı birer "gerçek" olurdu.
+Model açık: gerçeğin kaynağı kontrol düzlemi, Caddy onun yansıması.
+
+**Bedeli ölçüldü ve saklanmıyor.** Yeniden başlatmadan sonra:
+
+```
+ss -lntp | grep -E ':80 |:443 '   →  (boş)
+```
+
+Rota olmadığı için Caddy portları HİÇ DİNLEMİYOR. Yani bir çökme,
+`systemctl restart` veya reboot sonrası bütün uygulama trafiği, panelyd
+yapılandırmayı geri yükleyene kadar düşer.
+
+**Doğurduğu yükümlülük:** panelyd açılışta — ve ters vekil yeniden
+başladığında — Caddy'yi SQLite'tan UZLAŞTIRMAK ZORUNDA. Bu, dilim 4b'nin
+dağıtım akışında karşılanıyor.
+
+### Doğrulama: kurulum + REBOOT
+
+Sunucudan `caddy` paketi purge edildi (ikili silindi, `:80` boşaldı),
+sonra `panely bootstrap` sıfırdan koşturuldu — yani "paketi olmayan
+makine" senaryosu gerçekten sınandı. Kurulum sonrası 13 kontrolün 13'ü
+geçti.
+
+Ardından **reboot**:
+
+| kontrol | sonuç |
+|---|---|
+| dört birim de `active` **ve** `enabled` | ✓ |
+| `/run/panely-caddy` (tmpfs) yeniden kuruldu, 750 panely-caddy:panely | ✓ |
+| `admin.sock` 660 panely-caddy:panely | ✓ |
+| çalışan imaj = kurulan binary (`/proc/<pid>/exe` md5) | ✓ |
+| `NRestarts=0` — çökme döngüsü yok | ✓ |
+| `panely` olarak `GET /config/` → **200** | ✓ |
+| `panely-caddy` olarak `exec.sock` → erişemiyor | ✓ |
+
+Son iki satır modelin can alıcı noktası: kontrol düzlemi ters vekili
+yönetebiliyor, ters vekil ayrıcalıklı executor'ı GÖREMİYOR.

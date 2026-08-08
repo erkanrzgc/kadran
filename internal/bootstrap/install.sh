@@ -113,7 +113,7 @@ step "Binary'ler"
 
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
-for binary in panelyd panely-exec panely-connect; do
+for binary in panelyd panely-exec panely-connect panely-caddy; do
     [ -f "$STAGE/$binary" ] || die "$binary hazırlık dizininde yok"
 done
 
@@ -122,6 +122,10 @@ install -m 0755 -o root -g root "$STAGE/panelyd"       "$LIB_DIR/panelyd"
 install -m 0755 -o root -g root "$STAGE/panely-exec"   "$LIB_DIR/panely-exec"
 # panely-connect'i panely-client çalıştırır; yazma yetkisi yine yalnızca root.
 install -m 0755 -o root -g root "$STAGE/panely-connect" "$LIB_DIR/panely-connect"
+# Ters vekil. Yazma yetkisi yalnızca root: bu binary bir GÜVENLİK SINIRI
+# taşıyor (K-050) ve çalıştıran kullanıcının onu değiştirebilmesi sınırı
+# anlamsız kılardı.
+install -m 0755 -o root -g root "$STAGE/panely-caddy"  "$LIB_DIR/panely-caddy"
 
 say "$LIB_DIR içine kuruldu"
 "$LIB_DIR/panelyd" -version || die "panelyd çalıştırılamadı — mimari uyuşmuyor olabilir"
@@ -168,6 +172,108 @@ for flag in nodev nosuid; do
         || die "hacim kökünde $flag ETKİN DEĞİL (etkin: ${vol_opts:-<bağlı değil>})"
 done
 say "hacim kökü sertleştirildi ($vol_opts)"
+
+# ── Ters vekil (panely-caddy) ────────────────────────────────────────
+#
+# Dağıtımın `caddy` paketine BAĞLANILMIYOR; gerekçe
+# deploy/systemd/panely-caddy.service'in başında. Kurulan her şey depodan
+# geliyor: birim, soket, tmpfiles kuralı ve yol açıcı yapılandırma.
+
+step "Ters vekil"
+
+getent group panely-caddy >/dev/null || groupadd --system panely-caddy
+
+if ! id -u panely-caddy >/dev/null 2>&1; then
+    useradd --system --gid panely-caddy \
+        --home-dir /var/lib/panely-caddy --no-create-home \
+        --shell "$NOLOGIN" \
+        --comment "Panely ters vekili" panely-caddy
+fi
+
+# Değişmez: ters vekil `panely` GRUBUNDA OLAMAZ.
+#
+# Girseydi /run/panely-exec/exec.sock'a (0660 root:panely) ulaşırdı; yani
+# internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. panelyd'nin
+# admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
+# sağlanıyor.
+if id -nG panely-caddy | tr ' ' '\n' | grep -qx panely; then
+    die \
+"panely-caddy kullanıcısı 'panely' grubunda. Bu hâliyle exec.sock'a
+ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
+Düzeltmek için:  gpasswd -d panely-caddy panely"
+fi
+
+# ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
+#
+# Bu, kurulumun en önemli ölçümü. Sınır bir yapılandırmada değil,
+# BINARY'DE: panelyd admin soketine yazabildiği için, stok Caddy'de o
+# yetki "alan adının TLS özel anahtarını okuyabilme"yi de kapsıyordu
+# (ölçüldü, varsayılmadı).
+#
+# ⚠ ÖNCE POZİTİF KONTROL. Doğrudan "file_server var mı" diye sormak,
+# binary hiç çalışmasa bile "yok" cevabı üretirdi — cevapsızlığı istenen
+# cevap diye okumak bu projede üç kez yanlış sonuç ürettirdi (K-051).
+# Bu yüzden önce beklenen bir modülün VARLIĞI kanıtlanıyor.
+caddy_modules="$("$LIB_DIR/panely-caddy" list-modules 2>/dev/null)" \
+    || die "panely-caddy çalıştırılamadı — mimari uyuşmuyor olabilir"
+
+printf '%s\n' "$caddy_modules" | grep -qx 'http.handlers.reverse_proxy' || die \
+"panely-caddy modül listesinde reverse_proxy YOK. Ölçüm geçersiz: bu
+binary ya beklenen ikili değil ya da list-modules bir şey döndürmedi.
+Aşağıdaki dosya-servisi kontrolü bu hâliyle anlamsız olurdu."
+
+serving_modules="$(printf '%s\n' "$caddy_modules" \
+    | grep -E 'file_server|templates|caddyfs' || true)"
+[ -z "$serving_modules" ] || die \
+"panely-caddy DOSYA SERVİS EDEN modüller içeriyor:
+$serving_modules
+Bu binary ile ters vekil, TLS özel anahtarlarının durduğu dizini
+servis edebilir. Derleme build/caddy/main.go'daki dışlama listesine
+uymuyor — K-050 sınırı ETKİSİZ."
+
+say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^') modül, dosya servisi yok)"
+
+# ── Yapılandırma ve birimler ────────────────────────────────────────
+
+install -d -m 0755 -o root -g root /etc/panely
+install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/panely/caddy.json
+
+install -m 0644 -o root -g root "$STAGE/panely-caddy-tmpfiles.conf" \
+    /etc/tmpfiles.d/panely-caddy.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/panely-caddy.conf
+
+install -m 0644 -o root -g root "$STAGE/panely-caddy.service" \
+    /etc/systemd/system/panely-caddy.service
+install -m 0644 -o root -g root "$STAGE/panely-caddy-admin.socket" \
+    /etc/systemd/system/panely-caddy-admin.socket
+systemctl daemon-reload
+
+# ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
+#
+# Dağıtımın kendi caddy'si ya da bir nginx çalışıyorsa panely-caddy
+# bağlanamaz ve "address already in use" ile ölür. Sebebi günlüğün
+# içinde kaybolmasın diye ÖNCEDEN ve açıkça söyleniyor.
+for other in caddy nginx apache2 httpd lighttpd; do
+    if systemctl is-active --quiet "$other.service" 2>/dev/null; then
+        die \
+"$other.service çalışıyor ve 80/443 portlarını tutuyor olabilir.
+panely-caddy bu portlara bağlanamaz. Devam etmek için:
+  systemctl disable --now $other.service"
+    fi
+done
+
+# Soket ÖNCE: Caddy onu fd/3 olarak devralıyor.
+#
+# `enable` ile `start` AYRI şeyler — yalnızca başlatmak, birimi yeniden
+# başlatmadan sonra geri getirmez. Bu ayrım gerçek bir kurulumda
+# atlandı ve ancak reboot testinde ortaya çıktı; ikisi de yapılıyor ve
+# ikisi de aşağıda DOĞRULANIYOR.
+systemctl enable panely-caddy-admin.socket
+systemctl stop panely-caddy.service 2>/dev/null || true
+systemctl restart panely-caddy-admin.socket
+
+systemctl enable panely-caddy.service
+systemctl restart panely-caddy.service
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
 
@@ -350,6 +456,75 @@ if grep -q 'command="' "$auth_file"; then
     check_ok "authorized_keys zorlanmış komut içeriyor"
 else
     check_fail "authorized_keys'te zorlanmış komut yok — istemci kabuk alabilir"
+fi
+
+# ── Ters vekil ──────────────────────────────────────────────────────
+
+# 6. Birimler ETKİN olmalı, yalnızca çalışıyor olmaları YETMEZ.
+#
+# Bu ayrım gerçek bir kurulumda atlandı: soket başlatılmış ama
+# etkinleştirilmemişti ve yalnızca REBOOT testinde ortaya çıktı. "Şu an
+# çalışıyor" bir kabul ölçütü değil; ölçüt "yeniden başlatmadan sonra da
+# çalışır".
+for unit in panely-caddy-admin.socket panely-caddy.service; do
+    state="$(systemctl is-enabled "$unit" 2>/dev/null || echo yok)"
+    if [ "$state" = "enabled" ]; then
+        check_ok "$unit etkin (yeniden başlatmayı geçer)"
+    else
+        check_fail "$unit ETKİN DEĞİL ($state) — reboot sonrası geri gelmez"
+    fi
+done
+
+# 7. Çalışan İMAJ, kurduğumuz binary olmalı (K-049).
+#
+# `systemctl is-active` yeni ikilinin çalıştığını KANITLAMAZ: eski süreç
+# ayakta kalmışsa birim yine "active" görünür. Kanıt /proc/<pid>/exe'den
+# okunuyor — çalışan imajın kendisi.
+caddy_pid="$(systemctl show -p MainPID --value panely-caddy.service 2>/dev/null || echo 0)"
+if [ "${caddy_pid:-0}" -gt 0 ] 2>/dev/null \
+        && running_sum="$(md5sum "/proc/$caddy_pid/exe" 2>/dev/null | cut -d' ' -f1)" \
+        && [ -n "$running_sum" ]; then
+    installed_sum="$(md5sum "$LIB_DIR/panely-caddy" | cut -d' ' -f1)"
+    if [ "$running_sum" = "$installed_sum" ]; then
+        check_ok "çalışan ters vekil kurulan binary (${running_sum:0:12})"
+    else
+        check_fail "çalışan ters vekil BAŞKA bir binary (çalışan $running_sum, kurulan $installed_sum)"
+    fi
+else
+    check_fail "ters vekilin çalışan imajı okunamadı (pid=${caddy_pid:-yok})"
+fi
+
+# 8. Ters vekil root ÇALIŞMAMALI.
+caddy_user="$(ps -o user= -p "${caddy_pid:-0}" 2>/dev/null | tr -d ' ')"
+if [ "$caddy_user" = "panely-caddy" ]; then
+    check_ok "ters vekil yetkisiz kullanıcı olarak çalışıyor ($caddy_user)"
+else
+    check_fail "ters vekil '$caddy_user' olarak çalışıyor, 'panely-caddy' bekleniyordu"
+fi
+
+# 9. Admin soketinin izinleri.
+admin_mode="$(stat -c '%a %U:%G' /run/panely-caddy/admin.sock 2>/dev/null || echo yok)"
+if [ "$admin_mode" = "660 panely-caddy:panely" ]; then
+    check_ok "admin.sock: $admin_mode"
+else
+    check_fail "admin.sock beklenmedik: $admin_mode (660 panely-caddy:panely bekleniyordu)"
+fi
+
+# 10. panelyd admin soketine ULAŞABİLMELİ — K-050'nin dayandığı erişim.
+if setpriv --reuid panely --regid panely --clear-groups \
+        test -w /run/panely-caddy/admin.sock 2>/dev/null; then
+    check_ok "panely kullanıcısı admin soketine yazabiliyor"
+else
+    check_fail "panely kullanıcısı admin soketine YAZAMIYOR — ters vekil yönetilemez"
+fi
+
+# 11. Ters vekil executor'a ULAŞAMAMALI. Modelin can alıcı noktası:
+#     internete bakan süreç ayrıcalıklı soketi görmemeli.
+if setpriv --reuid panely-caddy --regid panely-caddy --clear-groups \
+        test -r /run/panely-exec/exec.sock 2>/dev/null; then
+    check_fail "ters vekil exec.sock'u okuyabiliyor — ayrıcalıklı executor internete bakıyor"
+else
+    check_ok "ters vekil exec.sock'a erişemiyor"
 fi
 
 [ "$fail" -eq 0 ] || die "kurulum sonrası doğrulama başarısız — yukarıya bakın"

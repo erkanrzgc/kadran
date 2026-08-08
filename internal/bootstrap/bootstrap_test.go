@@ -92,6 +92,13 @@ func TestArchiveCarriesEverythingTheInstallerNeeds(t *testing.T) {
 		"panelyd", "panely-exec", "panely-connect",
 		"panelyd.service", "panely-exec.service", "panely-tmpfiles.conf",
 		"client_key.pub",
+
+		// Ters vekil. Dağıtımın `caddy` paketine bağlanılmadığı için
+		// birim, soket, tmpfiles kuralı ve yapılandırma BURADAN gitmek
+		// zorunda; biri eksikse kurulum uzakta yarıda kalır.
+		"panely-caddy",
+		"panely-caddy.service", "panely-caddy-admin.socket",
+		"panely-caddy-tmpfiles.conf", "caddy.json",
 	}
 	for _, name := range required {
 		if _, ok := files[name]; !ok {
@@ -532,12 +539,15 @@ func newFakeRepo(t *testing.T) string {
 		}
 	}
 
-	systemd := filepath.Join(root, "deploy", "systemd")
-	if err := os.MkdirAll(systemd, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	// Dizinler unitFiles'tan TÜRETİLİYOR, sabit yazılmıyor: varlıklar tek
+	// bir dizinde değil (systemd birimleri deploy/systemd'de, ters vekilin
+	// yapılandırması deploy/caddy'de). Sabit yazılsaydı yeni bir dizin
+	// eklendiğinde fikstür üretimden sessizce ayrışırdı.
 	for _, rel := range unitFiles {
 		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(path, []byte("# sahte birim\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -615,5 +625,109 @@ func TestAcceptsOrdinaryHost(t *testing.T) {
 	opts := Options{Host: "root@1.2.3.4", ClientKeyPath: anahtar}
 	if err := validate(&opts); err != nil {
 		t.Fatalf("meşru hedef reddedildi: %v", err)
+	}
+}
+
+// ── Kurulumun ters vekil adımı ───────────────────────────────────────
+
+// TestInstallScriptProvesTheModuleBoundaryWasMeasured, K-050 sınırının
+// ÖLÇÜLDÜĞÜNÜN kanıtlandığını doğrular.
+//
+// Betik "dosya servis eden modül var mı" diye soruyor. Ama bu soru tek
+// başına, binary HİÇ ÇALIŞMADIĞINDA da "yok" cevabı üretir — boş çıktıda
+// grep hiçbir şey bulmaz. Cevapsızlığı istenen cevap diye okumak bu
+// projede üç kez yanlış sonuç ürettirdi (K-051): Caddy yoklaması iki kez
+// ölçmediği hâlde "güvenli" dedi.
+//
+// Bu yüzden POZİTİF KONTROL önce gelmeli: beklenen bir modülün VARLIĞI
+// kanıtlanmadan yokluk iddiası anlamsızdır. Test sırayı zorluyor.
+func TestInstallScriptProvesTheModuleBoundaryWasMeasured(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+
+	pozitif := strings.Index(text, "http.handlers.reverse_proxy")
+	if pozitif < 0 {
+		t.Fatal("pozitif kontrol yok: reverse_proxy'nin VARLIĞI hiç sınanmıyor, " +
+			"dolayısıyla dosya-servisi kontrolü boş çıktıda da geçerdi")
+	}
+
+	negatif := strings.Index(text, "file_server|templates|caddyfs")
+	if negatif < 0 {
+		t.Fatal("dosya servis eden modüller hiç sınanmıyor — K-050 sınırı doğrulanmıyor")
+	}
+
+	if pozitif > negatif {
+		t.Error("pozitif kontrol negatif kontrolden SONRA geliyor; " +
+			"ölçümün yapıldığı kanıtlanmadan sonuç okunuyor")
+	}
+}
+
+// TestInstallScriptEnablesReverseProxyUnits, birimlerin yalnızca
+// BAŞLATILMADIĞINI, ETKİNLEŞTİRİLDİĞİNİ de doğrular.
+//
+// Bu ayrım gerçek bir kurulumda atlandı: admin soketi başlatılmış ama
+// etkinleştirilmemişti ve eksiklik yalnızca REBOOT testinde ortaya çıktı.
+// "Şu an çalışıyor" bir kabul ölçütü değil.
+func TestInstallScriptEnablesReverseProxyUnits(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+
+	for _, unit := range []string{"panely-caddy-admin.socket", "panely-caddy.service"} {
+		if !strings.Contains(text, "systemctl enable "+unit) {
+			t.Errorf("%s etkinleştirilmiyor — yeniden başlatmadan sonra geri gelmez", unit)
+		}
+		// Doğrulama da olmalı: `enable` çağrılmış olması, sonucu
+		// kanıtlamaz.
+		if !strings.Contains(text, "systemctl is-enabled") {
+			t.Error("etkinleştirmenin SONUCU doğrulanmıyor")
+		}
+	}
+}
+
+// TestInstallScriptVerifiesTheRunningProxyImage, çalışan İMAJIN kurulan
+// binary olduğunun kanıtlandığını doğrular (K-049).
+//
+// `systemctl is-active` yeni ikilinin çalıştığını KANITLAMAZ: eski süreç
+// ayakta kalmışsa birim yine "active" görünür. Bu tam olarak yaşandı —
+// göç dosyası uygulanmadığı hâlde servis "active", journal temiz ve çıkış
+// kodu 0'dı.
+func TestInstallScriptVerifiesTheRunningProxyImage(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+
+	if !strings.Contains(text, "/proc/$caddy_pid/exe") {
+		t.Error("çalışan imaj /proc/<pid>/exe'den okunmuyor — " +
+			"birim yolu okumak yalnızca NE ÇALIŞTIRILMAK İSTENDİĞİNİ söyler")
+	}
+	if !strings.Contains(text, "md5sum") {
+		t.Error("çalışan imaj kurulan binary ile İÇERİKÇE karşılaştırılmıyor")
+	}
+}
+
+// TestInstallScriptRefusesToShareThePrivilegedGroup, ters vekil
+// kullanıcısının panely grubunda OLMADIĞININ sınandığını doğrular.
+func TestInstallScriptRefusesToShareThePrivilegedGroup(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+
+	if !strings.Contains(text, "id -nG panely-caddy") {
+		t.Fatal("panely-caddy'nin grup üyeliği hiç sınanmıyor")
+	}
+	// Kurulum, exec.sock'a erişemediğini de ÖLÇMELİ.
+	if !strings.Contains(text, "--reuid panely-caddy") {
+		t.Error("ters vekilin exec.sock'a erişemediği ölçülmüyor — " +
+			"yalnızca grup listesine bakmak, izinlerin gerçekte ne verdiğini söylemez")
 	}
 }

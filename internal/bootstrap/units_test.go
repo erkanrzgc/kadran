@@ -243,3 +243,120 @@ func siraliAnahtarlar(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// ── Ters vekilin yetki ayrımı ────────────────────────────────────────
+//
+// Bu testler tek bir cümleyi koruyor: internete bakan süreç, ayrıcalıklı
+// executor'a ULAŞAMAMALI. Sınır iki ayrı yerde duruyor ve ikisi de
+// gözden kaçmaya müsait.
+
+func readUnit(t *testing.T, name string) string {
+	t.Helper()
+	yol := filepath.Join("..", "..", "deploy", "systemd", name)
+	icerik, err := os.ReadFile(yol)
+	if err != nil {
+		t.Fatalf("%s okunamadı: %v", name, err)
+	}
+	return string(icerik)
+}
+
+// directive, bir birim dosyasından bir anahtarın DEĞERLERİNİ çıkarır.
+//
+// Yorum satırları atlanıyor: bu birimlerde yorumlar uzun ve içlerinde
+// anahtar adları geçiyor ("Group= neden değiştirilmemeli" gibi). Ham
+// strings.Contains bunları ayar sanır ve test yanlış yere yeşil verirdi.
+func directive(unit, key string) []string {
+	var out []string
+	tarayici := bufio.NewScanner(strings.NewReader(unit))
+	for tarayici.Scan() {
+		satir := strings.TrimSpace(tarayici.Text())
+		if satir == "" || strings.HasPrefix(satir, "#") || strings.HasPrefix(satir, ";") {
+			continue
+		}
+		if ad, deger, ok := strings.Cut(satir, "="); ok &&
+			strings.EqualFold(strings.TrimSpace(ad), key) {
+			out = append(out, strings.TrimSpace(deger))
+		}
+	}
+	return out
+}
+
+// TestReverseProxyIsNotInThePanelyGroup, ters vekilin panely grubuna
+// GİRMEDİĞİNİ doğrular.
+//
+// Girseydi /run/panely-exec/exec.sock'a (0660 root:panely) ulaşırdı: yani
+// internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. Bu, tüm
+// ayrıcalık ayrımının çöktüğü tek satır olurdu.
+func TestReverseProxyIsNotInThePanelyGroup(t *testing.T) {
+	unit := readUnit(t, "panely-caddy.service")
+
+	gruplar := directive(unit, "Group")
+	if len(gruplar) != 1 || gruplar[0] != "panely-caddy" {
+		t.Fatalf("Group= beklenmedik: %v (yalnızca panely-caddy olmalı)", gruplar)
+	}
+
+	// SupplementaryGroups arka kapıyı yeniden açardı.
+	for _, ek := range directive(unit, "SupplementaryGroups") {
+		for _, ad := range strings.Fields(ek) {
+			if ad == "panely" {
+				t.Errorf("ters vekile panely ek grubu verilmiş: %q", ek)
+			}
+		}
+	}
+
+	if k := directive(unit, "User"); len(k) != 1 || k[0] != "panely-caddy" {
+		t.Errorf("User= beklenmedik: %v", k)
+	}
+}
+
+// TestAdminSocketCarriesGroupOwnershipNotMembership, panelyd'nin admin
+// soketine nasıl ULAŞTIĞINI doğrular.
+//
+// Erişim grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle sağlanıyor.
+// Fark tam da yukarıdaki testin koruduğu şey: üyelik verilseydi exec.sock
+// da açılırdı.
+func TestAdminSocketCarriesGroupOwnershipNotMembership(t *testing.T) {
+	unit := readUnit(t, "panely-caddy-admin.socket")
+
+	beklenenler := map[string]string{
+		"SocketUser":  "panely-caddy",
+		"SocketGroup": "panely",
+		"SocketMode":  "0660",
+		// .socket birimi varsayılan olarak AYNI ADLI .service'i tetikler;
+		// bizimki farklı adda ve bu satır olmadan hiç başlamıyor
+		// (gerçek sunucuda ölçüldü).
+		"Service": "panely-caddy.service",
+	}
+	for anahtar, beklenen := range beklenenler {
+		got := directive(unit, anahtar)
+		if len(got) != 1 || got[0] != beklenen {
+			t.Errorf("%s= %v, beklenen [%s]", anahtar, got, beklenen)
+		}
+	}
+}
+
+// TestReverseProxyKeepsOnlyThePortBindingCapability, ters vekile :80/:443
+// dışında bir yetenek verilmediğini doğrular.
+func TestReverseProxyKeepsOnlyThePortBindingCapability(t *testing.T) {
+	unit := readUnit(t, "panely-caddy.service")
+
+	for _, anahtar := range []string{"AmbientCapabilities", "CapabilityBoundingSet"} {
+		got := directive(unit, anahtar)
+		if len(got) != 1 || got[0] != "CAP_NET_BIND_SERVICE" {
+			t.Errorf("%s= %v — yalnızca CAP_NET_BIND_SERVICE olmalı", anahtar, got)
+		}
+	}
+
+	// Bir web sunucusu AF_INET'siz çalışamaz; ama NETLINK gibi fazlalıklar
+	// sessizce eklenmemeli.
+	aileler := directive(unit, "RestrictAddressFamilies")
+	if len(aileler) != 1 {
+		t.Fatalf("RestrictAddressFamilies= %v", aileler)
+	}
+	izinli := map[string]bool{"AF_INET": true, "AF_INET6": true, "AF_UNIX": true}
+	for _, aile := range strings.Fields(aileler[0]) {
+		if !izinli[aile] {
+			t.Errorf("beklenmedik adres ailesi: %q", aile)
+		}
+	}
+}

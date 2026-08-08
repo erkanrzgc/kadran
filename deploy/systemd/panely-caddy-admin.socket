@@ -13,9 +13,9 @@ Documentation=https://github.com/erkanrzgc/panely
 # ters vekil, ayrıcalıklı executor'a konuşabilir hâle gelirdi.
 #
 # Caddy soketi kendisi yaratırsa GRUP olarak kendi birincil grubunu
-# (caddy) kullanır. `unix//path|0660` sözdizimi MODU ayarlar ama GRUBU
-# ayarlamaz — bu ölçüldü: soket `srw-rw---- caddy:caddy` çıkıyor ve
-# panely bağlanamıyor.
+# kullanır. `unix//path|0660` sözdizimi MODU ayarlar ama GRUBU ayarlamaz —
+# bu ölçüldü: soket `srw-rw---- caddy:caddy` çıkıyor ve panely
+# bağlanamıyor.
 #
 # systemd soket aktivasyonu bunu temiz çözüyor: soketi systemd (root)
 # doğru sahiplik ve modla yaratıyor, Caddy onu `fd/3` olarak devralıyor.
@@ -27,21 +27,22 @@ Documentation=https://github.com/erkanrzgc/panely
 # önce doğru izinlerle hazır.
 
 [Socket]
-ListenStream=/run/caddy/admin.sock
+ListenStream=/run/panely-caddy/admin.sock
 
-# Sahip Caddy, grup panely.
+# Sahip panely-caddy, grup panely.
 #
-# ⚠ Bu satır Caddy'yi panely grubunun ÜYESİ YAPMAZ. Yalnızca bu soketin
-# grup sahipliğini belirler. Caddy'nin kendi grup üyeliği caddy.service'te
-# (`Group=caddy`) ve orası DEĞİŞTİRİLMEMELİDİR.
-SocketUser=caddy
+# ⚠ Bu satır panely-caddy'yi panely grubunun ÜYESİ YAPMAZ. Yalnızca bu
+# soketin grup sahipliğini belirler. Servisin kendi grup üyeliği
+# panely-caddy.service'te (`Group=panely-caddy`) ve orası
+# DEĞİŞTİRİLMEMELİDİR.
+SocketUser=panely-caddy
 SocketGroup=panely
 SocketMode=0660
 
-# .socket birimi varsayılan olarak aynı adlı .service'i tetikler;
-# bizimki caddy.service. Bu satır olmadan birim "caddy-admin.service
+# .socket birimi varsayılan olarak AYNI ADLI .service'i tetikler; bizimki
+# farklı adda. Bu satır olmadan birim "panely-caddy-admin.service
 # bulunamadı" diye başlamıyor (ölçüldü).
-Service=caddy.service
+Service=panely-caddy.service
 
 [Install]
 WantedBy=sockets.target

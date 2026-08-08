@@ -1,0 +1,134 @@
+[Unit]
+Description=Panely ters vekili (panely-caddy)
+Documentation=https://github.com/erkanrzgc/panely
+
+# ══════════════════════════════════════════════════════════════════════
+#  Neden dağıtımın caddy.service'i DEĞİL de kendi birimimiz?
+# ══════════════════════════════════════════════════════════════════════
+#
+# Önceki tasarım `apt install caddy` yapıp bir drop-in ile ExecStart'ı
+# eziyordu. Üç sebeple bırakıldı:
+#
+#   1. TAŞINABİLİRLİK. `caddy` Ubuntu'da `universe` bileşeninde; Debian'ın
+#      kendi depolarında hiç yok. `panely bootstrap` bir dağıtım paketinin
+#      varlığına bağlı olamaz.
+#
+#   2. K-052. Doğrulanan yapılandırmanın TAMAMI depoda olmalı. Devralınan
+#      birimin içeriği depoda değildi: dağıtım onu güncellediğinde
+#      doğruladığımız kurulum sessizce değişirdi.
+#
+#   3. Paketin verdiği tek şey bir kullanıcı, üç dizin ve ezdiğimiz bir
+#      birimdi. Çalıştırdığımız ikili zaten bizimki. Bu bir bağımlılık
+#      değil, tören.
+#
+# ⚠ ÖLÇÜLMÜŞ BİR İDDİA DEĞİL: "paket güncellenince çalışan ikili değişir"
+# diye bir gerekçe YAZILMADI, çünkü ölçüldü ve YANLIŞ çıktı —
+# `apt-get install --reinstall caddy` sonrası çalışan ikili hâlâ
+# /usr/local/lib/panely/panely-caddy'ydi. Drop-in mekanizması sağlamdı;
+# bırakma sebebi yukarıdaki üçü.
+
+After=network.target network-online.target
+Wants=network-online.target
+
+# Admin soketi ÖNCE hazır olmalı: Caddy onu fd/3 olarak devralıyor ve
+# soket yoksa "getsockopt: socket operation on non-socket" ile ölüyor
+# (ölçüldü).
+Requires=panely-caddy-admin.socket
+After=panely-caddy-admin.socket
+
+[Service]
+Type=notify
+
+# ── Kendi kullanıcısı ───────────────────────────────────────────────
+#
+# ⚠ `panely` GRUBUNA GİRMEZ. Girseydi /run/panely-exec/exec.sock'a
+# (0660 root:panely) ulaşabilirdi — yani ters vekil, ayrıcalıklı
+# executor'a konuşabilir hâle gelirdi. panelyd'nin admin soketine erişimi
+# grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle sağlanıyor
+# (bkz. panely-caddy-admin.socket).
+User=panely-caddy
+Group=panely-caddy
+
+ExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json
+ExecReload=/usr/local/lib/panely/panely-caddy reload --config /etc/panely/caddy.json --force
+
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=5s
+LimitNOFILE=1048576
+
+# ── Sertifikaların yeri ─────────────────────────────────────────────
+#
+# Caddy veri dizinini XDG_DATA_HOME'dan türetiyor; ayarlanmazsa $HOME'a
+# düşüyor ve systemd altında bu belirsiz bir yer olurdu. ÖLÇÜLDÜ:
+#
+#   XDG_DATA_HOME=/var/lib/panely-caddy
+#     → caddy.AppDataDir=/var/lib/panely-caddy/caddy
+#
+# XDG_CONFIG_HOME de veriliyor: Caddy her API yüklemesinden sonra
+# autosave.json yazıyor ve varsayılan yolu ProtectSystem=strict altında
+# YAZILAMAZ olurdu. Bu dosya asla OKUNMUYOR (`--resume` kullanılmıyor,
+# aşağıya bakın); yalnızca yazılabilir bir yer verilmesi gerekiyor.
+StateDirectory=panely-caddy
+StateDirectoryMode=0700
+Environment=XDG_DATA_HOME=/var/lib/panely-caddy
+Environment=XDG_CONFIG_HOME=/var/lib/panely-caddy
+
+# ══════════════════════════════════════════════════════════════════════
+#  `--resume` KASTEN kullanılmıyor
+# ══════════════════════════════════════════════════════════════════════
+#
+# Caddy `--resume` ile son API yapılandırmasını diskten geri yükler.
+# Kullanılsaydı Caddy'nin diski ile SQLite ayrı birer "gerçek" olurdu ve
+# hangisinin doğru olduğu belirsizleşirdi.
+#
+# ⚠ BUNUN BEDELİ VAR ve saklanmıyor: bu birim her başladığında canlı
+# yapılandırma /etc/panely/caddy.json'a döner — o dosyada HİÇ ROTA YOK.
+# Yani bir çökme, yeniden başlatma veya reboot sonrası bütün uygulama
+# trafiği panelyd yapılandırmayı geri yükleyene kadar düşer.
+#
+# Bu, panelyd'ye bir YÜKÜMLÜLÜK yüklüyor: açılışta ve bu birim yeniden
+# başladığında Caddy'yi SQLite'tan uzlaştırmak zorunda.
+
+# ── Sertleştirme ────────────────────────────────────────────────────
+#
+# Asıl güvenlik sınırı bu blok DEĞİL, BINARY'nin kendisi: dosya servis
+# eden modüller panely-caddy'de hiç yok (K-050). Buradakiler ikinci
+# katman.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# :80 ve :443'e bağlanmak için gereken TEK yetenek. Sınır kümesi de aynı
+# tek yetenekle kapatılıyor: ambient vermek, sınırı açık bırakmayı
+# gerektirmez.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+
+# Bir web sunucusu: AF_INET/AF_INET6 zorunlu. AF_UNIX admin soketi için.
+# NETLINK yok — Caddy'nin arayüz listelemeye ihtiyacı yok.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Sertifika özel anahtarları burada; başka kimse okuyamamalı.
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -34,7 +34,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	repo := fs.String("repo", "", "kaynak depo: host/sahip/ad (ör. github.com/user/blog)")
 	branch := fs.String("branch", "main", "varsayılan dal")
 	dockerfile := fs.String("dockerfile", "", "depo köküne göreli Dockerfile yolu")
-	domain := fs.String("domain", "", "yayınlanacak alan adı (dilim 4b'de kullanılacak)")
+	domain := fs.String("domain", "", "yayınlanacak alan adı; boşsa uygulama yalnızca iç ağdan erişilir")
 	port := fs.Uint("port", 8080, "uygulamanın konteyner içinde dinlediği port")
 	replicas := fs.Uint("replicas", 1, "replika sayısı")
 	health := fs.String("health-path", "/", "sağlık yoklaması yolu")

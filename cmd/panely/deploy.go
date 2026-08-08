@@ -123,10 +123,15 @@ func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
 			"dağıtım başarı bildirmeden bitti — imaj üretildiği KANITLANAMADI"))
 	}
 
-	fmt.Fprintf(c.stdout, "\nSürüm %s derlendi · imaj %s\n",
+	fmt.Fprintf(c.stdout, "\nSürüm %s canlıda · imaj %s\n",
 		succeeded.GetReleaseId(), shortImage(succeeded.GetImageId()))
+	// ⚠ Kapının ne ÖLÇMEDİĞİ burada da söyleniyor. Kullanıcının "dağıtım
+	// başarılı" ile "uygulamam cevap veriyor" arasındaki farkı bilmesi
+	// gerekiyor: kapı konteynerin çalıştığını görüyor, uygulamanın cevap
+	// verdiğini değil.
 	fmt.Fprintln(c.stderr,
-		"Not: bu dilimde dağıtım trafik taşımaz; imaj üretildi ve sürüm kaydedildi.")
+		"Not: sağlık kapısı konteynerin ÇALIŞTIĞINI doğrular, "+
+			"uygulamanın cevap verdiğini değil.")
 	return exitOK
 }
 

@@ -112,7 +112,7 @@ func newDeployServer(t *testing.T, fe *fakeExec) (*Server, *store.Store) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	srv, err := NewServer(ServerOptions{Store: db, Executor: fe})
+	srv, err := NewServer(ServerOptions{Store: db, Executor: fe, Rollout: &fakeRollout{}})
 	if err != nil {
 		t.Fatalf("sunucu oluşturulamadı: %v", err)
 	}
@@ -505,4 +505,124 @@ func TestDeployStopsWhenTheClientCannotBeWritten(t *testing.T) {
 	if rel.Status == store.ReleaseBuilding {
 		t.Error("sürüm BUILDING'de asılı kaldı")
 	}
+}
+
+// ── Dağıtımın TRAFİK yarısı ──────────────────────────────────────────
+
+// newDeployServerWith, rollout'u çağıranın verdiği sahteyle kurar.
+func newDeployServerWith(t *testing.T, fe *fakeExec, ro *fakeRollout) (*Server, *store.Store) {
+	t.Helper()
+
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	if err != nil {
+		t.Fatalf("veritabanı açılamadı: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	srv, err := NewServer(ServerOptions{Store: db, Executor: fe, Rollout: ro})
+	if err != nil {
+		t.Fatalf("sunucu oluşturulamadı: %v", err)
+	}
+	return srv, db
+}
+
+// TestDeployHandsTheBuiltReleaseToTheRollout, derlemeden sonra trafiğin
+// GERÇEKTEN taşındığını doğrular.
+//
+// Bu test, dilim 4a'da kasten eksik bırakılan yarının bağlandığını
+// koruyor. Bağlantı olmadan Deploy "başarılı" döner, DeploySucceeded
+// gönderir ve kullanıcının sitesi HİÇ AYAĞA KALKMAZ — sessiz ve en kötü
+// türden bir başarısızlık.
+func TestDeployHandsTheBuiltReleaseToTheRollout(t *testing.T) {
+	ro := &fakeRollout{}
+	srv, _ := newDeployServerWith(t, okBuild(), ro)
+	mustCreateApp(t, srv, testSpec())
+
+	stream := &deployStream{ctx: context.Background()}
+	if err := srv.Deploy(&panelyv1.DeployRequest{
+		AppId: "blog", CommitSha: apiSHA,
+	}, stream); err != nil {
+		t.Fatalf("dağıtım başarısız: %v", err)
+	}
+
+	// "Çağrıldı mı" değil, HANGİ sürümle: yanlış sürümü canlıya alan bir
+	// dağıtım yalnızca varlık kontrolünden geçerdi.
+	if len(ro.calls) != 1 || ro.calls[0] != "blog/r1" {
+		t.Fatalf("rollout çağrıları %v, [blog/r1] bekleniyordu", ro.calls)
+	}
+}
+
+// TestFailedBuildNeverReachesTheRollout, derlemesi başarısız bir sürümün
+// canlıya ALINMADIĞINI doğrular.
+//
+// Şemadaki tetikleyici de bunu engelliyor (aktif sürüm BUILT olmalı), ama
+// iki savunma bir savunmadan iyi: buradaki kontrol, isteğin veritabanına
+// HİÇ ULAŞMADIĞINI gösteriyor.
+func TestFailedBuildNeverReachesTheRollout(t *testing.T) {
+	ro := &fakeRollout{}
+	srv, _ := newDeployServerWith(t,
+		failBuild(), ro)
+	mustCreateApp(t, srv, testSpec())
+
+	stream := &deployStream{ctx: context.Background()}
+	if err := srv.Deploy(&panelyv1.DeployRequest{
+		AppId: "blog", CommitSha: apiSHA,
+	}, stream); err == nil {
+		t.Fatal("başarısız derleme başarı sayıldı")
+	}
+	if len(ro.calls) != 0 {
+		t.Fatalf("derlemesi başarısız sürüm canlıya alındı: %v", ro.calls)
+	}
+}
+
+// TestRolloutFailureIsNotReportedAsSuccess, trafiğin taşınamadığı bir
+// dağıtımın BAŞARILI görünmediğini doğrular.
+//
+// DeploySucceeded'in anlamı "imaj üretildi" değil, "dağıtım tamamlandı".
+// Rollout patladığı hâlde o mesajı göndermek, istemciye canlı olmayan bir
+// sürümü canlı diye bildirmek olurdu.
+func TestRolloutFailureIsNotReportedAsSuccess(t *testing.T) {
+	ro := &fakeRollout{err: errors.New("sağlık kapısı geçilemedi")}
+	srv, db := newDeployServerWith(t, okBuild(), ro)
+	mustCreateApp(t, srv, testSpec())
+
+	stream := &deployStream{ctx: context.Background()}
+	err := srv.Deploy(&panelyv1.DeployRequest{
+		AppId: "blog", CommitSha: apiSHA,
+	}, stream)
+	if err == nil {
+		t.Fatal("kapıda duran dağıtım başarı sayıldı")
+	}
+
+	for _, m := range stream.sent {
+		if m.GetSucceeded() != nil {
+			t.Fatal("trafiği taşınmayan dağıtım için DeploySucceeded gönderildi")
+		}
+	}
+
+	// İmaj GERÇEKTEN üretildi: sürüm BUILT kalmalı. Geri almak, hostta
+	// duran bir imajın veritabanında karşılığını silerdi.
+	rel, err := db.GetRelease(context.Background(), "blog", "r1")
+	if err != nil {
+		t.Fatalf("sürüm okunamadı: %v", err)
+	}
+	if rel.Status != store.ReleaseBuilt {
+		t.Errorf("sürüm durumu %v, BUILT bekleniyordu — imaj hostta duruyor", rel.Status)
+	}
+}
+
+// okBuild, aux karesinden imaj kimliği dönen bir executor taklidi.
+func okBuild() *fakeExec {
+	return &fakeExec{build: func(context.Context, *panelyv1.ImageBuildRequest,
+		execclient.BuildSink) (string, error) {
+		return "sha256:kabul", nil
+	}}
+}
+
+// failBuild, derlemesi çöken bir executor taklidi.
+func failBuild() *fakeExec {
+	return &fakeExec{build: func(context.Context, *panelyv1.ImageBuildRequest,
+		execclient.BuildSink) (string, error) {
+		return "", errors.New("derleme çöktü")
+	}}
 }

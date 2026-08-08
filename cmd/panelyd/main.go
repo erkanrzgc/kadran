@@ -21,10 +21,12 @@ import (
 
 	"github.com/erkanrzgc/panely/internal/api"
 	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/panely/internal/deploy"
 	"github.com/erkanrzgc/panely/internal/execclient"
 	"github.com/erkanrzgc/panely/internal/grpcserve"
 	"github.com/erkanrzgc/panely/internal/logutil"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/panely/internal/proxydrv"
 	"github.com/erkanrzgc/panely/internal/sdnotify"
 	"github.com/erkanrzgc/panely/internal/sockets"
 	"github.com/erkanrzgc/panely/internal/store"
@@ -34,6 +36,7 @@ import (
 const (
 	defaultSocket      = "/run/panely/api.sock"
 	defaultExecSocket  = "/run/panely-exec/exec.sock"
+	defaultCaddySocket = "/run/panely-caddy/admin.sock"
 	defaultDB          = "/var/lib/panely/panely.db"
 	defaultClientGroup = "panely-client"
 )
@@ -49,6 +52,7 @@ func run() error {
 	var (
 		socketPath  = flag.String("socket", defaultSocket, "istemcilere açılan unix soketi")
 		execSocket  = flag.String("exec-socket", defaultExecSocket, "executor soketi")
+		caddySocket = flag.String("caddy-socket", defaultCaddySocket, "ters vekil admin soketi")
 		dbPath      = flag.String("db", defaultDB, "SQLite veritabanı yolu")
 		clientGroup = flag.String("client-group", defaultClientGroup, "api.sock'a erişebilecek grup")
 		showVersion = flag.Bool("version", false, "sürümü yazdır ve çık")
@@ -108,7 +112,46 @@ func run() error {
 	// değil, görünür kılmak.
 	probeExecutor(exec)
 
-	service, err := api.NewServer(api.ServerOptions{Store: db, Executor: exec})
+	// ── Ters vekil ───────────────────────────────────────────────────
+	//
+	// Yapılandırma SQLite'tan ÜRETİLİYOR ve bütün olarak yükleniyor;
+	// Caddy'de kısmi güncelleme yok. Admin bloğu her yüklemede gitmek
+	// zorunda: onsuz bir yükleme Caddy'yi varsayılan TCP :2019'a döndürür
+	// ve panelyd unix soketinden bir daha ULAŞAMAZ.
+	proxy := proxydrv.New(*caddySocket)
+	reconciler, err := deploy.New(db, exec, proxy, proxydrv.Admin{
+		// `fd/3`: soketi systemd yaratıyor, Caddy onu devralıyor.
+		// Gerekçe deploy/systemd/panely-caddy-admin.socket dosyasında.
+		Listen: "fd/3",
+		// Boş bırakılırsa Caddy HER isteği 403 "host not allowed" ile
+		// reddeder (gerçek sunucuda ölçüldü).
+		Origins: []string{"localhost"},
+	})
+	if err != nil {
+		return err
+	}
+
+	rollout, err := deploy.NewRollout(exec, db, reconciler, deploy.DefaultGate)
+	if err != nil {
+		return err
+	}
+
+	// ── K-055'in yükümlülüğü ─────────────────────────────────────────
+	//
+	// Ters vekil `--resume` KULLANMIYOR: her başlayışında rotasız bir
+	// yapılandırmaya dönüyor (ölçüldü — reboot sonrası :80/:443 hiç
+	// dinlenmiyor). Gerçeğin kaynağı SQLite olduğu için doğru davranış bu,
+	// ama panelyd açılışta uzlaştırmak ZORUNDA: aksi hâlde bir reboot
+	// bütün siteleri sessizce yayından kaldırırdı.
+	//
+	// Başarısızlık ÖLÜMCÜL DEĞİL: executor yoklamasındaki gerekçenin
+	// aynısı — reddedip çıkmak systemd ile bir yeniden başlatma döngüsü
+	// yaratır ve operatör hiçbir teşhis aracına erişemez.
+	reconcileAtStartup(reconciler)
+
+	service, err := api.NewServer(api.ServerOptions{
+		Store: db, Executor: exec, Rollout: rollout,
+	})
 	if err != nil {
 		return err
 	}
@@ -214,4 +257,31 @@ func lookupGID(name string) (int, error) {
 		return 0, fmt.Errorf("%q grubunun gid'i çözümlenemedi: %w", name, err)
 	}
 	return id, nil
+}
+
+// startupReconcileTimeout, açılıştaki uzlaştırmanın süre sınırı.
+//
+// Sınırsız bırakmak, cevap vermeyen bir admin soketinde panelyd'nin hiç
+// dinlemeye başlamamasına yol açardı: teşhis aracının kendisi kaybolurdu.
+const startupReconcileTimeout = 30 * time.Second
+
+// reconcileAtStartup, ters vekili SQLite'taki duruma getirir.
+//
+// Sonucu YUTMUYOR: rotalanamayan uygulamalar adlarıyla günlüğe yazılıyor.
+// Sessiz bir başarı, bütün sitelerin düştüğü bir kurulumla aynı
+// görünürdü.
+func reconcileAtStartup(rc *deploy.Reconciler) {
+	ctx, cancel := context.WithTimeout(context.Background(), startupReconcileTimeout)
+	defer cancel()
+
+	res, err := rc.Reconcile(ctx)
+	if err != nil {
+		slog.Error("ters vekil açılışta uzlaştırılamadı — TRAFİK AKMIYOR OLABİLİR",
+			"hata", err)
+		return
+	}
+	if len(res.Skipped) > 0 {
+		slog.Warn("bazı uygulamalar rotalanamadı", "ayrinti", res.Error())
+	}
+	slog.Info("ters vekil uzlaştırıldı", "rotalanan", res.Routed)
 }

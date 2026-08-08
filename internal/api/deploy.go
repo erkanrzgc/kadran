@@ -2,11 +2,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
 	"google.golang.org/grpc"
 
+	"github.com/erkanrzgc/panely/internal/deploy"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/store"
 )
@@ -24,11 +26,22 @@ const maxReleaseDetail = 4 << 10
 // veritabanında dağıtım gorutinini sonsuza kadar tutardı.
 const sealTimeout = 10 * time.Second
 
-// Deploy, bir commit'i derler ve sürüm olarak kaydeder.
+// Deploy, bir commit'i derler, ayağa kaldırır ve trafiği ona çevirir.
 //
-// ⚠ TRAFİK TAŞIMAZ. İmaj üretilir ve sürüm kaydedilir; konteyner
-// başlatılmaz, ters vekil dokunulmaz. Blue-green geçişi Caddy'ye bağlı
-// ve Caddy henüz hostta kurulu değil (dilim 4b).
+// ── Akışın tamamı ───────────────────────────────────────────────────
+//
+//	derle → sürümü mühürle → konteynerleri başlat → KAPI →
+//	aktif sürümü yaz → ters vekili uzlaştır
+//
+// ⚠ KAPI BİR HTTP SAĞLIK YOKLAMASI DEĞİL. Ölçtüğü şey konteynerlerin
+// çalışıyor ve adreslenebilir olması; uygulamanın cevap verip vermediği
+// DEĞİL. Gerekçe deploy.awaitReady'de: HTTP yoklaması panelyd'nin ağa
+// çıkmasını gerektiriyor ve birimi AF_UNIX ile kısıtlı. Eksik olan şey
+// saklanmıyor.
+//
+// ⚠ ESKİ SÜRÜM DURDURULMUYOR ve GERİ ALMA YOK. Eski konteynerler ayakta
+// kalıyor; trafik almıyorlar (uzlaştırıcı yalnızca aktif sürümü rotalar)
+// ama kaynak tüketiyorlar.
 //
 // ── Başarı ölçütü akışın ŞEKLİNDE ──────────────────────────────────
 //
@@ -111,6 +124,26 @@ func (s *Server) Deploy(
 	params["image_id"] = imageID
 	if err := s.sealBuilt(ctx, rel, imageID); err != nil {
 		return s.completed(ctx, action, tgt, params, err)
+	}
+
+	// ── Trafik buradan sonra taşınıyor ──────────────────────────────
+	//
+	// Sürüm BUILT olarak mühürlendi ve öyle KALIYOR: imaj gerçekten
+	// üretildi ve bu, dağıtımın devamı başarısız olsa bile doğru.
+	// Başarısızlık hâlinde değişmeyen şey TRAFİK — eski sürüm canlıda
+	// kalır ve istemci hata alır.
+	rel.CommitSHA = req.GetCommitSha()
+	if err := s.rollout.Run(ctx, app, rel); err != nil {
+		var skipped deploy.SkippedError
+		if !errors.As(err, &skipped) {
+			return s.completed(ctx, action, tgt, params, err)
+		}
+		// Bu sürüm canlıya ÇIKTI; rotalanamayan BAŞKA uygulamalar var.
+		// Dağıtımı başarısız saymak yanlış olurdu ama sessiz kalmak da:
+		// operatörün bunu görmesi gerekiyor.
+		slog.Warn("dağıtım tamamlandı ama bazı uygulamalar rotalanamadı",
+			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Result.Error())
+		params["skipped_routes"] = skipped.Result.Error()
 	}
 
 	if err := stream.Send(&panelyv1.DeployResponse{

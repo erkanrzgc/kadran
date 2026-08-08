@@ -31,7 +31,7 @@ func newTestServer(t *testing.T) (*Server, *store.Store) {
 	}
 	t.Cleanup(func() { _ = exec.Close() })
 
-	srv, err := NewServer(ServerOptions{Store: db, Executor: exec})
+	srv, err := NewServer(ServerOptions{Store: db, Executor: exec, Rollout: &fakeRollout{}})
 	if err != nil {
 		t.Fatalf("sunucu oluşturulamadı: %v", err)
 	}
@@ -45,7 +45,7 @@ func TestNewServerRequiresStore(t *testing.T) {
 	}
 	defer func() { _ = exec.Close() }()
 
-	if _, err := NewServer(ServerOptions{Executor: exec}); err == nil {
+	if _, err := NewServer(ServerOptions{Executor: exec, Rollout: &fakeRollout{}}); err == nil {
 		t.Fatal("veritabanı olmadan sunucu oluşturuldu")
 	}
 }
@@ -57,7 +57,7 @@ func TestNewServerRequiresExecutor(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	if _, err := NewServer(ServerOptions{Store: db}); err == nil {
+	if _, err := NewServer(ServerOptions{Store: db, Rollout: &fakeRollout{}}); err == nil {
 		t.Fatal("executor olmadan sunucu oluşturuldu")
 	}
 }
@@ -250,4 +250,19 @@ func TestVerifyAuditChainOnEmptyDatabase(t *testing.T) {
 	if resp.GetRecordsChecked() != 0 {
 		t.Errorf("doğrulanan kayıt = %d, beklenen 0", resp.GetRecordsChecked())
 	}
+}
+
+// fakeRollout, dağıtımın trafik yarısını taklit eder.
+//
+// Sınanan şey "Run çağrıldı mı" değil, HANGİ sürümle çağrıldığı: yanlış
+// sürümü canlıya alan bir dağıtım, testlerde "çağrıldı" diye yeşil
+// geçerdi.
+type fakeRollout struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeRollout) Run(_ context.Context, app store.App, rel store.Release) error {
+	f.calls = append(f.calls, app.ID+"/"+rel.ID)
+	return f.err
 }

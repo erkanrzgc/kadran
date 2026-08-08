@@ -273,7 +273,7 @@ func TestNewServerRejectsTypedNilExecutor(t *testing.T) {
 	// Testin ayırt ediciliği ayrıca mutasyonla sınandı: checkExecutor'daki
 	// reflect kontrolü silindiğinde bu test KIRMIZIYA döndü.
 
-	if _, err := NewServer(ServerOptions{Store: db, Executor: typedNil}); err == nil {
+	if _, err := NewServer(ServerOptions{Store: db, Executor: typedNil, Rollout: &fakeRollout{}}); err == nil {
 		t.Fatal("tipli nil executor kabul edildi — ilk RPC'de nil başvurusu olurdu")
 	}
 }

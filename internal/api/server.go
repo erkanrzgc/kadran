@@ -9,6 +9,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/user"
 	"reflect"
@@ -33,6 +34,7 @@ import (
 type Server struct {
 	store     *store.Store
 	exec      Executor
+	rollout   Rollout
 	startedAt time.Time
 	runAsUser string
 }
@@ -61,6 +63,21 @@ type ServerOptions struct {
 
 	// Executor, ayrıcalıklı executor istemcisi. Zorunlu.
 	Executor Executor
+
+	// Rollout, derlenmiş sürümü canlıya alan orkestratör. Zorunlu.
+	//
+	// ⚠ İsteğe bağlı DEĞİL. Nil bırakılabilseydi, Deploy sessizce
+	// "derledim ama trafiği taşımadım" davranışına düşerdi ve bu, akışın
+	// en kritik yarısının fark edilmeden kaybolması demekti.
+	Rollout Rollout
+}
+
+// Rollout, derlenmiş bir sürümü ayağa kaldırıp trafiği ona çevirir.
+//
+// Arayüz BURADA tanımlı, uygulayan pakette değil: api'nin ihtiyacı bu
+// tek yöntem ve dar tutmak, testlerde sahtelemeyi ucuzlatıyor.
+type Rollout interface {
+	Run(ctx context.Context, app store.App, rel store.Release) error
 }
 
 // NewServer, API servisini oluşturur.
@@ -69,6 +86,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		return nil, errors.New("api: veritabanı zorunludur")
 	}
 	if err := checkExecutor(opts.Executor); err != nil {
+		return nil, err
+	}
+	if err := checkNotTypedNil(opts.Rollout, "rollout orkestratörü"); err != nil {
 		return nil, err
 	}
 
@@ -82,6 +102,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	return &Server{
 		store:     opts.Store,
 		exec:      opts.Executor,
+		rollout:   opts.Rollout,
 		startedAt: time.Now(),
 		runAsUser: runAs,
 	}, nil
@@ -107,12 +128,21 @@ func NewServer(opts ServerOptions) (*Server, error) {
 // değişikliğin yan etkisini kapatıyor. Kurucuda yakalamak, panelyd'yi
 // hatalı kablolamayla ayağa kaldırıp ilk isteği bekletmekten iyidir.
 func checkExecutor(e Executor) error {
-	if e == nil {
-		return errors.New("api: executor istemcisi zorunludur")
+	return checkNotTypedNil(e, "executor istemcisi")
+}
+
+// checkNotTypedNil, bir arayüz bağımlılığının GERÇEKTEN kullanılabilir
+// olduğunu doğrular.
+//
+// Düz bir `== nil` yetmiyor: arayüz içine konmuş TİPLİ bir nil, `!= nil`
+// döndürür ama ilk çağrıda panikler. Somut tiplerde temsil edilemeyen bu
+// durum, alanlar arayüze çevrildiğinde ortaya çıktı.
+func checkNotTypedNil(v any, what string) error {
+	if v == nil {
+		return fmt.Errorf("api: %s zorunludur", what)
 	}
-	if v := reflect.ValueOf(e); v.Kind() == reflect.Pointer && v.IsNil() {
-		return errors.New(
-			"api: executor istemcisi tipli nil — arayüze nil bir işaretçi konmuş")
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return fmt.Errorf("api: %s tipli nil — arayüze nil bir işaretçi konmuş", what)
 	}
 	return nil
 }

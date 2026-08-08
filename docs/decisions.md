@@ -2430,3 +2430,62 @@ K-040 "ölçtüğü şeye uyacak şekilde sürekli ayarlanan bir metrik, ölçme
 bırakır" diyordu. Burada metrik değişmedi — kapsam, birim ve sınır aynı.
 Değişen şey ÖLÇÜLEN KOD: ayrıcalıklı grafikten oraya ait olmayan bir
 parça çıkarıldı. Kural tam olarak bunu üretmek için yazılmıştı.
+
+---
+
+## K-054 — Geri okuma İKİ YÖNLÜ olmalı; tek yön, kontrolün var olma sebebini kaçırıyordu
+
+K-050 panelyd'ye Caddy'nin admin soketini verdi ve karşılığında bir
+yükümlülük yazdı: `POST /load` sonrası `GET /config/` ile geri oku, çünkü
+"200 aldım" canlı yapılandırmanın benimki olduğunu kanıtlamaz.
+
+Yazılan kod bu yükümlülüğü YARIM karşılıyordu. `verifyApplied`, yalnızca
+*gönderdiğim her rota canlıda var mı* diye soruyordu. Canlıdaki FAZLA
+rotalar hiç bakılmayan taraftaydı.
+
+### Kaçırdığı iki durum
+
+**1. Kontrolün var olma sebebi.** Yorumun kendisi "admin soketine yazan
+başka bir süreç varsa" diyordu. Ama başka bir sürecin yazması, canlıda
+benim göndermediğim bir rota BIRAKIR — ve tam da o taraf okunmuyordu.
+Yani kod, yorumunun andığı mekanizmayı uygulamıyordu.
+
+**2. Sessiz dağıtım hatası.** `POST /load` kök nesnenin tamamını
+değiştiriyor. Dağıtılan uygulamadan üretilmiş bir yapılandırma, diğer
+uygulamaların rotalarını siler. Tek yönlü karşılaştırmada "benim rotam
+canlıda" der ve YEŞİL geçerdi; ikinci uygulama internetten düşmüş olurdu.
+
+Ayrıca `if len(wantRoutes) == 0 { return nil }` kestirmesi en tehlikeli
+durumda susuyordu: bütün rotaların KALDIRILMASI istendiği hâlde canlıda
+durmaya devam etmesi.
+
+### Neden yanlış alarm vermiyor — ÖLÇÜLDÜ
+
+Çift yönlü karşılaştırmanın gerçek riski şuydu: Caddy otomatik HTTPS için
+HTTP→HTTPS yönlendirme rotaları üretiyor. Bunları saklanan yapılandırmaya
+geri YAZSAYDI, kontrol her yüklemede patlardı — ve yanlış alarm veren bir
+kontrol kapatılmaya mahkûmdur.
+
+Gerçek sunucuda, gerçek `panely-caddy` binary'siyle iki deney:
+
+| deney | gönderilen | `GET /config/` dönen |
+|---|---|---|
+| `automatic_https.disable_certificates: true` | 1 rota | **1 rota**, ek alan yok |
+| `automatic_https.disable: true` | 1 rota | **1 rota**, ek alan yok |
+
+Caddy'de **saklanan yapılandırma** ile **sağlanmış çalışma zamanı durumu**
+ayrı: `GET /config/` POST edileni döndürüyor, otomatik HTTPS
+genişlemesinden sonraki hâli değil. Yani dönen yapıdaki her fark Caddy'nin
+normalleştirmesi değil, başka bir yazarın izidir.
+
+### Doğrulama
+
+İki yeni test, düzeltmede yeşil ve **mutasyonda kırmızı**: `verifyApplied`
+tek yönlü hâline geri döndürüldüğünde ikisi de düşüyor. Mutant DERLENDİ,
+yani sonuç geçerli — derlenmeyen bir mutant "yakalandı" sayılmaz (K-043).
+
+### Doğurduğu yükümlülük
+
+Dağıtım akışı, yapılandırmayı **TÜM uygulamaların** aktif sürümlerinden
+üretmek zorunda. Tek uygulamadan üretmek artık sessizce geçmiyor —
+yükleme hata veriyor — ama doğru davranış zaten baştan buydu.

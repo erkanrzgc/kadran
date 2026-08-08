@@ -382,6 +382,94 @@ func TestLoadDetectsChangedUpstreams(t *testing.T) {
 	}
 }
 
+// TestLoadDetectsRouteThatWasNotSent, canlıda GÖNDERİLMEYEN bir rota
+// kaldığında yüklemenin başarısız sayıldığını doğrular.
+//
+// İki ayrı gerçek hata bu tek kontrole çarpar:
+//
+//  1. Admin soketine başka bir süreç yazmıştır. Geri okumanın var olma
+//     sebebi buydu ve tek yönlü karşılaştırma onu GÖREMİYORDU.
+//
+//  2. Yapılandırma EKSİK üretilmiştir. POST /load kök nesnenin tamamını
+//     değiştirdiğine göre, dağıtılan uygulamadan üretilmiş bir
+//     yapılandırma diğer uygulamaların rotalarını siler. Tek yönlü
+//     karşılaştırmada "benim rotam canlıda" der ve YEŞİL geçerdi —
+//     ikinci uygulama internetten düşmüş olurdu.
+func TestLoadDetectsRouteThatWasNotSent(t *testing.T) {
+	f := &fakeCaddy{}
+	c := newFakeClient(t, f)
+
+	both, err := BuildConfig(BuildOptions{
+		Admin: testAdmin(),
+		Routes: []AppRoute{
+			{AppID: "blog", Domain: "b.example.com",
+				Upstreams: []Upstream{mustUpstream(t, "172.18.0.3", 8080)}},
+			{AppID: "shop", Domain: "s.example.com",
+				Upstreams: []Upstream{mustUpstream(t, "172.18.0.4", 8080)}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("üretilemedi: %v", err)
+	}
+	if err := c.Load(context.Background(), both); err != nil {
+		t.Fatalf("ilk yükleme: %v", err)
+	}
+
+	// Yalnızca `blog`'dan üretilmiş yapılandırma — `shop` unutulmuş.
+	onlyBlog, err := BuildConfig(BuildOptions{
+		Admin: testAdmin(),
+		Routes: []AppRoute{{AppID: "blog", Domain: "b.example.com",
+			Upstreams: []Upstream{mustUpstream(t, "172.18.0.3", 8080)}}},
+	})
+	if err != nil {
+		t.Fatalf("üretilemedi: %v", err)
+	}
+
+	// Canlı, iki rotayı da tutmaya devam ediyor.
+	f.drift = true
+
+	err = c.Load(context.Background(), onlyBlog)
+	if err == nil {
+		t.Fatal("canlıdaki fazla rota fark edilmedi")
+	}
+	if !strings.Contains(err.Error(), "s.example.com") {
+		t.Errorf("hata fazla rotayı adlandırmıyor: %v", err)
+	}
+}
+
+// TestLoadDetectsRoutesThatSurvivedAnEmptyConfig, HİÇ rotası olmayan bir
+// yapılandırmanın da doğrulandığını gösterir.
+//
+// "Gönderecek rotam yoksa karşılaştıracak bir şey de yok" kestirmesi tam
+// da en tehlikeli durumda susardı: bütün rotaların kaldırılması istendiği
+// hâlde canlıda durmaya devam etmesi.
+func TestLoadDetectsRoutesThatSurvivedAnEmptyConfig(t *testing.T) {
+	f := &fakeCaddy{}
+	c := newFakeClient(t, f)
+
+	withRoute, err := BuildConfig(BuildOptions{
+		Admin: testAdmin(),
+		Routes: []AppRoute{{AppID: "blog", Domain: "b.example.com",
+			Upstreams: []Upstream{mustUpstream(t, "172.18.0.3", 8080)}}},
+	})
+	if err != nil {
+		t.Fatalf("üretilemedi: %v", err)
+	}
+	if err := c.Load(context.Background(), withRoute); err != nil {
+		t.Fatalf("ilk yükleme: %v", err)
+	}
+
+	empty, err := BuildConfig(BuildOptions{Admin: testAdmin()})
+	if err != nil {
+		t.Fatalf("üretilemedi: %v", err)
+	}
+	f.drift = true
+
+	if err := c.Load(context.Background(), empty); err == nil {
+		t.Fatal("kaldırılmayan rota fark edilmedi")
+	}
+}
+
 func TestLoadReportsCaddyError(t *testing.T) {
 	f := &fakeCaddy{loadCode: http.StatusBadRequest}
 	c := newFakeClient(t, f)

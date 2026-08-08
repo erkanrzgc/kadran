@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -156,13 +157,27 @@ func adminError(body []byte) string {
 //
 // Bunun yerine ANLAMSAL karşılaştırma: her beklenen rota için aynı alan
 // adı ve aynı upstream kümesi canlıda var mı?
+//
+// ── Karşılaştırma İKİ YÖNLÜ ────────────────────────────────────────
+//
+// Yalnızca "gönderdiğim her rota canlıda var mı" diye sormak YETMEZ; o
+// hâliyle canlıdaki FAZLA rotalar görünmez kalır. Oysa fazla rota tam da
+// bu kontrolün yakalamak için var olduğu şeydir: POST /load kök nesnenin
+// tamamını değiştirdiğine göre, göndermediğim bir rotanın canlıda olması
+// admin soketine BAŞKA BİRİNİN yazdığı anlamına gelir.
+//
+// Tek yönlü hâli ayrıca sessiz bir dağıtım hatasını da kaçırırdı: tek
+// uygulamadan üretilmiş bir yapılandırma yüklenirse diğer uygulamaların
+// rotaları silinir, ama "benim rotam canlıda" kontrolü YEŞİL geçerdi.
+//
+// ⚠ Bu yönün yanlış alarm vermediği ÖLÇÜLDÜ (docs/decisions.md K-054):
+// Caddy otomatik HTTPS için ürettiği yönlendirme rotalarını saklanan
+// yapılandırmaya geri YAZMIYOR; `GET /config/` POST edileni döndürüyor.
+// Yazsaydı bu kontrol her yüklemede patlar ve kapatılmaya mahkûm olurdu.
 func verifyApplied(want, live *Config) error {
 	wantRoutes := routesByHost(want)
-	if len(wantRoutes) == 0 {
-		return nil
-	}
-
 	liveRoutes := routesByHost(live)
+
 	for host, wantDials := range wantRoutes {
 		liveDials, ok := liveRoutes[host]
 		if !ok {
@@ -172,6 +187,21 @@ func verifyApplied(want, live *Config) error {
 			return fmt.Errorf("%q upstream'leri farklı: gönderilen %v, canlı %v",
 				host, wantDials, liveDials)
 		}
+	}
+
+	// Sıralama belirlenimli: harita gezintisi rastgele olduğundan, aksi
+	// hâlde aynı bozukluk her koşuda başka bir alan adını suçlardı.
+	var extra []string
+	for host := range liveRoutes {
+		if _, ok := wantRoutes[host]; !ok {
+			extra = append(extra, host)
+		}
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		return fmt.Errorf(
+			"canlıda GÖNDERİLMEYEN rota(lar) var: %v — admin soketine başka bir "+
+				"süreç yazmış ya da yapılandırma eksik üretilmiş", extra)
 	}
 	return nil
 }

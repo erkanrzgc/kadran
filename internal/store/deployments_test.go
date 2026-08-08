@@ -161,9 +161,21 @@ func TestActiveDeploymentsCarriesEveryApp(t *testing.T) {
 // TestActiveReleaseMustBelongToTheApp, başka bir uygulamanın sürümünün
 // canlıya alınamadığını doğrular.
 //
-// Yabancı anahtar BİLEŞİK (app_id, release_id): yalnızca release_id'ye
-// bağlansaydı, sürüm kimlikleri uygulamalar arasında tekrar ettiği için
-// ("r1" her uygulamada var) yanlış imaj canlıya çıkardı.
+// Kimlikler uygulamalar arasında tekrar ediyor ("r1" her uygulamada var),
+// yani yalnızca release_id'ye bakan bir kısıt yanlış imajı canlıya
+// çıkarırdı.
+//
+// ⚠ BU TESTİ GEÇİREN ŞEY YABANCI ANAHTAR DEĞİL, TETİKLEYİCİ.
+//
+// Ölçüldü: DSN `foreign_keys(0)` yapıldığında bu test HÂLÂ GEÇİYOR.
+// Sebebi, tetikleyicinin alt sorgusunun aynı demete bakması — sürüm satırı
+// bulunamayınca NULL dönüyor ve `NULL IS NOT 2` doğru olduğu için ABORT
+// ediyor. Bileşik yabancı anahtar burada ikinci katman, tek katman değil.
+//
+// Bu not, yorumun andığı mekanizmanın gerçekten çalışan mekanizma olması
+// içindir: ilk hâlinde "yabancı anahtar yakalıyor" yazıyordu ve YANLIŞTI.
+// Yabancı anahtarın tek başına koruduğu yön ayrıca sınanıyor
+// (bkz. TestActiveReleaseCannotBeDeleted).
 func TestActiveReleaseMustBelongToTheApp(t *testing.T) {
 	ctx := context.Background()
 	s := newAppStore(t)
@@ -198,5 +210,61 @@ func TestActiveDeploymentReportsAbsenceDistinctly(t *testing.T) {
 	_, err := s.ActiveDeployment(ctx, "blog")
 	if !errors.Is(err, ErrNoDeployment) {
 		t.Fatalf("dağıtılmamış uygulama için %v döndü, ErrNoDeployment bekleniyordu", err)
+	}
+}
+
+// TestForeignKeysAreEnforcedOnTheRealConnection, yabancı anahtarların
+// panelyd'nin KULLANDIĞI bağlantıda etkin olduğunu doğrular.
+//
+// ── Bu test neden var? ──────────────────────────────────────────────
+//
+// SQLite'ta `foreign_keys` BAĞLANTI BAŞINA bir ayardır ve varsayılanı
+// KAPALI. DSN'e yazılmış olması yeterli görünüyordu; gerçek sunucuda
+// `sqlite3` CLI ile bakıldığında 0 döndü — ama o, CLI'ın kendi
+// bağlantısıydı, panelyd'ninki değil. Yani o ölçüm bu soruyu
+// yanıtlamıyordu.
+//
+// Ayrıca: deployments üzerindeki tetikleyiciler, INSERT/UPDATE yolunda
+// yabancı anahtarla AYNI demeti kontrol ediyor. Dolayısıyla mevcut
+// testlerin hiçbiri yabancı anahtarın çalıştığını KANITLAMIYOR — hepsi
+// tetikleyici kapatılsa bile geçerdi. Yabancı anahtarın tek başına
+// koruduğu şey SİLME yönü: aktif sürümü olan bir uygulamanın ya da
+// canlıdaki bir sürümün silinmesi.
+func TestForeignKeysAreEnforcedOnTheRealConnection(t *testing.T) {
+	ctx := context.Background()
+	s := newAppStore(t)
+
+	var on int
+	if err := s.db.QueryRowContext(ctx, "PRAGMA foreign_keys").Scan(&on); err != nil {
+		t.Fatalf("pragma okunamadı: %v", err)
+	}
+	if on != 1 {
+		t.Fatalf("foreign_keys KAPALI (%d) — bileşik yabancı anahtar hiçbir şey korumuyor", on)
+	}
+}
+
+// TestActiveReleaseCannotBeDeleted, canlıdaki bir sürümün satırının
+// silinemediğini doğrular.
+//
+// Bu, YALNIZCA yabancı anahtarın koruduğu yön: tetikleyiciler
+// deployments üzerindeki INSERT/UPDATE'e bakıyor, releases'ten silmeye
+// değil. Yabancı anahtar sessizce kapalı olsaydı bu test kırmızıya
+// dönerdi — yukarıdaki pragma testinin gerçek karşılığı budur.
+func TestActiveReleaseCannotBeDeleted(t *testing.T) {
+	ctx := context.Background()
+	s := newAppStore(t)
+
+	if _, err := s.CreateApp(ctx, sampleApp("blog")); err != nil {
+		t.Fatalf("uygulama oluşturulamadı: %v", err)
+	}
+	rel := buildRelease(t, s, "blog", shaA)
+	if err := s.SetActiveRelease(ctx, "blog", rel.ID); err != nil {
+		t.Fatalf("canlıya alınamadı: %v", err)
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		"DELETE FROM releases WHERE app_id = ? AND id = ?", "blog", rel.ID)
+	if err == nil {
+		t.Fatal("canlıdaki sürüm silindi — dağıtım kaydı olmayan bir sürümü gösteriyor")
 	}
 }

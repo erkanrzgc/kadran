@@ -9,6 +9,25 @@ Type=notify
 NotifyAccess=main
 # Bayraklar açık; gerekçe için panelyd.service'teki nota bakın.
 # --allow-user, executor'ın SO_PEERCRED ile kabul ettiği TEK kullanıcı.
+#
+# ── ÖZEL DEPOLAR: --allow-repo ZORUNLU hâle gelir ───────────────────
+#
+# Hostta bir git kimlik bilgisi kurulduğunda (dockerd onu kullanıyor,
+# ölçüldü: K-056), o token'ın erişebildiği HER özel depo ImageBuild ile
+# okunabilir olur — kurban deposunda Dockerfile olmasına bile gerek yok.
+# Beyaz liste bunun zorlanabilir yarısıdır ve BURAYA eklenir:
+#
+#   systemctl edit panely-exec.service
+#   [Service]
+#   ExecStart=
+#   ExecStart=/usr/local/lib/panely/panely-exec \
+#       --socket /run/panely-exec/exec.sock \
+#       --journal /var/lib/panely/exec-audit.log \
+#       --allow-user panely --owner-group panely \
+#       --allow-repo erkanrzgc/portfolio,erkanrzgc/retain-io
+#
+# Executor açılışta `depo_kisiti=` alanını günlüğe yazıyor; "YOK" diyorsa
+# kısıt uygulanmıyor demektir.
 ExecStart=/usr/local/lib/panely/panely-exec \
     --socket /run/panely-exec/exec.sock \
     --journal /var/lib/panely/exec-audit.log \

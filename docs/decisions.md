@@ -2592,3 +2592,99 @@ Ardından **reboot**:
 
 Son iki satır modelin can alıcı noktası: kontrol düzlemi ters vekili
 yönetebiliyor, ters vekil ayrıcalıklı executor'ı GÖREMİYOR.
+
+---
+
+## K-056 — Özel depo kimliği RPC'den GEÇMEZ; bedeli beyaz listeyle sınırlandı
+
+Kullanıcının üç Vercel projesi de ÖZEL depolarda ve Panely hiçbirini
+derleyemiyordu. Ölçüldü, varsayılmadı:
+
+```
+panely: depo sorgusu 401 Unauthorized döndü (github.com/erkanrzgc/portfolio)
+```
+
+`BuildContextURL` düz `https://host/owner/repo.git#sha` üretiyor — kimlik
+bilgisi taşımıyor ve sır kasası Faz 2'de.
+
+### Kimlik bilgisi NEREDEN akmalı? — ölçüldü
+
+Üç aday vardı: (a) token'ı RPC'den geçirmek, (b) istemcinin tarball
+göndermesi, (c) hostta duran bir git kimlik bilgisini dockerd'nin
+kullanması.
+
+(c)'nin çalışıp çalışmadığı BİLİNMİYORDU. Gerçek token kullanmadan
+ölçüldü: root'a *sahte* bir credential helper kuruldu ve çağrılıp
+çağrılmadığına bakıldı.
+
+```
+=== KONTROL: düz git bu yardımcıya danışıyor mu? ===  EVET (2 kez)
+=== ASIL ÖLÇÜM: dockerd uzak git bağlamını çekerken ===
+  >>> dockerd YARDIMCIYI ÇAĞIRDI
+      === cagrildi: get ===
+      protocol=https
+      host=github.com
+      wwwauth[]=Basic realm="GitHub"
+```
+
+Kontrol grubu önce koşuldu: yardımcı düz `git` tarafından çağrılmasaydı,
+dockerd'nin çağırmaması bir şey KANITLAMAZDI (K-051).
+
+Seçilen yol (c). Kazandırdıkları: kimlik bilgisi RPC'den geçmiyor, proto
+değişmiyor, ayrıcalıklı yüzey bütçesi kimlik için hiç artmıyor, ve token
+kontrol düzlemine HİÇ girmiyor — operatör doğrudan hosta koyuyor.
+
+### Bedeli: token'ın erişimi Panely'nin erişimi olur
+
+Somut saldırı: `ImageBuild` çağırabilen biri `owner/repo`'yu kurbanın
+özel deposuna çevirir.
+
+⚠ Kurban deposunda Dockerfile OLMASI GEREKMEZ. `dockerfile_path` de
+istekten geliyor ve derleme çıktısı `Deploy` üzerinden istemciye AYNEN
+akıyor. Yani kaynak, hiçbir konteyner çalışmadan sızar. (İlk
+değerlendirmede "Dockerfile'ı olmayan depo sızdırılamaz" diye
+düşünülmüştü; YANLIŞTI.)
+
+"İnce taneli token kullanın" yeterli bir cevap değil çünkü
+DOĞRULANAMAZ: operatörün token'ı hangi depolara açtığını executor
+göremez.
+
+### Zorlanabilir yarı: depo beyaz listesi
+
+`-allow-repo owner/repo,...` — executor'ın YAPILANDIRMASINDAN gelir,
+istekten değil. `allowedGitHosts` ile aynı desen.
+
+- **Harfe duyarsız**: GitHub/GitLab owner/repo'da harf ayrımı yapmıyor;
+  duyarlı olsaydı kısıt tek harfle aşılırdı.
+- **Bozuk girdi KAPALI tarafa düşer**: yazım hatası olan girdi hiçbir
+  depoyla eşleşmez, derleme reddedilir. Sessizce fazla izin veren bir
+  kısıt, hiç olmayan bir kısıttan kötüdür.
+- **Boş liste = kısıt yok**: kimlik bilgisi yokken doğru davranış.
+
+### Zorlanamayan yarı — ve neden gizlenmiyor
+
+Executor "hostta kimlik bilgisi var mı" sorusunu GÜVENİLİR biçimde
+yanıtlayamıyor: kimlik başka bir credential helper'da olabilir.
+`.gitconfig` varlığına bakmak yanlış pozitif üretir ve başlamayı
+reddetmek ağır bir yan etkidir.
+
+Bu yüzden yapılamayan şey yapılıyormuş gibi gösterilmiyor. Yapılan:
+durum GÖRÜNÜR kılınıyor — executor açılışta `depo_kisiti=YOK (kısıt
+uygulanmıyor)` yazıyor. Operatörün göreceği tek satır bu.
+
+### Bütçe
+
+| adım | satır |
+|---|---|
+| başlangıç | 2448 |
+| ilk (yapılandırmacı + tip'li) beyaz liste | 2478 |
+| **sadeleştirilmiş hâli** | **2462** |
+| doğrulamaya bağlanması + bayrak | **2479** |
+
+İlk tasarım 30 satır yiyordu ve kalan işle sınırı zorluyordu; K-040'ın
+freni uygulandı, tip ve yapılandırmacı atıldı, maliyet 14 satıra indi.
+Sınıra DOKUNULMADI.
+
+### Doğrulama
+
+4 test; mutasyonda (kısıt etkisizleştirilince) ikisi KIRMIZI.

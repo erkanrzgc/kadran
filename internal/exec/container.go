@@ -362,7 +362,7 @@ func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, stream grpc.ServerS
 	tgt := target(rel.GetAppId(), rel.GetReleaseId())
 	params := buildAuditParams(req)
 
-	if err := validateImageBuild(req, s.allowedGitHosts); err != nil {
+	if err := validateImageBuild(req, s.allowedGitHosts, s.allowedRepos); err != nil {
 		return s.denied(action, tgt, params, err)
 	}
 

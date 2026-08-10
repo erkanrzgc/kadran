@@ -41,8 +41,9 @@ var (
 
 // validateGitSource, kaynak deposunu doğrular.
 //
-// allowedHosts executor'ın yapılandırmasından gelir, istekten DEĞİL.
-func validateGitSource(src *panelyv1.GitSource, allowedHosts []string) error {
+// allowedHosts ve allowedRepos executor'ın yapılandırmasından gelir,
+// istekten DEĞİL.
+func validateGitSource(src *panelyv1.GitSource, allowedHosts, allowedRepos []string) error {
 	if src == nil {
 		return errors.New("source zorunludur")
 	}
@@ -54,6 +55,14 @@ func validateGitSource(src *panelyv1.GitSource, allowedHosts []string) error {
 	}
 	if err := validatePathSegment("repo", src.GetRepo()); err != nil {
 		return err
+	}
+	// Beyaz liste, hostta duran git kimlik bilgisinin ERİŞİMİNİ sınırlar:
+	// onsuz, token'ın gördüğü her özel depo ImageBuild ile okunabilirdi
+	// (repoallow.go'daki saldırı anlatımı).
+	if !repoAllowed(src.GetOwner(), src.GetRepo(), allowedRepos) {
+		return fmt.Errorf(
+			"depo beyaz listede değil: %s/%s — executor yalnızca izin verilen "+
+				"depoları derler", src.GetOwner(), src.GetRepo())
 	}
 	if sha := src.GetCommitSha(); !fullSHAPattern.MatchString(sha) {
 		return fmt.Errorf(
@@ -127,14 +136,14 @@ func validateDockerfilePath(p string) error {
 }
 
 // validateImageBuild, ImageBuild isteğinin tamamını doğrular.
-func validateImageBuild(req *panelyv1.ImageBuildRequest, allowedHosts []string) error {
+func validateImageBuild(req *panelyv1.ImageBuildRequest, allowedHosts, allowedRepos []string) error {
 	if req == nil {
 		return errors.New("istek boş olamaz")
 	}
 	if err := validateReleaseRef(req.GetRelease()); err != nil {
 		return err
 	}
-	if err := validateGitSource(req.GetSource(), allowedHosts); err != nil {
+	if err := validateGitSource(req.GetSource(), allowedHosts, allowedRepos); err != nil {
 		return err
 	}
 	if err := validateDockerfilePath(req.GetDockerfilePath()); err != nil {

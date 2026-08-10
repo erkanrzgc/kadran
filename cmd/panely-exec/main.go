@@ -59,6 +59,9 @@ func run() error {
 		debug        = flag.Bool("debug", false, "ayrıntılı günlük (PANELY_DEBUG=1 ile de açılır)")
 		gitHosts     = flag.String("allow-git-host", panelyexec.DefaultGitHost,
 			"ImageBuild için izinli git sunucuları (virgülle ayrılmış)")
+		gitRepos = flag.String("allow-repo", "",
+			"derlenmesine izin verilen owner/repo çiftleri (virgülle ayrılmış; "+
+				"boş = kısıt yok). Hostta git kimlik bilgisi varsa DOLDURULMALIDIR")
 	)
 	flag.Parse()
 
@@ -116,6 +119,7 @@ func run() error {
 		Journal:         journal,
 		DockerSocket:    *dockerSocket,
 		AllowedGitHosts: splitHosts(*gitHosts),
+		AllowedRepos:    splitHosts(*gitRepos),
 	})
 	if err != nil {
 		return err
@@ -137,11 +141,24 @@ func run() error {
 	panelyv1.RegisterExecutorServiceServer(server, service)
 
 	seq, _ := journal.Head()
+	// ⚠ Beyaz listenin durumu KASTEN günlüğe yazılıyor.
+	//
+	// Hostta bir git kimlik bilgisi varken boş bir beyaz liste, token'ın
+	// gördüğü HER özel deponun ImageBuild ile okunabilmesi demektir
+	// (internal/exec/repoallow.go). Executor bu durumu güvenilir biçimde
+	// TESPİT EDEMİYOR — kimlik bilgisi başka bir credential helper'da da
+	// olabilir — ama GÖRÜNÜR kılabilir. Operatör "depo_kisiti=YOK"
+	// satırını görmeli.
+	repoLimit := "YOK (kısıt uygulanmıyor)"
+	if n := len(splitHosts(*gitRepos)); n > 0 {
+		repoLimit = fmt.Sprintf("%d depo", n)
+	}
 	slog.Info("executor hazır",
 		"surum", version.Version,
 		"soket", *socketPath,
 		"izinli_uid", allowedUID,
 		"denetim_kaydi", seq,
+		"depo_kisiti", repoLimit,
 	)
 
 	if err := sdnotify.Ready(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {

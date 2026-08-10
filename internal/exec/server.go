@@ -35,6 +35,13 @@ type Server struct {
 	// bir panelyd listeye ekleme yapamamalıdır; `-docker-socket` ve
 	// `-owner-group` ile aynı desen.
 	allowedGitHosts []string
+
+	// allowedRepos, derlenmesine izin verilen "owner/repo" çiftleridir.
+	//
+	// Boş = kısıt yok. Bu, hostta git kimlik bilgisi YOKKEN doğru
+	// davranış; kimlik bilgisi varken tehlikeli olurdu ve o birleşimi
+	// kurulum betiği engelliyor (repoallow.go).
+	allowedRepos []string
 }
 
 // ServerOptions, executor sunucusunu yapılandırır.
@@ -44,6 +51,10 @@ type ServerOptions struct {
 
 	// DockerSocket, Docker Engine API soketi. Boşsa varsayılan kullanılır.
 	DockerSocket string
+
+	// AllowedRepos, derlenmesine izin verilen "owner/repo" çiftleri.
+	// Boş bırakılırsa kısıt uygulanmaz.
+	AllowedRepos []string
 
 	// AllowedGitHosts, ImageBuild'in kabul edeceği kaynak sunucuları.
 	// Boşsa yalnızca DefaultGitHost kabul edilir.
@@ -83,6 +94,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		journal:         opts.Journal,
 		dockerSocket:    opts.DockerSocket,
 		allowedGitHosts: opts.AllowedGitHosts,
+		allowedRepos:    opts.AllowedRepos,
 		docker:          dockerdrv.New(opts.DockerSocket, opts.VolumeRoot),
 	}, nil
 }

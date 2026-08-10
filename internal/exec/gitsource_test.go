@@ -67,7 +67,7 @@ func validBuildRequest() *panelyv1.ImageBuildRequest {
 // Aşağıdaki reddetme testlerinin hepsi, her şeyi reddeden bir
 // doğrulayıcıyla da geçerdi. Bu test onu reddediyor.
 func TestValidBuildRequestIsAccepted(t *testing.T) {
-	if err := validateImageBuild(validBuildRequest(), []string{"github.com"}); err != nil {
+	if err := validateImageBuild(validBuildRequest(), []string{"github.com"}, nil); err != nil {
 		t.Fatalf("geçerli istek reddedildi: %v", err)
 	}
 }
@@ -79,13 +79,13 @@ func TestGitHostWhitelistIsEnforced(t *testing.T) {
 	src := validGitSource()
 	src.Host = "evil.example.com"
 
-	if err := validateGitSource(src, []string{"github.com"}); err == nil {
+	if err := validateGitSource(src, []string{"github.com"}, nil); err == nil {
 		t.Error("beyaz listede olmayan host kabul edildi")
 	}
 
 	// Aynı istek, host izinliyken geçmeli — yoksa test host'u değil
 	// başka bir şeyi ölçüyor olurdu.
-	if err := validateGitSource(src, []string{"github.com", "evil.example.com"}); err != nil {
+	if err := validateGitSource(src, []string{"github.com", "evil.example.com"}, nil); err != nil {
 		t.Errorf("izinli host reddedildi: %v", err)
 	}
 }
@@ -106,7 +106,7 @@ func TestEmptyWhitelistDoesNotMeanAllowAll(t *testing.T) {
 
 	src := validGitSource()
 	src.Host = "evil.example.com"
-	if err := validateGitSource(src, srv.allowedGitHosts); err == nil {
+	if err := validateGitSource(src, srv.allowedGitHosts, nil); err == nil {
 		t.Error("varsayılan yapılandırmada rastgele host kabul edildi")
 	}
 }
@@ -138,7 +138,7 @@ func TestHostRejectsURLSyntax(t *testing.T) {
 	for _, h := range bad {
 		src := validGitSource()
 		src.Host = h
-		if err := validateGitSource(src, []string{"github.com"}); err == nil {
+		if err := validateGitSource(src, []string{"github.com"}, nil); err == nil {
 			t.Errorf("geçersiz host kabul edildi: %q", h)
 		}
 	}
@@ -154,12 +154,12 @@ func TestOwnerRepoRejectPathInjection(t *testing.T) {
 	for _, v := range bad {
 		src := validGitSource()
 		src.Owner = v
-		if err := validateGitSource(src, []string{"github.com"}); err == nil {
+		if err := validateGitSource(src, []string{"github.com"}, nil); err == nil {
 			t.Errorf("geçersiz owner kabul edildi: %q", v)
 		}
 		src = validGitSource()
 		src.Repo = v
-		if err := validateGitSource(src, []string{"github.com"}); err == nil {
+		if err := validateGitSource(src, []string{"github.com"}, nil); err == nil {
 			t.Errorf("geçersiz repo kabul edildi: %q", v)
 		}
 	}
@@ -193,7 +193,7 @@ func TestCommitSHAMustBeFullHex(t *testing.T) {
 	for _, sha := range bad {
 		src := validGitSource()
 		src.CommitSha = sha
-		if err := validateGitSource(src, []string{"github.com"}); err == nil {
+		if err := validateGitSource(src, []string{"github.com"}, nil); err == nil {
 			t.Errorf("geçersiz commit_sha kabul edildi: %q", sha)
 		}
 	}
@@ -328,5 +328,95 @@ func TestImageBuildRecordsDeniedRequests(t *testing.T) {
 	}
 	if got := records[len(records)-1].Outcome; got != audit.OutcomeDenied {
 		t.Errorf("sonuç %q, DENIED bekleniyordu", got)
+	}
+}
+
+// ── Depo beyaz listesi ───────────────────────────────────────────────
+
+// TestRepoAllowlistBlocksTheCredentialFromReachingOtherRepos, hostta
+// duran git kimlik bilgisinin ERİŞİMİNİN sınırlandığını doğrular.
+//
+// ── Kapatılan saldırı ───────────────────────────────────────────────
+//
+// Özel depo derlemek için hostta bir git kimlik bilgisi duruyor ve
+// dockerd onu kullanıyor. Beyaz liste olmasaydı, ImageBuild çağırabilen
+// biri owner/repo'yu KURBANIN özel deposuna çevirebilirdi.
+//
+// Kurban deposunda Dockerfile OLMASI GEREKMEZ: `dockerfile_path` de
+// istekten geliyor ve derleme çıktısı istemciye AYNEN akıyor. Yani
+// kaynak, hiçbir konteyner çalışmadan sızardı.
+func TestRepoAllowlistBlocksTheCredentialFromReachingOtherRepos(t *testing.T) {
+	allowed := []string{"erkanrzgc/portfolio", "erkanrzgc/retain-io"}
+
+	src := &panelyv1.GitSource{
+		Host:      "github.com",
+		Owner:     "baskasi",
+		Repo:      "ozel-depo",
+		CommitSha: strings.Repeat("a", 40),
+	}
+	err := validateGitSource(src, []string{"github.com"}, allowed)
+	if err == nil {
+		t.Fatal("beyaz listede olmayan depo kabul edildi — kimlik bilgisi sınırsız")
+	}
+	if !strings.Contains(err.Error(), "beyaz listede değil") {
+		t.Errorf("hata sebebi açık değil: %v", err)
+	}
+
+	// İzin verilen depo GEÇMELİ; aksi hâlde test hiçbir şey kanıtlamaz,
+	// yalnızca "her şey reddediliyor" der.
+	src.Owner, src.Repo = "erkanrzgc", "portfolio"
+	if err := validateGitSource(src, []string{"github.com"}, allowed); err != nil {
+		t.Fatalf("izin verilen depo reddedildi: %v", err)
+	}
+}
+
+// TestRepoAllowlistIgnoresLetterCase, kısıtın harf değiştirerek
+// atlanamadığını doğrular.
+//
+// GitHub ve GitLab owner/repo adlarında harf ayrımı yapmıyor: `Owner/Repo`
+// ile `owner/repo` AYNI depodur. Karşılaştırma harfe duyarlı olsaydı,
+// beyaz listedeki `erkanrzgc/portfolio` girdisi `ErkanRzgc/Portfolio`
+// isteğini engellemez ve kısıt tek harfle aşılırdı.
+func TestRepoAllowlistIgnoresLetterCase(t *testing.T) {
+	allowed := []string{"erkanrzgc/portfolio"}
+
+	for _, tc := range []struct{ owner, repo string }{
+		{"ErkanRzgc", "Portfolio"},
+		{"ERKANRZGC", "PORTFOLIO"},
+		{"erkanrzgc", "PortFolio"},
+	} {
+		if !repoAllowed(tc.owner, tc.repo, allowed) {
+			t.Errorf("%s/%s reddedildi — aynı depo", tc.owner, tc.repo)
+		}
+	}
+}
+
+// TestMalformedAllowlistEntryFailsClosed, bozuk bir girdinin FAZLA izin
+// vermediğini doğrular.
+//
+// Yazım hatası olan bir girdi hiçbir depoyla eşleşmemeli. Ters yön
+// (bozuk girdinin her şeye izin vermesi) sessizce kapanmış bir kısıt
+// demekti — hiç olmayan bir kısıttan daha kötüsü, VAR SANILAN bir
+// kısıttır.
+func TestMalformedAllowlistEntryFailsClosed(t *testing.T) {
+	for _, bozuk := range []string{"eğik-çizgi-yok", "/repo", "owner/", "", "  "} {
+		if repoAllowed("erkanrzgc", "portfolio", []string{bozuk}) {
+			t.Errorf("bozuk girdi %q her şeye izin verdi", bozuk)
+		}
+	}
+}
+
+// TestEmptyAllowlistMeansNoRestriction, boş listenin kısıt uygulamadığını
+// doğrular.
+//
+// Bu, hostta git kimlik bilgisi YOKKEN doğru davranış: herkese açık
+// depolar zaten herkese açık ve kısıt kimseyi korumaz. Kimlik bilgisi
+// varken tehlikeli olurdu — o birleşimi kurulum betiği engelliyor.
+func TestEmptyAllowlistMeansNoRestriction(t *testing.T) {
+	if !repoAllowed("herhangi", "depo", nil) {
+		t.Error("boş liste kısıt uyguladı")
+	}
+	if !repoAllowed("herhangi", "depo", []string{}) {
+		t.Error("boş dilim kısıt uyguladı")
 	}
 }

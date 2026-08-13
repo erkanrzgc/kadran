@@ -10,12 +10,20 @@ NotifyAccess=main
 # Bayraklar açık; gerekçe için panelyd.service'teki nota bakın.
 # --allow-user, executor'ın SO_PEERCRED ile kabul ettiği TEK kullanıcı.
 #
-# ── ÖZEL DEPOLAR: --allow-repo ZORUNLU hâle gelir ───────────────────
+# ── ÖZEL DEPOLAR: --allow-repo ───────────────────────────────────────
 #
-# Hostta bir git kimlik bilgisi kurulduğunda (dockerd onu kullanıyor,
-# ölçüldü: K-056), o token'ın erişebildiği HER özel depo ImageBuild ile
-# okunabilir olur — kurban deposunda Dockerfile olmasına bile gerek yok.
-# Beyaz liste bunun zorlanabilir yarısıdır ve BURAYA eklenir:
+# ⚠ Hostta duran bir git kimlik bilgisi bugün İŞE YARAMIYOR. Ölçüldü
+# (K-057): dockerd, git'i `HOME=/dev/null` + `GIT_CONFIG_NOSYSTEM=1` ile
+# çalıştırıyor, yani ne `~/.gitconfig`'i ne `/etc/gitconfig`'i okuyor.
+# Kimlik bilgisinin nerede durduğu fark etmiyor. Bir zamanlar bunun
+# çalıştığı yazıyordu; o ölçüm yanlış yorumlanmıştı.
+#
+# Beyaz liste yine de burada ve GEREKLİ: özel depo desteği hangi
+# mekanizmayla gelirse gelsin, kimlik bir kez derlemeye ulaştığında
+# ImageBuild çağırabilen biri owner/repo'yu kurbanın deposuna
+# çevirebilir — kurban deposunda Dockerfile olmasına bile gerek yok,
+# çünkü dockerfile_path de istekten geliyor ve derleme çıktısı istemciye
+# aynen akıyor. Kısıt BURAYA eklenir:
 #
 #   systemctl edit panely-exec.service
 #   [Service]

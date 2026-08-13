@@ -2597,6 +2597,12 @@ yönetebiliyor, ters vekil ayrıcalıklı executor'ı GÖREMİYOR.
 
 ## K-056 — Özel depo kimliği RPC'den GEÇMEZ; bedeli beyaz listeyle sınırlandı
 
+> ⚠ **BU KAYDIN SEÇTİĞİ MEKANİZMA ÇÜRÜTÜLDÜ — bkz. K-057.**
+> "Hostta duran git kimlik bilgisini dockerd kullanır" iddiası gerçek
+> sunucuda YANLIŞ çıktı: moby, git'i `HOME=/dev/null` +
+> `GIT_CONFIG_NOSYSTEM=1` ile çalıştırıyor. Aşağıdaki *beyaz liste* yarısı
+> geçerli ve doğrulandı; *kimlik bilgisi* yarısına göre iş yapmayın.
+
 Kullanıcının üç Vercel projesi de ÖZEL depolarda ve Panely hiçbirini
 derleyemiyordu. Ölçüldü, varsayılmadı:
 
@@ -2688,3 +2694,97 @@ Sınıra DOKUNULMADI.
 ### Doğrulama
 
 4 test; mutasyonda (kısıt etkisizleştirilince) ikisi KIRMIZI.
+
+---
+
+## K-057 — K-056 YANLIŞTI: dockerd host git kimliğini KULLANAMAZ
+
+K-056, özel depoların "hostta duran bir git kimlik bilgisiyle"
+derlenebileceğini söylüyordu ve bunu ölçtüğünü iddia ediyordu. **Yanlış.**
+Gerçek sunucuda uçtan uca denendiğinde derleme şu hatayla öldü:
+
+```
+docker: HTTP 500: error fetching: fatal: could not read Username
+for 'https://github.com': No such device or address
+```
+
+Token yerindeydi, doğruydu ve çalışıyordu — sorun oydu ki dockerd onu
+okuyamıyor.
+
+### Neden — ölçüldü, tahmin edilmedi
+
+Derleme sırasında dockerd'nin başlattığı git süreci `/proc` üzerinden
+yakalandı ve ortamı okundu:
+
+```
+git -c protocol.file.allow=never fetch origin -- 6c0b5548403f…
+  ppid=1020 (dockerd)
+  GIT_CONFIG_NOSYSTEM=1
+  HOME=/dev/null
+  GIT_PROTOCOL_FROM_USER=0
+```
+
+moby, git'i **kasten** hiçbir host yapılandırmasını okuyamayacak biçimde
+çalıştırıyor:
+
+| değişken | neyi kapatıyor |
+|---|---|
+| `HOME=/dev/null` | `~/.gitconfig`, `~/.git-credentials` |
+| `GIT_CONFIG_NOSYSTEM=1` | `/etc/gitconfig` |
+
+Yani kimlik bilgisinin **nerede durduğu önemli değil**. Bu bir
+yapılandırma hatası değil, moby'nin sertleştirmesi; "doğru yere koymak"
+diye bir çözüm yok.
+
+Ara adımlar da ölçüldü ve hepsi elendi:
+
+| deneme | sonuç |
+|---|---|
+| `git config --global` (root) | dockerd'de HOME yok → görünmez |
+| `git config --system` (`/etc/gitconfig`) | dosya ad alanında GÖRÜNÜYOR ama `NOSYSTEM=1` okutmuyor |
+| dockerd ortamını birebir taklit + düz git | ÇALIŞIYOR — yani engel ortamda değil, moby'nin eklediği üç değişkende |
+
+### K-056'daki ölçüm neden yanıltıcıydı
+
+K-056'da root'a sahte bir credential helper kurulmuş ve "dockerd
+yardımcıyı ÇAĞIRDI" sonucuna varılmıştı. `HOME=/dev/null` +
+`NOSYSTEM=1` altında bu **mümkün değil**. Gözlenen çağrı kontrol
+grubundaki düz `git`'ten geliyordu ve dockerd'ye atfedildi.
+
+Bu, K-051'in tarif ettiği hatanın ta kendisi — bu sefer kendi karar
+kaydımızda. Ders güncelleniyor: **kontrol grubu ile asıl ölçümün
+çıktıları ayırt edilebilir olmalı.** İkisi aynı kanala yazıyorsa,
+kontrolün başarısı ölçümün başarısı gibi okunur. Ayırt edici olan şey
+burada süreç soyağacıydı (`ppid`), çıktının kendisi değil.
+
+### Neyi ETKİLEMİYOR
+
+Depo beyaz listesi (K-056'nın diğer yarısı) geçerli ve gerçek sunucuda
+DOĞRULANDI:
+
+| depo | listede | sonuç |
+|---|---|---|
+| `erkanrzgc/portfolio` | ✓ | kapıdan geçti (`Internal`, kimlik hatası) |
+| `erkanrzgc/panely` | ✗ | kapıda reddedildi (`InvalidArgument`) |
+
+İki farklı hata kodu, kapının ayrım yaptığını gösteriyor — her şeyin
+birden bozulmadığını.
+
+Ayrıca K-056'nın tehdit modeli de artık geçersiz: dockerd host kimliğini
+kullanamadığı için "token'ın gördüğü her özel depo sızdırılabilir"
+saldırısı bu yolla KURULAMIYOR. Beyaz liste yine de duruyor: seçilecek
+mekanizma kimliği bir biçimde derlemeye ulaştıracak ve kısıt o gün
+gerekecek.
+
+### Geriye kalan seçenekler (henüz seçilmedi)
+
+| yol | kimlik nereden | bedeli |
+|---|---|---|
+| İstemci bağlamı yükler | iş istasyonundaki mevcut git kimliği | akış RPC'si; sunucu hiç token tutmaz |
+| Executor kimliği okuyup URL'e gömer | host dosyası | token `/proc/<pid>/cmdline`'da görünür |
+| BuildKit + secret | host dosyası | derleyici değişimi, K-042 yeniden ölçülmeli |
+| Faz 2 kasasına ertele | kasa | özel depo desteği gecikir |
+
+Karar verilene kadar hostta duran token **atıl**: dockerd onu
+kullanamıyor, executor git çalıştırmıyor. Yani ne fayda ne risk
+üretiyor.

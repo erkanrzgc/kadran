@@ -2788,3 +2788,71 @@ gerekecek.
 Karar verilene kadar hostta duran token **atıl**: dockerd onu
 kullanamıyor, executor git çalıştırmıyor. Yani ne fayda ne risk
 üretiyor.
+
+---
+
+## K-058 — Tek sunucu iki port dinleyince site ŞİFRESİZ servis ediliyordu
+
+Faz 1'in 2. kabul ölçütü ilk kez gerçek alan adıyla koşuldu ve GEÇTİ:
+
+```
+issuer  = C=US, O=Let's Encrypt, CN=YE1
+subject = CN=panely.erkanrzgc.dev
+```
+
+Ama aynı ölçüm bir kusur ortaya çıkardı: `http://` aynı içeriği **308
+yerine 200 ile, şifresiz** veriyordu.
+
+### Sebep
+
+Ürettiğimiz Caddy yapılandırmasında tek bir sunucu hem `:80` hem `:443`
+dinliyordu. Caddy bu durumda o sunucu için otomatik HTTP→HTTPS
+yönlendirmesi EKLEMEZ — aynı sunucu iki portu da servis ettiği için
+rotalar düz HTTP üzerinde de eşleşir.
+
+Yani "otomatik HTTPS açık" olması yetmiyordu; sertifika alınıyor,
+HTTPS çalışıyor, ama düz metin yolu da açık kalıyordu. Bu, **yalnızca
+gerçek bir alan adıyla dışarıdan ölçüldüğünde** görünür: `hello.localhost`
+ile yapılan bütün önceki testler bu kusuru göremezdi, çünkü orada zaten
+HTTPS'e bakılmıyordu.
+
+### Düzeltme
+
+Sunucu artık YALNIZCA HTTPS portunu dinliyor. Ölçüldü: Caddy bunun
+üzerine kendi `:80` sunucusunu kuruyor (ayrı fd) ve o sunucu hem ACME
+HTTP-01 doğrulamasını karşılıyor hem yönlendirmeyi yapıyor.
+
+```
+listen = [':443']                       (yapılandırma)
+:443 users:(("panely-caddy",pid=768,fd=8))
+:80  users:(("panely-caddy",pid=768,fd=14))   ← Caddy'nin kendi kurduğu
+```
+
+Düz portu bırakmak bir yetenek kaybı değil; tersine, elle üstlendiğimiz
+bir işi Caddy'ye geri veriyor.
+
+`http_port`/`https_port` alanları da uygulama düzeyine eklendi: sunucu
+varsayılan dışı bir port dinlediğinde Caddy yönlendirme hedefini bu
+alanlardan hesaplıyor. Boş bırakılsalardı 443 varsayılır ve yönlendirme
+yanlış porta yapılırdı — üstelik SESSİZCE, çünkü HTTPS tarafı yine
+çalışırdı.
+
+### Doğrulama
+
+| ölçüm | önce | sonra |
+|---|---|---|
+| `http://panely.erkanrzgc.dev/` | **200 (şifresiz)** | **308 → https** |
+| `https://.../` | 200 | 200 |
+| `https://.../privacy` | 200 | 200 |
+| `https://.../yok-boyle` | 404 | 404 |
+| sertifika vereni | Let's Encrypt | Let's Encrypt |
+
+İki birim testi eklendi; ikisi de düzeltmeden önce KIRMIZI koştu.
+
+### Ders
+
+Bu kusur aylardır koddaydı ve bütün testler yeşildi. Görünür olması için
+gereken tek şey **gerçek bir alan adında, dışarıdan, HTTP tarafına
+bakmak**tı. `hello.localhost` yönlendirmeyi kanıtlıyordu ama TLS
+davranışını hiç sınamıyordu — "trafik akıyor" ile "trafik doğru akıyor"
+arasındaki fark burada.

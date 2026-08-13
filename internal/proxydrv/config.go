@@ -63,6 +63,16 @@ type Apps struct {
 
 type HTTPApp struct {
 	Servers map[string]*HTTPServer `json:"servers"`
+
+	// HTTPPort ve HTTPSPort, Caddy'ye "hangi port düz HTTP, hangisi
+	// HTTPS" der. Otomatik HTTPS bu bilgiyle hem ACME HTTP-01
+	// dinleyicisini hem HTTP→HTTPS yönlendirmesini kurar.
+	//
+	// Varsayılan portlarda (80/443) yazılmıyor: Caddy zaten bunları
+	// varsayıyor ve gereksiz alan, "yüklediğim şey canlıda mı"
+	// karşılaştırmasına gürültü katar.
+	HTTPPort  uint32 `json:"http_port,omitempty"`
+	HTTPSPort uint32 `json:"https_port,omitempty"`
 }
 
 type HTTPServer struct {
@@ -141,7 +151,12 @@ type AppRoute struct {
 type BuildOptions struct {
 	Admin  Admin
 	Routes []AppRoute
-	// HTTPPort ve HTTPSPort sıfır bırakılırsa 80/443 kullanılır.
+	// HTTPPort ve HTTPSPort sıfır bırakılırsa Caddy'nin varsayılanları
+	// (80/443) geçerli olur.
+	//
+	// Sunucu YALNIZCA HTTPS portunu dinler; HTTPPort, Caddy'nin kendi
+	// kurduğu yönlendirme/ACME dinleyicisi içindir. Gerekçe BuildConfig
+	// içindeki nottadır.
 	HTTPPort  uint32
 	HTTPSPort uint32
 }
@@ -203,15 +218,34 @@ func BuildConfig(opts BuildOptions) (*Config, error) {
 		return cfg, nil
 	}
 
-	cfg.Apps = &Apps{HTTP: &HTTPApp{Servers: map[string]*HTTPServer{
+	app := &HTTPApp{Servers: map[string]*HTTPServer{
 		serverName: {
+			// ⚠ YALNIZCA HTTPS portu — düz HTTP portu KASTEN yok.
+			//
+			// Tek sunucu iki portu da dinlediğinde Caddy o sunucu için
+			// otomatik HTTP→HTTPS yönlendirmesi eklemez ve rotalar düz
+			// HTTP üzerinde de yanıt verir. Gerçek sunucuda ölçüldü:
+			// site geçerli sertifikayla HTTPS 200 dönerken aynı içeriği
+			// http:// üzerinden de ŞİFRESİZ 200 ile veriyordu.
+			//
+			// Portu bırakmak yetenek kaybı değil: Caddy kendi :80
+			// sunucusunu kuruyor ve o sunucu hem ACME HTTP-01
+			// doğrulamasını karşılıyor hem yönlendirmeyi yapıyor.
 			Listen: []string{
-				":" + strconv.FormatUint(uint64(portOr(opts.HTTPPort, 80)), 10),
 				":" + strconv.FormatUint(uint64(portOr(opts.HTTPSPort, 443)), 10),
 			},
 			Routes: out,
 		},
-	}}}
+	}}
+
+	// Varsayılan dışı portlar Caddy'ye AYRICA söylenmeli: yönlendirmenin
+	// hedefini bu alanlardan hesaplıyor. Boş bırakılsaydı 443'ü varsayar
+	// ve yanlış porta yönlendirirdi — üstelik sessizce, çünkü HTTPS
+	// tarafı yine çalışırdı.
+	app.HTTPPort = opts.HTTPPort
+	app.HTTPSPort = opts.HTTPSPort
+
+	cfg.Apps = &Apps{HTTP: app}
 	return cfg, nil
 }
 

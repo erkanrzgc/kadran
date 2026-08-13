@@ -2856,3 +2856,66 @@ gereken tek şey **gerçek bir alan adında, dışarıdan, HTTP tarafına
 bakmak**tı. `hello.localhost` yönlendirmeyi kanıtlıyordu ama TLS
 davranışını hiç sınamıyordu — "trafik akıyor" ile "trafik doğru akıyor"
 arasındaki fark burada.
+
+---
+
+## K-059 — Vekil, upstream'in sıkıştırmasını AÇIP düz metin gönderiyordu
+
+Kullanıcı "çok yavaş açılıyor" dedi. Ölçüldü:
+
+| | Panely | Vercel |
+|---|---|---|
+| JS paketi | **311.929 bayt** | 104.354 bayt |
+| `Content-Encoding` | **yok** | `br` |
+| toplam süre | ~8,5 sn (bir denemede 20 sn'de timeout) | ~2,6 sn |
+
+### Sebep — katman katman ölçüldü
+
+```
+doğrudan nginx (konteyner)  → Content-Encoding: gzip     ✓
+Caddy üzerinden             → content-length 311929, encoding YOK
+```
+
+Yani sıkıştırma upstream'de VARDI, vekilde kayboluyordu.
+
+Caddy'nin vekil taşıyıcısı (Go `http.Transport`) upstream'den kendiliğinden
+`Accept-Encoding: gzip` istiyor ve yanıtı ŞEFFAF biçimde açıyor. Üretilen
+yapılandırmada `encode` işleyicisi olmadığı için Caddy açtığı gövdeyi düz
+metin olarak gönderiyordu.
+
+Bu tek bir uygulamanın sorunu değildi: **Panely'nin servis ettiği HER
+uygulama sıkıştırmasız gidiyordu.** Uygulamanın kendi sunucusunda gzip
+açık olması hiçbir şey değiştirmiyor — bu, "uygulama doğru yapılandırılmış"
+diye bakıp geçilecek bir kusur değil, vekilin kusuru.
+
+### Düzeltme
+
+Her rotanın işleyici zincirine `encode` eklendi, **reverse_proxy'den ÖNCE**.
+Sıra taşıyıcı: sonra gelseydi hiç çalışmazdı, çünkü vekil yanıtı çoktan
+yazmış olurdu.
+
+Kodlayıcılar `zstd` ve `gzip` ile sınırlı. brotli YOK: stok Caddy'de
+bulunmuyor, eklenti gerektiriyor. Sınırın gerçekliği ölçüldü —
+`panely-caddy list-modules` → `http.encoders.gzip`, `http.encoders.zstd`,
+`http.handlers.encode`. Olmayan bir kodlayıcı istenseydi Caddy
+yapılandırmanın TAMAMINI reddeder ve o an canlı olan bütün rotalar
+düşerdi; test bu sınırı sabitliyor.
+
+### Doğrulama
+
+| | önce | sonra | Vercel (CDN) |
+|---|---|---|---|
+| boyut | 311.929 | **105.822** (zstd) | 104.354 (br) |
+| toplam | ~8,5 sn | **1,0–2,0 sn** | 0,6–0,9 sn |
+
+Kalan fark yapısal ve kapatılamaz: Vercel küresel bir CDN kenarından,
+Panely Nürnberg'deki TEK bir VPS'ten servis ediyor. TCP el sıkışması
+0,67 sn'ye karşı 0,21 sn — bu mesafenin kendisi.
+
+### Ders
+
+Kusur, uygulamayı doğru yapılandırmakla gizlendi: nginx gzip'i açıktı ve
+konteynere doğrudan bakan herkes "sıkıştırma çalışıyor" görürdü.
+Görünmesi için ölçümün İSTEMCİNİN durduğu yerden yapılması gerekiyordu.
+Ara katman, doğru yapılandırılmış iki ucun arasında sessizce bir özelliği
+düşürebiliyor.

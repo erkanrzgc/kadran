@@ -105,6 +105,18 @@ type Handler struct {
 	// static_response
 	StatusCode int    `json:"status_code,omitempty"`
 	Body       string `json:"body,omitempty"`
+
+	// encode
+	//
+	// Encodings, Caddy'nin "hangi kodlayıcıları kullanabilirsin"
+	// listesidir; değerler kodlayıcı yapılandırmasıdır ve varsayılanlar
+	// bizim için doğru olduğundan boş nesne geçiliyor.
+	//
+	// ⚠ Yalnızca özel derlememizde BULUNAN kodlayıcılar yazılabilir.
+	// Olmayan bir kodlayıcı istenirse Caddy yapılandırmanın TAMAMINI
+	// reddeder ve o an canlı olan bütün rotalar düşer.
+	Encodings map[string]struct{} `json:"encodings,omitempty"`
+	Prefer    []string            `json:"prefer,omitempty"`
 }
 
 // Upstream, vekilin bağlanacağı arka uçtur.
@@ -208,8 +220,14 @@ func BuildConfig(opts BuildOptions) (*Config, error) {
 					"uygulamayı sessizce 502 yapardı", r.AppID)
 		}
 		out = append(out, Route{
-			Match:    []Match{{Host: []string{r.Domain}}},
-			Handle:   []Handler{{Handler: "reverse_proxy", Upstreams: r.Upstreams}},
+			Match: []Match{{Host: []string{r.Domain}}},
+			Handle: []Handler{
+				// ⚠ SIRA TAŞIYICI: encode, reverse_proxy'den ÖNCE.
+				// Sonra gelseydi hiç çalışmazdı — vekil yanıtı çoktan
+				// yazmış olurdu.
+				encodeHandler(),
+				{Handler: "reverse_proxy", Upstreams: r.Upstreams},
+			},
 			Terminal: true,
 		})
 	}
@@ -247,6 +265,28 @@ func BuildConfig(opts BuildOptions) (*Config, error) {
 
 	cfg.Apps = &Apps{HTTP: app}
 	return cfg, nil
+}
+
+// encodeHandler, yanıtları istemciye giderken sıkıştırır.
+//
+// ⚠ Neden ZORUNLU: Caddy'nin vekil taşıyıcısı upstream'den gzip isteyip
+// yanıtı ŞEFFAF biçimde açıyor. Bu işleyici olmasaydı, upstream düzgün
+// sıkıştırma yapsa bile Caddy açtığı gövdeyi DÜZ METİN gönderirdi.
+// Gerçek sunucuda ölçüldü: aynı JS paketi doğrudan nginx'ten gzip'li
+// gelirken Caddy üzerinden 311929 bayt sıkıştırmasız geliyordu.
+//
+// brotli YOK: stok Caddy'de bulunmuyor, eklenti gerektiriyor. zstd
+// muadili sıkıştırma oranı veriyor ve derlememizde MEVCUT (ölçüldü:
+// `panely-caddy list-modules` → http.encoders.gzip, http.encoders.zstd).
+//
+// `prefer` sırası belirlenimli: aksi hâlde aynı istemciye iki farklı
+// kodlama dönebilir ve ara önbellekler Vary hesabını şaşırırdı.
+func encodeHandler() Handler {
+	return Handler{
+		Handler:   "encode",
+		Encodings: map[string]struct{}{"zstd": {}, "gzip": {}},
+		Prefer:    []string{"zstd", "gzip"},
+	}
 }
 
 // serverName, ürettiğimiz tek HTTP sunucusunun adı.

@@ -131,7 +131,11 @@ func run() error {
 		return err
 	}
 
-	rollout, err := deploy.NewRollout(exec, db, reconciler, deploy.DefaultGate, deploy.DefaultDrain)
+	// Yoklama süresi kapı aralığından KISA: aksi hâlde her tur uzar ve
+	// toplam süre sınırı içine sığan ölçüm sayısı düşerdi.
+	rollout, err := deploy.NewRollout(exec, db, reconciler,
+		deploy.NewHTTPProber(deploy.DefaultProbeTimeout),
+		deploy.DefaultGate, deploy.DefaultDrain)
 	if err != nil {
 		return err
 	}

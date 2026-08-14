@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/erkanrzgc/panely/internal/execclient"
@@ -51,6 +52,7 @@ type Rollout struct {
 	lifecycle Lifecycle
 	store     Activations
 	rec       *Reconciler
+	prober    Prober
 	clock     Clock
 
 	gate  GateOptions
@@ -89,11 +91,20 @@ type DrainOptions struct {
 var DefaultDrain = DrainOptions{Window: 10 * time.Second, Grace: 10 * time.Second}
 
 // NewRollout, dağıtım orkestratörünü kurar.
+// Yoklayıcı ZORUNLU. nil'i "HTTP yoklaması yok" diye kabul etmek, kapının
+// sessizce konteyner-durumu seviyesine düşmesi demekti — yani tam olarak
+// gizlenmesini istemediğimiz kusur. HTTP konuşmayan iş yükleri yoklamayı
+// uygulama tanımındaki BOŞ sağlık yoluyla kapatır; orada görünür.
 func NewRollout(
-	l Lifecycle, a Activations, rec *Reconciler, gate GateOptions, drain DrainOptions,
+	l Lifecycle, a Activations, rec *Reconciler, p Prober,
+	gate GateOptions, drain DrainOptions,
 ) (*Rollout, error) {
 	if l == nil || a == nil || rec == nil {
 		return nil, errors.New("deploy: yaşam döngüsü, aktivasyon ve uzlaştırıcı zorunlu")
+	}
+	if p == nil {
+		return nil, errors.New(
+			"deploy: sağlık yoklayıcısı zorunlu — yokluğu kapıyı sessizce zayıflatır")
 	}
 	if gate.Successes <= 0 || gate.Interval <= 0 || gate.Timeout <= 0 {
 		return nil, errors.New("deploy: sağlık kapısı ölçütleri sıfır olamaz")
@@ -102,7 +113,7 @@ func NewRollout(
 		return nil, errors.New("deploy: boşaltma penceresi ve kapanış süresi sıfır olamaz")
 	}
 	return &Rollout{
-		lifecycle: l, store: a, rec: rec, clock: realClock{},
+		lifecycle: l, store: a, rec: rec, prober: p, clock: realClock{},
 		gate: gate, drain: drain,
 	}, nil
 }
@@ -292,36 +303,33 @@ func (e SkippedError) Error() string {
 
 // awaitReady, replikaların trafiğe HAZIR olmasını bekler.
 //
-// ══════════════════════════════════════════════════════════════════════
+// ── İki ayrı soru, iki ayrı ölçüm ───────────────────────────────────
 //
-//	⚠ BU BİR HTTP SAĞLIK YOKLAMASI DEĞİLDİR
+//	konteyner ÇALIŞIYOR mu?   → Lifecycle (RUNNING + ağ adresi var)
+//	uygulama CEVAP VERİYOR mu? → Prober (sağlık yoluna HTTP isteği)
 //
-// ══════════════════════════════════════════════════════════════════════
+// İkincisi olmadan kapı, açılan ama 500 dönen bir uygulamayı canlıya
+// alırdı — bozuk bir commit'in en yaygın hâli tam olarak budur. Faz 1'in
+// 4. kabul ölçütü ("bozuk commit kapıda durmalı") ikisinin birlikte
+// olmasını gerektiriyor.
 //
-// Ölçtüğü şey: konteyner RUNNING mı ve uygulama ağında bir adresi var mı.
-// Ölçmediği şey: uygulamanın gerçekten cevap verip vermediği.
-//
-// HTTP yoklaması panelyd'nin ağa çıkmasını gerektiriyor; birimi
-// `RestrictAddressFamilies=AF_UNIX` ile çalışıyor ve bunu gevşetmek ayrı
-// bir karar (panelyd.service içindeki not bu değişikliği zaten öngörüyor).
-// O yüzden burada YOK ve olmadığı saklanmıyor.
-//
-// Yine de boş bir kapı değil: çöken bir commit'in en yaygın belirtisi
-// konteynerin açılışta ölmesidir ve o konteyner RUNNING olmaz — EXITED
-// olur, kapıdan geçemez, trafik taşınmaz.
+// HTTP yoklaması panelyd'nin ağa çıkmasını gerektiriyor; birim artık
+// `AF_INET`/`AF_INET6` ile çalışıyor ve `IPAddressAllow` ile yalnızca
+// Docker'ın özel ağ aralığına sınırlanıyor (bkz. panelyd.service).
 //
 // ── Ölçüt POZİTİF ──────────────────────────────────────────────────
 //
 // "Hata görmedim" değil, "arka arkaya N ölçümde HAZIR gördüm". Fark
 // önemli: açılışta bir süre RUNNING görünüp sonra ölen bir konteyner tek
-// bir ölçümü geçerdi. Ardışık sayaç, ilk başarısız ölçümde SIFIRLANIYOR.
+// bir ölçümü geçerdi. Ardışık sayaç, ilk başarısız ölçümde SIFIRLANIYOR —
+// yoklama başarısızlığı da dahil.
 func (r *Rollout) awaitReady(ctx context.Context, app store.App, rel store.Release) error {
 	deadline := r.clock.Now().Add(r.gate.Timeout)
 	streak := 0
 	var last string
 
 	for {
-		ready, why := r.readyCount(ctx, app.ID, rel.ID)
+		ready, why := r.readyCount(ctx, app, rel.ID)
 		if ready >= app.Replicas {
 			streak++
 			if streak >= r.gate.Successes {
@@ -347,26 +355,47 @@ func (r *Rollout) awaitReady(ctx context.Context, app store.App, rel store.Relea
 }
 
 // readyCount, sürümün trafiğe hazır replika sayısını döndürür.
-func (r *Rollout) readyCount(ctx context.Context, appID, releaseID string) (uint32, string) {
-	reps, err := r.lifecycle.ListReplicas(ctx, appID)
+//
+// Bir replika ancak İKİ ölçümü de geçerse sayılıyor: konteyner rotalanabilir
+// durumda (RUNNING + adres var) VE sağlık yolu 400'ün altında cevap veriyor.
+//
+// Sağlık yolu boşsa HTTP ölçümü atlanır. Bu, HTTP konuşmayan iş yükleri
+// için açık bir tercihtir ve uygulama tanımında görünür — kablolamada
+// gizlenmiş bir istisna değil.
+func (r *Rollout) readyCount(ctx context.Context, app store.App, releaseID string) (uint32, string) {
+	reps, err := r.lifecycle.ListReplicas(ctx, app.ID)
 	if err != nil {
 		return 0, fmt.Sprintf("liste alınamadı: %v", err)
 	}
 
-	var ready uint32
-	states := map[string]int{}
+	var (
+		ready  uint32
+		states = map[string]int{}
+		unwell []string
+	)
 	for _, rep := range reps {
 		if rep.ReleaseID != releaseID {
 			continue
 		}
-		if rep.Routable() {
-			ready++
+		if !rep.Routable() {
+			states[rep.State.String()]++
 			continue
 		}
-		states[rep.State.String()]++
+		if app.HealthPath != "" {
+			if err := r.prober.Probe(ctx, rep.IPAddress, app.ContainerPort, app.HealthPath); err != nil {
+				unwell = append(unwell, fmt.Sprintf("#%d: %v", rep.Index, err))
+				continue
+			}
+		}
+		ready++
 	}
-	if len(states) == 0 {
+
+	switch {
+	case len(unwell) > 0:
+		return ready, "cevap vermeyen replika — " + strings.Join(unwell, "; ")
+	case len(states) > 0:
+		return ready, fmt.Sprintf("durumlar: %v", states)
+	default:
 		return ready, "bu sürümün konteyneri görünmüyor"
 	}
-	return ready, fmt.Sprintf("durumlar: %v", states)
 }

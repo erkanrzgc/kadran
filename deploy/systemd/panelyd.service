@@ -85,11 +85,44 @@ SystemCallFilter=@chown
 CapabilityBoundingSet=
 AmbientCapabilities=
 
-# Faz 0'da daemon yalnızca unix soketleri kullanır: kendi api.sock'u ve
-# executor'ın exec.sock'u.
-# NOT: Faz 1'de sağlık denetçisi konteynerlere HTTP isteği atacağı için
-# buraya AF_INET AF_INET6 eklenecek. Şimdiden eklemek gereksiz yüzey açar.
-RestrictAddressFamilies=AF_UNIX
+# ── Ağ: unix soketleri + SAĞLIK YOKLAMASI ───────────────────────────
+#
+# Unix soketleri: kendi api.sock'u ve executor'ın exec.sock'u.
+#
+# AF_INET, sağlık kapısı için eklendi: dağıtım, konteynerin ÇALIŞTIĞINI
+# değil uygulamanın CEVAP VERDİĞİNİ ölçmek zorunda (Faz 1 kabul ölçütü
+# #4). Ölçüm panelyd'de yapılıyor, executor'da DEĞİL — ayrıcalıklı yüzey
+# bütçesi 2479/2500 ve bir HTTP istemcisi tek başına onu patlatırdı.
+# Yetkisiz sürece ağ vermek, ayrıcalıklı sürece satır eklemekten geri
+# alınabilir bir karardır; aşağıdaki çit de onu dar tutuyor.
+#
+# ⚠ AF_INET6 KASTEN YOK. Docker'ın uygulama ağları IPv4; IPv6 açılırsa
+# burası da IPAddressAllow'daki aralık da güncellenmek ZORUNDA, yoksa
+# yoklama sessizce değil GÖRÜNÜR biçimde (EPERM) düşer.
+RestrictAddressFamilies=AF_UNIX AF_INET
+
+# ── Nereye bağlanabilir ─────────────────────────────────────────────
+#
+# Varsayılan REDDET, tek istisna Docker'ın özel ağ aralığı. Böylece
+# panelyd internete, host'un LAN'ına ya da bulut sağlayıcısının meta veri
+# ucuna (169.254.169.254) ULAŞAMAZ.
+#
+# 172.16.0.0/12 seçildi çünkü Docker'ın varsayılan yerel havuzu
+# 172.17.0.0/16 – 172.31.0.0/16 aralığında ve hepsi bunun içinde.
+# ÖLÇÜLDÜ (gerçek sunucu): panely-web 172.18/16, panely-pfprobe 172.19/16,
+# panely-portfolio 172.20/16.
+#
+# ⚠ 192.168.0.0/16 KASTEN AÇILMADI. Docker o havuzu ancak 172.x aralığı
+# tükendiğinde (≈15 ağ) kullanır; açsaydık panelyd, kalıcı sunucunun EV
+# AĞINA erişebilirdi. Sınıra dayanılırsa yoklama "permission denied" ile
+# düşer ve dağıtım kapıda durur — sessiz değil, görünür bir arıza.
+# Kalıcı çözüm: dockerd'nin havuzunu daemon.json ile bu aralığa sabitlemek.
+#
+# ⚠ Loopback de açılmadı: panelyd'nin hostun kendi portlarına bağlanması
+# için hiçbir sebep yok ve açık olsaydı, hostta duran her servis
+# panelyd'den erişilebilir olurdu.
+IPAddressDeny=any
+IPAddressAllow=172.16.0.0/12
 
 ReadWritePaths=/var/lib/panely
 ReadWritePaths=/run/panely

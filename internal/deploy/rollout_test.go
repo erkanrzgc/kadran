@@ -3,6 +3,7 @@ package deploy
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -138,13 +139,32 @@ func testApplication() store.App {
 	}
 }
 
-// newTestRollout, sanal saatli bir orkestratör kurar.
+// fakeProber, HTTP sağlık yoklamasının yerine geçer.
+type fakeProber struct {
+	err  error
+	seen []string
+}
+
+func (p *fakeProber) Probe(_ context.Context, ip string, port uint32, path string) error {
+	p.seen = append(p.seen, fmt.Sprintf("%s:%d%s", ip, port, path))
+	return p.err
+}
+
+// harness, tek bir dağıtım düzeneğinin bütün sahtelerini bir arada tutar.
+type harness struct {
+	rollout *Rollout
+	life    *fakeLifecycle
+	acts    *fakeActivations
+	clock   *fakeClock
+	proxy   *fakeProxy
+	prober  *fakeProber
+}
+
+// newHarness, sanal saatli bir orkestratör kurar.
 //
 // routable: uzlaştırıcının BİZİM uygulamamızı rotalayıp rotalayamayacağı.
 // false ise Reconcile onu atlar — yani trafik taşınmamış olur.
-func newTestRollout(
-	t *testing.T, life *fakeLifecycle, routable bool,
-) (*Rollout, *fakeActivations, *fakeClock, *fakeProxy) {
+func newHarness(t *testing.T, life *fakeLifecycle, routable bool) *harness {
 	t.Helper()
 
 	var reps []execclient.Replica
@@ -165,13 +185,17 @@ func newTestRollout(
 
 	life.proxy = proxy
 	acts := &fakeActivations{}
-	r, err := NewRollout(life, acts, rec, DefaultGate, DefaultDrain)
+	prober := &fakeProber{}
+	r, err := NewRollout(life, acts, rec, prober, DefaultGate, DefaultDrain)
 	if err != nil {
 		t.Fatalf("orkestratör kurulamadı: %v", err)
 	}
 	clock := &fakeClock{now: time.Unix(0, 0)}
 	r.clock = clock
-	return r, acts, clock, proxy
+	return &harness{
+		rollout: r, life: life, acts: acts,
+		clock: clock, proxy: proxy, prober: prober,
+	}
 }
 
 // bothReleasesUp, hostta hem eski hem yeni sürümün ayakta olduğu durumu
@@ -189,7 +213,7 @@ func bothReleasesUp() []execclient.Replica {
 // panely_portfolio_r1_0 28 saat boyunca ayakta kaldı.
 func TestOldReleaseIsStoppedOnceTrafficHasMoved(t *testing.T) {
 	life := &fakeLifecycle{replicas: bothReleasesUp()}
-	r, _, _, _ := newTestRollout(t, life, true)
+	r := newHarness(t, life, true).rollout
 
 	if err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew}); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
@@ -205,7 +229,7 @@ func TestOldReleaseIsStoppedOnceTrafficHasMoved(t *testing.T) {
 // dağıtımın kendi ayağına sıkması demektir.
 func TestActiveReleaseIsNeverStopped(t *testing.T) {
 	life := &fakeLifecycle{replicas: bothReleasesUp()}
-	r, _, _, _ := newTestRollout(t, life, true)
+	r := newHarness(t, life, true).rollout
 
 	if err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew}); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
@@ -222,7 +246,8 @@ func TestActiveReleaseIsNeverStopped(t *testing.T) {
 // beklenmeli: uçan istekler bitsin diye.
 func TestDrainWindowIsWaitedBeforeStopping(t *testing.T) {
 	life := &fakeLifecycle{replicas: bothReleasesUp()}
-	r, _, clock, _ := newTestRollout(t, life, true)
+	h := newHarness(t, life, true)
+	r, clock := h.rollout, h.clock
 
 	if err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew}); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
@@ -262,7 +287,8 @@ func TestNothingIsStoppedWhenTheGateFails(t *testing.T) {
 			State: panelyv1.ContainerState_CONTAINER_STATE_EXITED,
 		},
 	}}
-	r, acts, _, _ := newTestRollout(t, life, true)
+	h := newHarness(t, life, true)
+	r, acts := h.rollout, h.acts
 
 	err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew})
 	if err == nil {
@@ -281,7 +307,7 @@ func TestNothingIsStoppedWhenTheGateFails(t *testing.T) {
 func TestOldReleaseSurvivesWhenOurOwnAppWasSkipped(t *testing.T) {
 	life := &fakeLifecycle{replicas: bothReleasesUp()}
 	// routable=false: uzlaştırıcı bizim uygulamamızı atlar.
-	r, _, _, _ := newTestRollout(t, life, false)
+	r := newHarness(t, life, false).rollout
 
 	err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew})
 	if err == nil {
@@ -304,7 +330,8 @@ func TestStopFailureIsReportedWithoutFailingTheDeploy(t *testing.T) {
 		replicas: bothReleasesUp(),
 		stopErr:  errors.New("docker cevap vermedi"),
 	}
-	r, acts, _, _ := newTestRollout(t, life, true)
+	h := newHarness(t, life, true)
+	r, acts := h.rollout, h.acts
 
 	err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew})
 	if err == nil {
@@ -331,7 +358,7 @@ func TestEachStaleReleaseIsStoppedOnce(t *testing.T) {
 		running(testApp, "r0", 0, "172.20.0.5"),
 		running(testApp, relNew, 0, "172.20.0.3"),
 	}}
-	r, _, _, _ := newTestRollout(t, life, true)
+	r := newHarness(t, life, true).rollout
 
 	if err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew}); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
@@ -361,7 +388,7 @@ func TestReadyStreakResetsOnAnyFailedProbe(t *testing.T) {
 		// hazır, hazır, ÖLDÜ, hazır, hazır, hazır
 		script: []bool{true, true, false, true, true, true},
 	}
-	r, _, clock, _ := newTestRollout(t, &fakeLifecycle{}, true)
+	r := newHarness(t, &fakeLifecycle{}, true).rollout
 	r.lifecycle = life
 
 	if err := r.Run(context.Background(), testApplication(), store.Release{ID: relNew}); err != nil {
@@ -373,7 +400,131 @@ func TestReadyStreakResetsOnAnyFailedProbe(t *testing.T) {
 	if life.probes < 6 {
 		t.Fatalf("kapı %d ölçümde geçti — sayaç SIFIRLANMIYOR", life.probes)
 	}
-	_ = clock
+}
+
+// ── HTTP sağlık kapısı ───────────────────────────────────────────────
+
+// FAZ 1 KABUL ÖLÇÜTÜ #4.
+//
+// Konteyner ayakta, adresi var, RUNNING — ama uygulama 500 dönüyor.
+// Konteyner durumuna bakan eski kapı bunu canlıya ALIRDI.
+func TestGateBlocksWhenTheContainerRunsButTheAppAnswersWithAnError(t *testing.T) {
+	life := &fakeLifecycle{replicas: bothReleasesUp()}
+	h := newHarness(t, life, true)
+	h.prober.err = errors.New("sağlık yoklaması 500 döndü")
+
+	err := h.rollout.Run(context.Background(), testApplication(), store.Release{ID: relNew})
+	if err == nil {
+		t.Fatal("uygulama 500 döndüğü hâlde dağıtım BAŞARILI sayıldı — " +
+			"bozuk commit canlıya alınırdı")
+	}
+	if len(h.acts.active) != 0 {
+		t.Fatalf("TRAFİK TAŞINDI: %v", h.acts.active)
+	}
+	if len(life.stopped) != 0 {
+		t.Fatalf("eski sürüm durduruldu: %v — site düşerdi", life.stoppedReleases())
+	}
+	if h.proxy.calls != 0 {
+		t.Fatalf("ters vekile %d kez yüklendi — kapı geçilmeden yapılandırma değişti",
+			h.proxy.calls)
+	}
+}
+
+// Yoklama, uygulamanın YAPILANDIRILDIĞI yola ve porta gitmeli.
+func TestGateProbesTheConfiguredHealthPathAndPort(t *testing.T) {
+	life := &fakeLifecycle{replicas: []execclient.Replica{
+		running(testApp, relNew, 0, "172.20.0.3"),
+	}}
+	h := newHarness(t, life, true)
+
+	app := testApplication()
+	app.HealthPath = "/saglik"
+	app.ContainerPort = 9000
+
+	if err := h.rollout.Run(context.Background(), app, store.Release{ID: relNew}); err != nil {
+		t.Fatalf("dağıtım başarısız: %v", err)
+	}
+	if len(h.prober.seen) == 0 {
+		t.Fatal("hiç yoklama yapılmadı")
+	}
+	const want = "172.20.0.3:9000/saglik"
+	for _, got := range h.prober.seen {
+		if got != want {
+			t.Fatalf("yoklama %q adresine gitti, %q bekleniyordu", got, want)
+		}
+	}
+}
+
+// Boş sağlık yolu, HTTP yoklamasını AÇIKÇA kapatır: HTTP konuşmayan bir
+// iş yükü de dağıtılabilmeli. Bu bir sessiz düşüş değil, uygulama
+// tanımında görünen bir tercih.
+func TestEmptyHealthPathDisablesTheHTTPProbe(t *testing.T) {
+	life := &fakeLifecycle{replicas: []execclient.Replica{
+		running(testApp, relNew, 0, "172.20.0.3"),
+	}}
+	h := newHarness(t, life, true)
+	h.prober.err = errors.New("bu çağrılmamalıydı")
+
+	app := testApplication()
+	app.HealthPath = ""
+
+	if err := h.rollout.Run(context.Background(), app, store.Release{ID: relNew}); err != nil {
+		t.Fatalf("HTTP yoklaması kapalıyken dağıtım başarısız: %v", err)
+	}
+	if len(h.prober.seen) != 0 {
+		t.Fatalf("sağlık yolu boşken yoklama yapıldı: %v", h.prober.seen)
+	}
+}
+
+// Yoklama ARDIŞIK sayacı da sıfırlamalı: bir ölçümde cevap verip
+// diğerinde vermeyen bir uygulama sağlıklı değildir.
+func TestFailedProbeResetsTheReadyStreak(t *testing.T) {
+	life := &fakeLifecycle{replicas: []execclient.Replica{
+		running(testApp, relNew, 0, "172.20.0.3"),
+	}}
+	h := newHarness(t, life, true)
+	flaky := &scriptedProber{script: []bool{true, true, false, true, true, true}}
+	h.rollout.prober = flaky
+
+	if err := h.rollout.Run(context.Background(), testApplication(),
+		store.Release{ID: relNew}); err != nil {
+		t.Fatalf("kapı geçilemedi: %v", err)
+	}
+	if flaky.calls < 6 {
+		t.Fatalf("kapı %d yoklamada geçti — başarısız yoklama sayacı SIFIRLAMIYOR",
+			flaky.calls)
+	}
+}
+
+type scriptedProber struct {
+	script []bool
+	calls  int
+}
+
+func (p *scriptedProber) Probe(context.Context, string, uint32, string) error {
+	i := p.calls
+	p.calls++
+	if i >= len(p.script) {
+		i = len(p.script) - 1
+	}
+	if p.script[i] {
+		return nil
+	}
+	return errors.New("cevap yok")
+}
+
+// Yoklayıcısız bir orkestratör kurulamamalı: nil'i "yoklama yok" diye
+// kabul etmek, kapının sessizce konteyner-durumu seviyesine düşmesi
+// demekti ve bu tam olarak gizlenmesini istemediğimiz kusur.
+func TestRolloutRefusesToBuildWithoutAProber(t *testing.T) {
+	rec, err := New(fakeDeployments{}, fakeReplicas{}, &fakeProxy{}, testAdmin())
+	if err != nil {
+		t.Fatalf("uzlaştırıcı kurulamadı: %v", err)
+	}
+	if _, err := NewRollout(&fakeLifecycle{}, &fakeActivations{}, rec, nil,
+		DefaultGate, DefaultDrain); err == nil {
+		t.Fatal("yoklayıcısız orkestratör kuruldu — kapı sessizce zayıflardı")
+	}
 }
 
 // flappingLifecycle, ölçüm başına hazır/değil senaryosu oynatır.

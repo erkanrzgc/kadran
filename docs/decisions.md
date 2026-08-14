@@ -2919,3 +2919,163 @@ konteynere doğrudan bakan herkes "sıkıştırma çalışıyor" görürdü.
 Görünmesi için ölçümün İSTEMCİNİN durduğu yerden yapılması gerekiyordu.
 Ara katman, doğru yapılandırılmış iki ucun arasında sessizce bir özelliği
 düşürebiliyor.
+
+---
+
+## K-060 — Sağlık kapısı: yoklama panelyd'de, çit systemd'de
+
+Kapı bugüne kadar konteynerin **çalıştığını** ölçüyordu, uygulamanın
+**cevap verdiğini** değil. Açılan ama 500 dönen bir uygulama — bozuk bir
+commit'in en yaygın hâli — kapıdan geçip canlıya alınırdı. Faz 1'in 4.
+kabul ölçütü tam olarak bunu yasaklıyor.
+
+### Yoklama neden panelyd'de, executor'da değil?
+
+| | panelyd | panely-exec |
+|---|---|---|
+| yetki | uid 999, yeteneksiz | **root**, Docker soketi |
+| bütçe | yok | **2479/2500 satır** |
+
+Bir HTTP istemcisi (`net/http` + `net/url` + bağımlılıkları) ayrıcalıklı
+bütçeyi tek başına patlatırdı; kalan boşluk 21 satır. Ama asıl gerekçe
+bütçe değil **geri alınabilirlik**: yetkisiz bir sürece ağ vermek
+`IPAddressAllow` ile çitlenebilir ve istenirse geri alınır; ayrıcalıklı
+bir binary'ye eklenen satırlar orada kalır.
+
+### Çit
+
+```
+RestrictAddressFamilies=AF_UNIX AF_INET     # AF_INET6 kasten yok
+IPAddressDeny=any
+IPAddressAllow=172.16.0.0/12
+```
+
+Aralık **ölçülerek** seçildi, tahmin edilerek değil:
+
+```
+panely-web        172.18.0.0/16
+panely-pfprobe    172.19.0.0/16
+panely-portfolio  172.20.0.0/16
+```
+
+Docker'ın varsayılan yerel havuzu 172.17–172.31 aralığında; hepsi
+`172.16.0.0/12` içinde.
+
+**192.168.0.0/16 KASTEN açılmadı.** Docker o havuzu ancak 172.x tükendiğinde
+(≈15 ağ) kullanır. Açsaydık panelyd, kalıcı sunucunun (Legion) **ev ağına**
+erişebilirdi. Sınıra dayanılırsa yoklama `permission denied` ile düşer ve
+dağıtım kapıda durur — sessiz değil, görünür bir arıza.
+
+⚠ **Yükümlülük:** dockerd'nin adres havuzu `daemon.json` ile bu aralığa
+sabitlenmeli. Yapılmadı; sınıra dayanmak bugün için uzak ama kalıcı çözüm bu.
+
+### Ölçüm — çit gerçekten ısırıyor mu?
+
+Yoklayıcı, panelyd'nin **cgroup'una girerek** koşturuldu. systemd'nin
+`IPAddressAllow` politikası bir BPF programıdır ve birimin cgroup'una
+bağlıdır; aynı cgroup'a konan her süreç aynı filtreden geçer. Bu yüzden
+ölçülen şey "aynı direktiflerle kurulmuş bir kopya" değil, **çalışan
+birimin kendi politikası** (K-052).
+
+| hedef | panelyd içi | kontrol grubu | sonuç |
+|---|---|---|---|
+| konteyner `172.20.0.3:8080` | BAĞLANDI | BAĞLANDI | izin doğru |
+| `1.1.1.1:80` | engellendi | BAĞLANDI | engellendi |
+| `169.254.169.254:80` | engellendi | BAĞLANDI | engellendi |
+| `127.0.0.1:22` | engellendi | BAĞLANDI | engellendi |
+
+**Her satırda kontrol grubu var.** "1.1.1.1'e ulaşılamadı" tek başına
+hiçbir şey kanıtlamaz — sunucunun interneti kapalı da olabilir. Anlamlı
+olan fark.
+
+⚠ İlk deneme HTTP ile ölçüyordu ve kontrol grubu "başarısız" göründü:
+1.1.1.1 **301** dönüyor, port 22 HTTP konuşmuyor. Betik bunu başarı saymak
+yerine "ölçüm geçersiz" dedi. `IPAddressAllow` **soket** katmanında
+çalıştığı için doğru ölçüm ham TCP bağlantısıdır; HTTP araya gereksiz bir
+çeviri katmanı koyuyordu.
+
+`10.0.0.0/8` gibi "izin listesinde olmayan başka bir özel ağ" hedefi
+**kasten yok**: orada dinleyen bir şey olmadığından kontrol grubu da
+bağlanamıyor ve "engellendi" ile "zaten kimse yok" ayırt edilemiyor.
+Ölçemediğimiz bir şeyi geçmiş saymaktansa hiç sınamamak dürüst.
+
+### Ölçüm — yoklama gerçekten koşuyor mu?
+
+Gerçek bir dağıtım koşturuldu. nginx erişim günlüğü doğrudan tanıklık
+ediyor:
+
+```
+172.20.0.1 - - [21:28:56] "GET / HTTP/1.1" 200 826 "Go-http-client/1.1"
+172.20.0.1 - - [21:28:58] "GET / HTTP/1.1" 200 826 "Go-http-client/1.1"
+172.20.0.1 - - [21:29:00] "GET / HTTP/1.1" 200 826 "Go-http-client/1.1"
+```
+
+Tam **üç** yoklama, tam **iki** saniye arayla — `DefaultGate.Successes=3`,
+`Interval=2s`. `172.20.0.1` Docker köprüsünün geçidi, yani host, yani
+panelyd.
+
+### Yönlendirme İZLENMİYOR
+
+İzlenseydi, dağıtılan uygulama 302 döndürerek panelyd'ye istediği adrese
+istek attırabilirdi: kontrol düzlemi, iş yükünün seçtiği bir hedefe
+bağlanan bir araca dönüşürdü. Çit ikinci katmanda da kapatıyor ama savunma
+istemcide başlıyor. Gövde de sınırlı okunuyor (4 KB).
+
+URL bir **yapıdan** kuruluyor, dize birleştirmesinden değil; konak ayrı bir
+alan olduğu için hiçbir yol değeri hedefi kaydıramaz.
+
+### Boş sağlık yolu
+
+HTTP yoklamasını **açıkça** kapatır (HTTP konuşmayan iş yükleri için).
+Yoklayıcının kendisi ise zorunlu: `nil`'i "yoklama yok" diye kabul etmek,
+kapının sessizce eski seviyesine düşmesi demekti.
+
+### Ders
+
+Bu değişiklik dört yorumu birden yalana çevirdi ve biri her dağıtımda
+kullanıcının ekranına basılıyordu ("kapı uygulamanın cevap verdiğini
+ölçmez"). K-056 tam olarak böyle olmuştu. **Bir mekanizma değiştiğinde,
+onu anan her yorum aramayla bulunup düzeltilmeli** — `grep AF_UNIX` beş
+yerde eskimiş iddia buldu.
+
+---
+
+## K-061 — Boşaltma: eski sürüm durduruluyor ama SİLİNMİYOR
+
+Gerçekte gözlendi: `panely_portfolio_r1_0` 28 saat boyunca `Up` kaldı.
+Trafik almıyordu (uzlaştırıcı yalnızca aktif sürümü rotalar) ama kaynak
+tüketiyordu. Her dağıtımda bir konteyner birikiyordu.
+
+### Sıra taşıyıcıdır
+
+```
+kapı → SetActiveRelease → Caddy yüklendi → BOŞALTMA → durdur
+```
+
+Boşaltma penceresi olmadan: ters vekil yeni upstream'lere çevrilse bile
+eski konteynerlere **uçan** istekler var. Anında öldürmek, her dağıtımda
+bir avuç kullanıcıya yarım yanıt göstermek demek. Pencereden **önce**
+durdurmak daha da kötü olurdu: o an trafiği **alan** konteyner ölürdü.
+
+Testte bu sıra, durdurma anındaki ters vekil yükleme sayısı okunarak
+sabitlendi. Yalnızca uykuları saymak yetmiyordu — boşaltma yanlışlıkla
+Caddy'den önce yapılsaydı süreler aynı görünürdü.
+
+### En ince durum
+
+Uygulama uzlaştırmada **atlandıysa** trafik taşınmamıştır; ters vekilde
+hâlâ eski sürümün rotası duruyordur. Bu durumda boşaltmaya hiç
+girilmiyor — aksi hâlde dağıtım, düzeltmeye çalıştığı siteyi kendisi
+düşürürdü.
+
+### Durdurma hatası dağıtımı başarısız SAYMAZ
+
+Trafik o noktada zaten taşındı ve site sağlıklı. Ayrı bir `DrainError`
+tipi çağıranın farkı görmesini sağlıyor: düz hata dönseydi CLI çalışan bir
+dağıtıma "başarısız" der, kullanıcı da muhtemelen geri alırdı.
+
+### Neden silinmiyor?
+
+Duran bir konteyneri yeniden başlatmak saniyeler sürer; imajdan yeniden
+kurmak dakikalar. Geri alma bunun üstüne oturacak. Silme politikası
+(son N sürümü tut) dağıtım geçmişiyle birlikte gelecek.

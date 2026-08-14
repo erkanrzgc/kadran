@@ -131,7 +131,7 @@ func run() error {
 		return err
 	}
 
-	rollout, err := deploy.NewRollout(exec, db, reconciler, deploy.DefaultGate)
+	rollout, err := deploy.NewRollout(exec, db, reconciler, deploy.DefaultGate, deploy.DefaultDrain)
 	if err != nil {
 		return err
 	}

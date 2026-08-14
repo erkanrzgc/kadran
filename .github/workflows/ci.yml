@@ -18,7 +18,18 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GO_VERSION: "1.25"
+  # ⚠ YAMA SÜRÜMÜ DAHİL sabitleniyor, "1.25" değil.
+  #
+  # Gerekçe ölçülerek öğrenildi: govulncheck üç stdlib zafiyeti bildirdi
+  # (net/url, crypto/tls, encoding/asn1 — hepsi go1.25.13'te düzeltilmiş)
+  # ve koşu go1.25.12 ile yapılmıştı. "1.25" yazmak setup-go'nun o anki
+  # sürüm listesine güvenmek demek; liste bayatladığında yamalı sürüm
+  # sessizce ALINMAZ ve güvenlik işi, kendi denetlediği şeyin eski hâlini
+  # denetler.
+  #
+  # Bunu yükseltmek artık bilinçli bir hamle: govulncheck kırmızıya
+  # döndüğünde önce buraya bakılacak.
+  GO_VERSION: "1.25.13"
   BUF_VERSION: "1.47.2"
 
 jobs:

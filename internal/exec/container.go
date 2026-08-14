@@ -339,10 +339,13 @@ func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, stream grpc.S
 // ── Ağa KİM çıkıyor? Hiçbirimiz ─────────────────────────────────────
 //
 // Bu soru bu RPC'yi bir dilim boyunca geciktirdi ve notlardaki ikilem
-// ("panelyd mi çeksin, executor mü?") YANLIŞTI: her iki birim de
-// `RestrictAddressFamilies=AF_UNIX` taşıyor ve ikisinin de gevşetilmesi
+// ("panelyd mi çeksin, executor mü?") YANLIŞTI: ikisinin de ağa çıkması
 // gerekmiyor. Uzak bağlamı BuildKit kendi ağ ad alanında çözüyor;
 // executor yalnızca unix soketine bayt yazıyor (docs/decisions.md K-035).
+//
+// Executor bugün de `RestrictAddressFamilies=AF_UNIX` taşıyor ve öyle
+// kalmalı. panelyd dilim 4c'de AF_INET aldı (sağlık yoklaması) ama
+// yalnızca 172.16.0.0/12'ye; ikisi de GitHub'a ulaşamaz.
 //
 // Sürücü diliminin devraldığı yükümlülükler:
 //

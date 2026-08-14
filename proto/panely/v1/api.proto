@@ -171,10 +171,15 @@ message VerifyAuditChainResponse {
 //
 // ── Dalı commit'e kim çözer? İSTEMCİ ────────────────────────────────
 //
-// panelyd çözemez: systemd birimi `RestrictAddressFamilies=AF_UNIX`
-// ile çalışıyor, yani TCP soketi AÇAMAZ — `git ls-remote` de HTTPS de
-// mümkün değil. Bu bir eksiklik değil, en-az-yetkinin ölçülebilir hâli:
-// kontrol düzlemi süreci ağa hiç çıkmaz.
+// panelyd çözemez. Birim dilim 4c'de sağlık yoklaması için AF_INET aldı,
+// ama `IPAddressDeny=any` + `IPAddressAllow=172.16.0.0/12` yalnızca
+// Docker'ın özel ağına izin veriyor — `git ls-remote` de HTTPS de hâlâ
+// mümkün değil. Gerçek sunucuda ölçüldü: panelyd'nin cgroup'undan
+// 1.1.1.1'e bağlanma denemesi engelleniyor, aynı deneme cgroup dışında
+// başarılı oluyor.
+//
+// Bu bir eksiklik değil, en-az-yetkinin ölçülebilir hâli: kontrol düzlemi
+// süreci internete çıkmaz.
 //
 // Dolayısıyla Deploy TAM 40 haneli bir sha alır ve çözümü iş
 // istasyonundaki istemci yapar. Faz 4'ün webhook akışı da bunu bozmaz:

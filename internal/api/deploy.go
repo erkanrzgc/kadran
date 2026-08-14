@@ -33,15 +33,16 @@ const sealTimeout = 10 * time.Second
 //	derle → sürümü mühürle → konteynerleri başlat → KAPI →
 //	aktif sürümü yaz → ters vekili uzlaştır
 //
-// ⚠ KAPI BİR HTTP SAĞLIK YOKLAMASI DEĞİL. Ölçtüğü şey konteynerlerin
-// çalışıyor ve adreslenebilir olması; uygulamanın cevap verip vermediği
-// DEĞİL. Gerekçe deploy.awaitReady'de: HTTP yoklaması panelyd'nin ağa
-// çıkmasını gerektiriyor ve birimi AF_UNIX ile kısıtlı. Eksik olan şey
-// saklanmıyor.
+// Kapı İKİ şeyi birden ölçüyor: konteynerin çalışıp adreslenebilir
+// olmasını (Lifecycle) ve uygulamanın sağlık yoluna cevap vermesini
+// (HTTP yoklaması). İkincisi olmadan açılan ama 500 dönen bir uygulama
+// kapıdan geçerdi. Ayrıntı deploy.awaitReady'de.
 //
-// ⚠ ESKİ SÜRÜM DURDURULMUYOR ve GERİ ALMA YOK. Eski konteynerler ayakta
-// kalıyor; trafik almıyorlar (uzlaştırıcı yalnızca aktif sürümü rotalar)
-// ama kaynak tüketiyorlar.
+// Kapıdan sonra boşaltma penceresi beklenir ve ESKİ sürümlerin
+// konteynerleri durdurulur — ama silinmez, geri alma hızlı olsun diye.
+//
+// ⚠ GERİ ALMA HÂLÂ YOK: `deployments` tablosu uygulama başına tek satır
+// tuttuğu için "önceki AKTİF sürüm" sorusunun cevabı şemada mevcut değil.
 //
 // ── Başarı ölçütü akışın ŞEKLİNDE ──────────────────────────────────
 //

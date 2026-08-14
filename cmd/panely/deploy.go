@@ -125,13 +125,6 @@ func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
 
 	fmt.Fprintf(c.stdout, "\nSürüm %s canlıda · imaj %s\n",
 		succeeded.GetReleaseId(), shortImage(succeeded.GetImageId()))
-	// ⚠ Kapının ne ÖLÇMEDİĞİ burada da söyleniyor. Kullanıcının "dağıtım
-	// başarılı" ile "uygulamam cevap veriyor" arasındaki farkı bilmesi
-	// gerekiyor: kapı konteynerin çalıştığını görüyor, uygulamanın cevap
-	// verdiğini değil.
-	fmt.Fprintln(c.stderr,
-		"Not: sağlık kapısı konteynerin ÇALIŞTIĞINI doğrular, "+
-			"uygulamanın cevap verdiğini değil.")
 	return exitOK
 }
 
@@ -139,10 +132,16 @@ func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
 //
 // ── Neden çözümü İSTEMCİ yapıyor? ──────────────────────────────────
 //
-// panelyd yapamaz: systemd birimi `RestrictAddressFamilies=AF_UNIX` ile
-// çalışıyor, yani TCP soketi AÇAMAZ. Kontrol düzlemi süreci ağa hiç
-// çıkmıyor ve bu bir eksiklik değil, en-az-yetkinin ölçülebilir hâli.
-// Dolayısıyla `git ls-remote` karşılığı burada, iş istasyonunda koşar.
+// panelyd yapamaz. Gerekçe dilim 4c'de DEĞİŞTİ ama sonuç aynı kaldı:
+// birim artık AF_INET açıyor (sağlık yoklaması için), ancak
+// `IPAddressDeny=any` + `IPAddressAllow=172.16.0.0/12` yalnızca Docker'ın
+// özel ağına izin veriyor. GitHub'a bağlanmak hâlâ imkânsız — gerçek
+// sunucuda ölçüldü: 1.1.1.1'e bağlanma denemesi engelleniyor, aynı
+// deneme cgroup dışında başarılı.
+//
+// Yani kontrol düzlemi süreci internete hiç çıkmıyor; bu bir eksiklik
+// değil, en-az-yetkinin ölçülebilir hâli. `git ls-remote` karşılığı
+// burada, iş istasyonunda koşar.
 func (c *cli) resolveCommit(
 	ctx context.Context, rpc panelyv1.PanelyServiceClient,
 	appID, commit, branch string,

@@ -37,9 +37,15 @@ const (
 
 // New, unix soketi üzerinden konuşan bir istemci kurar.
 //
-// panelyd `RestrictAddressFamilies=AF_UNIX` ile çalışıyor, yani TCP
-// açamaz — Caddy'nin admin ucunun unix soketi olması bu yüzden bir
-// tercih değil, gereklilik.
+// panelyd dilim 4c'de sağlık yoklaması için AF_INET aldı, ama
+// `IPAddressDeny=any` + `IPAddressAllow=172.16.0.0/12` yalnızca Docker'ın
+// özel ağına izin veriyor. Caddy'nin admin ucu HOSTTA duruyor, o aralıkta
+// değil — yani TCP admin portu kullanılsaydı panelyd ona ULAŞAMAZDI
+// (gerçek sunucuda ölçüldü: 127.0.0.1'e bağlanma denemesi engelleniyor).
+//
+// Unix soketi bu yüzden bir tercih değil, gereklilik. Ve iyi ki öyle:
+// TCP admin ucu, hostta çalışan HERKESİN Caddy'yi yeniden yapılandırması
+// demekti.
 func New(socketPath string) *Client {
 	return &Client{http: &http.Client{
 		Transport: &http.Transport{

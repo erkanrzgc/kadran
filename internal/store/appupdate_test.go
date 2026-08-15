@@ -101,6 +101,50 @@ func TestUpdateAppTouchesOnlyTheNamedFields(t *testing.T) {
 	}
 }
 
+// TestUpdateAppWritesEachFieldToItsOwnColumn, dört alanın da DOĞRU
+// sütuna gittiğini sınar.
+//
+// ── Neden hepsi tek seferde ve tek tek karşılaştırılıyor? ───────────
+//
+// UPDATE cümlesi sütunları sabit bir sırayla adlandırıyor ve argümanlar
+// ayrı bir listede. İkisi ayrışırsa `git_branch` ile `health_path` —
+// ikisi de dize — sessizce yer değiştirir: derleme geçer, tek alanı
+// değiştiren testler de geçer, ve hata ancak sağlık yoklaması dal adına
+// istek atmaya çalışınca görülür. appSelect/scanApp için yazılan aynı
+// gerekçe (apps.go), yazma yolunda da geçerli.
+//
+// Bu test lint sayesinde yazıldı: `u32ptr` yardımcısının kullanılmadığı
+// yakalandı, yani `replicas` depo katmanında hiç güncellenmemişti.
+func TestUpdateAppWritesEachFieldToItsOwnColumn(t *testing.T) {
+	s := newAppStore(t)
+	mustCreate(t, s, sampleApp("blog"))
+
+	got := mustUpdate(t, s, "blog", AppUpdate{
+		Domain:     strptr("alan.example.com"),
+		GitBranch:  strptr("dal-adi"),
+		HealthPath: strptr("/saglik"),
+		Replicas:   u32ptr(7),
+	})
+
+	for _, f := range []struct{ name, got, want string }{
+		{"domain", got.Domain, "alan.example.com"},
+		{"git_branch", got.GitBranch, "dal-adi"},
+		{"health_path", got.HealthPath, "/saglik"},
+	} {
+		if f.got != f.want {
+			t.Errorf("%s = %q, beklenen %q — sütunlar karışmış olabilir",
+				f.name, f.got, f.want)
+		}
+	}
+	if got.Replicas != 7 {
+		t.Errorf("replicas = %d, beklenen 7", got.Replicas)
+	}
+	// Yazma yolunun DOKUNMAMASI gereken alanlar.
+	if got.ContainerPort != 8080 || got.GitRepo != "panely" || got.GitOwner != "erkanrzgc" {
+		t.Errorf("yazma yolu adlandırmadığı sütunlara dokundu: %+v", got)
+	}
+}
+
 // TestUpdateAppCanClearOptionalFields, "dokunma" ile "temizle" ayrımının
 // GERÇEKTEN temsil edilebildiğini sınar. Bir üstteki test ancak bu testle
 // birlikte anlamlı: yalnızca korumayı ölçseydi, hiçbir şey yazmayan bir

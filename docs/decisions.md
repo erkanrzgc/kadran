@@ -3261,3 +3261,36 @@ ilk üçünden farklı bir biçimi: iddia doğru şeyi kontrol ediyordu ama
 sistem saati ~15ms'de bir ilerliyor). Araya `Sleep` koymak testi saat
 çözünürlüğüne bağımlı bırakırdı; damga bilinen eski bir değere çekilerek
 iddia saatten tamamen bağımsız hâle getirildi.
+
+## K-068 — İddiayı kullanıcının OKUDUĞU katmana yaz
+
+K-065'te sunucu, alan adı yazıldıktan sonra ters vekil güncellenemezse
+hatanın içinde değişikliğin **KAYDEDİLDİĞİNİ** söylüyor; mesajın var olma
+sebebi kullanıcının kaydın eski değerde kaldığını sanmasını engellemekti.
+Sunucu tarafındaki test bunu doğruluyordu ve yeşildi.
+
+Ama CLI o hatayı diğer komutlardaki gibi sarmalıyordu:
+
+```go
+return c.fail(fmt.Errorf("uygulama güncellenemedi: %w", err))
+```
+
+Terminalde çıkan satır kendi kendisiyle çelişiyordu:
+
+```
+panely: uygulama güncellenemedi: alan adı ... KAYDEDİLDİ, ama ...
+```
+
+Operatör ilk üç kelimeyi okuyup **tam ters** sonuca varır. Yani sunucudaki
+özenli mesaj, bir satır aşağıda tersine çevriliyordu.
+
+Ön ek artık bir sonuç iddia etmiyor (`app update:`), yalnızca hangi
+komutun konuştuğunu söylüyor; sunucunun mesajları zaten kendi kendini
+açıklıyor. Mutasyonla doğrulandı: eski ön ek geri konunca yeni test
+kırmızıya dönüyor.
+
+**Bu, K-067 ile aynı sınıfın ikinci biçimi.** Orada test doğru şeyi
+kontrol ediyordu ama yanlış YERDEN okuyordu (bellek kopyası, disk değil);
+burada doğru şeyi kontrol ediyordu ama yanlış KATMANDA (sunucu hatası,
+kullanıcının gördüğü satır değil). Aynı dilimde iki kez çıkması tesadüf
+değil: bir mesajın değeri onu okuyan yerde ölçülür.

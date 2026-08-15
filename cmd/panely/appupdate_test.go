@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,45 @@ func TestIsEmptyUpdateDetectsNoFields(t *testing.T) {
 	clearing := buildUpdateRequest("blog", appUpdateFlags{}, map[string]bool{"domain": true})
 	if isEmptyUpdate(clearing) {
 		t.Error("-domain=\"\" boş güncelleme sayıldı — vekilden çıkarma reddedilirdi")
+	}
+}
+
+// TestUpdateFailureDoesNotContradictTheServerMessage, KULLANICININ
+// GÖRDÜĞÜ satırı kuruyor.
+//
+// Sunucu tarafındaki test hatanın "KAYDEDİLDİ" içerdiğini doğruluyordu ve
+// YEŞİLDİ — ama CLI o hatayı "uygulama güncellenemedi: %w" ile
+// sarmalıyordu, yani terminalde şu görünüyordu:
+//
+//	panely: uygulama güncellenemedi: ... KAYDEDİLDİ, ama ...
+//
+// Test doğru şeyi kontrol ediyordu, yanlış KATMANDA. Bu, aynı dilimde
+// yakalanan "dönen struct'a bakan test diski ölçmez" kusurunun kardeşi.
+func TestUpdateFailureDoesNotContradictTheServerMessage(t *testing.T) {
+	c, _, errOut := newTestCLI("")
+
+	// Sunucunun ürettiği gerçek mesajın şekli.
+	serverErr := errors.New(
+		`alan adı "eski.example.com" → "yeni.example.com" olarak KAYDEDİLDİ, ` +
+			`ama ters vekil güncellenemedi: trafik hâlâ eski rotada`)
+
+	if code := c.failUpdate(serverErr); code != exitError {
+		t.Fatalf("çıkış kodu = %d, beklenen %d", code, exitError)
+	}
+
+	line := errOut.String()
+	if !strings.Contains(line, "KAYDEDİLDİ") {
+		t.Fatalf("sunucunun mesajı kayboldu: %q", line)
+	}
+	for _, contradiction := range []string{"güncellenemedi:", "başarısız"} {
+		// Not: sunucunun kendi metnindeki "ters vekil güncellenemedi"
+		// ifadesi ÖN EK DEĞİL ve doğru — aranan şey iddianın mesajdan
+		// ÖNCE gelmesi.
+		if idx := strings.Index(line, contradiction); idx != -1 &&
+			idx < strings.Index(line, "KAYDEDİLDİ") {
+			t.Errorf("kullanıcı önce %q okuyor, sonra KAYDEDİLDİ — çelişki: %q",
+				contradiction, line)
+		}
 	}
 }
 

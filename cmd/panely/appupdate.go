@@ -67,7 +67,7 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 
 	resp, err := conn.RPC().UpdateApp(ctx, req)
 	if err != nil {
-		return c.fail(fmt.Errorf("uygulama güncellenemedi: %w", err))
+		return c.failUpdate(err)
 	}
 
 	if *asJSON {
@@ -99,6 +99,30 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		fmt.Fprintf(c.stdout, "\n%s\n", d)
 	}
 	return exitOK
+}
+
+// failUpdate, sunucu hatasını kullanıcıya basar.
+//
+// ── Neden "uygulama güncellenemedi" ÖN EKİ YOK? ─────────────────────
+//
+// Diğer komutlar hatalarını böyle sarmalıyor ve burada da öyle yazılmıştı.
+// Ama bu RPC'nin bir hata yolunda mesaj tam tersini söylüyor: alan adı
+// yazıldıktan SONRA ters vekil güncellenemezse sunucu değişikliğin
+// KAYDEDİLDİĞİNİ bildiriyor. Ön ekle birlikte terminalde şu çıkıyordu:
+//
+//	panely: uygulama güncellenemedi: alan adı ... KAYDEDİLDİ, ama ...
+//
+// Operatör ilk üç kelimeyi okuyup tam ters sonuca varır — üstelik
+// sunucudaki mesajın var olma sebebi tam olarak bunu engellemekti.
+//
+// Ön ek artık bir SONUÇ İDDİA ETMİYOR, yalnızca hangi komutun konuştuğunu
+// söylüyor. Sunucunun mesajları zaten kendi kendini açıklıyor.
+//
+// ⚠ Bu kusur, sunucu tarafındaki test YEŞİLKEN vardı: test hatanın
+// "KAYDEDİLDİ" içerdiğini doğruluyordu ama kullanıcının GÖRDÜĞÜ satırı
+// hiç kurmuyordu. Aşağıdaki test o satırı kuruyor.
+func (c *cli) failUpdate(err error) int {
+	return c.fail(fmt.Errorf("app update: %w", err))
 }
 
 // buildUpdateRequest, YALNIZCA komut satırında verilmiş alanları isteğe

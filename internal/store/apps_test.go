@@ -40,10 +40,14 @@ func sampleApp(id string) App {
 		ContainerPort:  8080,
 		Replicas:       2,
 		HealthPath:     "/healthz",
-		Domain:         "example.com",
-		MemoryBytes:    256 << 20,
-		CPUMillis:      500,
-		BlkioWeight:    500,
+		// Alan adı KİMLİKTEN türetiliyor. Sabit "example.com" idi ve göç
+		// 0004 gelince iki uygulama yaratan her test kırıldı — kısıtın
+		// gerçekten zorlandığının kanıtı. Çakışmayı SINAYAN testler alanı
+		// açıkça ayarlar; geri kalanının onunla işi yok.
+		Domain:      id + ".example.com",
+		MemoryBytes: 256 << 20,
+		CPUMillis:   500,
+		BlkioWeight: 500,
 	}
 }
 

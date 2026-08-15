@@ -86,11 +86,38 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return App{}, fmt.Errorf("%w: %s", ErrAppExists, app.ID)
+			return App{}, s.explainCreateConflict(ctx, app, err)
 		}
 		return App{}, fmt.Errorf("uygulama yazılamadı: %w", err)
 	}
 	return app, nil
+}
+
+// explainCreateConflict, benzersizlik ihlalinin HANGİ kısıttan geldiğini
+// veritabanına sorar.
+//
+// ── Neden gerekli? ───────────────────────────────────────────────────
+//
+// Göç 0004'ten önce `apps` tablosundaki tek benzersizlik kısıtı birincil
+// anahtardı, dolayısıyla "ihlal ⇒ kimlik zaten var" çıkarımı DOĞRUYDU.
+// Alan adı indeksi o çıkarımı geçersiz kıldı: aynı hata sınıfı artık iki
+// sebepten doğuyor ve eski eşleme, alan adı çakışmasını "uygulama zaten
+// var: <henüz-yaratılmamış-kimlik>" diye raporlardı.
+//
+// Bu, K-056'nın sınıfı: bir mekanizma değişince ona dayanan çıkarımlar
+// sessizce yalana döner. Sürücünün hata KODU bu ayrımı taşımıyor (ikisi
+// de SQLITE_CONSTRAINT_UNIQUE) ve mesaj metnine bakmak sürücü sürümüne
+// bağımlılık olurdu; tek dürüst kaynak veritabanının kendisi.
+func (s *Store) explainCreateConflict(ctx context.Context, app App, cause error) error {
+	// Kimlik ÖNCE sorulur. İki kısıt birden ihlal edilmişse kullanıcının
+	// çözmesi gereken ilk şey kimliktir: alan adını düzeltmek yaratmayı
+	// yine de geçirmezdi.
+	var one int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT 1 FROM apps WHERE id = ?`, app.ID).Scan(&one); err == nil {
+		return fmt.Errorf("%w: %s", ErrAppExists, app.ID)
+	}
+	return domainConflict(ctx, s.db, app.Domain, app.ID, cause)
 }
 
 // GetApp, tek bir uygulamayı okur. Yoksa ErrAppNotFound döner.

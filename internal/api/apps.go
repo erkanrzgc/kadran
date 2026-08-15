@@ -181,6 +181,14 @@ func appError(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, store.ErrAppExists):
 		return status.Error(codes.AlreadyExists, err.Error())
+	// ⚠ ErrAppExists ile AYNI kola konulmadı. İkisi de AlreadyExists'e
+	// düşüyor ama farklı şeyler söylüyorlar: biri "bu kimlik dolu", öteki
+	// "bu alan adı BAŞKA bir uygulamada". Tek kola indirgemek, ileride
+	// biri farklı bir kod alması gerektiğinde ayrımın kaybolduğu yer
+	// olurdu — ve mesajlar zaten farklı, yani kullanıcı ikisini ayırt
+	// edebiliyor.
+	case errors.Is(err, store.ErrDomainTaken):
+		return status.Error(codes.AlreadyExists, err.Error())
 	case status.Code(err) != codes.Unknown:
 		// Zaten bir gRPC hatası (ör. denetim kaydı yazılamadı).
 		return err

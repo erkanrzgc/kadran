@@ -13,18 +13,21 @@ import (
 // runApp, `app` alt komutlarını dağıtır.
 func (c *cli) runApp(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.usageError("`app` bir alt komut ister: create, list veya show")
+		return c.usageError("`app` bir alt komut ister: create, update, list veya show")
 	}
 
 	switch args[0] {
 	case "create":
 		return c.runAppCreate(ctx, args[1:])
+	case "update":
+		return c.runAppUpdate(ctx, args[1:])
 	case "list":
 		return c.runAppList(ctx, args[1:])
 	case "show":
 		return c.runAppShow(ctx, args[1:])
 	default:
-		return c.usageError("bilinmeyen app alt komutu %q — create, list veya show", args[0])
+		return c.usageError(
+			"bilinmeyen app alt komutu %q — create, update, list veya show", args[0])
 	}
 }
 

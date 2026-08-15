@@ -31,7 +31,10 @@ func newTestServer(t *testing.T) (*Server, *store.Store) {
 	}
 	t.Cleanup(func() { _ = exec.Close() })
 
-	srv, err := NewServer(ServerOptions{Store: db, Executor: exec, Rollout: &fakeRollout{}})
+	srv, err := NewServer(ServerOptions{
+		Store: db, Executor: exec,
+		Rollout: &fakeRollout{}, Reconciler: &fakeReconciler{},
+	})
 	if err != nil {
 		t.Fatalf("sunucu oluşturulamadı: %v", err)
 	}

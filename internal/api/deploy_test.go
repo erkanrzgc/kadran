@@ -112,7 +112,10 @@ func newDeployServer(t *testing.T, fe *fakeExec) (*Server, *store.Store) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	srv, err := NewServer(ServerOptions{Store: db, Executor: fe, Rollout: &fakeRollout{}})
+	srv, err := NewServer(ServerOptions{
+		Store: db, Executor: fe,
+		Rollout: &fakeRollout{}, Reconciler: &fakeReconciler{},
+	})
 	if err != nil {
 		t.Fatalf("sunucu oluşturulamadı: %v", err)
 	}
@@ -519,7 +522,9 @@ func newDeployServerWith(t *testing.T, fe *fakeExec, ro *fakeRollout) (*Server, 
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	srv, err := NewServer(ServerOptions{Store: db, Executor: fe, Rollout: ro})
+	srv, err := NewServer(ServerOptions{
+		Store: db, Executor: fe, Rollout: ro, Reconciler: &fakeReconciler{},
+	})
 	if err != nil {
 		t.Fatalf("sunucu oluşturulamadı: %v", err)
 	}

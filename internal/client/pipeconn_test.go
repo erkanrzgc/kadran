@@ -93,6 +93,10 @@ func (s *stubService) CreateApp(context.Context, *panelyv1.CreateAppRequest) (*p
 	return &panelyv1.CreateAppResponse{}, nil
 }
 
+func (s *stubService) UpdateApp(context.Context, *panelyv1.UpdateAppRequest) (*panelyv1.UpdateAppResponse, error) {
+	return &panelyv1.UpdateAppResponse{}, nil
+}
+
 func (s *stubService) ListApps(context.Context, *panelyv1.ListAppsRequest) (*panelyv1.ListAppsResponse, error) {
 	return &panelyv1.ListAppsResponse{}, nil
 }

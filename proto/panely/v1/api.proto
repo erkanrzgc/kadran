@@ -46,17 +46,26 @@ service PanelyService {
   // veya çalıştırmaz; yalnızca kontrol düzlemi durumunu yazar.
   rpc CreateApp(CreateAppRequest) returns (CreateAppResponse);
 
+  // UpdateApp, var olan bir uygulamanın DEĞİŞTİRİLEBİLİR alanlarını yazar.
+  //
+  // Alan adı değişirse ters vekil aynı çağrıda yeniden uzlaştırılır —
+  // yani trafik dağıtım beklemeden taşınır. Diğer alanlar bir sonraki
+  // dağıtımda etkili olur; hangisinin ne zaman etkili olduğu
+  // UpdateAppRequest'te alan alan yazılı.
+  rpc UpdateApp(UpdateAppRequest) returns (UpdateAppResponse);
+
   // ListApps, tanımlı uygulamaları döner.
   rpc ListApps(ListAppsRequest) returns (ListAppsResponse);
 
   // GetApp, tek bir uygulamayı ve sürüm geçmişini döner.
   rpc GetApp(GetAppRequest) returns (GetAppResponse);
 
-  // Deploy, bir commit'i derler ve sürüm olarak kaydeder.
+  // Deploy, bir commit'i derler, konteynerleri ayağa kaldırır ve sağlık
+  // kapısı geçilirse trafiği ona çevirir (blue-green).
   //
-  // ⚠ Bu dilimde Deploy TRAFİK TAŞIMAZ: imaj üretilir ve sürüm
-  // kaydedilir, ama konteyner başlatılmaz ve ters vekil dokunulmaz.
-  // Blue-green geçişi Caddy'ye bağlı ve o henüz hostta kurulu değil.
+  // Sıra YÜK TAŞIYOR: kapı → aktif sürüm yazılır → ters vekil yüklenir →
+  // boşaltma penceresi → eski konteynerler durdurulur. Ayrıntı ve
+  // gerekçeler internal/deploy/rollout.go'da.
   rpc Deploy(DeployRequest) returns (stream DeployResponse);
 }
 
@@ -271,6 +280,67 @@ message CreateAppRequest {
 
 message CreateAppResponse {
   App app = 1;
+}
+
+// UpdateAppRequest, bir uygulamanın değiştirilebilir alanlarını taşır.
+//
+// ── Neden `optional`, neden tam AppSpec değil? ──────────────────────
+//
+// Boş dize hem `domain` hem `health_path` için GEÇERLİ bir değer
+// ("ters vekilde görünme", "HTTP yoklaması yapma"). Tam bir AppSpec
+// gönderme modelinde, alanı doldurmayan bir istemci onları SESSİZCE
+// silerdi — ve bu iki alan tam olarak bu işin var olma sebebi.
+// `replicas` aynı hataya düşse doğrulayıcıya çarpıp gürültülü ölürdü.
+//
+// proto3 `optional` alanı işaretçiye çeviriyor, yani "belirtilmedi" ile
+// "boşa ayarla" TEMSİL EDİLEBİLİR biçimde ayrışıyor. Bu şemanın her
+// yerinde tekrarlanan tercih: doğrulanan bir kural yerine temsil
+// edilemeyen bir durum.
+//
+// ── Hangi alan NE ZAMAN etkili olur? ────────────────────────────────
+//
+// Her biri ölçüldü, varsayılmadı:
+//
+//   domain      → BU ÇAĞRIDA. Rota `apps.domain`'den JOIN'le üretiliyor
+//                 (store/deployments.go) ve daemon uzlaştırmayı hemen
+//                 koşturuyor.
+//   replicas    → bir sonraki dağıtımda. Uzlaştırıcı konteyner yaratmaz;
+//                 replika sayısını yalnızca rollout okur.
+//   health_path → bir sonraki dağıtımda. Sağlık kapısı yoklamayı orada
+//                 yapar.
+//   git_branch  → istemcinin bir sonraki sha çözümünde. Sunucu bu alanı
+//                 hiçbir yere geçirmez.
+//
+// ── container_port KASTEN YOK ───────────────────────────────────────
+//
+// store.Deployment portu `apps`'ten CANLI okuyor. Değiştirmek, bir
+// sonraki uzlaştırmada ters vekili çalışan konteynerlerin DİNLEMEDİĞİ
+// bir porta yönlendirir ve siteyi anında düşürür. Port değişikliği yeni
+// bir dağıtım gerektirir; dağıtımsız temsil edilebilir olması tuzaktı.
+//
+// Git kaynağı (host/owner/repo) da yok: deponun değişmesi bir güncelleme
+// değil, başka bir uygulamadır.
+message UpdateAppRequest {
+  string app_id = 1;
+
+  optional string domain = 2;
+  optional string git_branch = 3;
+  optional string health_path = 4;
+  optional uint32 replicas = 5;
+}
+
+message UpdateAppResponse {
+  App app = 1;
+
+  // Ters vekilin durumu. BOŞ ise uzlaştırma hiç gerekmedi (alan adı
+  // değişmedi).
+  //
+  // Ayrı bir alan olması gerekli: alan adı değişip de trafiğin
+  // taşınmaması MÜMKÜN — uygulamanın ayakta replikası yoksa uzlaştırıcı
+  // onu atlar. Bu bir hata değil (henüz dağıtılmamış bir uygulama için
+  // normal), ama kullanıcının bunu bilmesi şart. Yalnızca "tamam"
+  // demek, yeni alan adının canlıda cevap verdiğini ima ederdi.
+  string proxy_detail = 2;
 }
 
 message ListAppsRequest {}

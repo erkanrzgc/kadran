@@ -20,6 +20,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/panely/internal/deploy"
 	"github.com/erkanrzgc/panely/internal/execclient"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/pbconv"
@@ -32,11 +33,12 @@ import (
 // UnimplementedPanelyServiceServer kasıtlı olarak GÖMÜLMEZ; gerekçe için
 // docs/decisions.md K-011'e bakın.
 type Server struct {
-	store     *store.Store
-	exec      Executor
-	rollout   Rollout
-	startedAt time.Time
-	runAsUser string
+	store      *store.Store
+	exec       Executor
+	rollout    Rollout
+	reconciler Reconciler
+	startedAt  time.Time
+	runAsUser  string
 }
 
 // Executor, panelyd'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
@@ -70,6 +72,15 @@ type ServerOptions struct {
 	// "derledim ama trafiği taşımadım" davranışına düşerdi ve bu, akışın
 	// en kritik yarısının fark edilmeden kaybolması demekti.
 	Rollout Rollout
+
+	// Reconciler, kontrol düzlemindeki gerçeği ters vekile yansıtır.
+	// Zorunlu — Rollout ile TAM OLARAK aynı gerekçeyle.
+	//
+	// ⚠ Nil bırakılabilseydi `app update -domain` sessizce yarım
+	// çalışırdı: alan adı veritabanında değişir, canlıda hiçbir şey
+	// olmaz, komut "başarılı" der. Kullanıcı trafiğin taşındığını sanır
+	// ve bunu ancak yeni alan adı cevap vermeyince fark eder.
+	Reconciler Reconciler
 }
 
 // Rollout, derlenmiş bir sürümü ayağa kaldırıp trafiği ona çevirir.
@@ -78,6 +89,17 @@ type ServerOptions struct {
 // tek yöntem ve dar tutmak, testlerde sahtelemeyi ucuzlatıyor.
 type Rollout interface {
 	Run(ctx context.Context, app store.App, rel store.Release) error
+}
+
+// Reconciler, tüm uygulamaların durumunu ters vekile yansıtır.
+//
+// Sonuç tipi `deploy.Result` — bir `error` değil. Fark yük taşıyor:
+// uzlaştırma BAŞARILI olup yine de bizim uygulamamızı atlamış olabilir
+// (ayakta replikası yoksa rota üretilemez). İkisini tek bir hataya
+// indirgemek, "trafik taşındı" ile "taşınmadı ama sistem sağlıklı"
+// durumlarını ayırt edilemez yapardı.
+type Reconciler interface {
+	Reconcile(ctx context.Context) (deploy.Result, error)
 }
 
 // NewServer, API servisini oluşturur.
@@ -91,6 +113,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if err := checkNotTypedNil(opts.Rollout, "rollout orkestratörü"); err != nil {
 		return nil, err
 	}
+	if err := checkNotTypedNil(opts.Reconciler, "vekil uzlaştırıcısı"); err != nil {
+		return nil, err
+	}
 
 	// Hangi kullanıcı olarak çalıştığımız durum ekranında gösterilir:
 	// "root" görünüyorsa kurulum bozuk demektir ve bu hemen fark edilmeli.
@@ -100,11 +125,12 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	return &Server{
-		store:     opts.Store,
-		exec:      opts.Executor,
-		rollout:   opts.Rollout,
-		startedAt: time.Now(),
-		runAsUser: runAs,
+		store:      opts.Store,
+		exec:       opts.Executor,
+		rollout:    opts.Rollout,
+		reconciler: opts.Reconciler,
+		startedAt:  time.Now(),
+		runAsUser:  runAs,
 	}, nil
 }
 

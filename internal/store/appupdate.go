@@ -72,6 +72,19 @@ func (u AppUpdate) ChangesDomain(current string) bool {
 	return u.Domain != nil && *u.Domain != current
 }
 
+// Apply, güncellemeyi bir KOPYAYA uygular ve sonucu döner.
+//
+// Çağıranın (API katmanı) doğrulamayı BİRLEŞTİRİLMİŞ tanıma yapabilmesi
+// için var. Deltayı tek başına doğrulamak yetmezdi: tek başına geçerli
+// görünen bir değişiklik, mevcut durumla birleşince geçersiz bir tanım
+// üretebilir ve o tanım diske yazılırdı.
+//
+// Değer alıcı KASITLI — girdi struct'ı değişmez, yeni bir kopya döner.
+func (u AppUpdate) Apply(app App) App {
+	u.applyTo(&app)
+	return app
+}
+
 func (u AppUpdate) applyTo(app *App) {
 	if u.Domain != nil {
 		app.Domain = *u.Domain

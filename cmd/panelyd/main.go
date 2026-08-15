@@ -153,8 +153,10 @@ func run() error {
 	// yaratır ve operatör hiçbir teşhis aracına erişemez.
 	reconcileAtStartup(reconciler)
 
+	// Uzlaştırıcı hem rollout'a hem API'ye veriliyor: `app update` alan
+	// adı değiştiğinde trafiği DAĞITIM BEKLEMEDEN taşıyabilmeli.
 	service, err := api.NewServer(api.ServerOptions{
-		Store: db, Executor: exec, Rollout: rollout,
+		Store: db, Executor: exec, Rollout: rollout, Reconciler: reconciler,
 	})
 	if err != nil {
 		return err

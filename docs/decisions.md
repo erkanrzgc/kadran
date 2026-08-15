@@ -3079,3 +3079,185 @@ dağıtıma "başarısız" der, kullanıcı da muhtemelen geri alırdı.
 Duran bir konteyneri yeniden başlatmak saniyeler sürer; imajdan yeniden
 kurmak dakikalar. Geri alma bunun üstüne oturacak. Silme politikası
 (son N sürümü tut) dağıtım geçmişiyle birlikte gelecek.
+
+## K-063 — Alan adı benzersizliği ŞEMADA, doğrulayıcıda değil
+
+İki uygulama aynı alan adını taşıyabiliyordu. Sonuç tek bir uygulamanın
+bozulması değil: `proxydrv.BuildConfig` yinelenen alan adında
+yapılandırmanın **tamamını** reddediyor (haklı olarak — hangisinin
+kazandığı sıraya bağlı olurdu). Bundan sonra hiçbir uzlaştırma
+başarılamaz ve panelyd yeniden başladığında **hiçbir rota kurulmaz**:
+sunucudaki bütün siteler düşer.
+
+Bunu bir doğrulayıcıya bırakmak, o doğrulayıcıyı atlayan her yolun (göç
+betiği, elle SQL, ileride eklenecek bir RPC) aynı deliği yeniden açması
+demekti. Şema kısıtı böyle bir yol bırakmıyor.
+
+İndeks **kısmi** (`WHERE domain != ''`): alan adı olmayan uygulama
+geçerli ve yaygın, düz bir UNIQUE ikinci alan adsızı reddederdi.
+
+### Göç canlı veriye uygulanmadan ÖNCE ölçüldü
+
+Başarısız bir göç `schema_migrations`'a yazılmıyor (tek transaction),
+yani panelyd **her açılışta** aynı yerde ölürdü — ve onarım aracı
+(`panely app update`) o panelyd'nin içinde. Araç kendini kilitler.
+
+Ölçüm: canlı veritabanının kopyasına indeks kuruldu → çıkış 0, indeks
+mevcut. **Kontrol grubu zorunluydu**: ikinci bir kopyaya kasten
+yinelenen alan adı eklendi → çıkış 19, `UNIQUE constraint failed:
+apps.domain`. Kontrol grubu olmadan "kopyada kuruldu" hiçbir şey
+kanıtlamazdı; sqlite3 hiç koşmasa da aynı çıktı alınabilirdi.
+
+İlk ölçüm denemesi `RC=True` bastı: PowerShell çift tırnak içindeki `$?`
+işaretini uzak kabuğa **göndermeden önce kendisi** genişletti. Ölçülen
+şey uzak sqlite3'ün çıkış kodu değil, PowerShell'in kendi durumuydu.
+
+Göç 14 Ağustos akşamı gerçek sunucuda uygulandı ve `schema_migrations`
+listesinde doğrulandı.
+
+## K-064 — Çakışma açıklaması yazma DENEMESİNDEN sonra soruluyor
+
+`UpdateApp` alan adı çakışmasını önden kontrol etmiyor. Akla yakın olan
+"bu alan adı başkasında mı" diye sormaktı, ama o sorgu uygulamanın
+**kendi satırını** da bulur: `WHERE domain = ?` yazan bir kontrol, alan
+adına hiç dokunmayan bir güncellemeyi bile çakışma sanıp reddederdi ve
+doğruluğu `AND id != ?` yazmayı hatırlamaya bağlı kalırdı.
+
+Yazmayı deneyip hatayı açıklamak o sınıfı tamamen siler: bir satırı
+kendi değeriyle güncellemek benzersizlik indeksini zaten ihlal etmez.
+**Kendiyle çakışma temsil edilemez hâle geliyor**, doğrulanan değil —
+`exec.proto`'daki yasak alan mantığının aynısı. Ek fayda: başarılı yolda
+fazladan sorgu yok.
+
+### CreateApp'in eski eşlemesi bu göçle YALANA döndü
+
+Göç 0004'ten önce `apps` tablosundaki tek benzersizlik kısıtı birincil
+anahtardı, dolayısıyla "ihlal ⇒ kimlik zaten var" çıkarımı **doğruydu**.
+İndeks o çıkarımı geçersiz kıldı: aynı hata sınıfı artık iki sebepten
+doğuyor ve eski eşleme, alan adı çakışmasını *"uygulama zaten var:
+&lt;henüz-yaratılmamış-kimlik&gt;"* diye raporlardı — hem yanlış hem de
+yanlış alanı gösteren bir mesaj.
+
+Bu K-056'nın sınıfı, ama farklı bir biçimi: bir mekanizma değişince ona
+dayanan **çıkarımlar** da sessizce yalana döner, yalnızca yorumlar değil.
+Sürücünün hata KODU ayrımı taşımıyor (ikisi de `SQLITE_CONSTRAINT_UNIQUE`)
+ve mesaj metnine bakmak sürücü sürümüne bağımlılık olurdu; tek dürüst
+kaynak veritabanının kendisi.
+
+## K-065 — `app update` alan adı değiştirince UZLAŞTIRMA da koşuyor
+
+`Reconcile` yalnızca iki yerden çağrılıyordu: panelyd açılışı
+(`cmd/panelyd/main.go`) ve dağıtım (`internal/deploy/rollout.go`).
+Ölçüldü, varsayılmadı.
+
+Yani `app update -domain` tek başına trafiği **taşımazdı**: alan adı
+veritabanında değişir, canlıda hiçbir şey olmaz, komut "başarılı" der.
+Kullanıcı taşındığını sanır ve bunu ancak yeni alan adı cevap vermeyince
+fark eder. Bu işin var olma sebebi apex'i dağıtımsız taşımak olduğu için
+uzlaştırıcı API sunucusuna da veriliyor.
+
+### Üç sonuç, üç ayrı cevap
+
+Hepsini "tamam" diye raporlamak en tehlikeli ikisini gizlerdi:
+
+| durum | cevap |
+|---|---|
+| uzlaştırma başarılı, uygulama rotalı | trafik taşındı |
+| uzlaştırma başarılı, uygulama ATLANDI | alan adı kaydedildi ama trafik taşınmadı; `panely deploy` gerekiyor |
+| uzlaştırma başarısız | hata — ve mesaj değişikliğin **kaydedildiğini** söylüyor |
+
+Üçüncüsü `DrainError`'ın sınıfı: işlem oldu, arkasından gelen adım
+olmadı. Düz bir "güncelleme başarısız" mesajı kullanıcıyı kaydın eski
+değerde kaldığını sanmaya iterdi — oysa yeni değerde.
+
+### Uzlaştırma yalnızca alan adı GERÇEKTEN değişince koşuyor
+
+Caddy'nin `POST /load` ucu kök nesnenin tamamını değiştiriyor, yani her
+uzlaştırma sunucudaki bütün sitelerin yapılandırmasını yeniden yazıyor.
+Dala dokunan bir güncelleme yüzünden bunu yapmak gereksiz risk.
+
+### Gerçek sunucuda ölçüldü — "satır değişti" kabul ölçütü DEĞİL
+
+`web` uygulaması `hello.localhost` → `merhaba.localhost` taşındı:
+
+| ölçüm | önce | sonra |
+|---|---|---|
+| Caddy rotası | `hello.localhost` | `merhaba.localhost` |
+| `hello.localhost` | HTTP 200 | **cevapsız** |
+| `merhaba.localhost` | **cevapsız** | HTTP 200 |
+| denetim zinciri | — | `app.update · app/web · {"domain":"..."}` |
+
+İki yön de ölçüldü. Yalnızca yeni alan adının cevap verdiğine bakmak
+yetmezdi: eski rota da silinmiş olmalı, yoksa iki alan adı aynı
+uygulamaya gider ve bir sonraki taşımada çakışırdı. Diğer iki sitenin
+(`pf.localhost`, `panely.erkanrzgc.dev`) rotalarına dokunulmadığı ayrıca
+doğrulandı — uzlaştırma yapılandırmanın tamamını yeniden yazdığı için bu
+gerçek bir risk.
+
+Denetim kaydında **yalnızca** `domain` var; dokunulmayan alanlar
+girmemiş.
+
+## K-066 — "Verilmedi" ile "boşalt" üç katmanda birden ayrı
+
+Boş dize hem `domain` hem `health_path` için **geçerli** bir değer
+("ters vekilde görünme", "HTTP yoklaması yapma"). Tam-tanım-değiştirme
+modelinde alanı doldurmayan bir istemci onları sessizce silerdi — ve bu
+iki alan tam olarak bu işin var olma sebebi. `replicas` aynı hataya düşse
+doğrulayıcıya çarpıp gürültülü ölürdü; yani sessizce kaybolabilecek iki
+alan, en çok önem taşıyan ikisi.
+
+Ayrım üç katmanda da korunuyor: proto3 `optional`, `store.AppUpdate`
+işaretçileri ve CLI'da `fs.Visit`. Go'nun `flag` paketi
+"`-domain` verilmedi" ile `-domain=""` durumlarını aynı boş dizeye
+indirger; `fs.Visit` **yalnızca gerçekten ayarlanmış** seçenekleri gezer.
+Bu olmasaydı dala dokunmak isteyen bir kullanıcı alan adını da silerdi.
+
+### `container_port` KASTEN değiştirilemez
+
+`store.Deployment` portu `apps`'ten JOIN'le **canlı** okuyor.
+Değiştirmek, bir sonraki uzlaştırmada ters vekili çalışan konteynerlerin
+dinlemediği bir porta yönlendirir ve siteyi anında düşürür. Port
+değişikliği yeni bir dağıtım gerektirir; dağıtımsız temsil edilebilir
+olması bir tuzaktı.
+
+Git kaynağı (host/owner/repo) da değiştirilemez: deponun değişmesi bir
+güncelleme değil, başka bir uygulamadır.
+
+### Ayrıcalıklı yüzeye maliyeti SIFIR
+
+Şemaya iki mesaj ve bir RPC eklendi, bütçe 2479/2500'de kaldı.
+`check-exec-surface.sh` üretilen protobuf kodunu (`internal/pb/*`)
+bütçeden dışlıyor ve dışlamayı körü körüne yapmıyor: o dizindeki her
+dosyanın "Code generated ... DO NOT EDIT" başlığı taşıdığı
+doğrulanıyor, yani orası elle kod saklanacak bir yer değil.
+
+## K-067 — Dönen struct'a bakan test, diski ölçmez
+
+`UpdateApp` satırı transaction içinde okuyor, bellekte değiştiriyor ve
+geri yazıyor; döndürdüğü struct bu **bellek kopyası**. `release_seq`
+korunma testi bu kopyaya bakıyordu.
+
+Mutasyon geçişinde ölçüldü: SQL cümlesine `release_seq = 0` eklendiğinde
+— yani sayaç diskte gerçekten sıfırlandığında — test **yeşil kaldı**.
+Sayaç bellekteki kopyada hâlâ 3'tü.
+
+Sayacın sıfırlanması sinsi bir hata: bir sonraki sürüm yine `r1` adını
+alır ve hostta **var olan** konteynerleri adresler — iki farklı commit,
+aynı ad.
+
+Düzeltme yalnızca o testi değil üçünü birden kapsadı; aynı kusur
+hepsinde vardı. `mustUpdate` yardımcısı artık diskten yeniden okuyor
+**ve** dönen değerle diskteki hâli karşılaştırıyor: ayrışırlarsa çağıran,
+yazılmamış bir durumu doğru sanır.
+
+Bu, K-047'nin ("yeşil test hiçbir şey korumayabilir") dördüncü örneği ve
+ilk üçünden farklı bir biçimi: iddia doğru şeyi kontrol ediyordu ama
+**yanlış yerden** okuyordu.
+
+### Zaman damgası testi de saat çözünürlüğüne takıldı
+
+`updated_at > created_at` iddiası kırmızı verdi: bu makinede ardışık iki
+`time.Now()` çağrısı **aynı nanosaniyeyi** döndürdü (fark = 0s; Windows
+sistem saati ~15ms'de bir ilerliyor). Araya `Sleep` koymak testi saat
+çözünürlüğüne bağımlı bırakırdı; damga bilinen eski bir değere çekilerek
+iddia saatten tamamen bağımsız hâle getirildi.

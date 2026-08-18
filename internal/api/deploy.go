@@ -41,8 +41,9 @@ const sealTimeout = 10 * time.Second
 // Kapıdan sonra boşaltma penceresi beklenir ve ESKİ sürümlerin
 // konteynerleri durdurulur — ama silinmez, geri alma hızlı olsun diye.
 //
-// ⚠ GERİ ALMA HÂLÂ YOK: `deployments` tablosu uygulama başına tek satır
-// tuttuğu için "önceki AKTİF sürüm" sorusunun cevabı şemada mevcut değil.
+// Geri almanın dayandığı geçmiş burada birikiyor: `SetActiveRelease` açık
+// dağıtım satırını kapatıp yenisini ekliyor (göç 0005), yani "önceki AKTİF
+// sürüm" sorusunun cevabı her dağıtımda şemaya yazılıyor.
 //
 // ── Başarı ölçütü akışın ŞEKLİNDE ──────────────────────────────────
 //

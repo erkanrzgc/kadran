@@ -82,8 +82,15 @@ func TestActiveReleaseMustBeBuilt(t *testing.T) {
 // TestActivatingReplacesRatherThanAdds, bir uygulamanın aynı anda iki
 // aktif sürümü OLAMAYACAĞINI doğrular.
 //
-// Kısıt `app_id`'nin birincil anahtar olmasından geliyor, bir kontrolden
-// değil: blue-green geçişi yarıda kalsa bile ikili durum oluşamaz.
+// ⚠ MEKANİZMA GÖÇ 0005'TE DEĞİŞTİ. Eskiden kısıt `app_id`'nin birincil
+// anahtar olmasından geliyordu; artık tablo bir GEÇMİŞ olduğu için o
+// anahtar yok. Garantiyi şimdi kısmi tekil indeks veriyor:
+//
+//	CREATE UNIQUE INDEX ... ON deployments (app_id)
+//	    WHERE deactivated_at IS NULL
+//
+// Değişmeyen şey, garantinin bir KONTROL değil bir KISIT olması: blue-green
+// geçişi yarıda kalsa bile ikili durum temsil edilemez.
 func TestActivatingReplacesRatherThanAdds(t *testing.T) {
 	ctx := context.Background()
 	s := newAppStore(t)

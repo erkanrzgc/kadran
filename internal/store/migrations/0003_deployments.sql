@@ -1,5 +1,16 @@
 -- Panely kontrol düzlemi şeması — göç 0003: aktif dağıtımlar
 --
+-- ⚠⚠ BU DOSYA TARİHSELDİR — göç 0005 tabloyu YENİDEN KURDU.
+--
+-- Aşağıdaki `app_id BİRİNCİL ANAHTAR` tasarımı ve iki tetikleyici artık
+-- çalışan şema DEĞİL: 0005 tabloyu ekle-sadece bir GEÇMİŞE çevirdi,
+-- "tek aktif sürüm" garantisini kısmi tekil indekse taşıdı ve UPDATE
+-- tetikleyicisini kasten geri koymadı. Güncel gerçek için 0005'i okuyun.
+--
+-- Dosya, uygulanmış bir göç olduğu için gövdesi DEĞİŞTİRİLMEDİ (0002'nin
+-- başındaki gerekçe: uygulanmış göçü düzenlemek yeni kurulumlarla mevcut
+-- kurulumları sessizce ayrıştırır). Eklenen tek şey bu uyarıdır.
+--
 -- Bir uygulamanın HANGİ sürümünün trafik aldığı burada duruyor. Bu tablo
 -- olmadan ters vekilin yapılandırması üretilemez: "hangi sürüm canlı"
 -- sorusunun `releases` içinde bir cevabı yok — orada yalnızca hangi

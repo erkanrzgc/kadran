@@ -3294,3 +3294,126 @@ kontrol ediyordu ama yanlış YERDEN okuyordu (bellek kopyası, disk değil);
 burada doğru şeyi kontrol ediyordu ama yanlış KATMANDA (sunucu hatası,
 kullanıcının gördüğü satır değil). Aynı dilimde iki kez çıkması tesadüf
 değil: bir mesajın değeri onu okuyan yerde ölçülür.
+
+## K-069 — Geçmiş, ikinci tabloya değil AYNI tabloya yazıldı
+
+`deployments` uygulama başına tek satır tutuyordu (`app_id` birincil
+anahtar) ve her aktivasyon bir öncekini eziyordu. "Önceki AKTİF sürüm"
+sorusunun şemada cevabı yoktu, yani `panely rollback` yazılamıyordu.
+
+İki tasarım vardı:
+
+| | ayrı `deployment_history` tablosu | tabloyu ekle-sadece yapmak |
+|---|---|---|
+| göç | ucuz (yalnızca CREATE) | tablo yeniden kurulur |
+| "hangisi aktif" | **İKİ kaynak** | tek kaynak |
+| tutarlılık | tetikleyiciyle sürdürülür | yapısal |
+
+İkincisi seçildi. Gerekçe: iki tablo, "aktif sürüm" sorusuna iki cevap
+üretebilen bir sapma sınıfı açar (`deployments` r5 der, geçmişin açık
+satırı r3 der) ve bunu tetikleyiciyle senkron tutmak, tek bir indeksin
+bedava verdiği garantiden daha fazla makine demektir.
+
+Kaybedilmemesi gereken şey 0003'ün asıl kazancıydı: "bir uygulamanın aynı
+anda iki aktif sürümü olamaz" bir kontrol değil, **temsil edilemez** bir
+durumdu. Kısmi tekil indeks aynı garantiyi geçmişi silmeden veriyor:
+
+```sql
+CREATE UNIQUE INDEX idx_deployments_one_active
+    ON deployments (app_id) WHERE deactivated_at IS NULL;
+```
+
+Kapanmış satırlar indeksin dışında kaldığı için geçmiş istendiği kadar
+birikiyor. Mutasyonla doğrulandı: `UNIQUE` kaldırılınca ilgili test
+kırmızıya dönüyor.
+
+### Sıra numarası aktivasyon geçmişi DEĞİLDİR
+
+Geri alma hedefi `releases.seq - 1` olamaz. r5 canlıyken r3'e geri
+alınırsa, bir sonraki geri alma r2'ye değil **r5'e** gitmelidir — gerçekten
+canlı olan en son önceki sürüm odur. Bu yüzden hedef, son KAPANMIŞ
+dağıtım satırından okunuyor.
+
+Testin bunu ayırt ettiği ölçüldü: `releases.seq` tabanlı yanlış uygulama
+denendiğinde testin ilk adımı (r5 → r4) **geçiyor**, ayırt edici üçüncü
+adımı `"r2" — "r5" olmalıydı` diye kırmızı veriyor.
+
+### UPDATE tetikleyicisi KASTEN geri konmadı
+
+0003'te BUILT kontrolü hem INSERT hem UPDATE'te vardı. Ekle-sadece
+şemada aktivasyon yalnızca INSERT; UPDATE sadece açık satırı kapatıyor.
+Oraya BUILT kontrolü koymak, aktifken FAILED'a düşmüş bir sürümün satırını
+**kapatılamaz** yapardı — yani geri almanın en gerekli olduğu anda geri
+almayı engellerdi.
+
+### Mekanizma değişince onu anan her yorum tarandı
+
+`app_id` birincil anahtarı kalktığı için onu gerekçe gösteren iki yorum
+yalan oldu ve düzeltildi (`deployments_test.go`, `api/deploy.go`).
+Uygulanmış göç 0003'ün gövdesine dokunulmadı (0002'nin gerekçesi), yalnızca
+başına "bu dosya tarihseldir, 0005 tabloyu yeniden kurdu" uyarısı eklendi.
+
+## K-070 — Boş veritabanıyla koşan göç testi, göçü sınamaz
+
+Bütün depo testleri boş bir `:memory:` veritabanıyla başlıyor ve göçleri
+tek seferde uyguluyor. Bu kurulumda 0005'in
+
+```sql
+INSERT INTO deployments_new ... SELECT ... FROM deployments
+```
+
+satırı **sıfır satır** taşıyor — ve sıfır satırlık bir kopya her zaman
+başarılıdır. Yani göçün asıl işi olan veri taşıma yolu, testler yeşilken
+bile hiç çalışmamıştı. İlk gerçek koşusu canlı sunucuda olacaktı.
+
+İki ölçüm eklendi:
+
+1. **Birim testi**, göçleri elle 0004'e kadar getirip ESKİ şemaya bir
+   dağıtım satırı yazıyor, sonra 0005'i uyguluyor ve satırın AÇIK olarak
+   hayatta kaldığını ölçüyor.
+2. **Gerçek veri**, Hetzner yedeğinin (`panely-hetzner-20260817.tgz`)
+   kopyası üzerinde koşturuldu:
+
+```
+GÖÇ ÖNCESİ         →  GÖÇ SONRASI
+pfprobe   r1          pfprobe   r1  pf.localhost
+portfolio r3          portfolio r3  panely.erkanrzgc.dev
+web       r1          web       r1  hello.localhost
+```
+
+Canlı `portfolio r3` dağıtımı olduğu gibi taşındı. Bu, [[K-047]]
+sınıfının göç katmanındaki karşılığı: yeşil bir test, sınadığını
+sandığın kod yolunu hiç çalıştırmıyor olabilir.
+
+## K-071 — Yeşil kalan mutasyon, testin değil MUTASYONUN zayıflığı olabilir
+
+Mutasyon geçişinde ekle-sadece tetikleyicisi zayıflatıldı ve test **yeşil
+kaldı**. İlk okuma "test hiçbir şey ölçmüyor" idi.
+
+Yanlıştı. Mutasyon şu satırı değiştiriyordu:
+
+```sql
+WHEN NEW.seq            IS NOT OLD.seq     -- ← yalnızca bu silindi
+  OR NEW.app_id         IS NOT OLD.app_id
+  OR NEW.release_id     IS NOT OLD.release_id
+  ...
+```
+
+Yani tetikleyici hâlâ `app_id`, `release_id` ve `activated_at`
+değişikliklerini yakalıyordu — testin sınadığı üç şeyin üçünü de. Test
+doğru çalışıyordu; **mutasyon** hedefi ıskalamıştı. `WHEN` bloğunun tamamı
+etkisizleştirilince test beklendiği gibi kırmızıya döndü.
+
+Ders, mutasyon testinin kendisine dair: bir mutasyonun yeşil kalması iki
+şey demek olabilir ve ikisi zıt sonuçlar doğurur —
+
+- test zayıf → testi düzelt
+- **mutasyon zayıf** → mutasyonu düzelt
+
+Ayırt etmeden birincisine atlamak, çalışan bir testi "işe yaramıyor" diye
+gevşetmeye götürür. Mutasyonun gerçekten hedefi bozduğu, önce
+doğrulanmalı. Aynı geçişte bir mutasyon da desen uyuşmazlığından hiç
+uygulanamamıştı ve betik bunu sessizce geçmek yerine
+`MUTASYON UYGULANAMADI` diye rapor ettiği için fark edildi — ölçüm
+aracının kendi başarısızlığını bildirmesi, [[K-047]]'nin araca uygulanmış
+hâli.

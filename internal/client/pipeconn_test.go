@@ -109,6 +109,10 @@ func (s *stubService) Deploy(*panelyv1.DeployRequest, grpc.ServerStreamingServer
 	return status.Error(codes.Unimplemented, "saplama dağıtım yapmaz")
 }
 
+func (s *stubService) Rollback(context.Context, *panelyv1.RollbackRequest) (*panelyv1.RollbackResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "saplama geri alma yapmaz")
+}
+
 func (s *stubService) VerifyAuditChain(context.Context, *panelyv1.VerifyAuditChainRequest) (*panelyv1.VerifyAuditChainResponse, error) {
 	return &panelyv1.VerifyAuditChainResponse{
 		DaemonStatus:   panelyv1.ChainStatus_CHAIN_STATUS_VALID,

@@ -89,6 +89,14 @@ type ServerOptions struct {
 // tek yöntem ve dar tutmak, testlerde sahtelemeyi ucuzlatıyor.
 type Rollout interface {
 	Run(ctx context.Context, app store.App, rel store.Release) error
+
+	// Rollback, ÖNCEDEN dağıtılmış bir sürümü tekrar canlıya alır.
+	//
+	// Run'dan ayrı bir yöntem çünkü hedefin konteynerleri hostta zaten
+	// var (boşaltma durdurur, silmez) ve `CreateReplica` aynı adla ikinci
+	// kez çağrılamaz. Kapı, aktivasyon ve boşaltma sırası ikisinde de
+	// AYNI koddan geçiyor — bkz. deploy.switchTraffic.
+	Rollback(ctx context.Context, app store.App, rel store.Release) (recreated bool, err error)
 }
 
 // Reconciler, tüm uygulamaların durumunu ters vekile yansıtır.

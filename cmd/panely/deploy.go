@@ -12,10 +12,11 @@ import (
 
 var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
-// runDeploy, bir commit'i derler ve sürüm olarak kaydeder.
+// runDeploy, bir commit'i derler, ayağa kaldırır ve trafiği ona çevirir.
 //
-// ⚠ Bu dilimde dağıtım TRAFİK TAŞIMAZ: imaj üretilir ve sürüm kaydedilir,
-// konteyner başlatılmaz. Blue-green geçişi dilim 4b'de.
+// ⚠ Yorumun eski hâli "bu dilimde dağıtım TRAFİK TAŞIMAZ" diyordu; dilim
+// 4b'den beri YANLIŞ. Blue-green geçişi bağlandı: kapı → aktif sürüm →
+// ters vekil → boşaltma. Ayrıntı internal/deploy/rollout.go'da.
 func (c *cli) runDeploy(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("deploy")
 	commit := fs.String("commit", "", "derlenecek commit (tam 40 haneli sha); boşsa dal çözülür")

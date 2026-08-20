@@ -263,9 +263,48 @@ func TestVerifyAuditChainOnEmptyDatabase(t *testing.T) {
 type fakeRollout struct {
 	calls []string
 	err   error
+
+	// rollbackCalls, geri alma çağrılarını AYRI tutar.
+	//
+	// `calls` ile birleştirilseydi, dağıtım yerine geri alma çağıran (ya
+	// da tersini yapan) bir sunucu hatası testlerde görünmezdi.
+	rollbackCalls []string
+	rollbackErr   error
+	recreated     bool
+
+	// activations, verilirse aktif sürüm GERÇEKTEN yazılır.
+	//
+	// ── Neden sahte bunu yapmak zorunda? ──────────────────────────────
+	//
+	// Gerçek Rollout, kapıdan sonra SetActiveRelease çağırıyor; dağıtım
+	// geçmişi oradan doğuyor. Sahte bunu atlarsa hiçbir dağıtım geçmişe
+	// girmez ve geçmişe dayanan her şey — geri almanın hedefi, ardışık
+	// geri almalar — API katmanında SINANAMAZ hâle gelir. Yani bu, sahteyi
+	// gerçeğe yaklaştırmak değil, sahtenin YALAN SÖYLEMESİNİ engellemek.
+	activations *store.Store
 }
 
 func (f *fakeRollout) Run(_ context.Context, app store.App, rel store.Release) error {
 	f.calls = append(f.calls, app.ID+"/"+rel.ID)
-	return f.err
+	if f.err != nil {
+		return f.err
+	}
+	return f.activate(app.ID, rel.ID)
+}
+
+func (f *fakeRollout) Rollback(
+	_ context.Context, app store.App, rel store.Release,
+) (bool, error) {
+	f.rollbackCalls = append(f.rollbackCalls, app.ID+"/"+rel.ID)
+	if f.rollbackErr != nil {
+		return f.recreated, f.rollbackErr
+	}
+	return f.recreated, f.activate(app.ID, rel.ID)
+}
+
+func (f *fakeRollout) activate(appID, releaseID string) error {
+	if f.activations == nil {
+		return nil
+	}
+	return f.activations.SetActiveRelease(context.Background(), appID, releaseID)
 }

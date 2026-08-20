@@ -142,18 +142,7 @@ func (r *Rollout) Run(ctx context.Context, app store.App, rel store.Release) err
 	}
 
 	for i := uint32(0); i < app.Replicas; i++ {
-		if err := r.lifecycle.CreateReplica(ctx, execclient.CreateReplicaOptions{
-			AppID:         app.ID,
-			ReleaseID:     rel.ID,
-			Index:         i,
-			CommitSHA:     rel.CommitSHA,
-			ContainerPort: app.ContainerPort,
-			Limits: execclient.Limits{
-				MemoryBytes: app.MemoryBytes,
-				CPUMillis:   app.CPUMillis,
-				BlkioWeight: app.BlkioWeight,
-			},
-		}); err != nil {
+		if err := r.createReplica(ctx, app, rel, i); err != nil {
 			return err
 		}
 		if err := r.lifecycle.StartReplica(ctx, app.ID, rel.ID, i); err != nil {
@@ -161,12 +150,119 @@ func (r *Rollout) Run(ctx context.Context, app store.App, rel store.Release) err
 		}
 	}
 
-	if err := r.awaitReady(ctx, app, rel); err != nil {
-		// Trafiğe DOKUNULMADI: eski sürüm hâlâ canlı ve öyle kalıyor.
-		return fmt.Errorf("dağıtım sağlık kapısında durdu, TRAFİK TAŞINMADI: %w", err)
+	return r.switchTraffic(ctx, app, rel.ID)
+}
+
+// Rollback, trafiği ÖNCEDEN dağıtılmış bir sürüme geri çevirir.
+//
+// ── Neden Run çağrılmıyor? ──────────────────────────────────────────
+//
+// Hedef sürümün konteynerleri hostta ZATEN VAR: boşaltma onları
+// durduruyor ama silmiyor (K-061). `Run` doğrudan `CreateReplica`
+// çağırdığı için aynı adla ikinci bir konteyner oluşturmaya kalkar ve
+// Docker 409 döner. Geri alma bu yüzden yalnızca BAŞ kısmında ayrışıyor;
+// kuyruk (kapı → aktif sürüm → uzlaştır → boşalt) aynı `switchTraffic`.
+//
+// ── Neden yine de KAPI var? ─────────────────────────────────────────
+//
+// "Bu sürüm daha önce çalışıyordu" bir sağlık kanıtı DEĞİL. Konteyner
+// silinmiş, imaj bozulmuş, bağımlı bir servis düşmüş olabilir. Kapıyı
+// atlamak, geri almayı "siteyi kurtaran" değil "ikinci kez düşüren"
+// işleme çevirirdi.
+//
+// recreated, konteynerlerin imajdan YENİDEN KURULDUĞUNU bildirir —
+// operatörün "neden saniyeler değil de yarım dakika sürdü" sorusunun
+// cevabı.
+func (r *Rollout) Rollback(
+	ctx context.Context, app store.App, rel store.Release,
+) (recreated bool, err error) {
+	if _, err := r.lifecycle.EnsureNetwork(ctx, app.ID); err != nil {
+		return false, err
 	}
 
-	if err := r.store.SetActiveRelease(ctx, app.ID, rel.ID); err != nil {
+	recreated, err = r.ensureReplicas(ctx, app, rel)
+	if err != nil {
+		return recreated, err
+	}
+	return recreated, r.switchTraffic(ctx, app, rel.ID)
+}
+
+// ensureReplicas, hedef sürümün replikalarını ÇALIŞIR hâle getirir.
+//
+// Var olanı başlatır, eksik olanı imajdan kurar. Hangi indekslerin var
+// olduğu HOSTTAN okunuyor, kontrol düzleminden değil: SQLite ne
+// istediğimizi biliyor, yalnızca Docker neyin gerçekten durduğunu bilir.
+// `staleReleases` ile aynı gerekçe.
+func (r *Rollout) ensureReplicas(
+	ctx context.Context, app store.App, rel store.Release,
+) (bool, error) {
+	reps, err := r.lifecycle.ListReplicas(ctx, app.ID)
+	if err != nil {
+		return false, fmt.Errorf("konteynerler listelenemedi: %w", err)
+	}
+
+	present := map[uint32]struct{}{}
+	for _, rep := range reps {
+		if rep.ReleaseID == rel.ID {
+			present[rep.Index] = struct{}{}
+		}
+	}
+
+	var recreated bool
+	for i := uint32(0); i < app.Replicas; i++ {
+		if _, ok := present[i]; !ok {
+			// Konteyner kaybolmuş: host yeniden başlamış, elle silinmiş ya
+			// da hiç var olmamış (replika sayısı artırılmış). İmajdan
+			// kurmak dakikalar sürebilir ama alternatifi eksik replikayla
+			// canlıya çıkmaktır.
+			if err := r.createReplica(ctx, app, rel, i); err != nil {
+				return recreated, fmt.Errorf(
+					"eksik replika #%d kurulamadı: %w", i, err)
+			}
+			recreated = true
+		}
+		if err := r.lifecycle.StartReplica(ctx, app.ID, rel.ID, i); err != nil {
+			return recreated, fmt.Errorf("replika #%d başlatılamadı: %w", i, err)
+		}
+	}
+	return recreated, nil
+}
+
+// createReplica, tek bir replikayı uygulama tanımından kurar.
+func (r *Rollout) createReplica(
+	ctx context.Context, app store.App, rel store.Release, index uint32,
+) error {
+	return r.lifecycle.CreateReplica(ctx, execclient.CreateReplicaOptions{
+		AppID:         app.ID,
+		ReleaseID:     rel.ID,
+		Index:         index,
+		CommitSHA:     rel.CommitSHA,
+		ContainerPort: app.ContainerPort,
+		Limits: execclient.Limits{
+			MemoryBytes: app.MemoryBytes,
+			CPUMillis:   app.CPUMillis,
+			BlkioWeight: app.BlkioWeight,
+		},
+	})
+}
+
+// switchTraffic, kapıdan geçirip trafiği devreder ve eskiyi boşaltır.
+//
+// ── Sıra taşıyıcıdır, dağıtımda da geri almada da AYNI ──────────────
+//
+//	KAPI → SetActiveRelease → uzlaştır → boşaltma penceresi → eskiyi durdur
+//
+// Dağıtım ve geri alma bu kuyruğu PAYLAŞIYOR. Kopyalansaydı, sıranın
+// taşıdığı garantiler iki yerde ayrı ayrı korunmak zorunda kalırdı ve
+// biri düzeltilirken diğeri unutulurdu — sonuç, geri alma sırasında
+// siteyi düşüren bir sıra hatası olurdu.
+func (r *Rollout) switchTraffic(ctx context.Context, app store.App, releaseID string) error {
+	if err := r.awaitReady(ctx, app, releaseID); err != nil {
+		// Trafiğe DOKUNULMADI: eski sürüm hâlâ canlı ve öyle kalıyor.
+		return fmt.Errorf("sağlık kapısında durdu, TRAFİK TAŞINMADI: %w", err)
+	}
+
+	if err := r.store.SetActiveRelease(ctx, app.ID, releaseID); err != nil {
 		return err
 	}
 
@@ -182,7 +278,7 @@ func (r *Rollout) Run(ctx context.Context, app store.App, rel store.Release) err
 		return SkippedError{Result: res}
 	}
 
-	drainErr := r.drainStale(ctx, app.ID, rel.ID)
+	drainErr := r.drainStale(ctx, app.ID, releaseID)
 
 	// Atlanan uygulamalar bir hata DEĞİL ama sessiz de olmamalı: çağıran
 	// bunu günlüğe yazıyor. İki durum aynı anda olabileceği için
@@ -323,13 +419,13 @@ func (e SkippedError) Error() string {
 // önemli: açılışta bir süre RUNNING görünüp sonra ölen bir konteyner tek
 // bir ölçümü geçerdi. Ardışık sayaç, ilk başarısız ölçümde SIFIRLANIYOR —
 // yoklama başarısızlığı da dahil.
-func (r *Rollout) awaitReady(ctx context.Context, app store.App, rel store.Release) error {
+func (r *Rollout) awaitReady(ctx context.Context, app store.App, releaseID string) error {
 	deadline := r.clock.Now().Add(r.gate.Timeout)
 	streak := 0
 	var last string
 
 	for {
-		ready, why := r.readyCount(ctx, app, rel.ID)
+		ready, why := r.readyCount(ctx, app, releaseID)
 		if ready >= app.Replicas {
 			streak++
 			if streak >= r.gate.Successes {

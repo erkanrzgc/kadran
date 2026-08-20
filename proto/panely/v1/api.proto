@@ -67,6 +67,23 @@ service PanelyService {
   // boşaltma penceresi → eski konteynerler durdurulur. Ayrıntı ve
   // gerekçeler internal/deploy/rollout.go'da.
   rpc Deploy(DeployRequest) returns (stream DeployResponse);
+
+  // Rollback, trafiği bir ÖNCEKİ aktif sürüme geri çevirir.
+  //
+  // ── Neden akışlı DEĞİL? ───────────────────────────────────────────
+  //
+  // Deploy akışlıdır çünkü derleyicinin ham çıktısını taşır ve başarının
+  // ölçütü POZİTİF bir son mesajdır (K-042). Geri alma HİÇBİR ŞEY
+  // DERLEMEZ: hedef sürümün imajı zaten var, konteynerleri de çoğu zaman
+  // durmuş hâlde bekliyor. Taşınacak çıktı olmayınca akış yalnızca iki
+  // mesajlık bir tören olurdu.
+  //
+  // Tekil çağrıda başarı ölçütü zaten pozitif: yanıt gelirse trafik
+  // taşınmıştır, gelmezse gRPC hatası vardır. Ara durum yok.
+  //
+  // ⚠ Sağlık kapısı burada da işliyor ve 90 saniyeye kadar sürebilir;
+  // istemci son tarihini buna göre ayarlamalı.
+  rpc Rollback(RollbackRequest) returns (RollbackResponse);
 }
 
 // DeleteApp KASTEN YOK.
@@ -418,4 +435,44 @@ message DeploySucceeded {
   string release_id = 1;
   // Boş OLAMAZ. Boşsa sunucu bu mesajı hiç göndermez, hata döner.
   string image_id = 2;
+}
+
+// RollbackRequest, geri alınacak uygulamayı adresler.
+//
+// ── Hedef sürüm KASTEN alınmıyor ──────────────────────────────────────
+//
+// "Şu sürüme dön" biçimi şemada desteklenebilir (dağıtım geçmişi
+// ekle-sadece) ama henüz bir ihtiyaç yok ve her alan bir sözleşme
+// yükümlülüğü. Hedef, geçmişteki son KAPANMIŞ dağıtımdır.
+//
+// ⚠ "Önceki sürüm" `releases.seq - 1` DEĞİLDİR. r5 canlıyken r3'e
+// dönülmüşse bir sonraki geri alma r2'ye değil r5'e gitmelidir; sıra
+// numarası aktivasyon geçmişinin yerine geçmez. Gerekçe K-069'da.
+message RollbackRequest {
+  string app_id = 1;
+}
+
+// RollbackResponse, trafiğin nereden nereye taşındığını söyler.
+//
+// İki kimlik de dönüyor çünkü operatörün doğrulayabilmesi gereken şey
+// "komut hata vermedi" değil, "hangi sürüm canlıya geldi". Yalnızca
+// hedefi döndürmek, yanlış uygulamaya komut verildiğinde bunu görünmez
+// kılardı.
+message RollbackResponse {
+  string app_id = 1;
+
+  // Geri alınan sürüm — çağrıdan ÖNCE canlı olan.
+  string from_release_id = 2;
+
+  // Canlıya dönen sürüm.
+  string to_release_id = 3;
+
+  // Konteynerler imajdan YENİDEN KURULDU mu?
+  //
+  // Boşaltma eski konteynerleri durdurur ama silmez (K-061), yani geri
+  // alma normalde duran konteyneri başlatır ve saniyeler sürer. Konteyner
+  // kaybolmuşsa (host yeniden başlamış, elle silinmiş) imajdan kurulur ve
+  // belirgin şekilde uzun sürer. Bu alan, operatörün "neden 40 saniye
+  // sürdü" sorusunu günlüğe bakmadan yanıtlamasını sağlar.
+  bool recreated = 4;
 }

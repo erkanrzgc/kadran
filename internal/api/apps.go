@@ -189,6 +189,12 @@ func appError(err error) error {
 	// edebiliyor.
 	case errors.Is(err, store.ErrDomainTaken):
 		return status.Error(codes.AlreadyExists, err.Error())
+	// ⚠ NotFound DEĞİL, FailedPrecondition. Uygulama VAR; eksik olan onun
+	// durumu — henüz dağıtılmamış ya da geri alınacak bir öncesi yok.
+	// NotFound'a düşürmek, "böyle bir uygulama yok" ile karıştırılırdı ve
+	// kullanıcı yazım hatası aramaya başlardı.
+	case errors.Is(err, store.ErrNoDeployment), errors.Is(err, store.ErrNoPreviousDeployment):
+		return status.Error(codes.FailedPrecondition, err.Error())
 	case status.Code(err) != codes.Unknown:
 		// Zaten bir gRPC hatası (ör. denetim kaydı yazılamadı).
 		return err

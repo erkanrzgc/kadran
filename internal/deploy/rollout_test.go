@@ -36,6 +36,10 @@ type fakeLifecycle struct {
 	stopped []stopCall
 	stopErr error
 
+	// materialize, CreateReplica'nın yarattığı konteyneri `replicas`
+	// listesine EKLEMESİNİ sağlar. Bkz. CreateReplica.
+	materialize bool
+
 	// proxy, SIRA iddiası için: durdurma anında ters vekile kaç kez
 	// yüklendiğini kaydediyoruz. "Boşaltma penceresi beklendi" ile
 	// "durdurma Caddy yüklendikten SONRA oldu" ayrı iddialardır ve
@@ -50,6 +54,17 @@ func (f *fakeLifecycle) EnsureNetwork(context.Context, string) (string, error) {
 
 func (f *fakeLifecycle) CreateReplica(_ context.Context, o execclient.CreateReplicaOptions) error {
 	f.created = append(f.created, o)
+	if f.materialize {
+		// Gerçek Docker'da yaratılan konteyner LİSTEDE görünür ve kapı da
+		// onu oradan okur. Geri alma testleri "eksik replika kuruldu →
+		// kapı onu gördü" zincirini sınamak zorunda; sahte listeyi sabit
+		// tutsaydı o zincir hiç çalışmazdı.
+		//
+		// Varsayılan KAPALI: mevcut dağıtım testleri listeyi elle kuruyor
+		// ve otomatik eklenme onların iddialarını bozardı.
+		f.replicas = append(f.replicas,
+			running(o.AppID, o.ReleaseID, o.Index, "172.20.0.9"))
+	}
 	return nil
 }
 

@@ -3417,3 +3417,78 @@ uygulanamamıştı ve betik bunu sessizce geçmek yerine
 `MUTASYON UYGULANAMADI` diye rapor ettiği için fark edildi — ölçüm
 aracının kendi başarısızlığını bildirmesi, [[K-047]]'nin araca uygulanmış
 hâli.
+
+## K-072 — Geri alma, dağıtımın KUYRUĞUNU paylaşır; başını paylaşamaz
+
+`panely rollback` yazıldı. İlk içgüdü `Rollout.Run`'ı yeniden çağırmaktı;
+çalışmıyor. Hedef sürümün konteynerleri hostta **zaten var** — boşaltma
+onları durduruyor ama silmiyor (K-061) — ve `Run` doğrudan
+`CreateReplica` çağırdığı için Docker aynı adla ikinci konteyneri 409 ile
+reddediyor.
+
+Ayrım şurada: **baş** farklı, **kuyruk** aynı.
+
+```
+dağıtım:   derle → konteynerleri KUR   ─┐
+geri alma: (derleme yok) → VAR OLANI BAŞLAT ─┤
+                                            ├→ switchTraffic:
+                                            │   KAPI → SetActiveRelease
+                                            │   → uzlaştır → boşaltma
+                                            └   → eskiyi durdur
+```
+
+Kuyruk kopyalansaydı sıranın taşıdığı garantiler iki yerde ayrı ayrı
+korunmak zorunda kalırdı ve biri düzeltilirken diğeri unutulurdu; sonuç,
+geri alma sırasında siteyi düşüren bir sıra hatası olurdu.
+
+**Paylaşımın gerçek olduğu ölçüldü.** `switchTraffic` içindeki sağlık
+kapısı mutasyonla devre dışı bırakıldığında **iki test birden** kırmızıya
+döndü: yeni `TestRollbackStopsAtHealthGate` ve mevcut
+`rollout_test.go:433` (bozuk commit testi). Tek bir noktanın iki yolu da
+koruduğunun kanıtı bu.
+
+### Kapı geri almada da işliyor
+
+"Bu sürüm daha önce çalışıyordu" bir sağlık kanıtı DEĞİL: imaj bozulmuş,
+bağımlı bir servis düşmüş olabilir. Kapı atlanırsa geri alma, siteyi
+kurtaran değil **ikinci kez düşüren** işlem olur — hem de operatörün en
+çaresiz olduğu anda.
+
+### RPC akışlı DEĞİL
+
+`Deploy` akışlı çünkü derleyicinin ham çıktısını taşıyor ve başarının
+ölçütü pozitif bir son mesaj (K-042). Geri alma hiçbir şey derlemiyor;
+taşınacak çıktı olmayınca akış iki mesajlık bir tören olurdu. Tekil
+çağrıda ölçüt zaten pozitif: yanıt geldiyse trafik taşınmıştır.
+
+Yanıt `from` ve `to` sürümlerini birlikte döndürüyor. Operatörün
+doğrulaması gereken şey "komut hata vermedi" değil, trafiğin nereden
+nereye taşındığı; yalnızca hedefi döndürmek, yanlış uygulamaya komut
+verildiğinde bunu görünmez kılardı.
+
+## K-073 — Yan etkisini atlayan sahte, koca bir katmanı sınanamaz yapar
+
+API katmanındaki `fakeRollout`, `Run` çağrıldığında yalnızca çağrıyı
+kaydediyordu. Gerçek `Rollout` ise kapıdan sonra `SetActiveRelease`
+çağırıyor — **dağıtım geçmişi oradan doğuyor.**
+
+Sonuç: sahte sessizce yalan söylüyordu. Geri alma testleri yazılınca
+ortaya çıktı; üç kez dağıtım yapılıp geri alınmak istendiğinde depo
+"uygulamanın aktif sürümü yok" dedi, çünkü hiçbir dağıtım geçmişe
+girmemişti.
+
+Bu, K-047 ailesinin yeni bir biçimi. Öncekiler testin kendisiyle
+ilgiliydi (zayıf iddia, yanlış yerden okuma, yanlış katman); bu ise
+**düzenekle**: sahte, gerçeğin bir yan etkisini atlayınca o yan etkiye
+dayanan HER davranış — geri almanın hedefi, ardışık geri almalar, denetim
+kaydı — o katmanda sınanamaz hâle geliyor. Testler yazılamadığı için de
+eksiklik "kapsama düşük" diye bile görünmüyor; hiç akla gelmiyor.
+
+Düzeltme sahteyi gerçeğe yaklaştırmak değil, **yalan söylemesini
+engellemek**: `fakeRollout` artık isteğe bağlı bir depo alıyor ve
+verildiğinde aktivasyonu gerçekten yazıyor.
+
+Kural: bir sahte, taklit ettiği şeyin **gözlemlenebilir yan etkilerini**
+atlıyorsa, o sahteyi kullanan testler o yan etkiye dayanan hiçbir şeyi
+kanıtlamaz — ve bunu fark etmenin tek yolu, o davranışı sınamayı
+denemektir.

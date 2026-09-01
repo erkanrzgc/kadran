@@ -13,8 +13,10 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"os/user"
 	"strconv"
+	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
@@ -24,6 +26,7 @@ import (
 	"github.com/erkanrzgc/panely/internal/deploy"
 	"github.com/erkanrzgc/panely/internal/execclient"
 	"github.com/erkanrzgc/panely/internal/grpcserve"
+	"github.com/erkanrzgc/panely/internal/health"
 	"github.com/erkanrzgc/panely/internal/logutil"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/proxydrv"
@@ -198,6 +201,25 @@ func run() error {
 
 	recordStartup(db)
 
+	// ── Sağlık gözetmeni ────────────────────────────────────────────
+	//
+	// Kapanış bağlamı BURADA kuruluyor ve hem gözetmene hem gRPC
+	// sunucusuna veriliyor: tek bir iptal kaynağı, tanımlı bir kapanış.
+	//
+	// Uzlaştırmadan SONRA başlıyor. Önce başlasaydı, henüz ayağa
+	// kalkmamış konteynerleri "çökmüş" diye okuyup açılışın normal geçiş
+	// anında gereksiz iyileştirme tetiklerdi.
+	shutdown, stopSignals := signal.NotifyContext(
+		context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+
+	supervisor, err := health.New(
+		rollout, db, db, health.SystemClock(), health.DefaultOptions)
+	if err != nil {
+		return err
+	}
+	go func() { _ = supervisor.Run(shutdown) }()
+
 	slog.Info("daemon hazır",
 		"surum", version.Version,
 		"soket", *socketPath,
@@ -209,7 +231,7 @@ func run() error {
 		slog.Warn("systemd bilgilendirilemedi", "hata", err)
 	}
 
-	return grpcserve.Run(server, listener)
+	return grpcserve.RunContext(shutdown, server, listener)
 }
 
 // probeExecutor, executor'a ulaşılıp ulaşılamadığını günlüğe yazar.

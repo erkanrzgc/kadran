@@ -55,8 +55,9 @@ type Rollout struct {
 	prober    Prober
 	clock     Clock
 
-	gate  GateOptions
-	drain DrainOptions
+	gate     GateOptions
+	healGate GateOptions
+	drain    DrainOptions
 }
 
 // GateOptions, trafiğin devredilmesinden ÖNCEKİ bekleme ölçütüdür.
@@ -72,6 +73,31 @@ type GateOptions struct {
 
 // DefaultGate, makul varsayılanlar.
 var DefaultGate = GateOptions{Successes: 3, Interval: 2 * time.Second, Timeout: 90 * time.Second}
+
+// DefaultHealGate, İYİLEŞTİRME sırasındaki kısa hazırlık beklemesidir.
+//
+// ── Aritmetik ölçüte bağlı, keyfi değil ─────────────────────────────
+//
+// Faz 1 ölçütü #3: `docker kill` sonrası uygulama 30 SANİYE içinde geri
+// gelmeli. Bütçe şöyle harcanıyor:
+//
+//	tespit      : health.DefaultOptions → 3 × 2sn  ≈  6 sn
+//	başlatma    : EnsureNetwork + StartReplica     ≈  1 sn
+//	bu kapı     : 2 × 1sn                          ≈  2 sn
+//	uzlaştırma  : Caddy yükle + geri oku           ≈  1 sn
+//	                                          toplam ≈ 10 sn
+//
+// Kalan pay, konteynerin açılış süresine gidiyor. Bu değerleri
+// büyütmeden önce yukarıdaki toplamı yeniden hesapla: `Successes: 5` ya
+// da `Interval: 5s` ölçütü SESSİZCE kaçırır — testler yeşil kalır çünkü
+// sahte saat gerçek süreyi ölçmez.
+//
+// `Successes: 2`, `1` DEĞİL: tek bir şanslı yoklama, açılıp hemen ölen
+// bir konteyneri sağlıklı gösterip ters vekile yazdırırdı. İkincisi de
+// dağıtım kapısındaki 3'ten az, çünkü burada uygulama zaten çökmüş
+// durumda ve gözetmen izlemeye devam ediyor — yanılırsak bir sonraki tur
+// yakalar.
+var DefaultHealGate = GateOptions{Successes: 2, Interval: time.Second, Timeout: 15 * time.Second}
 
 // DrainOptions, trafiğin devredilmesinden SONRAKİ kapanış ölçütüdür.
 type DrainOptions struct {
@@ -114,7 +140,7 @@ func NewRollout(
 	}
 	return &Rollout{
 		lifecycle: l, store: a, rec: rec, prober: p, clock: realClock{},
-		gate: gate, drain: drain,
+		gate: gate, healGate: DefaultHealGate, drain: drain,
 	}, nil
 }
 
@@ -187,6 +213,77 @@ func (r *Rollout) Rollback(
 	return recreated, r.switchTraffic(ctx, app, rel.ID)
 }
 
+// Check, sürümün trafiğe hazır replika sayısını ölçer.
+//
+// Gözetmen (internal/health) bunu kullanıyor. `readyCount`'un dışa açık
+// yüzü olmasının sebebi kopyalamayı ENGELLEMEK: "sağlıklı" tanımı Faz 1
+// ölçütlerinin ikisinin birden dayandığı tanım ve iki ayrı kopyası
+// olsaydı biri düzeltilirken diğeri kaymaya başlardı.
+func (r *Rollout) Check(
+	ctx context.Context, app store.App, releaseID string,
+) (ready uint32, why string) {
+	return r.readyCount(ctx, app, releaseID)
+}
+
+// Heal, çökmüş replikaları ayağa kaldırır ve ters vekili günceller.
+//
+// ── Dağıtımın BAŞINI paylaşır, KUYRUĞUNU paylaşmaz ──────────────────
+//
+//	dağıtım    : ağ → konteynerler → KAPI → aktif yaz → uzlaştır → boşalt
+//	geri alma  : ağ → konteynerler → KAPI → aktif yaz → uzlaştır → boşalt
+//	iyileştirme: ağ → konteynerler → kısa kapı →         uzlaştır
+//
+// Neden `switchTraffic` çağrılmıyor: `SetActiveRelease` burada anlamsız
+// (sürüm zaten aktif, çağrı no-op olurdu) ve `drainStale` DOĞRUDAN
+// TEHLİKELİ — iyileştirme sırasında eski sürümleri durdurmaya kalkmanın
+// hiçbir gerekçesi yok, çökmüş bir uygulamayı kurtarırken yan etki
+// üretirdi. K-072 kuyruğun paylaşılmasıyla ilgiliydi; burada kasten
+// ÜÇÜNCÜ BİR BAŞ ekleniyor, kuyruk genişletilmiyor.
+//
+// ── `Reconcile` ZORUNLU ve ölçüldü ──────────────────────────────────
+//
+// Caddy'nin upstream'leri konteyner IP'sinden türüyor. Öldürülen bir
+// konteyner `docker start` ile geri geldiğinde adres ÇOĞU ZAMAN aynı
+// kalıyor (1 Eyl'de gerçek sunucuda üç turda da 172.18.0.2 döndü) — ve
+// tam bu yüzden tehlikeli: `Reconcile`'ı atlayan bir gözetmen şansa
+// geçer, konteyner SİLİNİP yeniden kurulduğunda ise adres değişir ve
+// ters vekil ölü bir upstream'e bakmaya devam eder.
+//
+// ── Kapı uzlaştırmadan ÖNCE, ve bu şart ─────────────────────────────
+//
+// `Reconcile` yapılandırmayı sıfırdan kuruyor ve rotalanabilir replikası
+// olmayan uygulamayı ATLIYOR. Konteyner cevap vermeden uzlaştırsaydık
+// uygulama yapılandırmadan düşerdi; bir sonraki turda `Check` onu
+// sağlıklı görüp gözetmen "iyileşti" derdi ve bir daha uzlaştırmazdı.
+// Sonuç: sağlıklı GÖRÜNEN ama dışarıdan erişilemeyen bir uygulama.
+func (r *Rollout) Heal(
+	ctx context.Context, app store.App, rel store.Release,
+) (recreated bool, err error) {
+	if _, err := r.lifecycle.EnsureNetwork(ctx, app.ID); err != nil {
+		return false, err
+	}
+	recreated, err = r.ensureReplicas(ctx, app, rel)
+	if err != nil {
+		return recreated, err
+	}
+	if err := r.awaitReady(ctx, app, rel.ID, r.healGate); err != nil {
+		return recreated, fmt.Errorf("iyileştirme kapısında durdu: %w", err)
+	}
+
+	res, err := r.rec.Reconcile(ctx)
+	if err != nil {
+		return recreated, err
+	}
+	// POZİTİF ÖLÇÜT (K-042): "uzlaştırma hata vermedi" yetmez. Bizim
+	// uygulamamız atlandıysa ters vekilde rotası YOK ve dışarıdan hâlâ
+	// erişilemez — bunu başarı saymak, iyileşmemiş bir uygulamayı
+	// iyileşti diye kaydettirirdi.
+	if why, skipped := res.Skipped[app.ID]; skipped {
+		return recreated, fmt.Errorf("ters vekile yazılamadı: %s", why)
+	}
+	return recreated, nil
+}
+
 // ensureReplicas, hedef sürümün replikalarını ÇALIŞIR hâle getirir.
 //
 // Var olanı başlatır, eksik olanı imajdan kurar. Hangi indekslerin var
@@ -257,7 +354,7 @@ func (r *Rollout) createReplica(
 // biri düzeltilirken diğeri unutulurdu — sonuç, geri alma sırasında
 // siteyi düşüren bir sıra hatası olurdu.
 func (r *Rollout) switchTraffic(ctx context.Context, app store.App, releaseID string) error {
-	if err := r.awaitReady(ctx, app, releaseID); err != nil {
+	if err := r.awaitReady(ctx, app, releaseID, r.gate); err != nil {
 		// Trafiğe DOKUNULMADI: eski sürüm hâlâ canlı ve öyle kalıyor.
 		return fmt.Errorf("sağlık kapısında durdu, TRAFİK TAŞINMADI: %w", err)
 	}
@@ -419,8 +516,17 @@ func (e SkippedError) Error() string {
 // önemli: açılışta bir süre RUNNING görünüp sonra ölen bir konteyner tek
 // bir ölçümü geçerdi. Ardışık sayaç, ilk başarısız ölçümde SIFIRLANIYOR —
 // yoklama başarısızlığı da dahil.
-func (r *Rollout) awaitReady(ctx context.Context, app store.App, releaseID string) error {
-	deadline := r.clock.Now().Add(r.gate.Timeout)
+// ── Kapı PARAMETRE, alan değil ──────────────────────────────────────
+//
+// Dağıtım ve iyileştirme aynı ölçümü yapar ama farklı bütçelerle:
+// dağıtımın 90 saniyesi var, iyileştirmenin toplam 30 saniyesi (Faz 1
+// ölçütü #3) ve bunun bir kısmı zaten tespite gitti. Kapıyı alandan
+// okusaydı, iyileştirme dağıtımın sınırını miras alır ve ölçütü tek bir
+// yavaş konteynerle kaçırırdı.
+func (r *Rollout) awaitReady(
+	ctx context.Context, app store.App, releaseID string, gate GateOptions,
+) error {
+	deadline := r.clock.Now().Add(gate.Timeout)
 	streak := 0
 	var last string
 
@@ -428,7 +534,7 @@ func (r *Rollout) awaitReady(ctx context.Context, app store.App, releaseID strin
 		ready, why := r.readyCount(ctx, app, releaseID)
 		if ready >= app.Replicas {
 			streak++
-			if streak >= r.gate.Successes {
+			if streak >= gate.Successes {
 				return nil
 			}
 		} else {
@@ -440,11 +546,11 @@ func (r *Rollout) awaitReady(ctx context.Context, app store.App, releaseID strin
 		if !r.clock.Now().Before(deadline) {
 			if last == "" {
 				last = fmt.Sprintf("yalnızca %d ardışık başarılı ölçüm (%d gerekli)",
-					streak, r.gate.Successes)
+					streak, gate.Successes)
 			}
 			return fmt.Errorf("süre doldu: %s", last)
 		}
-		if err := r.clock.Sleep(ctx, r.gate.Interval); err != nil {
+		if err := r.clock.Sleep(ctx, gate.Interval); err != nil {
 			return fmt.Errorf("bekleme kesildi: %w", err)
 		}
 	}

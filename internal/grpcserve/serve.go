@@ -30,7 +30,22 @@ import (
 func Run(server *grpc.Server, listener net.Listener) error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	return RunContext(ctx, server, listener)
+}
 
+// RunContext, kapanış sinyalini DIŞARIDAN gelen bağlamdan alır.
+//
+// ── Neden ayrı bir giriş noktası ────────────────────────────────────
+//
+// panelyd yalnızca gRPC sunmuyor: sağlık gözetmeni de arka planda
+// koşuyor ve kapanışta o da durmalı. `Run` sinyal bağlamını kendi içinde
+// kurup dışarı vermeseydi, gözetmen İKİNCİ bir bağlam kurardı — ikisi de
+// çalışırdı ama kapanış sırası tanımsız kalırdı ve gözetmen, sunucu
+// kapanırken hâlâ konteyner başlatmaya çalışabilirdi.
+//
+// `Run` korunuyor çünkü panely-exec'in arka plan işi yok ve kendi
+// bağlamını kurmak zorunda kalmamalı.
+func RunContext(ctx context.Context, server *grpc.Server, listener net.Listener) error {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
 

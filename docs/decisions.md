@@ -3492,3 +3492,63 @@ Kural: bir sahte, taklit ettiği şeyin **gözlemlenebilir yan etkilerini**
 atlıyorsa, o sahteyi kullanan testler o yan etkiye dayanan hiçbir şeyi
 kanıtlamaz — ve bunu fark etmenin tek yolu, o davranışı sınamayı
 denemektir.
+## K-074 — Legion projeden çıktı: üç bağımsız engel, her biri tek başına yeterli
+
+Eski Lenovo dizüstü ("Legion") 17 Ağustos'ta kalıcı sunucu olsun diye
+kuruldu: Ubuntu 24.04.4, Docker Hetzner'le birebir aynı sürüme
+sabitlendi, LVM elle genişletildi, kapak kapanma davranışı ayarlandı,
+insansız yeniden başlatma ölçüldü ve geçti. Yani makine teknik olarak
+hazırdı. Buna rağmen sunucu OLAMIYOR ve karar iptaldir.
+
+Üç ayrı engel birikti; üçü de ayrı ayrı ölçüldü ve **her biri tek başına
+yeterliydi**:
+
+**1. Gelen bağlantı hiç içeri girmiyor (18 Ağu).** Ev ağı üç kat NAT
+arkasında ve en üstte Starlink CGNAT var (`100.64.0.0/10`, RFC 6598).
+Zyxel'e 80/443 yönlendirme kuralları girildi ve dışarıdan yine erişim
+olmadı; tcpdump paketin modeme HİÇ ulaşmadığını gösterdi, yani sorun
+yapılandırmada değil taşıyıcıda. Panely'de şu an yalnızca ACME HTTP-01
+var, o da gelen 80'e muhtaç. Anten komşunun olduğu için plan değiştirmek
+de kullanıcının elinde değil.
+
+**2. Elektrik kesintisinden sonra kendi açılmıyor (1 Eyl).** BIOS'un
+tamamı gezildi: InsydeH20 Setup Utility, sekmeler yalnızca
+`Information / Configuration / Security / Boot / Exit`. `Power` ya da
+`Advanced` sekmesi yok; Configuration'daki tek "power" girdisi
+`Power Beep`. `Restore on AC Power Loss` tüketici Lenovo dizüstülerinde
+bulunmuyor. Kısa kesintiyi batarya kurtarır, uzun kesintide makine kapanır
+ve elektrik gelince açılmaz.
+
+Wake-on-LAN bunu KURTARMIYOR — ilk düşünüldüğü gibi değil. NIC yeteneği
+ölçüldü (`ethtool enp7s0` → `Supports Wake-on: pumbg`, yani magic packet
+destekli), ama sihirli paketi gönderecek makine de aynı elektriği
+kullanıyor; kesintide o da kapalı. WoL yalnızca makineyi KASTEN kapatıp
+başka bir şey ayaktayken uyandırmak için anlamlı.
+
+**3. Makine taşındı ve fiziksel erişim bitiyor (1 Eyl).** Legion başka bir
+konuma alındı, yeni WiFi'ye elle bağlandı; kullanıcının ~7 Eylül'den sonra
+makineye fiziksel erişimi kalmayacak. Düğmeye basacak kimse yok.
+
+**Sonuç: Hetzner kalıcı barındırıcıdır.** `panely-test`, cx23
+(2 vCPU / 4 GB / 40 GB), nbg1, 6,49 €/ay net. Taşıma hiç yapılmadığı için
+"geri dönüş" diye bir iş de yok — apex ve portfolyo baştan beri orada.
+Legion Ubuntu'suyla duruyor, projeden çıkarıldı; kimseye zararı yok.
+
+**Asıl ders planlamayla ilgili.** Bu plan haftalarca "kalıcı sunucu
+Legion olacak" varsayımını taşıdı ve engeller tek tek çıktıkça tek tek
+çözülmeye çalışıldı: port yönlendirme kuralları girildi, DDNS düşünüldü,
+Tailscale kuruldu, ethernet kablosu alınacaklar listesine yazıldı. Her
+adım kendi başına makuldü. Oysa plan **birbirinden bağımsız N şeyin aynı
+anda doğru çıkmasına** bağlıydı ve her biri belirsizdi.
+
+Kural: bir plan bağımsız birden çok belirsizliğe aynı anda dayanıyorsa,
+engelleri sırayla çözmeye çalışmadan önce planın kendisi yeniden
+değerlendirilmeli. Sırayla çözmek, her adımda ilerliyormuş hissi verirken
+toplam başarı olasılığının düştüğünü gizler.
+
+**Korunan kazanım:** Tailscale'in adres modeli. Makine bambaşka bir ağa
+taşındığında LAN IP'si değişti ama tailnet IP'si (`100.109.233.30`)
+değişmedi, çünkü o adres Tailscale'in kayıt defterinde tutuluyor. Ağ
+katmanı değişse de kimlik katmanı sabit kalıyor — CGNAT'ı delmek için
+kurulan şey, taşınmayı da bedavaya çözdü. Bu, ileride uzak ajan (Faz 6)
+tasarlanırken hatırlanmalı.

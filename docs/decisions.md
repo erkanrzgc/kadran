@@ -3552,3 +3552,78 @@ değişmedi, çünkü o adres Tailscale'in kayıt defterinde tutuluyor. Ağ
 katmanı değişse de kimlik katmanı sabit kalıyor — CGNAT'ı delmek için
 kurulan şey, taşınmayı da bedavaya çözdü. Bu, ileride uzak ajan (Faz 6)
 tasarlanırken hatırlanmalı.
+
+## K-075 — Gözetmen: iyileştirme UZLAŞTIRMAYLA biter, ve testin bunu şansa bırakmaması gerekir
+
+Faz 1 ölçütü #3 için sağlık gözetmeni yazıldı. En pahalı karar, iyileştirme
+yolunun nerede BİTECEĞİYDİ.
+
+**İlk akla gelen yanlış:** çökmüş konteyneri `StartReplica` ile geri
+başlatmak. `docker ps` düzelir, konteyner durumu ölçen her iddia geçer —
+ama site 502 dönmeye devam edebilir. Sebep, Caddy'nin upstream'lerinin
+konteyner IP'sinden türemesi.
+
+**Ölçüm, tuzağın neden sinsi olduğunu gösterdi.** Gerçek sunucuda `web`
+konteyneri üç kez öldürülüp başlatıldı; adres ÜÇÜNDE DE aynı geldi
+(`172.18.0.2`). Yani `Reconcile`'ı atlayan bir gözetmen tek atışlık bir
+testi ŞANSA geçer. Adres ancak konteyner silinip yeniden kurulduğunda ya
+da araya başka bir konteyner girdiğinde değişir — yani hata, üretimde
+aylar sonra ve teşhisi zor bir biçimde ortaya çıkardı.
+
+**İkinci tuzak sıradaydı ve daha ince.** `Reconcile` yapılandırmayı
+sıfırdan kuruyor ve rotalanabilir replikası olmayan uygulamayı ATLIYOR.
+Konteyner başlatılıp cevap vermeden uzlaştırılsaydı uygulama
+yapılandırmadan düşerdi; bir sonraki turda `Check` onu sağlıklı görür,
+gözetmen "iyileşti" der ve BİR DAHA uzlaştırmazdı. Sonuç: sağlıklı
+GÖRÜNEN ama dışarıdan erişilemeyen bir uygulama — kalıcı olarak.
+
+Bu yüzden sıra: `ağ → konteynerler → KISA KAPI → uzlaştır`, ve
+uzlaştırmanın sonucu pozitif ölçütle okunuyor ("uygulamamız `Routed`
+içinde mi"), "hata dönmedi" ile değil.
+
+**Kapı neden AYRI:** dağıtım kapısının 90 saniyesi var, iyileştirmenin
+toplam 30. Kapı alandan okunsaydı iyileştirme dağıtımın sınırını miras
+alır ve ölçütü tek bir yavaş konteynerle kaçırırdı. `awaitReady` artık
+kapıyı parametre alıyor.
+
+**`switchTraffic` kasten KULLANILMADI.** K-072 dağıtımla geri almanın
+kuyruğu paylaşmasıyla ilgiliydi. Burada üçüncü bir BAŞ ekleniyor, kuyruk
+genişletilmiyor: `SetActiveRelease` iyileştirmede no-op olurdu ve
+`drainStale` doğrudan tehlikeli — çökmüş bir uygulamayı kurtarırken
+başka sürümleri durdurmanın hiçbir gerekçesi yok.
+
+## Testin kendisiyle ilgili iki ders
+
+**1. Kendi kendine referans veren iddia.** `TestHealWaitsForConsecutive-
+Failures` eşiği sabitin KENDİSİNDEN okuyordu
+(`DefaultOptions.FailuresBeforeHeal - 1` tur koş). Eşik 1'e düşürülünce
+testin beklentisi de onunla kaydı ve mutasyon GÖRÜNMEZ kaldı. Mutasyon
+sınaması olmasaydı fark edilmezdi.
+
+Kural: bir testin doğruladığı sayı, testin okuduğu sabitten gelmemeli.
+Mekanizma ile seçilen değer AYRI testlerde sınanmalı — biri "eşik neyse
+ona uyuluyor mu", diğeri "seçilen eşik doğru mu".
+
+**2. Kabul testi doğru sebeple geçmeli.** Canlı ölçümde `docker kill`
+sonrası site 6,82 saniyede döndü. Bu tek başına gözetmeni KANITLAMAZ:
+konteynerin restart politikası `always` olsaydı siteyi Docker kurtarırdı
+ve gözetmen hiçbir şey yapmadan test geçerdi. Ayırt eden ölçüm
+`docker inspect .HostConfig.RestartPolicy.Name` → `no` idi; üstüne
+gözetmenin kendi günlüğü ve denetim zincirindeki üç geçiş kaydı
+(`app.unhealthy` → `app.heal` → `app.healed`) sıralandı.
+
+Bu, K-047 ailesinin canlı ölçüme uzanan biçimi: doğru sonuç, yanlış
+sebep de olabilir.
+
+## Sonuç
+
+Ölçüldü: öldürme 20:12:46.4 · sağlıksız 20:12:51.5 · iyileştirme
+20:12:53.0 · ilk 200 **+6,82 sn** (ölçüt 30 sn) · `yeniden_kuruldu=false`
+yani imaj derlenmedi, duran konteyner uyandırıldı.
+
+Ayrıcalıklı yüzey 2482/2500 — DEĞİŞMEDİ. Yeni exec RPC'si gerekmedi,
+çünkü `StartReplica` zaten `ContainerStart`'a bağlıydı. Bu, işi bir şema
+değişikliğinden ~300 satırlık bir dilime indiren ölçümdü ve koda
+başlamadan ÖNCE yapıldı.
+
+**Faz 1'in dört kabul ölçütü de geçti.**

@@ -3627,3 +3627,66 @@ değişikliğinden ~300 satırlık bir dilime indiren ölçümdü ve koda
 başlamadan ÖNCE yapıldı.
 
 **Faz 1'in dört kabul ölçütü de geçti.**
+
+## K-076 — Kaydedilmiş bir "yapma" kararı, kapsamı daraltarak çözülebilir
+
+`api.proto` DeleteApp'in **kasten yok** olduğunu yazıyordu: silmek geri
+alınamaz, şartname §1.3 bu sınıfı TOTP kapısına koyuyor, kapı Faz 2'de ve
+şimdi eklemek kapısız bir yıkıcı işlem bırakırdı. Gerekçenin can alıcı
+kısmı şuydu: **sonradan kapı eklemek var olan bir RPC'yi KISITLAMAK
+demektir ve kısıtlanan arayüzler geriye dönük uyumsuzdur.**
+
+Bu arada koşullar değişti. Legion iptal olunca (K-074) `pfprobe` ve `web`
+Hetzner'de kalıcı hâle geldi; rotalı oldukları için her uzlaştırmada geri
+geliyorlar ve temizlenemiyorlar.
+
+**Çözüm kararı çiğnemek değil, kapsamı daraltmak oldu.** "Canlı sürümü
+olmayan uygulama" silmek yıkıcı değil: trafik yok, rota yok, gözetmen
+izlemiyor, ters vekil yapılandırmasında adı bile geçmiyor. Ve asıl önemli
+olan, TOTP geldiğinde yapılacak şey kısıtlamak değil **gevşetmek** olacak
+— canlı uygulamalara da izin vermek — ki gevşetme geriye dönük UYUMLUDUR.
+Yani orijinal gerekçeyi çürütmeden, bugün güvenle yapılabilen yarısı
+bugün yapıldı.
+
+Genel ders: kodda kayıtlı bir "yapma" kararıyla karşılaşınca iki kolay
+yanlış var — sessizce üzerine gitmek, ya da maddeyi süresiz dondurmak.
+Üçüncü yol genellikle var: kararın gerekçesini oku, o gerekçenin
+GEÇMEDİĞİ bir alt kümeyi bul.
+
+## Sıra taşıyıcıdır: kayıt, konteynerlere ulaşmanın TEK yolu
+
+Konteyner adları `app_id`/`release_id`'den türüyor. Kayıtlar önce silinse
+ve konteyner kaldırma yarıda kalsa, geriye **kimsenin adını bilemediği**
+çalışan konteynerler kalırdı — ne panely görür, ne bir sonraki deneme
+bulur. Bu yüzden: konteynerler önce, kayıtlar en sonda; ve kaldırma
+başarısız olursa kayıtlara DOKUNULMUYOR, komut yeniden çalıştırılabiliyor.
+
+Canlılık kontrolü hem API'de hem deponun işleminde. İkincisi olmadan,
+kontrol ile silme arasında tamamlanan bir dağıtım canlı bir uygulamanın
+kaydını sildirebilirdi.
+
+Silme sırası `deployments → releases → apps` ve bunu veritabanı zorluyor
+(ters sıra `FOREIGN KEY constraint failed`). **İlk ölçüm bunu
+göstermemişti:** sıfır dağıtımı olan bir uygulama (`blog`) seçilmişti,
+yani bileşik yabancı anahtar hiç çalışmadı. K-047 ailesi — test, hatanın
+YAŞADIĞI yolu çalıştırmalı.
+
+## Dokümanın vaadi test altında değilse yalana dönüşür
+
+Proto `FAILED_PRECONDITION` döneceğini yazıyordu; ilk canlı ölçümde
+`InvalidArgument` döndü, çünkü `s.denied()` her zaman onu döndürüyor.
+Birim testleri hatayı yakalamıştı ama **kodu** iddia etmiyorlardı, o
+yüzden uyumsuzluk sessiz kaldı ve ancak gerçek sunucuda göründü.
+Test artık `status.Code(err)`'i de iddia ediyor.
+
+## Bilinçli borç
+
+`panely-<app>` ağı ve `panely/<app>:<sha>` imajları BIRAKILIYOR:
+`NetworkRemove`/`ImageRemove` RPC'leri yok ve ayrıcalıklı bütçe
+2482/2500. Ağ zararsız — `NetworkEnsure` aynı adla yeniden kullanıyor ve
+havuz `/12` içinde ~4096 derin. İmajlar disk yiyor; saklama politikasıyla
+birlikte ele alınacak.
+
+**Canlıda ölçüldü:** `portfolio` (canlı) reddedildi, `blog`/`hello`/
+`ozelrepo` silindi (2+3+3 sürüm), site 34 yoklamanın hepsinde 200,
+denetim zinciri geçerli, artık satır sıfır.

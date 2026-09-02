@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/erkanrzgc/panely/internal/execclient"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/store"
@@ -160,6 +163,13 @@ func TestDeleteRefusesLiveApp(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), rel.ID) {
 		t.Errorf("hata %q — canlı sürümü söylemeliydi", err)
+	}
+	// gRPC KODU da iddia ediliyor: api.proto FAILED_PRECONDITION
+	// döneceğini YAZIYOR ve ilk canlı ölçümde InvalidArgument döndü.
+	// Dokümanın vaadi test altında değilse sessizce yalana dönüşüyor.
+	if got := status.Code(err); got != codes.FailedPrecondition {
+		t.Errorf("gRPC kodu %s, FailedPrecondition bekleniyordu — istek kusursuz, "+
+			"izin vermeyen şey sistemin DURUMU", got)
 	}
 	if len(exec.stopCalls) != 0 || len(exec.rmCalls) != 0 {
 		t.Errorf("canlı uygulamanın konteynerlerine dokunuldu: durdur=%v kaldır=%v — "+

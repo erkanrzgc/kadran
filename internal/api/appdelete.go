@@ -7,6 +7,10 @@ import (
 	"strconv"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
+	"github.com/erkanrzgc/panely/internal/audit"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 )
 
@@ -71,10 +75,20 @@ func (s *Server) DeleteApp(
 	// dağıtım girerse). İkisi aynı şeyi iki farklı sebeple yapıyor.
 	if live, err := s.store.ActiveDeployment(ctx, appID); err == nil {
 		params["live_release_id"] = live.ReleaseID
-		return nil, s.denied(ctx, action, tgt, params, fmt.Errorf(
+		cause := fmt.Errorf(
 			"uygulamanın canlı sürümü var (%s) — silmek trafiği keserdi. "+
 				"Canlı uygulamaların silinmesi TOTP kapısıyla birlikte gelecek",
-			live.ReleaseID))
+			live.ReleaseID)
+		// ⚠ `s.denied()` KULLANILMIYOR: o her zaman InvalidArgument
+		// döndürüyor ve burası bir argüman hatası DEĞİL. İstek kusursuz;
+		// izin vermeyen şey sistemin DURUMU. Aynı ayrım `appError`'da
+		// ErrNoDeployment için de yapılıyor.
+		//
+		// Fark pratik: InvalidArgument gören bir istemci isteği düzeltmeye
+		// çalışır, FailedPrecondition gören ise önce durumu değiştirmesi
+		// gerektiğini bilir — ki burada yapılacak şey tam olarak budur.
+		_ = s.recordAction(ctx, action, tgt, params, audit.OutcomeDenied, cause.Error())
+		return nil, status.Error(codes.FailedPrecondition, cause.Error())
 	}
 
 	removed, err := s.removeContainers(ctx, appID)

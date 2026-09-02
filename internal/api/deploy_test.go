@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -29,6 +30,59 @@ type fakeExec struct {
 	build      func(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
 	buildCalls int
 	lastReq    *panelyv1.ImageBuildRequest
+
+	// ── Silme yolu için DURUM MODELLİYOR ────────────────────────────
+	//
+	// `RemoveRelease` gerçekten `replicas`'tan çıkarıyor. Yalnızca çağrı
+	// kaydeden bir sahte, hiçbir konteyneri kaldırmayan bir silmeyi de
+	// başarılı gösterirdi — K-073'ün tam şekli.
+	replicas  []execclient.Replica
+	stopCalls []string
+	rmCalls   []string
+	stopErr   error
+	rmErr     error
+	listErr   error
+}
+
+func (f *fakeExec) ListReplicas(_ context.Context, appID string) ([]execclient.Replica, error) {
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	out := []execclient.Replica{}
+	for _, r := range f.replicas {
+		if r.AppID == appID {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeExec) StopRelease(
+	_ context.Context, appID, releaseID string, _ time.Duration,
+) (uint32, error) {
+	f.stopCalls = append(f.stopCalls, appID+"/"+releaseID)
+	if f.stopErr != nil {
+		return 0, f.stopErr
+	}
+	return 1, nil
+}
+
+func (f *fakeExec) RemoveRelease(_ context.Context, appID, releaseID string) (uint32, error) {
+	f.rmCalls = append(f.rmCalls, appID+"/"+releaseID)
+	if f.rmErr != nil {
+		return 0, f.rmErr
+	}
+	var kept []execclient.Replica
+	var n uint32
+	for _, r := range f.replicas {
+		if r.AppID == appID && r.ReleaseID == releaseID {
+			n++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	f.replicas = kept
+	return n, nil
 }
 
 func (f *fakeExec) Ping(context.Context) (execclient.PingResult, error) {

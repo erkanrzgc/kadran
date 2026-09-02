@@ -84,16 +84,32 @@ service PanelyService {
   // ⚠ Sağlık kapısı burada da işliyor ve 90 saniyeye kadar sürebilir;
   // istemci son tarihini buna göre ayarlamalı.
   rpc Rollback(RollbackRequest) returns (RollbackResponse);
-}
 
-// DeleteApp KASTEN YOK.
-//
-// Uygulama silmek geri alınamaz bir işlemdir ve şartname §1.3 bu sınıfı
-// TOTP onay kapısının arkasına koyar. Kapı Faz 2'de geliyor. Silmeyi
-// şimdi eklemek, kapısı olmayan bir yıkıcı işlem bırakırdı — sonradan
-// kapı eklemek, var olan bir RPC'yi kısıtlamak demektir ve kısıtlanan
-// arayüzler geriye dönük uyumsuzdur. Yokluğu bir eksik değil, sıralama
-// kararıdır.
+  // DeleteApp, uygulamayı ve izlerini kaldırır — YALNIZCA canlı sürümü
+  // yoksa.
+  //
+  // ── Bu kısıt neden RPC'nin bir parçası ──────────────────────────
+  //
+  // Bu yorumun eski hâli DeleteApp'in "kasten yok" olduğunu söylüyordu:
+  // silmek geri alınamaz, şartname §1.3 bu sınıfı TOTP kapısına koyuyor,
+  // kapı Faz 2'de ve şimdi eklemek kapısız bir yıkıcı işlem bırakırdı.
+  // Gerekçenin can alıcı kısmı şuydu: sonradan kapı eklemek var olan bir
+  // RPC'yi KISITLAMAK demektir ve kısıtlanan arayüzler geriye dönük
+  // uyumsuzdur.
+  //
+  // Dar kapsam o çıkmazı çözüyor. "Canlı sürümü olmayan uygulama"
+  // silmek yıkıcı değil: trafik yok, rota yok, gözetmen izlemiyor,
+  // ters vekil yapılandırmasında adı bile geçmiyor. TOTP geldiğinde
+  // yapılacak şey kısıtlamak değil GEVŞETMEK olacak — canlı
+  // uygulamalara da izin vermek — ve gevşetme geriye dönük UYUMLUDUR.
+  //
+  // Yani sıralama kararı korunuyor, sadece bugün güvenle yapılabilen
+  // yarısı bugün yapılıyor.
+  //
+  // Canlı sürümü olan bir uygulama için sunucu FAILED_PRECONDITION
+  // döner ve hangi sürümün canlı olduğunu söyler.
+  rpc DeleteApp(DeleteAppRequest) returns (DeleteAppResponse);
+}
 
 message PingRequest {
   // İstemcinin sürümü. Sunucu uyumsuzluk durumunda uyarı döner.
@@ -450,6 +466,29 @@ message DeploySucceeded {
 // numarası aktivasyon geçmişinin yerine geçmez. Gerekçe K-069'da.
 message RollbackRequest {
   string app_id = 1;
+}
+
+message DeleteAppRequest {
+  string app_id = 1;
+}
+
+// DeleteAppResponse, NEYİN yok edildiğini sayar.
+//
+// Sayılar dönüyor çünkü "silindi" tek başına bir şey söylemiyor: hiç
+// konteyneri olmayan bir kayıt da, beş sürümü ve duran konteynerleri
+// olan bir uygulama da aynı cevabı verirdi. Operatörün ve denetim
+// kaydının cevaplayabilmesi gereken soru "ne yok oldu".
+message DeleteAppResponse {
+  string app_id = 1;
+
+  // Kaldırılan konteyner sayısı.
+  uint32 containers_removed = 2;
+
+  // Silinen sürüm kaydı sayısı.
+  uint32 releases_deleted = 3;
+
+  // Silinen dağıtım geçmişi satırı sayısı.
+  uint32 deployments_deleted = 4;
 }
 
 // RollbackResponse, trafiğin nereden nereye taşındığını söyler.

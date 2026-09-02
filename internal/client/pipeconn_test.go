@@ -62,6 +62,12 @@ type stubService struct {
 	pingCalls int
 }
 
+func (s *stubService) DeleteApp(
+	context.Context, *panelyv1.DeleteAppRequest,
+) (*panelyv1.DeleteAppResponse, error) {
+	return nil, errors.New("stubService: DeleteApp beklenmiyordu")
+}
+
 func (s *stubService) Ping(context.Context, *panelyv1.PingRequest) (*panelyv1.PingResponse, error) {
 	s.pingCalls++
 	return &panelyv1.PingResponse{

@@ -56,6 +56,18 @@ type Executor interface {
 	HostInfo(ctx context.Context) (*panelyv1.HostInfo, error)
 	ReadJournal(ctx context.Context, afterSeq uint64, limit uint32) (execclient.JournalPage, error)
 	ImageBuild(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
+
+	// Aşağıdaki üçü YALNIZCA silme yolunda kullanılıyor.
+	//
+	// ⚠ Sürümler `ListReleases` ile DEĞİL, konteynerler `ListReplicas`
+	// ile bulunuyor. Sebep: `ListReleases` üst sınırla kısıtlı
+	// (maxReleaseLimit) ve sürüm sayısı sınırı aşan bir uygulamada bazı
+	// konteynerler atlanırdı. Kayıtlar silindikten sonra o konteynerlere
+	// ulaşacak hiçbir şey kalmazdı — adları app_id/release_id'den
+	// türüyor ve o kayıtlar artık yok.
+	ListReplicas(ctx context.Context, appID string) ([]execclient.Replica, error)
+	StopRelease(ctx context.Context, appID, releaseID string, grace time.Duration) (uint32, error)
+	RemoveRelease(ctx context.Context, appID, releaseID string) (uint32, error)
 }
 
 // ServerOptions, API sunucusunu yapılandırır.

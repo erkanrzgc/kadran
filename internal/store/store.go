@@ -34,11 +34,24 @@ import (
 )
 
 //go:embed migrations/*.sql
-var migrationFS embed.FS
+var embeddedMigrations embed.FS
+
+// migrationFS, göç kaynağıdır.
+//
+// embed.FS yerine fs.FS olarak tutuluyor ki testler kendi göç kümelerini
+// takabilsin. Buna ihtiyaç vardı: göç öncesi yedeğin GERÇEKTEN geri
+// dönülebilir olduğunu kanıtlamanın tek yolu BOZUK bir göç çalıştırmak,
+// ve gömülü kümeye bilerek bozuk bir dosya koyulamaz.
+var migrationFS fs.FS = embeddedMigrations
 
 // Store, kontrol düzlemi veritabanına erişimi kapsüller.
 type Store struct {
 	db *sql.DB
+
+	// path, veritabanı dosya yoludur. Göç öncesi yedek bunu gerektiriyor:
+	// anlık görüntü dosyanın YANINA yazılıyor, böylece yedek ve
+	// veritabanı aynı birimde kalıyor ve ayrı bir dizin izni gerekmiyor.
+	path string
 
 	// appendMu, denetim zincirine eklemeyi serileştirir.
 	//
@@ -70,7 +83,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("sqlite'a bağlanılamadı: %w", err)
 	}
 
-	s := &Store{db: db}
+	s := &Store{db: db, path: path}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("göçler uygulanamadı: %w", err)
@@ -132,6 +145,12 @@ func (s *Store) migrate(ctx context.Context) error {
 	// Dosya adları sıfır dolgulu olduğu için sözlük sırası = uygulama sırası.
 	sort.Strings(names)
 
+	// ── Göç öncesi yedek ────────────────────────────────────────────
+	//
+	// Yalnızca İLK bekleyen göçten önce, ve yalnızca kaybedilecek bir şey
+	// varsa. Taze bir veritabanında (hiç göç uygulanmamış) yedek almak
+	// boş bir dosyayı kopyalamak olurdu.
+	snapshotTaken := false
 	for _, name := range names {
 		applied, err := s.migrationApplied(ctx, name)
 		if err != nil {
@@ -140,11 +159,38 @@ func (s *Store) migrate(ctx context.Context) error {
 		if applied {
 			continue
 		}
+
+		if !snapshotTaken {
+			fresh, err := s.isFreshDatabase(ctx)
+			if err != nil {
+				return err
+			}
+			if !fresh {
+				if err := snapshotBeforeMigrate(ctx, s.db, s.path, name); err != nil {
+					return err
+				}
+			}
+			snapshotTaken = true
+		}
+
 		if err := s.applyMigration(ctx, name); err != nil {
 			return fmt.Errorf("göç %s uygulanamadı: %w", name, err)
 		}
 	}
 	return nil
+}
+
+// isFreshDatabase, hiç göç uygulanmamış bir veritabanını bildirir.
+//
+// Taze veritabanında yedek ATLANIR: kaybedilecek veri yok ve her yeni
+// kurulumda boş bir kopya üretmek yalnızca gürültü olurdu.
+func (s *Store) isFreshDatabase(ctx context.Context) (bool, error) {
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
+		return false, fmt.Errorf("göç sayısı okunamadı: %w", err)
+	}
+	return n == 0, nil
 }
 
 func (s *Store) migrationApplied(ctx context.Context, name string) (bool, error) {
@@ -162,7 +208,7 @@ func (s *Store) migrationApplied(ctx context.Context, name string) (bool, error)
 }
 
 func (s *Store) applyMigration(ctx context.Context, name string) error {
-	body, err := migrationFS.ReadFile("migrations/" + name)
+	body, err := fs.ReadFile(migrationFS, "migrations/"+name)
 	if err != nil {
 		return fmt.Errorf("göç dosyası okunamadı: %w", err)
 	}

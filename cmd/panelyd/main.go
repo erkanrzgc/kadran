@@ -330,7 +330,18 @@ const startupReconcileTries = 3
 // Eskiden hiçbir şey döndürmüyordu; sonuç yalnızca günlüğe yazılıyor ve
 // hemen ardından koşulsuz READY gönderiliyordu. Yani systemd'ye "hazırım"
 // denirken bütün siteler kapalı olabiliyordu.
-func reconcileAtStartup(rc *deploy.Reconciler) string {
+// startupReconciler, açılış uzlaştırmasının ihtiyaç duyduğu TEK metot.
+//
+// Somut *deploy.Reconciler yerine arayüz alınıyor ki BAŞARISIZLIK YOLU
+// birim testinden geçebilsin. Öncesinde imza somuttu ve o yolu sınamanın
+// tek yolu canlıda Caddy'yi durdurmaktı — yani bütün siteleri
+// düşürmekti. Sınanamayan bir hata yolu, olmayan bir hata yolu gibi
+// davranır.
+type startupReconciler interface {
+	Reconcile(ctx context.Context) (deploy.Result, error)
+}
+
+func reconcileAtStartup(rc startupReconciler) string {
 	var last string
 	for attempt := 1; attempt <= startupReconcileTries; attempt++ {
 		ctx, cancel := context.WithTimeout(context.Background(), startupReconcileTimeout)

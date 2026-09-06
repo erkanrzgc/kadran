@@ -154,7 +154,7 @@ func run() error {
 	// Başarısızlık ÖLÜMCÜL DEĞİL: executor yoklamasındaki gerekçenin
 	// aynısı — reddedip çıkmak systemd ile bir yeniden başlatma döngüsü
 	// yaratır ve operatör hiçbir teşhis aracına erişemez.
-	reconcileAtStartup(reconciler)
+	proxyProblem := reconcileAtStartup(reconciler)
 
 	// Uzlaştırıcı hem rollout'a hem API'ye veriliyor: `app update` alan
 	// adı değiştiğinde trafiği DAĞITIM BEKLEMEDEN taşıyabilmeli.
@@ -227,6 +227,24 @@ func run() error {
 		"veritabani", *dbPath,
 	)
 
+	// ⚠ READY, "trafik akıyor" DEMEK DEĞİL — ve systemd'ye bunu
+	// söylemek zorundayız.
+	//
+	// Ters vekil yapılandırması panelyd tarafından kuruluyor ve Caddy
+	// yeniden başladığında rotasız açılıyor. Açılış uzlaştırması
+	// başarısız olursa: systemd `active (running)` gösterir, `panely
+	// status` sağlıklı der, BÜTÜN SİTELER KAPALIDIR ve tek iz bir
+	// slog.Error satırıdır.
+	//
+	// READY yine de gönderiliyor — göndermemek systemd'de yeniden
+	// başlatma döngüsü yaratır ve operatör hiçbir teşhis aracına
+	// erişemez. Bunun yerine STATUS metni gerçeği taşıyor: artık
+	// `systemctl status panelyd` sorunu ilk satırda gösteriyor.
+	if proxyProblem != "" {
+		_ = sdnotify.Status("BOZUK: " + proxyProblem)
+	} else {
+		_ = sdnotify.Status("hazır — ters vekil uzlaştırıldı")
+	}
 	if err := sdnotify.Ready(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {
 		slog.Warn("systemd bilgilendirilemedi", "hata", err)
 	}
@@ -298,18 +316,45 @@ const startupReconcileTimeout = 30 * time.Second
 // Sonucu YUTMUYOR: rotalanamayan uygulamalar adlarıyla günlüğe yazılıyor.
 // Sessiz bir başarı, bütün sitelerin düştüğü bir kurulumla aynı
 // görünürdü.
-func reconcileAtStartup(rc *deploy.Reconciler) {
-	ctx, cancel := context.WithTimeout(context.Background(), startupReconcileTimeout)
-	defer cancel()
+// startupReconcileTries, açılış uzlaştırmasının deneme sayısıdır.
+//
+// Tek deneme yetmiyordu: en olası başarısızlık sebebi Caddy'nin henüz
+// admin soketini açmamış olması ve bu SANİYELER içinde kendiliğinden
+// geçiyor. Tek denemede vazgeçmek, geçici bir yarışı kalıcı bir
+// kesintiye çeviriyordu.
+const startupReconcileTries = 3
 
-	res, err := rc.Reconcile(ctx)
-	if err != nil {
-		slog.Error("ters vekil açılışta uzlaştırılamadı — TRAFİK AKMIYOR OLABİLİR",
-			"hata", err)
-		return
+// reconcileAtStartup, ters vekili SQLite'taki duruma getirir ve
+// başarısızlığı ÇAĞIRANA BİLDİRİR.
+//
+// Eskiden hiçbir şey döndürmüyordu; sonuç yalnızca günlüğe yazılıyor ve
+// hemen ardından koşulsuz READY gönderiliyordu. Yani systemd'ye "hazırım"
+// denirken bütün siteler kapalı olabiliyordu.
+func reconcileAtStartup(rc *deploy.Reconciler) string {
+	var last string
+	for attempt := 1; attempt <= startupReconcileTries; attempt++ {
+		ctx, cancel := context.WithTimeout(context.Background(), startupReconcileTimeout)
+		res, err := rc.Reconcile(ctx)
+		cancel()
+
+		if err == nil {
+			if len(res.Skipped) > 0 {
+				slog.Warn("bazı uygulamalar rotalanamadı", "ayrinti", res.Error())
+				return "rotalanamayan uygulama var: " + res.Error()
+			}
+			slog.Info("ters vekil uzlaştırıldı", "rotalanan", res.Routed)
+			return ""
+		}
+
+		last = err.Error()
+		slog.Warn("ters vekil uzlaştırılamadı, yeniden denenecek",
+			"deneme", attempt, "hata", err)
+		if attempt < startupReconcileTries {
+			time.Sleep(time.Duration(attempt) * time.Second)
+		}
 	}
-	if len(res.Skipped) > 0 {
-		slog.Warn("bazı uygulamalar rotalanamadı", "ayrinti", res.Error())
-	}
-	slog.Info("ters vekil uzlaştırıldı", "rotalanan", res.Routed)
+
+	slog.Error("ters vekil açılışta uzlaştırılamadı — TRAFİK AKMIYOR",
+		"deneme", startupReconcileTries, "hata", last)
+	return "ters vekil uzlaştırılamadı: " + last
 }

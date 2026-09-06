@@ -76,6 +76,13 @@ func (c *cli) consumeLogs(
 	ctx context.Context,
 	stream panelyv1.PanelyService_StreamLogsClient,
 ) int {
+	// ⚠ HİÇ BAŞLAMAMIŞ akış ile YARIDA KOPMUŞ akış ayrı şeyler.
+	//
+	// gRPC akış hatalarını ilk `Recv()`'de yüzeye çıkarıyor, yani sunucu
+	// isteği daha ilk anda reddetse bile hata buradan geliyor. Hepsine
+	// "akış koptu" demek, "uygulama bulunamadı" hatasını bir ağ
+	// sorunuymuş gibi gösterir ve operatörü bağlantının peşine düşürür.
+	started := false
 	for {
 		msg, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -93,8 +100,13 @@ func (c *cli) consumeLogs(
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return exitOK
 			}
+			if !started {
+				return c.fail(fmt.Errorf("günlük akışı başlatılamadı: %w", err))
+			}
 			return c.fail(fmt.Errorf("günlük akışı koptu: %w", err))
 		}
+
+		started = true
 
 		out := c.stdout
 		if msg.GetIsStderr() {

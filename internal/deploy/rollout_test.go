@@ -36,6 +36,11 @@ type fakeLifecycle struct {
 	stopped []stopCall
 	stopErr error
 
+	// stoppedReplicas, ölçek küçültmesinde TEK TEK durdurulan
+	// replikaları kaydeder. stopped'dan ayrı: orası sürümün tamamını
+	// indiren boşaltma yolu.
+	stoppedReplicas []replicaStop
+
 	// materialize, CreateReplica'nın yarattığı konteyneri `replicas`
 	// listesine EKLEMESİNİ sağlar. Bkz. CreateReplica.
 	materialize bool
@@ -91,6 +96,36 @@ func (f *fakeLifecycle) StopRelease(
 		return 0, f.stopErr
 	}
 	return 1, nil
+}
+
+// StopReplica, tek replikayı durdurur ve listeden ÇIKARIR.
+//
+// Kaydı silmek gerçeğe daha yakın değil ama daha SIKI: fazlalık
+// durdurulmazsa liste küçülmez ve iddia bunu görür.
+func (f *fakeLifecycle) StopReplica(
+	_ context.Context, app, rel string, idx uint32, grace time.Duration,
+) (uint32, error) {
+	f.stoppedReplicas = append(f.stoppedReplicas,
+		replicaStop{appID: app, releaseID: rel, index: idx, grace: grace})
+	var n uint32
+	kept := f.replicas[:0]
+	for _, r := range f.replicas {
+		if r.ReleaseID == rel && r.Index == idx {
+			n++
+			continue
+		}
+		kept = append(kept, r)
+	}
+	f.replicas = kept
+	return n, nil
+}
+
+// replicaStop, tek replika durdurma çağrısını kaydeder.
+type replicaStop struct {
+	appID     string
+	releaseID string
+	index     uint32
+	grace     time.Duration
 }
 
 // stoppedReleases, durdurulan sürüm kimliklerini döndürür.
@@ -189,7 +224,11 @@ func newHarness(t *testing.T, life *fakeLifecycle, routable bool) *harness {
 
 	proxy := &fakeProxy{}
 	rec, err := New(
-		fakeDeployments{{AppID: testApp, ReleaseID: relNew, Domain: "example.test", ContainerPort: 8080}},
+		fakeDeployments{{AppID: testApp, ReleaseID: relNew, Domain: "example.test",
+			// Replicas testApplication()'dan TÜRETİLİYOR: ikisi aynı
+			// uygulamayı modelliyor ve elle yazılsaydı biri değişince
+			// öteki sessizce geride kalırdı.
+			ContainerPort: 8080, Replicas: testApplication().Replicas}},
 		fakeReplicas{byApp: map[string][]execclient.Replica{testApp: reps}},
 		proxy,
 		testAdmin(),

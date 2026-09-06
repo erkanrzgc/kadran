@@ -19,6 +19,7 @@ type Lifecycle interface {
 	StartReplica(ctx context.Context, appID, releaseID string, index uint32) error
 	ListReplicas(ctx context.Context, appID string) ([]execclient.Replica, error)
 	StopRelease(ctx context.Context, appID, releaseID string, grace time.Duration) (uint32, error)
+	StopReplica(ctx context.Context, appID, releaseID string, index uint32, grace time.Duration) (uint32, error)
 }
 
 // Activations, trafiğin hangi sürüme gittiğini yazar.
@@ -320,6 +321,43 @@ func (r *Rollout) ensureReplicas(
 		}
 		if err := r.lifecycle.StartReplica(ctx, app.ID, rel.ID, i); err != nil {
 			return recreated, fmt.Errorf("replika #%d başlatılamadı: %w", i, err)
+		}
+	}
+
+	// ── Ölçek küçültmesinin fazlalıkları ────────────────────────────
+	//
+	// Döngü yalnızca [0, Replicas) aralığını kuruyor. Replika sayısı
+	// azaltıldığında indeksi bu aralığın DIŞINDA kalan konteynerler
+	// hostta çalışmaya devam eder — ve eskiden hiçbir şey onları
+	// durdurmuyordu, hatta `upstreamsFor` hepsini rotalıyordu. Sonuç:
+	// `app update -replicas 1` "başarılı" der, üç konteyner de trafik
+	// almaya devam ederdi.
+	//
+	// ⚠ SIRA: rota ÖNCE daralıyor. Bu fonksiyon dağıtım ve iyileştirme
+	// yollarından çağrılıyor ve ikisi de sonunda uzlaştırıyor; ayrıca
+	// `upstreamsFor` indeks filtresi sayesinde fazlalıklar zaten trafik
+	// almıyor. Yani burada durdurulan konteyner, istek bekleyen bir
+	// konteyner DEĞİL.
+	//
+	// Silinmiyor, yalnızca durduruluyor — K-061'in aynı gerekçesi:
+	// tekrar büyütmek gerekirse imajdan kurmaya gerek kalmaz.
+	for _, rep := range reps {
+		if rep.ReleaseID != rel.ID || rep.Index < app.Replicas {
+			continue
+		}
+		// ⚠ rep.ReleaseID geçiliyor, rel.ID DEĞİL.
+		//
+		// Yukarıdaki filtre ikisinin eşit olmasını zaten garantiliyor,
+		// yani rel.ID yazmak bugün DOĞRU sonuç üretirdi. Ama gezilen
+		// öğeyle çağrılan öğe farklı kaynaklardan gelirse aradaki bağ
+		// yalnızca filtreye dayanır: filtre bir gün gevşerse çağrı
+		// sessizce YANLIŞ sürümü adlandırır ve hiçbir test bunu
+		// göremez. Ölçüldü — filtreyi kaldıran mutasyon tam da bu
+		// yüzden yeşil geçmişti.
+		if _, err := r.lifecycle.StopReplica(
+			ctx, app.ID, rep.ReleaseID, rep.Index, r.drain.Grace); err != nil {
+			return recreated, fmt.Errorf(
+				"ölçek fazlası replika #%d durdurulamadı: %w", rep.Index, err)
 		}
 	}
 	return recreated, nil

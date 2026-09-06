@@ -21,6 +21,14 @@ type Deployment struct {
 	Domain        string
 	ContainerPort uint32
 
+	// Replicas, uygulamanın İSTENEN replika sayısıdır.
+	//
+	// Domain ve ContainerPort gibi apps'ten denormalize ediliyor. Sebebi
+	// somut: ters vekil yapılandırması bu satırdan üretiliyor ve indeksi
+	// bu sayının ÜSTÜNDE kalan replikalar rotalanmamalı. Sayı burada
+	// olmasaydı uzlaştırıcı her uygulama için ayrı bir sorgu atardı.
+	Replicas uint32
+
 	ActivatedAt time.Time
 }
 
@@ -202,7 +210,7 @@ func (s *Store) ActiveDeployments(ctx context.Context) ([]Deployment, error) {
 // gittiği için bu, tek seferde TÜM siteleri yanlış upstream'lere
 // bağlardı. Filtreyi unutmayı mümkün kılmamak, hatırlamaktan güvenli.
 const deploymentSelect = `
-	SELECT d.app_id, d.release_id, d.activated_at, a.domain, a.container_port
+	SELECT d.app_id, d.release_id, d.activated_at, a.domain, a.container_port, a.replicas
 	FROM deployments d
 	JOIN apps a ON a.id = d.app_id
 	WHERE d.deactivated_at IS NULL`
@@ -213,7 +221,7 @@ func scanDeployment(sc scanner) (Deployment, error) {
 		activatedAt int64
 	)
 	if err := sc.Scan(&d.AppID, &d.ReleaseID, &activatedAt,
-		&d.Domain, &d.ContainerPort); err != nil {
+		&d.Domain, &d.ContainerPort, &d.Replicas); err != nil {
 		return Deployment{}, err
 	}
 	d.ActivatedAt = time.Unix(0, activatedAt)

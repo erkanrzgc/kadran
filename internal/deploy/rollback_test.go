@@ -24,6 +24,7 @@ func newRollbackHarness(t *testing.T, life *fakeLifecycle, target string) *harne
 		fakeDeployments{{
 			AppID: testApp, ReleaseID: target,
 			Domain: "example.test", ContainerPort: 8080,
+			Replicas: testApplication().Replicas,
 		}},
 		fakeReplicas{byApp: map[string][]execclient.Replica{
 			testApp: {running(testApp, target, 0, "172.20.0.2")},

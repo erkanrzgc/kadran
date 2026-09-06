@@ -151,6 +151,22 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 		return nil, fmt.Sprintf("konteynerler listelenemedi: %v", err)
 	}
 
+	// ⚠ Replicas SIFIR OLAMAZ ve sıfırsa sessiz kalmıyoruz.
+	//
+	// Şema `CHECK (replicas BETWEEN 1 AND 64)` ile bunu garanti ediyor,
+	// yani sıfır ancak elle kurulmuş bir Deployment'tan gelebilir —
+	// alanı doldurmayı unutan yeni bir kod yolundan. Aşağıdaki indeks
+	// filtresi böyle bir değerle HER replikayı eler ve uygulama sessizce
+	// tamamen rotasız kalırdı; üstelik hata mesajı "ayakta replikası yok"
+	// diyerek operatörü konteynerlerin peşine düşürürdü.
+	//
+	// Bu yüzden sebep açıkça söyleniyor. Uygulama yine atlanıyor
+	// (fail-closed), ama NEDEN atlandığı belli.
+	if d.Replicas == 0 {
+		return nil, "istenen replika sayısı sıfır — şema bunu yasaklıyor, " +
+			"demek ki Deployment kaydı eksik dolduruldu"
+	}
+
 	// Belirlenimli sıra: aynı durumdan aynı JSON çıkmazsa geri okuma
 	// karşılaştırması her yüklemede gürültü üretirdi. Docker'ın liste
 	// sırası garanti değil.
@@ -160,6 +176,7 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 		ups     []proxydrv.Upstream
 		notMine int
 		notUp   int
+		extra   int
 	)
 	for _, rep := range reps {
 		// ⚠ YALNIZCA AKTİF SÜRÜMÜN replikaları. Blue-green geçişi
@@ -177,6 +194,22 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 			notUp++
 			continue
 		}
+		if rep.Index >= d.Replicas {
+			// ⚠ ÖLÇEK KÜÇÜLTMESİNİN FAZLALIKLARI.
+			//
+			// Replika sayısı 3'ten 1'e indirildiğinde #1 ve #2 hostta
+			// ÇALIŞMAYA DEVAM EDER: onları durduran şey `ensureReplicas`
+			// ve o da ancak bir sonraki dağıtımda/iyileştirmede koşar.
+			// Bu filtre olmasaydı ikisi de trafik almaya devam ederdi ve
+			// `app update -replicas 1` "başarılı" deyip HİÇBİR ŞEY
+			// değiştirmemiş olurdu.
+			//
+			// Sıra taşıyıcı: rota ÖNCE daraltılıyor, konteyner SONRA
+			// durduruluyor. Tersi, hâlâ istek alan bir konteyneri
+			// koparırdı.
+			extra++
+			continue
+		}
 		u, err := proxydrv.NewUpstream(rep.IPAddress, d.ContainerPort)
 		if err != nil {
 			// Adres executor'dan geliyor ve ayrıştırılamıyorsa bu, üst
@@ -190,8 +223,8 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 	if len(ups) == 0 {
 		return nil, fmt.Sprintf(
 			"aktif sürümün (%s) ayakta replikası yok (hostta %d konteyner: "+
-				"%d başka sürümden, %d hazır değil)",
-			d.ReleaseID, len(reps), notMine, notUp)
+				"%d başka sürümden, %d hazır değil, %d ölçek fazlası)",
+			d.ReleaseID, len(reps), notMine, notUp, extra)
 	}
 	return ups, ""
 }

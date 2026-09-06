@@ -209,6 +209,36 @@ func (c *Client) StopRelease(ctx context.Context, appID, releaseID string, grace
 	return resp.GetAffected(), nil
 }
 
+// StopReplica, bir sürümün TEK bir replikasını durdurur.
+//
+// StopRelease'ten ayrı: orası boşaltma yolu ve sürümün TAMAMINI indiriyor.
+// Burası ölçek küçültme yolu — sürüm canlı kalırken yalnızca fazlalık
+// replikalar iniyor. İkisini tek fonksiyonda birleştirmek, boşaltmada
+// yanlışlıkla tek replika indirilmesi riskini açardı.
+//
+// Seçici `replica` alanını taşıyor; şema bunu zaten destekliyordu.
+func (c *Client) StopReplica(
+	ctx context.Context, appID, releaseID string, index uint32, grace time.Duration,
+) (uint32, error) {
+	ctx, cancel := context.WithTimeout(ctx, grace+containerTimeout)
+	defer cancel()
+
+	sel := releaseSelector(appID, releaseID)
+	sel.Replica = &index
+
+	resp, err := c.rpc.ContainerStop(ctx, &panelyv1.ContainerStopRequest{
+		Selector:       sel,
+		TimeoutSeconds: uint32(grace.Seconds()),
+	})
+	if err != nil {
+		return 0, fmt.Errorf("replika durdurulamadı (%s/%s#%d): %w",
+			appID, releaseID, index, err)
+	}
+	// Sıfır HATA DEĞİL: zaten durmuş bir replikayı durdurmak geçerli ve
+	// yakınsama yolunun tekrar çalıştırılabilir olması gerekiyor.
+	return resp.GetAffected(), nil
+}
+
 // RemoveRelease, bir sürümün tüm konteynerlerini siler.
 func (c *Client) RemoveRelease(ctx context.Context, appID, releaseID string) (uint32, error) {
 	ctx, cancel := context.WithTimeout(ctx, containerTimeout)

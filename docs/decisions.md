@@ -3771,6 +3771,77 @@ diye tanımlıyordu, oysa `api.sock`'u **`panely-client`** koruyor
 (`panely` grubu `exec.sock`'u koruyor). Yetki sınırını TANIMLAYAN
 belgede yanlış grup adı.
 
+## K-080 — Ölçek küçültme: kayıt doğruydu, gerçeklik değişmiyordu
+
+`panely app update -replicas 1` "başarılı" diyor, `apps` satırını da doğru
+yazıyordu — ama hostta hiçbir şey olmuyordu. İki bağımsız eksik vardı ve
+ikisi birbirini gizliyordu:
+
+- `ensureReplicas` yalnızca `[0, Replicas)` aralığını **kuruyor**;
+  indeksi bu aralığın dışında kalan konteynerleri hiç durdurmuyordu.
+- `upstreamsFor` indekse hiç bakmadan, aktif sürümün **bütün** ayakta
+  replikalarını rotalıyordu.
+
+Sonuç: 3'ten 1'e inen bir uygulamada üç konteyner de trafik almaya devam
+ediyordu. Gözetmen de yakalamıyordu, çünkü `ready >= app.Replicas`
+karşılaştırması 3 ≥ 1 ile **sağlıklı** diyor.
+
+**Karar:** iki taraf da düzeltildi ve sıra taşıyıcı — **önce rota daralır,
+sonra konteyner durur.** Tersi, hâlâ istek alan bir konteyneri koparırdı.
+Rota daralması `app update` anında uzlaştırmayla oluyor; durdurma bir
+sonraki dağıtımda/iyileştirmede. Yani durdurulan konteyner, o ana kadar
+zaten trafik almıyor.
+
+Fazlalıklar siliniyor değil **durduruluyor** — K-061'in aynı gerekçesi:
+tekrar büyütmek gerekirse imajdan kurmaya gerek kalmasın.
+
+### `Replicas` sıfırsa sessiz kalınmıyor
+
+Şema `CHECK (replicas BETWEEN 1 AND 64)` ile sıfırı yasaklıyor, yani
+sıfır ancak eksik doldurulmuş bir `Deployment`'tan gelebilir. İndeks
+filtresi böyle bir değerle **her** replikayı eler ve uygulama tamamen
+rotasız kalırdı. Asıl tehlike sessizlik: mesaj "ayakta replikası yok"
+olsaydı operatör konteynerlerin peşine düşerdi — oysa konteynerler gayet
+ayakta. Artık sebep açıkça yazılıyor.
+
+Bunu testler buldu: yeni alan eklenince mevcut sahtelerde sıfır kaldı ve
+üç test birden düştü. Kusur sahtelerdeydi ama **düşüş gerçek bir
+başarısızlık kipini gösterdi.**
+
+### Yeşil kalan mutasyonun ÜÇÜNCÜ sebebi
+
+K-071 yeşil bir mutasyonun iki sebebi olabileceğini söylüyordu: test
+zayıftır ya da mutasyon zayıftır. Bu dilimde üçüncüsü çıktı ve aynı
+mutasyon iki tur boyunca yeşil kaldı, her turda sebep farklıydı:
+
+1. **Test zayıftı.** Sahte dünyada tek sürüm vardı, dolayısıyla sürüm
+   filtresi hiçbir şey yapmıyordu. Mavi-yeşil senaryosu eklendi.
+2. **Kod tutarsızdı.** Test eklendi, mutasyon hâlâ yeşil geçti. Sebep:
+   durdurma çağrısı gezilen replikanın `rep.ReleaseID`'sini değil aktif
+   `rel.ID`'yi geçiyordu. Filtre varken ikisi eşit olduğu için sonuç
+   doğruydu — ama gezilen öğeyle çağrılan öğe farklı kaynaklardan
+   geldiği için aradaki bağ yalnızca filtreye dayanıyordu. `rep.ReleaseID`
+   geçilince mutasyon görünür oldu.
+3. **Mutasyon zayıftı.** Üçüncü bir mutasyon (ikisini birleştiren)
+   yine yeşil kaldı ve bu kez gerçekten geçerliydi: çağrı aktif sürümü
+   adlandırdığı için seçici eski sürümün konteynerini bulamıyor, yani
+   hiçbir şey durdurulmuyor. Korunan özellik ihlal edilmiyor. Mutasyon
+   elendi, gerekçesi betiğe yazıldı.
+
+### Çağrı kaydına bakmak ölçüm değildir
+
+Ara aşamada test `stoppedReplicas` listesindeki **sürüm adını** kontrol
+ediyordu. Yetmedi: kaydın kendisi yanlış sürüm adı taşıyabiliyordu, yani
+"relNew durduruldu" yazarken fiilen eski sürümün konteyneri inmiş
+olabilirdi. İddia dünyanın **durumuna** çevrildi — eski sürümün
+replikaları hâlâ RUNNING mı. Kaydın kendisi yanılabiliyorsa kayda bakmak
+ölçüm değildir.
+
+Ayrıca her iki yönde de kontrol grubu eklendi: `TestScaleUpRoutesEveryReplica`
+ve `TestHealKeepsEveryReplicaWhenCountMatches`. Bunlar olmasaydı "her
+zaman ele" ya da "her zaman durdur" diyen bir uygulama da testleri
+geçerdi.
+
 ## Sıra taşıyıcıdır: kayıt, konteynerlere ulaşmanın TEK yolu
 
 Konteyner adları `app_id`/`release_id`'den türüyor. Kayıtlar önce silinse

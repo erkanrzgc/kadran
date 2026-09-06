@@ -103,8 +103,8 @@ func mustReconciler(t *testing.T, d Deployments, r Replicas, p Proxy) *Reconcile
 // iyisi hatanın hiç oluşmaması.
 func TestReconcileCarriesEveryAppNotJustTheDeployedOne(t *testing.T) {
 	deps := fakeDeployments{
-		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080},
-		{AppID: "shop", ReleaseID: "r7", Domain: "shop.example.com", ContainerPort: 3000},
+		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 1},
+		{AppID: "shop", ReleaseID: "r7", Domain: "shop.example.com", ContainerPort: 3000, Replicas: 1},
 	}
 	reps := fakeReplicas{byApp: map[string][]execclient.Replica{
 		"blog": {running("blog", "r2", 0, "172.18.0.5")},
@@ -141,7 +141,7 @@ func TestReconcileCarriesEveryAppNotJustTheDeployedOne(t *testing.T) {
 // geçmemiş bir sürüme tek bir isteğin bile gitmemesi gerekiyor.
 func TestOnlyTheActiveReleaseReceivesTraffic(t *testing.T) {
 	deps := fakeDeployments{
-		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080},
+		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 1},
 	}
 	reps := fakeReplicas{byApp: map[string][]execclient.Replica{
 		"blog": {
@@ -170,8 +170,8 @@ func TestOnlyTheActiveReleaseReceivesTraffic(t *testing.T) {
 // bir bozuk uygulamanın sunucudaki her siteyi düşürmesi demekti.
 func TestSickAppDoesNotTakeDownHealthyOnes(t *testing.T) {
 	deps := fakeDeployments{
-		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080},
-		{AppID: "olu", ReleaseID: "r1", Domain: "olu.example.com", ContainerPort: 8080},
+		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 1},
+		{AppID: "olu", ReleaseID: "r1", Domain: "olu.example.com", ContainerPort: 8080, Replicas: 1},
 	}
 	reps := fakeReplicas{byApp: map[string][]execclient.Replica{
 		"blog": {running("blog", "r2", 0, "172.18.0.5")},
@@ -208,7 +208,10 @@ func TestSickAppDoesNotTakeDownHealthyOnes(t *testing.T) {
 // çalışmak yapılandırmayı bozardı.
 func TestReplicaWithoutAnAddressIsNotRouted(t *testing.T) {
 	deps := fakeDeployments{
-		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080},
+		// Replicas 2: bu test #0 ve #1'i birlikte tanımlıyor ve #1'in
+		// rotalanmasını bekliyor. 1 yazsaydık ölçek filtresi #1'i eler,
+		// test doğru sebeple değil YANLIŞ sebeple kırmızı olurdu.
+		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 2},
 	}
 	reps := fakeReplicas{byApp: map[string][]execclient.Replica{
 		"blog": {
@@ -243,7 +246,7 @@ func TestStoppedReplicaIsNotRouted(t *testing.T) {
 			rep.State = tc.state
 
 			deps := fakeDeployments{
-				{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080},
+				{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 1},
 			}
 			proxy := &fakeProxy{}
 			res, err := mustReconciler(t, deps,
@@ -270,7 +273,7 @@ func TestStoppedReplicaIsNotRouted(t *testing.T) {
 // kaybolmasına yol açardı.
 func TestAppWithoutDomainIsNotSkippedItIsOutOfScope(t *testing.T) {
 	deps := fakeDeployments{
-		{AppID: "worker", ReleaseID: "r1", ContainerPort: 8080}, // alan adı yok
+		{AppID: "worker", ReleaseID: "r1", ContainerPort: 8080, Replicas: 1}, // alan adı yok
 	}
 	proxy := &fakeProxy{}
 	res, err := mustReconciler(t, deps,
@@ -309,7 +312,7 @@ func TestReconcilerRefusesToBuildWithoutAdmin(t *testing.T) {
 // uygulamanın diğerlerini düşürmediğini doğrular.
 func TestListingFailureSkipsOnlyThatApp(t *testing.T) {
 	deps := fakeDeployments{
-		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080},
+		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 1},
 	}
 	proxy := &fakeProxy{}
 	res, err := mustReconciler(t, deps,

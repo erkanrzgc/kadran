@@ -28,10 +28,11 @@ import (
 type healWorld struct {
 	replicas []execclient.Replica
 
-	started   []string
-	createdAt []execclient.CreateReplicaOptions
-	stopped   []string
-	networks  int
+	started         []string
+	createdAt       []execclient.CreateReplicaOptions
+	stopped         []string
+	stoppedReplicas []replicaKey
+	networks        int
 
 	// startFails, başlatmanın konteyneri ayağa kaldırmamasını sağlar:
 	// çağrı kaydedilir ama durum DEĞİŞMEZ. Gerçekte de olur (imaj
@@ -87,6 +88,34 @@ func (w *healWorld) StopRelease(
 	return 1, nil
 }
 
+// StopReplica, TEK replikayı durdurur ve bunu PAYLAŞILAN DURUMA işler.
+//
+// Yalnızca çağrıyı kaydeden bir sahte, hiçbir şey durdurmayan bir
+// uygulamayı da yeşil geçirirdi (K-073). Burada replika gerçekten
+// EXITED'a düşüyor ve adresi siliniyor — yani uzlaştırıcı onu artık
+// rotalanabilir görmüyor.
+func (w *healWorld) StopReplica(
+	_ context.Context, _, rel string, idx uint32, _ time.Duration,
+) (uint32, error) {
+	w.stoppedReplicas = append(w.stoppedReplicas, replicaKey{rel, idx})
+	var n uint32
+	for i := range w.replicas {
+		r := &w.replicas[i]
+		if r.ReleaseID == rel && r.Index == idx {
+			r.State = panelyv1.ContainerState_CONTAINER_STATE_EXITED
+			r.IPAddress = ""
+			n++
+		}
+	}
+	return n, nil
+}
+
+// replicaKey, durdurulan replikayı tanımlar.
+type replicaKey struct {
+	rel string
+	idx uint32
+}
+
 const healIP = "172.20.0.7"
 
 // stoppedReplica, öldürülmüş bir konteyneri temsil eder: kayıt duruyor,
@@ -116,7 +145,7 @@ func newHealHarness(t *testing.T, world *healWorld) *healHarness {
 	rec, err := New(
 		fakeDeployments{{
 			AppID: testApp, ReleaseID: relNew,
-			Domain: "example.test", ContainerPort: 8080,
+			Domain: "example.test", ContainerPort: 8080, Replicas: 1,
 		}},
 		world, // ← uzlaştırıcı da AYNI dünyayı okuyor
 		proxy,
@@ -288,7 +317,7 @@ func TestHealFailsWhenProxySkipsApp(t *testing.T) {
 	rec, err := New(
 		fakeDeployments{{
 			AppID: testApp, ReleaseID: "r99",
-			Domain: "example.test", ContainerPort: 8080,
+			Domain: "example.test", ContainerPort: 8080, Replicas: 1,
 		}},
 		w, h.proxy, testAdmin(),
 	)

@@ -1,6 +1,7 @@
 package dockerdrv
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -209,6 +210,76 @@ func TestCreatePinsSecurityOpt(t *testing.T) {
 	}
 	if hc.RestartPolicy.Name != "no" {
 		t.Errorf("RestartPolicy %q — yeniden başlatma sağlık denetçisinin işi", hc.RestartPolicy.Name)
+	}
+}
+
+// TestCreateDropsAllCapabilities, Docker'ın VARSAYILAN yetenek setinin
+// kaldırıldığını doğrular.
+//
+// ── Bu testin koruduğu şey ──────────────────────────────────────────
+//
+// `no-new-privileges` yalnızca yetenek KAZANMAYI engeller; hâlihazırda
+// verilmiş olanları düşürmez. Docker'ın varsayılanı boş değil ~14
+// yetenektir. ÖLÇÜLDÜ: canlı sunucuda root olarak koşan bir uygulamanın
+// CapEff'i 0xa80425fb'ydi — yani CHOWN, SETUID, SETGID, MKNOD ve NET_RAW
+// dahil tam varsayılan set. NET_RAW tek başına ortak köprüde ARP/DNS
+// sahteciliğine yeter.
+//
+// Bu yüzden düşürme POZİTİF olarak ifade edilmek zorunda: bir alanın
+// yokluğu varsayılanı kaldırmaz.
+func TestCreateDropsAllCapabilities(t *testing.T) {
+	f := newFakeDocker(t)
+	c := f.client(hardenedRoot(t, "rw,nosuid,nodev,relatime"))
+	if err := c.ContainerCreate(context.Background(), validSpec()); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := f.op(t).Body
+
+	var body struct {
+		HostConfig struct {
+			CapDrop   []string `json:"CapDrop"`
+			PidsLimit int64    `json:"PidsLimit"`
+		} `json:"HostConfig"`
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+
+	hc := body.HostConfig
+	if len(hc.CapDrop) != 1 || hc.CapDrop[0] != "ALL" {
+		t.Errorf("CapDrop %v — varsayılan yetenek seti kaldırılmıyor; "+
+			"no-new-privileges bunu YAPMAZ", hc.CapDrop)
+	}
+
+	// Sayı SABİTTEN okunmuyor: defaultPidsLimit'i 1'e çeksek bu iddia
+	// yine de mekanizmayı sınar. Değerin makullüğü ayrı testte.
+	if hc.PidsLimit != 512 {
+		t.Errorf("PidsLimit %d, 512 bekleniyordu — çatallanma sınırsızsa "+
+			"bir fork bombası host'un PID tablosunu tüketir", hc.PidsLimit)
+	}
+
+	// CapAdd HİÇ gönderilmemeli: yetenek geri ekleme yolu kapalı kalmalı.
+	if bytes.Contains(raw, []byte("CapAdd")) {
+		t.Errorf("gövdede CapAdd geçiyor — yetenek geri ekleme yolu "+
+			"açılmış: %s", raw)
+	}
+}
+
+// TestPidsLimitIsBounded, seçilen sınırın hem var hem makul olduğunu
+// doğrular.
+//
+// Yukarıdaki test mekanizmayı sınıyor, bu test SEÇİMİ. İkisi ayrı: biri
+// "sınır gönderiliyor mu", öteki "gönderilen sınır işe yarıyor mu".
+// 0 Docker'da SINIRSIZ demektir ve sessizce korumasız bırakırdı.
+func TestPidsLimitIsBounded(t *testing.T) {
+	if defaultPidsLimit <= 0 {
+		t.Fatalf("defaultPidsLimit %d — 0 ve negatif Docker'da SINIRSIZ demek",
+			defaultPidsLimit)
+	}
+	if defaultPidsLimit > 4096 {
+		t.Errorf("defaultPidsLimit %d — bu kadar yüksek bir tavan fork "+
+			"bombasını durdurmaz", defaultPidsLimit)
 	}
 }
 

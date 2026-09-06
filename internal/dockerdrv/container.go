@@ -10,6 +10,19 @@ import (
 	"time"
 )
 
+// defaultPidsLimit, bir replikanın açabileceği azami süreç/iş parçacığı
+// sayısıdır.
+//
+// Bellek, CPU ve blkio sınırlıyken PID sınırsızdı: bir fork bombası host'un
+// PID tablosunu tüketip panelyd dahil her şeyi düşürebilirdi. Bellek limiti
+// bunu DURDURMAZ — çatallanan süreçler ucuzdur, tablo bellekten önce dolar.
+//
+// 512 seçildi: ölçülen üç canlı uygulamanın en yükseği (nginx, 2 worker)
+// onlarca süreçte kalıyor, yani sınır meşru yükün çok üstünde. Uygulama
+// başına ayarlanabilirlik ileride sütunla gelir; o gelene kadar sabit bir
+// tavan, tavansızlıktan iyidir.
+const defaultPidsLimit = 512
+
 // Mount, tek bir hacim bağlamasıdır. Host yolu YOKTUR; sürücü kurar.
 type Mount struct {
 	VolumeName string
@@ -62,6 +75,29 @@ type hostConfig struct {
 	NanoCpus    int64    `json:"NanoCpus"`
 	BlkioWeight uint16   `json:"BlkioWeight"`
 
+	// PidsLimit, çatallanmayı sınırlar. Diğer üç limitin yanında DÖRDÜNCÜ
+	// kaynak boyutudur ve yokluğu ölçülmüş bir açıktı.
+	PidsLimit int64 `json:"PidsLimit"`
+
+	// CapDrop, Docker'ın VARSAYILAN yetenek setini kaldırır.
+	//
+	// ⚠ Bu, yukarıdaki "alanların yokluğu tasarımdır" kuralının ZITTI
+	// değil, TAMAMLAYICISIDIR. `CapAdd`'in yokluğu yeni yetenek
+	// VERİLMESİNİ engelliyor; ama Docker'ın varsayılanı boş değil ~14
+	// yetenektir (CHOWN, SETUID, SETGID, MKNOD, NET_RAW…). Yokluk o
+	// varsayılanı kaldırmaz — kaldırmak için POZİTİF bir ifade gerekir.
+	//
+	// `no-new-privileges` de yetmez: o yalnızca yetenek KAZANMAYI
+	// engeller, hâlihazırda verilmiş olanları düşürmez.
+	//
+	// ÖLÇÜLDÜ: üç canlı uygulamanın hiçbiri 1024 altına bağlanmıyor
+	// (8080, 8080, 8000), dolayısıyla NET_BIND_SERVICE'e ihtiyaç yok ve
+	// hiçbir yetenek geri eklenmiyor. Üçü de --cap-drop=ALL ile HTTP 200
+	// döndü; kontrol grubu (düşürmesiz) da 200 döndü, yani ölçüm ayırt
+	// edici. İleride ayrıcalıklı porta bağlanan bir imaj gelirse çözüm
+	// CapAdd DEĞİL, konteyner portunu 1024 üstüne almaktır.
+	CapDrop []string `json:"CapDrop"`
+
 	// SecurityOpt YALNIZCA no-new-privileges taşır.
 	//
 	// seccomp burada BELİRTİLMEZ ve bu kasıtlıdır: Docker varsayılan
@@ -107,6 +143,8 @@ func (c *Client) ContainerCreate(ctx context.Context, spec CreateSpec) error {
 			// binde bir. Çarpan 1e6.
 			NanoCpus:    int64(spec.CPUMillis) * 1_000_000,
 			BlkioWeight: uint16(spec.BlkioWeight), //nolint:gosec // doğrulayıcı 10-1000 aralığında
+			PidsLimit:   defaultPidsLimit,
+			CapDrop:     []string{"ALL"},
 			SecurityOpt: []string{"no-new-privileges:true"},
 		},
 	}

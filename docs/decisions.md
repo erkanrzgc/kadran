@@ -3653,6 +3653,124 @@ yanlış var — sessizce üzerine gitmek, ya da maddeyi süresiz dondurmak.
 Üçüncü yol genellikle var: kararın gerekçesini oku, o gerekçenin
 GEÇMEDİĞİ bir alt kümeyi bul.
 
+## K-077 — Alanın yokluğu, Docker'ın VARSAYILANINI kaldırmaz
+
+Sürücüdeki sertleştirmelerin çoğu alanı hiç tanımlamayarak çalışıyor:
+`Privileged`, `CapAdd`, `Devices`, `PidMode` için `hostConfig`'te alan
+YOK, dolayısıyla kimse yanlışlıkla true atayamıyor. Bu kural iyi
+işliyordu ve tam da bu yüzden bir boşluğu görünmez kıldı.
+
+Yetenek düşürme bu kalıba UYMUYOR. Docker'ın varsayılanı boş değil ~14
+yetenek: CHOWN, SETUID, SETGID, MKNOD, NET_RAW ve diğerleri. Alanı
+yazmamak onları kaldırmaz, **bırakır**. `no-new-privileges` de yetmez —
+o yalnızca yetenek KAZANMAYI engeller, verilmiş olanları düşürmez.
+
+Ölçüldü: canlı sunucuda konteyner içinde root koşan bir uygulamanın
+`CapEff` değeri `0xa80425fb`'ydi, yani tam varsayılan set. NET_RAW tek
+başına ortak köprüde ARP/DNS sahteciliğine yeter.
+
+75 kararın hiçbirinde bu konu geçmiyordu; yani bilinçli bir tercih değil,
+gözden kaçmış bir eksikti. Ayırt edici işaret şuydu: bu depoda her
+kasıtlı yokluk yorumla gerekçelendirilmiş. `CapDrop` ve `PidsLimit` ise
+yorumsuz yoktu.
+
+**Karar:** `CapDrop: ["ALL"]` ve `PidsLimit` POZİTİF olarak yazılıyor.
+`exec.proto`'ya alan EKLENMİYOR — çağıran hâlâ yetenek isteyemez; bu
+sabit bir executor politikası, yani tasarım kuralı 3 korunuyor.
+
+Genel ders: "yokluk güvenliktir" kuralı yalnızca güvenli varsayılanın
+SIFIR olduğu alanlarda geçerli. Varsayılanı sıfır olmayan her ayar için
+koruma pozitif ifade edilmek zorunda.
+
+### Ölçmeden düşürülmedi
+
+`CapDrop: ALL` körlemesine yazmak canlı siteyi düşürebilirdi: 1024
+altına bağlanan bir imaj `CAP_NET_BIND_SERVICE` ister. Önce ölçüldü —
+üç canlı uygulamanın dinlediği portlar 8080, 8080 ve 8000, yani hiçbiri
+ayrıcalıklı porta bağlanmıyor. Sonra üç imaj da `--cap-drop=ALL
+--pids-limit=512` ile ayrı ayrı koşturuldu ve üçü de HTTP 200 döndü;
+kontrol grubu (düşürmesiz) da 200 döndü, yani ölçüm ayırt ediciydi.
+
+Canlı doğrulamada `CapEff` **bilgi taşımadı**: yeni ve eski konteynerde
+de 0'dı, çünkü ikisi de uid 101 koşuyor. Ayırt eden `CapBnd` oldu —
+`0x80425fb`'den `0`'a indi. PID sınırı ise sayıyla değil davranışla
+sınandı: 700 süreç denendi, tam 512'de durdu, konteyner ayakta kaldı.
+
+## K-078 — Geri alınamaz göç, yedeksiz uygulanamaz
+
+Göçler ileri yönlü: hiçbirinin `.down.sql` karşılığı yok ve `0005`
+yıkıcı (`DROP TABLE deployments`). Üstelik `Open()` içinde, daemon
+hiçbir şey servis etmeden önce OTOMATİK uygulanıyorlar. Başarısız bir
+göç, systemd `Restart=on-failure` ile mutasyona uğramış bir veritabanının
+üzerinde çökme döngüsü kurar — ve yedek olmadan bu durumdan çıkış YOK.
+
+**Karar:** ilk bekleyen göçten önce `VACUUM INTO` ile anlık görüntü.
+Yedek alınamıyorsa göç DE yapılmıyor; daemon açılmayı reddediyor.
+Operatör dolu diski düzeltebilir, kötü bir göçü geri alamaz. Bu, yüzey
+denetçisinin "ölçemiyorsak onaylamayız" kuralının aynısı.
+
+Üç ayrıntı taşıyıcı:
+
+- **`cp` değil `VACUUM INTO`.** WAL modunda ham kopya `-wal` dosyasını
+  geride bırakır ve son yazmaları içermeyebilir; sessizce eski bir
+  duruma dönülür.
+- **Taze veritabanında atlanıyor.** Hiç göç uygulanmamışsa kaybedilecek
+  şey yok.
+- **Tekrar denemede ÜZERİNE YAZILMIYOR.** systemd açılışı tekrar tekrar
+  deniyor; her deneme ezseydi ilk denemeden önceki temiz hâl kaybolurdu.
+
+### Test önce ZAYIFTI ve mutasyon bunu gösterdi
+
+"Üzerine yazmıyor" iddiasının ilk testi dosya SAYISINA ve boyutuna
+bakıyordu. Mutasyon (var-mı kontrolünü kaldır) **yeşil geçti**: üzerine
+yazan bir uygulamada da tek, dolu bir dosya kalıyor, yani iddia ayırt
+edici değildi. Test denemeler ARASINA bir işaretçi satır yazacak şekilde
+güçlendirildi — yedek ezilirse o satır içine girer — ve mutasyon
+yakalandı.
+
+K-071 yeşil bir mutasyonun MUTASYONUN zayıflığı olabileceğini
+söylüyordu. Bu vaka ters yönü gösteriyor: bazen gerçekten TEST zayıftır.
+Ayrım ancak mutasyonun neyi değiştirdiğine bakarak yapılabilir.
+
+### Varsayılan bir kısıt, ölçünce yok çıktı
+
+Yedek yolu önce SQL dizgesine gömülüyordu, tek tırnaklar elle
+kaçırılarak; gosec G202 verdi ve neredeyse `//nolint` eklenecekti.
+Küçük bir programla sınandı: **`VACUUM INTO ?` bağlı parametreyi kabul
+ediyor.** Yani kısıt hiç yoktu. Bir uyarıyı bastırmadan önce, uyarının
+işaret ettiği kısıtın gerçek olup olmadığı ölçülmeli.
+
+## K-079 — Kod, sahip olmadığı bir özelliği anlatmaya devam edebilir
+
+`VerifyAuditChain`'in yorumu "Faz 0'da durum değiştiren executor çağrısı
+olmadığı için executor zinciri boş" diyordu. Faz 1 inince
+`ContainerCreate` ve `ImageBuild` yazmaya başladı; **yorum
+güncellenmedi.** Aynı iddia `exec.proto`'nun tasarım kurallarında da
+vardı: "panelyd ele geçirilip kayıt düşürse bile VerifyAuditChain iki
+zincir arasındaki farkı yakalar."
+
+Bu bugün YANLIŞ. Çapraz karşılaştırma kodu hiçbir yerde yok; kendi
+kayıtlarını düşüren ele geçirilmiş bir panelyd için her iki zincir de
+VALID döner. Yani tehdit modelinin merkezindeki senaryo için belge bir
+koruma vaat ediyordu, kod vermiyordu.
+
+**Karar:** iddia geri çekildi, eksiklik açıkça yazıldı. Gerçek çapraz
+doğrulama executor'ın yanıtında kayıt hash'ini döndürmesini gerektiriyor
+— yani `exec.proto` değişikliği ve ayrıcalıklı yüzey bütçesinden yer.
+Bütçede 13 satır kaldığı için o iş kendi dilimine ait.
+
+Bu K-068'in ("iddiayı kullanıcının OKUDUĞU katmana yaz") ve "dokümanın
+vaadi test altında değilse yalana dönüşür" dersinin üçüncü tekrarı.
+Ortak mekanizma şu: **koşullu bir yorum, koşulu değişince kendiliğinden
+yanlışa döner ve hiçbir test bunu yakalamaz.** "Faz 0'da … olmadığı
+için" gibi tarihe bağlı gerekçeler yazarken, o tarihin geçeceği
+varsayılmalı.
+
+Aynı turda `SECURITY.md` de düzeltildi: yetki sınırını `panely` grubu
+diye tanımlıyordu, oysa `api.sock`'u **`panely-client`** koruyor
+(`panely` grubu `exec.sock`'u koruyor). Yetki sınırını TANIMLAYAN
+belgede yanlış grup adı.
+
 ## Sıra taşıyıcıdır: kayıt, konteynerlere ulaşmanın TEK yolu
 
 Konteyner adları `app_id`/`release_id`'den türüyor. Kayıtlar önce silinse

@@ -90,7 +90,16 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		fmt.Fprintf(c.stdout, "  Sağlık  : %s (bir sonraki dağıtımda etkili)\n", orNone(s.GetHealthPath()))
 	}
 	if req.Replicas != nil {
-		fmt.Fprintf(c.stdout, "  Replika : %d (bir sonraki dağıtımda etkili)\n", s.GetReplicas())
+		// ⚠ Replika değişikliği İKİ AŞAMALI ve mesaj bunu ayırmak
+		// zorunda. Rota HEMEN daralıyor/genişliyor (sunucu tarafında
+		// uzlaştırma koşuyor); konteynerlerin fiilen kurulması ya da
+		// durdurulması bir sonraki dağıtımda/iyileştirmede oluyor.
+		//
+		// Tek cümleyle "sonraki dağıtımda etkili" demek, ölçek
+		// küçültmede trafiğin ZATEN daraldığını gizlerdi.
+		fmt.Fprintf(c.stdout,
+			"  Replika : %d (trafik hemen, konteynerler sonraki dağıtımda)\n",
+			s.GetReplicas())
 	}
 
 	// Ters vekilin durumu SUSULAMAZ. Alan adı değişip trafiğin

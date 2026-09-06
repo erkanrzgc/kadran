@@ -24,19 +24,23 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 RECONCILE=internal/deploy/reconcile.go
 ROLLOUT=internal/deploy/rollout.go
+APPUPDATE=internal/api/appupdate.go
 BAK_R=$(mktemp)
 BAK_O=$(mktemp)
+BAK_A=$(mktemp)
 cp "$RECONCILE" "$BAK_R"
 cp "$ROLLOUT" "$BAK_O"
-restore() { cp "$BAK_R" "$RECONCILE"; cp "$BAK_O" "$ROLLOUT"; }
+cp "$APPUPDATE" "$BAK_A"
+restore() { cp "$BAK_R" "$RECONCILE"; cp "$BAK_O" "$ROLLOUT"; cp "$BAK_A" "$APPUPDATE"; }
 trap restore EXIT
 
 fail=0
 WANT='TestScaleDown|TestScaleUp|TestZeroReplicas|TestHealStopsExtraReplicas|TestHealKeepsEveryReplica'
 
-# mutate <ad> <dosya> <python-ifadesi>
+# mutate <ad> <dosya> <python-ifadesi> [paket] [test-deseni]
 mutate() {
     local name="$1" file="$2" expr="$3"
+    local pkg="${4:-./internal/deploy/}" want="${5:-$WANT}"
     restore
     if ! python -c "
 import io,sys
@@ -53,7 +57,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
         return
     fi
 
-    if go test ./internal/deploy/ -run "$WANT" -count=1 >/dev/null 2>&1; then
+    if go test "$pkg" -run "$want" -count=1 >/dev/null 2>&1; then
         echo "  KIRMIZI OLMADI: $name"
         fail=1
     else
@@ -102,6 +106,20 @@ mutate "durdurma surum filtresi kaldirildi (mavi-yesil)" "$ROLLOUT" \
 # Yani bu K-071'in BIRINCI yorumuydu: yesil kalan mutasyonun KENDISI
 # zayifti. Kaldirildi; yerini bir ustteki "surum filtresi kaldirildi"
 # tutuyor - o gercekten eski surumu indiriyor ve YAKALANIYOR.
+
+# ── Tetikleyici tarafı ───────────────────────────────────────────────
+#
+# Mekanizmayı düzeltip tetikleyiciyi eksik bırakmak, hatayı en sık
+# kullanılan yolda açık tutmak olurdu: kullanıcı `app update -replicas 1`
+# der, komut "başarılı" der, rota daralmaz.
+
+UPD='TestUpdateAppReconcilesWhenReplicaCountChanges|TestUpdateAppSkipsReconcileWhenNothingRoutableChanges'
+
+mutate "replika uzlastirma tetikleyicisi kaldirildi" "$APPUPDATE"     "s=s.replace('if domainMoved || replicasChanged {','if domainMoved {',1)"     "./internal/api/" "$UPD"
+
+mutate "replika esitlik kontrolu yok (her zaman tetikler)" "$APPUPDATE"     "s=s.replace('replicasChanged := upd.Replicas != nil and *upd.Replicas != current.Replicas'.replace(' and ',' && '),'replicasChanged := upd.Replicas != nil',1)"     "./internal/api/" "$UPD"
+
+mutate "replicasChanged hep false" "$APPUPDATE"     "s=s.replace('replicasChanged := upd.Replicas != nil and *upd.Replicas != current.Replicas'.replace(' and ',' && '),'replicasChanged := false',1)"     "./internal/api/" "$UPD"
 
 restore
 echo

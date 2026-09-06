@@ -134,7 +134,7 @@ func TestUpdateAppCanClearTheDomain(t *testing.T) {
 // Caddy'nin `POST /load` ucu kök nesnenin TAMAMINI değiştiriyor, yani her
 // uzlaştırma sunucudaki BÜTÜN sitelerin yapılandırmasını yeniden yazıyor.
 // Dala dokunan bir güncelleme yüzünden bunu yapmak gereksiz risk.
-func TestUpdateAppReconcilesOnlyWhenTheDomainActuallyChanges(t *testing.T) {
+func TestUpdateAppSkipsReconcileWhenNothingRoutableChanges(t *testing.T) {
 	rec := &fakeReconciler{}
 	srv, _ := newUpdateServer(t, rec)
 	spec := testSpec()
@@ -154,9 +154,54 @@ func TestUpdateAppReconcilesOnlyWhenTheDomainActuallyChanges(t *testing.T) {
 	}
 
 	// 3) Alan adı GERÇEKTEN değişiyor.
+	//
+	// ⚠ Testin adı eskiden "...OnlyWhenTheDomainActuallyChanges"ti ve
+	// artık fazla şey iddia ediyordu: replika sayısı da uzlaştırma
+	// tetikliyor (rota kümesi ona da bağlı). Ad daraltıldı; replika
+	// tarafı ayrı testte.
 	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Domain: strp("baska.example.com")})
 	if rec.calls != 1 {
 		t.Fatalf("alan adı değişti ama uzlaştırma %d kez koştu, 1 olmalıydı", rec.calls)
+	}
+}
+
+// TestUpdateAppReconcilesWhenReplicaCountChanges, ölçek değişiminin
+// ters vekile HEMEN yansıdığını doğrular.
+//
+// ── Neden bu test var ───────────────────────────────────────────────
+//
+// Uzlaştırıcı artık indeksi istenen sayının üstünde kalan replikaları
+// rotalamıyor. Yani rota kümesi replika sayısına bağlı. Tetikleme
+// olmasaydı mekanizma doğru ama ERİŞİLEMEZ olurdu: kullanıcı 3'ten 1'e
+// iner, komut "başarılı" der, canlıda üç konteyner trafik almaya devam
+// eder ve bir dağıtım yapılana kadar kimse fark etmez.
+//
+// Bu, `moveTraffic`'in yorumundaki hatanın birebir aynısı — orada alan
+// adı için yaşanmıştı, burada replika için tekrarlanacaktı.
+func TestUpdateAppReconcilesWhenReplicaCountChanges(t *testing.T) {
+	rec := &fakeReconciler{}
+	srv, _ := newUpdateServer(t, rec)
+	spec := testSpec()
+	spec.Replicas = 3
+	mustCreateApp(t, srv, spec)
+
+	// 1) Replika belirtiliyor ama AYNI değerle: tetiklememeli.
+	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(3)})
+	if rec.calls != 0 {
+		t.Errorf("değişmeyen replika sayısı uzlaştırma tetikledi (%d kez)", rec.calls)
+	}
+
+	// 2) GERÇEKTEN değişiyor: tetiklemeli.
+	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(1)})
+	if rec.calls != 1 {
+		t.Fatalf("replika 3→1 oldu ama uzlaştırma %d kez koştu, 1 olmalıydı — "+
+			"rota daralmaz ve fazlalıklar trafik almaya devam ederdi", rec.calls)
+	}
+
+	// 3) Büyütme de aynı: rota genişlemeli.
+	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(2)})
+	if rec.calls != 2 {
+		t.Errorf("replika büyütmesi uzlaştırma tetiklemedi (%d kez)", rec.calls)
 	}
 }
 

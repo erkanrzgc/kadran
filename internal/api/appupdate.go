@@ -57,9 +57,23 @@ func (s *Server) UpdateApp(
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 
-	// Alan adının GERÇEKTEN değişip değişmediği YAZMADAN ÖNCE saptanmalı:
-	// yazdıktan sonra eski değer artık okunamaz.
+	// Alan adının ve replika sayısının GERÇEKTEN değişip değişmediği
+	// YAZMADAN ÖNCE saptanmalı: yazdıktan sonra eski değer okunamaz.
 	domainMoved := upd.ChangesDomain(current.Domain)
+
+	// ── Replika sayısı da ters vekili İLGİLENDİRİYOR ────────────────
+	//
+	// Eskiden yalnızca alan adı uzlaştırma tetikliyordu, çünkü rota
+	// yalnızca alan adına bağlıydı. Artık DEĞİL: uzlaştırıcı indeksi
+	// istenen sayının üstünde kalan replikaları rotalamıyor, yani rota
+	// kümesi sayıya da bağlı.
+	//
+	// Tetiklemeseydik `moveTraffic`'in yorumundaki hata bire bir
+	// tekrarlanırdı: kullanıcı 3'ten 1'e iner, komut "başarılı" der,
+	// canlıda üç konteyner trafik almaya devam eder ve kimse fark etmez.
+	// Mekanizmayı düzeltip tetikleyiciyi eksik bırakmak, hatayı en sık
+	// kullanılan yolda açık tutmak olurdu.
+	replicasChanged := upd.Replicas != nil && *upd.Replicas != current.Replicas
 
 	app, opErr := s.store.UpdateApp(ctx, appID, upd)
 	if err := s.completed(ctx, action, tgt, params, opErr); err != nil {
@@ -67,7 +81,7 @@ func (s *Server) UpdateApp(
 	}
 
 	resp := &panelyv1.UpdateAppResponse{App: appToProto(app)}
-	if domainMoved {
+	if domainMoved || replicasChanged {
 		detail, err := s.moveTraffic(ctx, appID, current.Domain, app.Domain)
 		if err != nil {
 			return nil, err

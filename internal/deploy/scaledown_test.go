@@ -236,6 +236,60 @@ func TestScaleDownNeverTouchesAnotherRelease(t *testing.T) {
 	}
 }
 
+// TestExtraReplicaDoesNotCountAsHealth, sağlık ölçüsünün rotalamayla
+// AYNI kümeye baktığını doğrular.
+//
+// ── Sessiz kesinti senaryosu ────────────────────────────────────────
+//
+// 3'ten 1'e inildi. #1 hâlâ ayakta ama artık rotalanmıyor. Sonra #0
+// öldü. Fazlalıkları da sayan bir sağlık ölçüsü ready=1 der, "sağlıklı"
+// sonucuna varır ve iyileştirme koşmaz — oysa rota yalnızca ÖLÜ #0'ı
+// gösteriyor. Site kapalı, gözetmen sessiz.
+//
+// İki katmanın sağlık konusunda anlaşması, ikisinin de aynı kümeye
+// bakmasıyla sağlanıyor: trafik almayan bir replika sağlığa da katkı
+// vermez.
+func TestExtraReplicaDoesNotCountAsHealth(t *testing.T) {
+	world := &healWorld{replicas: []execclient.Replica{
+		stoppedReplica(relNew, 0),          // rotalanan replika ÖLDÜ
+		runningAt(relNew, 1, "172.20.0.8"), // fazlalık, ayakta ama rotasız
+	}}
+	h := newHealHarness(t, world)
+
+	app := h.app
+	app.Replicas = 1
+
+	ready, why := h.rollout.Check(context.Background(), app, relNew)
+	if ready != 0 {
+		t.Errorf("hazır sayısı %d, 0 bekleniyordu (%s) — rotalanmayan bir "+
+			"replika sağlıklı sayılıyor; #0 ölüyken gözetmen sessiz kalır "+
+			"ve site kapalı kalırdı", ready, why)
+	}
+}
+
+// TestInRangeReplicaCountsAsHealth, filtrenin FAZLA eleme yapmadığını
+// doğrular.
+//
+// Kontrol grubu: aynı iki replika, ama istenen sayı 2. İkisi de
+// rotalanıyor, ikisi de sağlığa sayılmalı. Bu test olmasaydı "hiçbirini
+// sayma" diyen bir uygulama da yukarıdakini geçerdi.
+func TestInRangeReplicaCountsAsHealth(t *testing.T) {
+	world := &healWorld{replicas: []execclient.Replica{
+		runningAt(relNew, 0, healIP),
+		runningAt(relNew, 1, "172.20.0.8"),
+	}}
+	h := newHealHarness(t, world)
+
+	app := h.app
+	app.Replicas = 2
+
+	ready, why := h.rollout.Check(context.Background(), app, relNew)
+	if ready != 2 {
+		t.Errorf("hazır sayısı %d, 2 bekleniyordu (%s) — filtre istenen "+
+			"aralıktaki replikaları da eliyor", ready, why)
+	}
+}
+
 // runningAt, testApp altında verilen indekste çalışan bir replika üretir.
 func runningAt(rel string, idx uint32, ip string) execclient.Replica {
 	return running(testApp, rel, idx, ip)

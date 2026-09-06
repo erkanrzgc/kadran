@@ -617,6 +617,23 @@ func (r *Rollout) readyCount(ctx context.Context, app store.App, releaseID strin
 		if rep.ReleaseID != releaseID {
 			continue
 		}
+		if rep.Index >= app.Replicas {
+			// ⚠ SAĞLIK ÖLÇÜSÜ ROTALAMAYLA AYNI KÜMEYE BAKMALI.
+			//
+			// Uzlaştırıcı indeksi istenen sayının üstünde kalan
+			// replikaları rotalamıyor. Burada onları saymak, iki
+			// katmanın SAĞLIK konusunda anlaşmaması demekti ve sessiz
+			// bir kesinti üretirdi:
+			//
+			//   3'ten 1'e inildi, #1 hâlâ ayakta, sonra #0 öldü.
+			//   Sayan taraf #1'i görüp ready=1 der → "sağlıklı",
+			//   iyileştirme koşmaz. Rota ise yalnızca ÖLÜ #0'ı
+			//   gösteriyor. Site kapalı, gözetmen sessiz.
+			//
+			// Fazlalıklar trafik almadığına göre sağlığa da katkı
+			// vermezler.
+			continue
+		}
 		if !rep.Routable() {
 			states[rep.State.String()]++
 			continue

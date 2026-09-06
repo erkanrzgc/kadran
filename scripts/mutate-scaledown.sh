@@ -35,7 +35,7 @@ restore() { cp "$BAK_R" "$RECONCILE"; cp "$BAK_O" "$ROLLOUT"; cp "$BAK_A" "$APPU
 trap restore EXIT
 
 fail=0
-WANT='TestScaleDown|TestScaleUp|TestZeroReplicas|TestHealStopsExtraReplicas|TestHealKeepsEveryReplica'
+WANT='TestScaleDown|TestScaleUp|TestZeroReplicas|TestHealStopsExtraReplicas|TestHealKeepsEveryReplica|TestExtraReplicaDoesNotCountAsHealth|TestInRangeReplicaCountsAsHealth'
 
 # mutate <ad> <dosya> <python-ifadesi> [paket] [test-deseni]
 mutate() {
@@ -106,6 +106,17 @@ mutate "durdurma surum filtresi kaldirildi (mavi-yesil)" "$ROLLOUT" \
 # Yani bu K-071'in BIRINCI yorumuydu: yesil kalan mutasyonun KENDISI
 # zayifti. Kaldirildi; yerini bir ustteki "surum filtresi kaldirildi"
 # tutuyor - o gercekten eski surumu indiriyor ve YAKALANIYOR.
+
+# ── Saglik olcusu tarafi ────────────────────────────────────────────
+#
+# Saglik olcusu rotalamayla AYNI kumeye bakmazsa sessiz bir kesinti
+# dogar: fazlalik ayakta, rotalanan replika olu, gozetmen 'saglikli' der.
+
+mutate "saglik olcusu fazlaliklari da sayiyor" "$ROLLOUT" \
+    "s=s.replace('rep.Index >= app.Replicas','false && rep.Index >= app.Replicas',1)"
+
+mutate "saglik olcusu >= yerine > (bir fazla sayar)" "$ROLLOUT" \
+    "s=s.replace('rep.Index >= app.Replicas','rep.Index > app.Replicas',1)"
 
 # ── Tetikleyici tarafı ───────────────────────────────────────────────
 #

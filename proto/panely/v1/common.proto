@@ -100,6 +100,26 @@ message HostInfo {
   uint64 memory_available_bytes = 6;
   // Docker Engine sürümü. Executor üzerinden alınır; boşsa Docker yok.
   string docker_version = 7;
+
+  // ── Disk ────────────────────────────────────────────────────────
+  //
+  // Panely'nin DURUM dizinini (/var/lib/panely) taşıyan dosya sistemi
+  // ölçülüyor. Sebebi somut: veritabanı, denetim günlüğü ve uygulama
+  // hacimleri orada; Docker'ın imaj deposu da tipik kurulumda aynı
+  // birimde. Yani dolan disk hem yeni dağıtımı hem SQLite yazmalarını
+  // hem denetim zincirine eklemeyi aynı anda düşürür.
+  //
+  // ⚠ Bu alanlar EKSİKTİ ve eksikliği ölçüldü: bellek, CPU ve Docker
+  // sürümü raporlanıyordu ama disk raporlanmıyordu — oysa tek sunuculu
+  // bir kurulumda en olası gerçek kesinti diskin dolmasıdır. Üstelik
+  // belirtileri alakasız görünür (derleme hatası, "database is locked",
+  // denetim yazılamadı) ve hiçbiri diski işaret etmez.
+  //
+  // Sıfır "ölçülemedi" demek: statfs başarısız olduysa alanlar
+  // doldurulmuyor ve istemci bunu "bilinmiyor" diye gösteriyor.
+  // Sıfırı "disk boş" diye okumak, dolu bir diski boş göstermek olurdu.
+  uint64 disk_total_bytes = 8;
+  uint64 disk_available_bytes = 9;
 }
 
 // ResourceLimits, cgroups üzerinden zorlanan kaynak kotalarıdır (§2.2).

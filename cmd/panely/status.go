@@ -74,6 +74,7 @@ func (c *cli) printStatus(target string, ping *panelyv1.PingResponse, info *pane
 			row("Bellek", fmt.Sprintf("%s kullanılabilir / %s toplam",
 				humanBytes(host.GetMemoryAvailableBytes()), humanBytes(total)))
 		}
+		row("Disk", diskCell(host))
 		if d := host.GetDockerVersion(); d != "" {
 			row("Docker", d)
 		} else {
@@ -131,3 +132,37 @@ func (c *cli) printStatusJSON(target string, ping *panelyv1.PingResponse, info *
 
 	return c.writeJSON(payload)
 }
+
+// diskCell, disk satırını üretir.
+//
+// ── İki ayrım taşıyor ───────────────────────────────────────────────
+//
+//  1. ÖLÇÜLEMEDİ ≠ BOŞ. statfs başarısız olduysa alanlar sıfır kalır.
+//     Sıfırı "disk boş" diye göstermek, ölçülemeyen bir diski sağlıklı
+//     gösterirdi — yani en çok bilgiye ihtiyaç duyulan anda en yanıltıcı
+//     çıktıyı verirdi.
+//
+//  2. Mutlak sayı tek başına bilgi taşımıyor. "8 GB kullanılabilir"
+//     40 GB'lık diskte rahat, 500 GB'lık diskte alarm demek. Operatörün
+//     baktığı şey oran, o yüzden yüzde de yazılıyor.
+func diskCell(host *panelyv1.HostInfo) string {
+	total := host.GetDiskTotalBytes()
+	if total == 0 {
+		return "ölçülemedi"
+	}
+	avail := host.GetDiskAvailableBytes()
+	pct := avail * 100 / total
+	line := fmt.Sprintf("%s kullanılabilir / %s toplam (%%%d boş)",
+		humanBytes(avail), humanBytes(total), pct)
+	if pct < diskWarnPercent {
+		line += "  ⚠ DOLMAK ÜZERE"
+	}
+	return line
+}
+
+// diskWarnPercent, uyarı eşiğidir.
+//
+// %10 seçildi: tek sunuculu bir kurulumda bir derleme birkaç GB imaj
+// katmanı yazabiliyor, dolayısıyla eşik "bir derlemelik pay kaldı mı"
+// sorusunu yanıtlayacak kadar erken olmalı.
+const diskWarnPercent = 10

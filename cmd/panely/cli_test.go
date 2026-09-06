@@ -291,3 +291,44 @@ func TestExecutorCellReportsUnreachable(t *testing.T) {
 		t.Errorf("executor sürümü gösterilmedi: %q", cell)
 	}
 }
+
+// TestDiskCellSeparatesUnknownFromEmpty, disk satırının EN ÖNEMLİ
+// ayrımını sınar: ölçülemedi ile boş aynı şey değil.
+//
+// statfs başarısız olduğunda alanlar sıfır kalıyor. Sıfırı "disk boş"
+// diye göstermek, ölçülemeyen bir diski sağlıklı gösterirdi — yani en
+// çok bilgiye ihtiyaç duyulan anda en yanıltıcı çıktıyı verirdi.
+func TestDiskCellSeparatesUnknownFromEmpty(t *testing.T) {
+	got := diskCell(&panelyv1.HostInfo{})
+	if !strings.Contains(got, "ölçülemedi") {
+		t.Errorf("ölçülemeyen disk %q olarak gösterildi — sıfır, "+
+			"'boş disk' diye okunamaz", got)
+	}
+	if strings.Contains(got, "%") {
+		t.Errorf("ölçülemeyen disk için yüzde uyduruldu: %q", got)
+	}
+}
+
+// TestDiskCellWarnsOnlyWhenNearlyFull, uyarının SEBEPSİZ çıkmadığını ve
+// gerektiğinde ÇIKTIĞINI doğrular.
+func TestDiskCellWarnsOnlyWhenNearlyFull(t *testing.T) {
+	const gb = uint64(1) << 30
+
+	// Rahat: 32 GB / 40 GB boş → %80.
+	roomy := diskCell(&panelyv1.HostInfo{
+		DiskTotalBytes: 40 * gb, DiskAvailableBytes: 32 * gb})
+	if strings.Contains(roomy, "DOLMAK ÜZERE") {
+		t.Errorf("boş diskte uyarı verildi: %q", roomy)
+	}
+	if !strings.Contains(roomy, "%80") {
+		t.Errorf("yüzde yanlış ya da yok: %q", roomy)
+	}
+
+	// Dar: 2 GB / 40 GB boş → %5.
+	tight := diskCell(&panelyv1.HostInfo{
+		DiskTotalBytes: 40 * gb, DiskAvailableBytes: 2 * gb})
+	if !strings.Contains(tight, "DOLMAK ÜZERE") {
+		t.Errorf("%%5 boş diskte uyarı YOK: %q — tek sunuculu kurulumda "+
+			"en olası kesinti diskin dolmasıdır", tight)
+	}
+}

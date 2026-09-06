@@ -38,6 +38,23 @@ func collectHostInfo(ctx context.Context, probe *dockerdrv.Client) *panelyv1.Hos
 	info.MemoryTotalBytes = total
 	info.MemoryAvailableBytes = available
 
+	// Disk: durum dizinini taşıyan dosya sistemi. Gerekçe common.proto'da.
+	//
+	// Yol olarak DefaultVolumeRoot kullanılıyor, yeni bir sabit
+	// tanımlanmıyor: hacim kökü /var/lib/panely altında, yani AYNI
+	// dosya sisteminde. statfs zaten birimi ölçüyor, dizini değil.
+	//
+	// Bavail kullanılıyor, Bfree DEĞİL: ikisinin farkı root'a ayrılmış
+	// yedek bloklar. panelyd root DEĞİL, dolayısıyla o yedeği
+	// kullanamaz. Bfree raporlamak, ulaşılamayan alanı boş göstermek
+	// olurdu.
+	var st unix.Statfs_t
+	if err := unix.Statfs(DefaultVolumeRoot, &st); err == nil {
+		bs := uint64(st.Bsize) //nolint:gosec // blok boyutu negatif olamaz
+		info.DiskTotalBytes = st.Blocks * bs
+		info.DiskAvailableBytes = st.Bavail * bs
+	}
+
 	// Docker'a ulaşılamaması hata değildir: Faz 0'da Docker henüz
 	// gerekli değil ve boş sürüm "kurulu değil" anlamına gelir.
 	if v, err := probe.Ping(ctx); err == nil {

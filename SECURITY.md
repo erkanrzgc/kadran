@@ -78,8 +78,14 @@ These are known and documented limitations, not undisclosed weaknesses:
   the executor can reach Docker. This boundary is documented, not hidden.
 - **Root on the server can do anything.** Panely defends against a compromised
   *panel*, not against an attacker who already holds root.
-- **Anyone in the `panely` group can talk to `api.sock`.** That is the design;
-  group membership is the authorization boundary and is set up by `bootstrap`.
+- **Anyone in the `panely-client` group can talk to `api.sock`.** That is the
+  design; group membership is the authorization boundary and is set up by
+  `bootstrap`. Note the two groups are distinct and the distinction is
+  load-bearing: `panely-client` reaches `api.sock`, while `exec.sock` is
+  `0750 root:panely` and the client group cannot traverse to it at all.
+  Membership must be the user's *primary* group — `SO_PEERCRED` reports
+  only that, so adding a second admin with `usermod -aG` yields a silent
+  denial rather than access.
 - **A malicious operator.** Panely produces a tamper-evident audit trail; it does
   not prevent an authorized human from taking authorized destructive actions.
 - Denial of service by resource exhaustion from a legitimately deployed app.

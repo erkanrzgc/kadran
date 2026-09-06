@@ -36,8 +36,16 @@ option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1"
 //
 //  4. HER İSTEK KENDİNİ DENETLER. Executor her çağrıyı kendi
 //     hash-zincirli günlüğüne yazar (0640 root:panely — panelyd okur,
-//     yazamaz). panelyd ele geçirilip kayıt düşürse bile
-//     VerifyAuditChain iki zincir arasındaki farkı yakalar.
+//     yazamaz). Yani ayrıcalıklı bir eylemin kaydı, o eylemi isteyen
+//     bileşenin YAZAMADIĞI bir dosyada durur.
+//
+//     ⚠ AMA FARKI YAKALAYAN KOD HENÜZ YOK. `VerifyAuditChain` iki
+//     zinciri AYRI AYRI doğruluyor; "her executor kaydının daemon
+//     tarafında karşılığı var mı" diye SORMUYOR. Kendi kayıtlarını
+//     düşüren ele geçirilmiş bir panelyd için bugün her iki zincir de
+//     VALID döner. Bu maddenin ilk hâli farkın yakalandığını YAZIYORDU;
+//     yanlıştı ve düzeltildi. Ayrıntı: internal/api/server.go,
+//     VerifyAuditChain.
 //
 //  5. ÇAĞIRAN DOĞRULANIR. Soket izinlerine güvenilmez; her bağlantıda
 //     SO_PEERCRED ile uid/gid kontrol edilir.

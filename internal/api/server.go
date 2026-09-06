@@ -269,12 +269,27 @@ func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRe
 // ayrıcalıklı çağrıları hiç kaydetmeyebilirdi. Executor kendi günlüğüne
 // yazar ve panelyd o dosyaya YAZAMAZ (0640 root:panely).
 //
-// Faz 1 notu: şu anda iki zincir bağımsız olarak doğrulanıyor ama
-// birbirlerine ÇAPRAZ REFERANSLI değil. Faz 1'de executor'ın yanıtı
-// yazdığı kaydın hash'ini döndürecek, panelyd bunu kendi kaydında
-// saklayacak ve doğrulama "her executor kaydının daemon tarafında bir
-// karşılığı var mı" sorusunu kesin olarak yanıtlayabilecek. Faz 0'da
-// durum değiştiren executor çağrısı olmadığı için executor zinciri boş.
+// ⚠ ÇAPRAZ DOĞRULAMA HENÜZ YOK — ve bu, yukarıdaki gerekçenin bugün
+// TAM OLARAK karşılanmadığı anlamına geliyor.
+//
+// İki zincir bağımsız olarak doğrulanıyor ama birbirlerine ÇAPRAZ
+// REFERANSLI DEĞİL. Somut sonucu şudur: kendi kayıtlarını hiç yazmayan,
+// ele geçirilmiş bir panelyd için bu RPC `daemon=VALID, executor=VALID`
+// döner. Her iki zincir de kendi içinde tutarlıdır; eksik olan, executor
+// kaydının daemon tarafında bir karşılığı olup olmadığının SORULMASIDIR.
+// Böyle bir karşılaştırma kodu bu dosyada da başka yerde de yoktur.
+//
+// ⚠ Bu not bir kez BAYATLADI ve yanlış bir şey iddia eder hâle geldi.
+// Önceki hâli "Faz 0'da durum değiştiren executor çağrısı olmadığı için
+// executor zinciri boş" diyordu; Faz 1 inince `ContainerCreate` ve
+// `ImageBuild` yazmaya başladı ama not güncellenmedi. Yani kod, sahip
+// olmadığı bir özelliği anlatan bir yorum taşıdı. Ders K-068'in aynısı:
+// dokümanın vaadi test altında değilse sessizce yalana dönüşür.
+//
+// Eksiğin kapanması executor'ın yanıtında yazdığı kaydın hash'ini
+// döndürmesini gerektiriyor — yani `exec.proto` değişikliği ve
+// ayrıcalıklı yüzey bütçesinden yer. O iş bu nota değil, kendi dilimine
+// aittir; buraya kadar YAPILMAMIŞ olarak yazılıdır.
 // Doğrulama sonucu neden bool DEĞİL?
 //
 // Üç ayrı durum var ve ikisini karıştırmak pahalıya patlar:

@@ -68,6 +68,21 @@ service PanelyService {
   // gerekçeler internal/deploy/rollout.go'da.
   rpc Deploy(DeployRequest) returns (stream DeployResponse);
 
+  // StreamLogs, canlı sürümün çıktısını akıtır.
+  //
+  // ── Neden sürüm/replika istemiyor ─────────────────────────────────
+  //
+  // Operatörün sorduğu soru "uygulamam ne diyor", "r7#0 ne diyor" değil.
+  // Sürümü panelyd biliyor: aktif dağıtım kaydında duruyor. İstemciden
+  // sürüm istemek, kullanıcıyı önce `app show` çalıştırıp elle kopyalamaya
+  // iterdi — ve kopyaladığı sürüm, komutu çalıştırdığı anda artık aktif
+  // olmayabilirdi.
+  //
+  // Replika seçimi de YOK: bugün varsayılan tek replika ve çoklu replikada
+  // doğru davranış hepsini harmanlamaktır. Alan eklemek, ileride yanlış
+  // varsayılanı kalıcılaştırırdı; eklememek o kapıyı açık bırakıyor.
+  rpc StreamLogs(StreamLogsRequest) returns (stream StreamLogsResponse);
+
   // Rollback, trafiği bir ÖNCEKİ aktif sürüme geri çevirir.
   //
   // ── Neden akışlı DEĞİL? ───────────────────────────────────────────
@@ -464,6 +479,20 @@ message DeploySucceeded {
 // ⚠ "Önceki sürüm" `releases.seq - 1` DEĞİLDİR. r5 canlıyken r3'e
 // dönülmüşse bir sonraki geri alma r2'ye değil r5'e gitmelidir; sıra
 // numarası aktivasyon geçmişinin yerine geçmez. Gerekçe K-069'da.
+message StreamLogsRequest {
+  string app_id = 1;
+  // Geçmişten kaç satır. 0 ise yalnızca yeni satırlar.
+  uint32 tail_lines = 2;
+  // Akışı açık tut.
+  bool follow = 3;
+}
+
+message StreamLogsResponse {
+  bytes data = 1;
+  // Docker akışları ayırır; istemci stderr'i farklı gösterebilsin.
+  bool is_stderr = 2;
+}
+
 message RollbackRequest {
   string app_id = 1;
 }

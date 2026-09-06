@@ -62,6 +62,17 @@ type stubService struct {
 	pingCalls int
 }
 
+// StreamLogs, bu pakette KULLANILMIYOR ve sessizce başarı dönmüyor.
+//
+// Boş bir gövde "akış çalışıyor" izlenimi verirdi; bu paketin sınadığı
+// şey taşıma katmanı, günlük akışı değil.
+func (s *stubService) StreamLogs(
+	*panelyv1.StreamLogsRequest,
+	grpc.ServerStreamingServer[panelyv1.StreamLogsResponse],
+) error {
+	return errors.New("stubService: StreamLogs beklenmiyordu")
+}
+
 func (s *stubService) DeleteApp(
 	context.Context, *panelyv1.DeleteAppRequest,
 ) (*panelyv1.DeleteAppResponse, error) {

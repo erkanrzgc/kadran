@@ -56,6 +56,7 @@ type Executor interface {
 	HostInfo(ctx context.Context) (*panelyv1.HostInfo, error)
 	ReadJournal(ctx context.Context, afterSeq uint64, limit uint32) (execclient.JournalPage, error)
 	ImageBuild(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
+	ContainerLogs(ctx context.Context, opts execclient.LogOptions, sink execclient.LogSink) error
 
 	// Aşağıdaki üçü YALNIZCA silme yolunda kullanılıyor.
 	//

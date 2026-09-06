@@ -26,7 +26,23 @@ import (
 // Yalnızca ImageBuild anlamlı; diğerleri bu testlerde çağrılmıyor ve
 // çağrılırlarsa hata dönerek KENDİLERİNİ duyururlar. Sessizce sıfır değer
 // dönmek, testin farkında olmadığı bir kod yolunu gizlerdi.
+// logLine, sahte executor'ın akıtacağı tek bir günlük karesidir.
+type logLine struct {
+	data     string
+	isStderr bool
+}
+
 type fakeExec struct {
+	// ── Günlük yolu için DURUM MODELLİYOR ───────────────────────────
+	//
+	// `ContainerLogs` gerçekten `logs` karelerini sink'e AKITIYOR ve
+	// hangi seçeneklerle çağrıldığını kaydediyor. Yalnızca nil dönen bir
+	// sahte, hiçbir şey akıtmayan bir köprüyü de başarılı gösterirdi.
+	logs     []logLine
+	logErr   error
+	lastLogs execclient.LogOptions
+	logCalls int
+
 	build      func(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
 	buildCalls int
 	lastReq    *panelyv1.ImageBuildRequest
@@ -55,6 +71,22 @@ func (f *fakeExec) ListReplicas(_ context.Context, appID string) ([]execclient.R
 		}
 	}
 	return out, nil
+}
+
+func (f *fakeExec) ContainerLogs(
+	_ context.Context, opts execclient.LogOptions, sink execclient.LogSink,
+) error {
+	f.logCalls++
+	f.lastLogs = opts
+	if f.logErr != nil {
+		return f.logErr
+	}
+	for _, l := range f.logs {
+		if err := sink([]byte(l.data), l.isStderr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (f *fakeExec) StopRelease(

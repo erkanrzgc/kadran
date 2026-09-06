@@ -83,6 +83,7 @@ func commands() []command {
 		{"app", "<create|list|show> …", "uygulama tanımlarını yönetir", (*cli).runApp},
 		{"deploy", "<uygulama> [hedef]", "bir commit'i derler ve trafiği ona çevirir", (*cli).runDeploy},
 		{"rollback", "<uygulama> [hedef]", "trafiği bir önceki sürüme geri çevirir", (*cli).runRollback},
+		{"logs", "[-f] <uygulama> [hedef]", "canlı sürümün çıktısını akıtır", (*cli).runLogs},
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
 		{"bootstrap", "root@sunucu", "sunucuyu sıfırdan kurar (tek seferlik)", (*cli).runBootstrap},

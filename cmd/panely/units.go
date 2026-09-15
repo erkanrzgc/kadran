@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -115,4 +116,43 @@ func (c *cli) stringMapFlag(fs *flag.FlagSet, name, usage string) *map[string]st
 	fs.Var(m, name, usage)
 	out := map[string]string(m)
 	return &out
+}
+
+// stringSlice, tekrarlanabilir düz bir bayrağın değerleridir.
+//
+// stringMap'in ikizi ama DEĞERSİZ: `-env-rm KEY` yalnızca bir ad taşır.
+// stringMap'i "KEY=" ile kullanmak mümkündü ama o sözdizimi "boş değere
+// ayarla" anlamına geliyor — kullanıcıya iki farklı işi aynı yazımla
+// yaptırmak, ikisinin karıştırılmasını kaçınılmaz kılardı.
+type stringSlice struct {
+	vals *[]string
+}
+
+func (s stringSlice) String() string {
+	if s.vals == nil {
+		return ""
+	}
+	return strings.Join(*s.vals, ",")
+}
+
+func (s stringSlice) Set(v string) error {
+	if v == "" {
+		return errors.New("boş anahtar")
+	}
+	for _, existing := range *s.vals {
+		if existing == v {
+			// stringMap ile aynı kural: sessizce yutmak, kullanıcının
+			// yazdığı bir şeyin yok sayıldığını gizler.
+			return fmt.Errorf("%q birden çok kez verildi", v)
+		}
+	}
+	*s.vals = append(*s.vals, v)
+	return nil
+}
+
+// stringSliceFlag, tekrarlanabilir bir ad bayrağı tanımlar.
+func (c *cli) stringSliceFlag(fs *flag.FlagSet, name, usage string) *[]string {
+	vals := []string{}
+	fs.Var(stringSlice{vals: &vals}, name, usage)
+	return &vals
 }

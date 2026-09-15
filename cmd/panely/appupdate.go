@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"sort"
 
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 )
@@ -15,6 +16,13 @@ type appUpdateFlags struct {
 	branch   string
 	health   string
 	replicas uint
+
+	// env BİRLEŞTİRİLİR, envRemove siler. Yukarıdaki dört alandan farklı
+	// olarak bunların "açıkça boş verildi" hâli yok: proto3 harita
+	// alanlarının presence'ı olmadığı için semantik zaten birleştirme
+	// (bkz. api.proto UpdateAppRequest.env).
+	env       map[string]string
+	envRemove []string
 }
 
 // runAppUpdate, var olan bir uygulamanın alanlarını değiştirir.
@@ -27,6 +35,11 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	fs.StringVar(&v.health, "health-path", "",
 		"sağlık yoklaması yolu; boş verilirse yoklama YAPILMAZ")
 	fs.UintVar(&v.replicas, "replicas", 0, "replika sayısı")
+	env := c.stringMapFlag(fs, "env",
+		"ortam değişkeni ANAHTAR=DEĞER (tekrarlanabilir); adı geçmeyen "+
+			"değişkenlere DOKUNULMAZ")
+	envRemove := c.stringSliceFlag(fs, "env-rm",
+		"silinecek ortam değişkeni adı (tekrarlanabilir)")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
 	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
 	if err := fs.Parse(args); err != nil {
@@ -50,10 +63,17 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	set := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
+	// Bayrak yardımcıları kendi depolarını tutuyor; struct'a burada
+	// aktarılıyorlar ki buildUpdateRequest bir FlagSet'e bağlı kalmasın
+	// ve testten doğrudan çağrılabilsin.
+	v.env = *env
+	v.envRemove = *envRemove
+
 	req := buildUpdateRequest(fs.Arg(0), v, set)
 	if isEmptyUpdate(req) {
 		return c.usageError("değiştirilecek bir alan verilmedi — " +
-			"-domain, -branch, -health-path veya -replicas kullanın")
+			"-domain, -branch, -health-path, -replicas, -env veya " +
+			"-env-rm kullanın")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -102,12 +122,49 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 			s.GetReplicas())
 	}
 
+	if len(req.GetEnv()) > 0 || len(req.GetEnvRemove()) > 0 {
+		// ⚠ DEĞERLER BASILMIYOR, yalnızca adlar.
+		//
+		// Terminal çıktısı ekran görüntüsüne, kayıt dosyasına ve hata
+		// bildirimine gider. Kullanıcı kendi kutusundaki değeri `docker
+		// inspect` ile zaten okuyabilir; onu istemediği bir yere taşıyan
+		// taraf biz olmayalım.
+		for _, k := range sortedKeys(req.GetEnv()) {
+			fmt.Fprintf(c.stdout, "  Env     : %s ayarlandı\n", k)
+		}
+		for _, k := range req.GetEnvRemove() {
+			fmt.Fprintf(c.stdout, "  Env     : %s SİLİNDİ\n", k)
+		}
+	}
+
 	// Ters vekilin durumu SUSULAMAZ. Alan adı değişip trafiğin
 	// taşınmaması mümkün ve o durumda "güncellendi" tek başına yanıltıcı.
 	if d := resp.GetProxyDetail(); d != "" {
 		fmt.Fprintf(c.stdout, "\n%s\n", d)
 	}
+
+	// Env uyarısı da SUSULAMAZ ve ayrı basılıyor: env değişikliği
+	// çalışan konteynerlere ULAŞMAZ. Bunu yutmak, kullanıcının
+	// DATABASE_URL'in devreye girdiğini sanması demek — ve uygulama
+	// çalışmayınca hatayı veritabanı tarafında araması.
+	if d := resp.GetEnvDetail(); d != "" {
+		fmt.Fprintf(c.stdout, "\n%s\n", d)
+	}
 	return exitOK
+}
+
+// sortedKeys, haritanın anahtarlarını SABİT sırayla verir.
+//
+// Go'da harita gezinme sırası kasten rastgele. Sırasız basmak, aynı
+// komutun her çalıştırmada farklı çıktı vermesi demekti — ve bu, çıktıyı
+// karşılaştıran her betiği (ve her testi) kırılgan yapardı.
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // failUpdate, sunucu hatasını kullanıcıya basar.
@@ -156,12 +213,25 @@ func buildUpdateRequest(appID string, v appUpdateFlags, set map[string]bool) *pa
 		r := uint32(v.replicas) //nolint:gosec // sunucu 1-64 doğruluyor
 		req.Replicas = &r
 	}
+	// ⚠ `set` kontrolü burada da ŞART, "harita boş değilse" yetmez.
+	//
+	// Boş bir harita göndermek zararsız görünür — sunucu birleştiriyor,
+	// boş harita hiçbir şeyi değiştirmez. Ama sunucu "env belirtildi mi"
+	// diye bakıp UYARI üretiyor: `-env` hiç yazmayan bir kullanıcı,
+	// dokunmadığı bir şey için "yeniden dağıtın" uyarısı alırdı.
+	if set["env"] {
+		req.Env = v.env
+	}
+	if set["env-rm"] {
+		req.EnvRemove = v.envRemove
+	}
 	return req
 }
 
 func isEmptyUpdate(req *panelyv1.UpdateAppRequest) bool {
 	return req.Domain == nil && req.GitBranch == nil &&
-		req.HealthPath == nil && req.Replicas == nil
+		req.HealthPath == nil && req.Replicas == nil &&
+		len(req.GetEnv()) == 0 && len(req.GetEnvRemove()) == 0
 }
 
 // orNone, boş değeri görünür kılar.

@@ -47,6 +47,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	cpu := fs.Uint("cpu-millis", 1000, "CPU limiti, milli-çekirdek (1000 = 1 çekirdek)")
 	blkio := fs.Uint("blkio-weight", 500, "blok G/Ç ağırlığı (10-1000)")
 	buildArgs := c.stringMapFlag(fs, "build-arg", "derleme argümanı ANAHTAR=DEĞER (tekrarlanabilir)")
+	env := c.stringMapFlag(fs, "env", "ortam değişkeni ANAHTAR=DEĞER (tekrarlanabilir); DEĞERLERİ docker inspect ile okunabilir, SIR KOYMAYIN")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
 	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
 	if err := fs.Parse(args); err != nil {
@@ -78,6 +79,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		GitBranch:      *branch,
 		DockerfilePath: *dockerfile,
 		BuildArgs:      *buildArgs,
+		Env:            *env,
 		ContainerPort:  uint32(*port),     //nolint:gosec // sunucu 1-65535 doğruluyor
 		Replicas:       uint32(*replicas), //nolint:gosec // sunucu 1-64 doğruluyor
 		HealthPath:     *health,
@@ -224,6 +226,22 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 	if l := s.GetLimits(); l != nil {
 		fmt.Fprintf(c.stdout, "  Limitler : %s bellek · %d milli-cpu · blkio %d\n",
 			formatSize(l.GetMemoryBytes()), l.GetCpuMillis(), l.GetBlkioWeight())
+	}
+	// ⚠ Yalnızca ADLAR basılıyor, değerler DEĞİL.
+	//
+	// `app show` çıktısı ekran görüntüsüne, hata bildirimine ve destek
+	// isteğine yapıştırılan şeydir. Kullanıcı kendi sunucusundaki değeri
+	// `docker inspect` ile zaten okuyabiliyor; onu istemediği bir yere
+	// taşıyan taraf bu araç olmasın.
+	//
+	// Adların basılması ise şart: "DATABASE_URL ayarlı mı" sorusunun
+	// cevabı olmadan bu bölüm hiçbir işe yaramazdı.
+	if env := s.GetEnv(); len(env) > 0 {
+		fmt.Fprintf(c.stdout, "  Env      : %s\n",
+			strings.Join(sortedKeys(env), ", "))
+		fmt.Fprintf(c.stdout,
+			"             (%d değişken · değerler gizli, `docker inspect` ile okunur)\n",
+			len(env))
 	}
 
 	releases := resp.GetReleases()

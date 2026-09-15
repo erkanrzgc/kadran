@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -53,12 +54,53 @@ type AppUpdate struct {
 	GitBranch  *string
 	HealthPath *string
 	Replicas   *uint32
+
+	// Env, EKLENECEK ya da GÜNCELLENECEK ortam değişkenleridir; adı
+	// geçmeyen anahtarlara dokunulmaz. EnvRemove ise silinecek
+	// anahtarlardır.
+	//
+	// ── Neden işaretçi DEĞİL, neden birleştirme? ─────────────────────
+	//
+	// Yukarıdaki dört alanın işaretçi olma sebebi presence: "belirtilmedi"
+	// ile "temizle" ayrımı. Harita alanlarında bu ayrım proto3'te ZATEN
+	// TEMSİL EDİLEMEZ — `map<string,string>` alanının presence'ı yoktur,
+	// yani tel üzerinde "hiç verilmedi" ile "boş harita gönderildi" aynı
+	// şeydir. İşaretçi eklemek bu gerçeği değiştirmez, yalnızca Go
+	// tarafında var olmayan bir bilgiyi varmış gibi gösterirdi.
+	//
+	// Dolayısıyla "tamamen değiştir" semantiği dürüstçe uygulanamaz:
+	// `-env` yazmayan HER güncelleme bütün env'i silerdi. Birleştirme bir
+	// kullanılabilirlik tercihi değil, şemanın temsil edebildiği tek
+	// doğru davranış.
+	//
+	// Silme bu yüzden AYRI bir alan: birleştirme tek başına bir anahtarı
+	// kaldıramaz ve boş dizeye ayarlamak silmek değildir (konteyner
+	// değişkeni tanımlı ama boş görür — "tanımlı mı" diye bakan uygulama
+	// yanlış cevap alır).
+	//
+	// Etki zamanı: BİR SONRAKİ dağıtımda. Docker çalışan bir konteynerin
+	// ortamını değiştiremez; bu altyapının kısıtı, bizim tercihimiz
+	// değil. Çağıran bunu kullanıcıya SÖYLEMEK zorunda.
+	Env       map[string]string
+	EnvRemove []string
 }
 
 // IsEmpty, hiçbir alanın belirtilmediğini söyler.
 func (u AppUpdate) IsEmpty() bool {
 	return u.Domain == nil && u.GitBranch == nil &&
-		u.HealthPath == nil && u.Replicas == nil
+		u.HealthPath == nil && u.Replicas == nil &&
+		len(u.Env) == 0 && len(u.EnvRemove) == 0
+}
+
+// ChangesEnv, güncellemenin ortam değişkenlerine dokunup dokunmadığını
+// söyler.
+//
+// Çağıran bunu kullanıcıyı UYARMAK için kullanıyor: env değişti ama
+// çalışan konteynerler hâlâ eskisini taşıyor. "Değişti mi" değil
+// "belirtildi mi" sorusu yeterli — aynı değeri yeniden yazan bir
+// güncelleme de kullanıcının yeni bir dağıtım beklediğini gösterir.
+func (u AppUpdate) ChangesEnv() bool {
+	return len(u.Env) > 0 || len(u.EnvRemove) > 0
 }
 
 // ChangesDomain, güncellemenin alan adını GERÇEKTEN değiştirip
@@ -98,6 +140,41 @@ func (u AppUpdate) applyTo(app *App) {
 	if u.Replicas != nil {
 		app.Replicas = *u.Replicas
 	}
+	applyEnv(app, u.Env, u.EnvRemove)
+}
+
+// applyEnv, birleştirmeyi YENİ bir haritaya yapar.
+//
+// ── Neden kopya? ─────────────────────────────────────────────────────
+//
+// `Apply` değer alıcılı ve kopya döndürüyor, ama Go'da struct kopyası
+// haritayı DERİN kopyalamaz: kopyadaki `Env` ile orijinaldeki aynı
+// haritayı gösterir. Doğrudan üzerine yazmak, API katmanının yalnızca
+// DOĞRULAMAK için aldığı geçici birleşimin mevcut kaydı da değiştirmesi
+// demekti — ve o kayıt hemen ardından "eski değer" olarak okunuyor.
+// Doğrulama, doğruladığı şeyi değiştiremez.
+//
+// ── Sıra: önce yaz, sonra sil ────────────────────────────────────────
+//
+// Aynı anahtar hem Env'de hem EnvRemove'da geçerse silme kazanır. Bu
+// durum API katmanında zaten ÇELİŞKİ olarak reddediliyor, yani buraya
+// ulaşmamalı; yine de davranış belirsiz bırakılmıyor. Belirsiz bırakılan
+// her sıra, bir gün haritanın gezilme sırasına bağlı bir hata üretir.
+func applyEnv(app *App, set map[string]string, remove []string) {
+	if len(set) == 0 && len(remove) == 0 {
+		return
+	}
+	merged := make(map[string]string, len(app.Env)+len(set))
+	for k, v := range app.Env {
+		merged[k] = v
+	}
+	for k, v := range set {
+		merged[k] = v
+	}
+	for _, k := range remove {
+		delete(merged, k)
+	}
+	app.Env = merged
 }
 
 // UpdateApp, var olan bir uygulamanın değiştirilebilir alanlarını yazar.
@@ -132,15 +209,24 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 	upd.applyTo(&app)
 	app.UpdatedAt = time.Now()
 
+	// Birleştirilmiş harita yeniden serileştiriliyor. Sütun cümleye
+	// EKLENMEZSE `-env` sessizce işlemsiz kalır: fonksiyon güncellenmiş
+	// struct'ı döndürür, kullanıcı "başarılı" görür, diskteki satır
+	// değişmez. Bu, ölçek küçültmedeki hatanın (K-080) birebir şekli.
+	env, err := json.Marshal(sortedArgs(app.Env))
+	if err != nil {
+		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
+	}
+
 	const q = `
 		UPDATE apps SET
 			git_branch = ?, health_path = ?, domain = ?, replicas = ?,
-			updated_at = ?
+			env_json = ?, updated_at = ?
 		WHERE id = ?`
 
 	if _, err := tx.ExecContext(ctx, q,
 		app.GitBranch, app.HealthPath, app.Domain, app.Replicas,
-		app.UpdatedAt.UnixNano(), app.ID,
+		string(env), app.UpdatedAt.UnixNano(), app.ID,
 	); err != nil {
 		if isUniqueViolation(err) {
 			// Kimlik değişmiyor, dolayısıyla ihlal edilebilecek TEK kısıt

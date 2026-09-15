@@ -1,0 +1,38 @@
+-- Uygulamaya geçirilecek ortam değişkenleri.
+--
+-- ── ⚠ BURASI SIR SAKLAMAK İÇİN DEĞİLDİR ─────────────────────────────
+--
+-- Değerler konteynerin yapılandırmasına yazılıyor ve `docker inspect`
+-- çıktısında DÜZ METİN görünüyor. Host üzerinde docker soketine
+-- erişebilen herkes okuyabilir.
+--
+-- Bu, build_args'ınkinden AYRI bir maruziyet: derleme argümanları
+-- `docker history` ile imajdan okunur ve imaj taşınabilir olduğu için
+-- host dışına çıkabilir. Env host'ta kalır ama host'ta çalışan her şeye
+-- açıktır. İkisi de "sır koymayın" der, sebepleri farklıdır.
+--
+-- SECURITY.md bunu zaten önceden bildiriyor. Gerçek kasa (şifreli,
+-- erişimi denetlenen) Faz 2'nin işi; o gelene kadar buraya yazılan her
+-- değer, host'a root erişimi olan birine açık sayılmalıdır.
+--
+-- ── Neden JSON sütun, ayrı tablo değil? ─────────────────────────────
+--
+-- Ayrı bir `app_env(app_id, key, value)` tablosu ilk bakışta daha
+-- "doğru" görünür: anahtar başına satır, UNIQUE kısıtı bedava. Ama env
+-- hiçbir zaman ANAHTAR BAZINDA sorgulanmıyor — her okuyucu haritanın
+-- tamamını istiyor (konteyner kurulurken hepsi birden geçiyor). Ayrı
+-- tablo, her okumaya bir JOIN ve her yazmaya bir sil-yeniden-ekle
+-- eklerdi; karşılığında kimsenin sormadığı bir soruyu ucuzlatırdı.
+--
+-- Emsal zaten bu depoda: `build_args_json` aynı şekli aynı sebeple
+-- kullanıyor ve iki yıllık bir bakım yükü üretmedi. Tutarlılık burada
+-- bedava değil, kazanç: tek bir serileştirme deseni öğrenmek yetiyor.
+--
+-- ── Neden DEFAULT '{}' ve NOT NULL? ─────────────────────────────────
+--
+-- NULL üçüncü bir durum yaratırdı: "env yok" (boş harita) ile "env
+-- bilinmiyor" (NULL) ayrımı hiçbir şey ifade etmiyor ama her okuyucuyu
+-- NULL kontrolü yapmaya zorlardı. Var olan satırlar bu sütunu almadan
+-- yazıldığı için varsayılan ŞART — aksi hâlde göç, tabloda satır varken
+-- NOT NULL kısıtını ihlal ederdi.
+ALTER TABLE apps ADD COLUMN env_json TEXT NOT NULL DEFAULT '{}';

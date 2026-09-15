@@ -52,17 +52,42 @@ func TestMigration0005CarriesExistingDeploymentsForward(t *testing.T) {
 		}
 	}
 
-	app := sampleApp("portfolio")
-	app.Domain = "panely.erkanrzgc.dev"
-	if _, err := s.CreateApp(ctx, app); err != nil {
-		t.Fatalf("uygulama oluşturulamadı: %v", err)
+	// ⚠ `CreateApp` KULLANILMIYOR ve bu kasıtlı.
+	//
+	// Bu test şemayı 0004'te donduruyor, ama `CreateApp` DAİMA en güncel
+	// sütun listesini yazar. İkisi bir süre uyuştu; göç 0006 `env_json`
+	// ekleyince test "table apps has no column named env_json" ile kırıldı.
+	//
+	// Kırılma testin HAKLI olduğunun kanıtıydı: geçmişteki bir şemayı
+	// taklit eden bir kurulum, bugünkü yazma koduna dayanamaz. Aynı gerekçe
+	// birkaç satır aşağıda `deployments` için zaten yazılmıştı; oraya
+	// uyulmuş, buraya uyulmamıştı.
+	//
+	// Ham INSERT 0002'nin sütunlarını kullanıyor, yani testin kurulumu
+	// artık gelecekteki sütunlardan ETKİLENMEZ.
+	const activatedAt = 1_700_000_000_000_000_000
+	const insertOldApp = `
+		INSERT INTO apps (
+			id, git_host, git_owner, git_repo, git_branch,
+			dockerfile_path, build_args_json,
+			container_port, replicas, health_path, domain,
+			memory_bytes, cpu_millis, blkio_weight,
+			release_seq, created_at, updated_at
+		) VALUES (?,?,?,?,?, ?,?, ?,?,?,?, ?,?,?, 0,?,?)`
+	if _, err := db.ExecContext(ctx, insertOldApp,
+		"portfolio", "github.com", "erkanrzgc", "panely", "main",
+		"Dockerfile", "{}",
+		8080, 2, "/healthz", "panely.erkanrzgc.dev",
+		256<<20, 500, 500,
+		activatedAt, activatedAt,
+	); err != nil {
+		t.Fatalf("eski şemaya uygulama yazılamadı: %v", err)
 	}
 	rel := buildRelease(t, s, "portfolio", hexSHA(3))
 
 	// ESKİ şemaya doğrudan yazılıyor: bu noktada `deactivated_at` sütunu
 	// YOK, yani SetActiveRelease'in güncel hâli burada çalışamaz. Testin
 	// göçten önceki gerçeği taklit etmesi gerekiyor.
-	const activatedAt = 1_700_000_000_000_000_000
 	if _, err := db.ExecContext(ctx,
 		`INSERT INTO deployments (app_id, release_id, activated_at) VALUES (?, ?, ?)`,
 		"portfolio", rel.ID, activatedAt); err != nil {

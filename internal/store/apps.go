@@ -37,6 +37,17 @@ type App struct {
 	DockerfilePath string
 	BuildArgs      map[string]string
 
+	// Env, konteynere geçirilecek ortam değişkenleridir.
+	//
+	// ⚠ Değerleri `docker inspect` çıktısında düz metin görünür — sır
+	// taşımamalıdır (göç 0006'daki gerekçeye bakın). Denetim kaydına
+	// yalnızca ANAHTARLARI yazılır (audit.RedactEnv).
+	//
+	// Değişikliği BİR SONRAKİ dağıtımda etkili olur: Docker çalışan bir
+	// konteynerin ortamını değiştiremez, bu bir tasarım tercihi değil
+	// altyapının kısıtıdır.
+	Env map[string]string
+
 	ContainerPort uint32
 	Replicas      uint32
 	HealthPath    string
@@ -68,18 +79,29 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 		return App{}, fmt.Errorf("derleme argümanları serileştirilemedi: %w", err)
 	}
 
+	// Normalleştirme DÖNEN yapıya da yazılıyor. Yalnızca serileştirmede
+	// yapılsaydı `CreateApp`'in döndürdüğü kayıt ile `GetApp`'in okuduğu
+	// kayıt ayrışırdı: biri nil, diğeri boş harita. Aynı satırı iki farklı
+	// şekilde tanımlayan bir API, çağıranı her ikisine de hazırlıklı
+	// olmaya zorlar.
+	app.Env = sortedArgs(app.Env)
+	env, err := json.Marshal(app.Env)
+	if err != nil {
+		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
+	}
+
 	const q = `
 		INSERT INTO apps (
 			id, git_host, git_owner, git_repo, git_branch,
-			dockerfile_path, build_args_json,
+			dockerfile_path, build_args_json, env_json,
 			container_port, replicas, health_path, domain,
 			memory_bytes, cpu_millis, blkio_weight,
 			release_seq, created_at, updated_at
-		) VALUES (?,?,?,?,?, ?,?, ?,?,?,?, ?,?,?, 0,?,?)`
+		) VALUES (?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?, 0,?,?)`
 
 	_, err = s.db.ExecContext(ctx, q,
 		app.ID, app.GitHost, app.GitOwner, app.GitRepo, app.GitBranch,
-		app.DockerfilePath, string(args),
+		app.DockerfilePath, string(args), string(env),
 		app.ContainerPort, app.Replicas, app.HealthPath, app.Domain,
 		app.MemoryBytes, app.CPUMillis, app.BlkioWeight,
 		now.UnixNano(), now.UnixNano(),
@@ -164,7 +186,7 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 // geçer, ve hata ancak yanlış depo derlendiğinde görülür.
 const appSelect = `
 	SELECT id, git_host, git_owner, git_repo, git_branch,
-	       dockerfile_path, build_args_json,
+	       dockerfile_path, build_args_json, env_json,
 	       container_port, replicas, health_path, domain,
 	       memory_bytes, cpu_millis, blkio_weight,
 	       release_seq, created_at, updated_at
@@ -174,11 +196,12 @@ func scanApp(sc scanner) (App, error) {
 	var (
 		app          App
 		argsJSON     string
+		envJSON      string
 		created, upd int64
 	)
 	err := sc.Scan(
 		&app.ID, &app.GitHost, &app.GitOwner, &app.GitRepo, &app.GitBranch,
-		&app.DockerfilePath, &argsJSON,
+		&app.DockerfilePath, &argsJSON, &envJSON,
 		&app.ContainerPort, &app.Replicas, &app.HealthPath, &app.Domain,
 		&app.MemoryBytes, &app.CPUMillis, &app.BlkioWeight,
 		&app.ReleaseSeq, &created, &upd,
@@ -189,6 +212,14 @@ func scanApp(sc scanner) (App, error) {
 	if err := json.Unmarshal([]byte(argsJSON), &app.BuildArgs); err != nil {
 		return App{}, fmt.Errorf("derleme argümanları çözümlenemedi: %w", err)
 	}
+	if err := json.Unmarshal([]byte(envJSON), &app.Env); err != nil {
+		return App{}, fmt.Errorf("ortam değişkenleri çözümlenemedi: %w", err)
+	}
+	// "{}" nil DEĞİL boş harita üretir, ama "null" nil üretir — göç
+	// öncesi yazılmış bir satır ya da elle yapılmış bir müdahale bunu
+	// döndürebilir. Normalleştirme burada kapanıyor ki okuyucuların
+	// hiçbiri nil kontrolü yapmak zorunda kalmasın.
+	app.Env = sortedArgs(app.Env)
 	app.CreatedAt = time.Unix(0, created)
 	app.UpdatedAt = time.Unix(0, upd)
 	return app, nil

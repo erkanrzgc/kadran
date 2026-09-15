@@ -48,6 +48,26 @@ const (
 	maxDockerfile   = 4096
 	maxBuildArgLen  = 32 << 10
 	maxAppsPerQuery = 500
+
+	// ── env sınırları: executor'ınkiyle AYNI olmak ZORUNDA ──────────
+	//
+	// Bu üç sabit internal/exec/validate.go'daki maxEnvEntries,
+	// maxEnvBytes ve maxEnvKeyBytes ile birebir aynıdır. Kopya olmaları
+	// kasıtlı: panelyd ayrıcalıklı paketi içe aktarmıyor ve aktarmamalı
+	// (yetki sınırı ikilinin kendisinde, ortak bir kütüphanede değil).
+	//
+	// ⚠ Buradaki sınır executor'ınkinden GEVŞEK OLAMAZ. Gevşek olsaydı
+	// `app create` tanımı kabul eder, ilk `deploy` executor tarafından
+	// reddedilirdi: kullanıcı geçerli sandığı bir kayıtla kalır ve hatayı
+	// sebebinden günler sonra, tamamen başka bir komutta görür.
+	//
+	// ⚠ Sınır TOPLAM bayt üzerinden, DEĞER BAŞINA değil. Hemen yukarıdaki
+	// maxBuildArgLen değer başına işliyor ve o kalıbı buraya kopyalamak
+	// tam da yukarıdaki tuzağı kurardı: 200 × 32 KiB burada geçer,
+	// executor'da çakılır.
+	maxEnvEntries  = 200
+	maxEnvBytes    = 32 << 10
+	maxEnvKeyBytes = 256
 )
 
 // validateAppSpec, uygulama tanımının tamamını doğrular.
@@ -67,6 +87,9 @@ func validateAppSpec(spec *panelyv1.AppSpec) error {
 		return err
 	}
 	if err := validateBuildArgs(spec.GetBuildArgs()); err != nil {
+		return err
+	}
+	if err := validateEnv(spec.GetEnv()); err != nil {
 		return err
 	}
 	if p := spec.GetContainerPort(); p == 0 || p > 65535 {
@@ -154,6 +177,69 @@ func validateBuildArgs(args map[string]string) error {
 		// ile çalışan değer ayrışırdı.
 		if strings.ContainsRune(k, 0) || strings.ContainsRune(v, 0) {
 			return fmt.Errorf("derleme argümanı %q NUL baytı içeriyor", k)
+		}
+	}
+	return nil
+}
+
+// validateEnv, ortam değişkenlerini doğrular.
+//
+// Anahtar deseni `build_args` ile aynı (`buildArgPattern`) ve bu tesadüf
+// değil: ikisi de kabuk değişkeni adı kuralına uyuyor ve executor her
+// ikisi için de aynı deseni kullanıyor. Ayrı bir desen tanımlamak, iki
+// tarafın bir gün sessizce ayrışmasına davetiye olurdu.
+//
+// ⚠ Değer İÇERİĞİ doğrulanmıyor ve bu kasıtlı: env değeri keyfi metindir
+// (URL, JSON, base64, çok satırlı sertifika). Bir "makul değer" tanımı
+// uydurmak, geçerli kullanımları reddeder ve kullanıcıyı doğrulamayı
+// atlatmanın yollarını aramaya iterdi. Güvenlik burada içerikten değil,
+// değerin ASLA kabuk tarafından yorumlanmamasından geliyor: executor
+// haritayı doğrudan Docker'a KEY=VALUE dizisi olarak veriyor, araya kabuk
+// girmiyor.
+func validateEnv(env map[string]string) error {
+	if len(env) > maxEnvEntries {
+		return fmt.Errorf("çok fazla ortam değişkeni (%d, sınır %d)",
+			len(env), maxEnvEntries)
+	}
+	total := 0
+	for k, v := range env {
+		if len(k) > maxEnvKeyBytes {
+			return fmt.Errorf("ortam değişkeni adı çok uzun (%d bayt, sınır %d)",
+				len(k), maxEnvKeyBytes)
+		}
+		if !buildArgPattern.MatchString(k) {
+			return fmt.Errorf("ortam değişkeni adı geçersiz (%q) — "+
+				"^[A-Za-z_][A-Za-z0-9_]*$ olmalı", k)
+		}
+		// NUL, değişkeni execve dizisinde KESER: kabul edilen değer ile
+		// konteynerde görünen değer ayrışırdı.
+		if strings.ContainsRune(k, 0) || strings.ContainsRune(v, 0) {
+			return fmt.Errorf("ortam değişkeni %q NUL baytı içeriyor", k)
+		}
+		total += len(k) + len(v) + 1 // +1: "KEY=VALUE" içindeki eşittir
+	}
+	if total > maxEnvBytes {
+		return fmt.Errorf("ortam değişkenleri toplamı %d bayt, üst sınır %d "+
+			"— sınır TOPLAM üzerinden işler, değer başına değil", total, maxEnvBytes)
+	}
+	return nil
+}
+
+// validateEnvRemove, ayarlama ile silmenin ÇELİŞMEDİĞİNİ doğrular.
+//
+// Aynı anahtarı hem ayarlayıp hem silmek iki zıt niyet taşır. Sessizce
+// birini seçmek, hangisinin uygulandığını kullanıcı için belirsiz
+// bırakırdı — ve o belirsizlik, haritanın gezilme sırasına bağlı bir
+// hataya dönüşürdü. Reddetmek, kullanıcıyı ne istediğini söylemeye
+// zorluyor.
+func validateEnvRemove(set map[string]string, remove []string) error {
+	for _, k := range remove {
+		if !buildArgPattern.MatchString(k) {
+			return fmt.Errorf("silinecek ortam değişkeni adı geçersiz (%q)", k)
+		}
+		if _, both := set[k]; both {
+			return fmt.Errorf("%q hem ayarlanıyor hem siliniyor — "+
+				"hangisini istediğinizi belirtin", k)
 		}
 	}
 	return nil

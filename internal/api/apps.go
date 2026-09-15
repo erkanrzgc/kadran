@@ -89,6 +89,7 @@ func appFromProto(spec *panelyv1.AppSpec) store.App {
 		GitBranch:      spec.GetGitBranch(),
 		DockerfilePath: spec.GetDockerfilePath(),
 		BuildArgs:      spec.GetBuildArgs(),
+		Env:            spec.GetEnv(),
 		ContainerPort:  spec.GetContainerPort(),
 		Replicas:       spec.GetReplicas(),
 		HealthPath:     spec.GetHealthPath(),
@@ -109,6 +110,7 @@ func appToProto(a store.App) *panelyv1.App {
 			GitBranch:      a.GitBranch,
 			DockerfilePath: a.DockerfilePath,
 			BuildArgs:      a.BuildArgs,
+			Env:            a.Env,
 			ContainerPort:  a.ContainerPort,
 			Replicas:       a.Replicas,
 			HealthPath:     a.HealthPath,
@@ -164,6 +166,9 @@ func appAuditParams(spec *panelyv1.AppSpec) map[string]string {
 	}
 	for k := range spec.GetBuildArgs() {
 		params["build_arg."+k] = "[REDACTED]"
+	}
+	for k := range spec.GetEnv() {
+		params["env."+k] = "[REDACTED]"
 	}
 	return params
 }

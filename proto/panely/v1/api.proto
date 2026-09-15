@@ -278,6 +278,18 @@ message AppSpec {
 
   // Sıfır değer KABUL EDİLMEZ — limitsiz konteyner yoktur.
   ResourceLimits limits = 12;
+
+  // Konteynere geçirilecek ortam değişkenleri.
+  //
+  // ⚠ Değerleri `docker inspect` ile host üzerinde DÜZ METİN okunur.
+  // Sır TAŞIMAMALIDIR. build_args'ınkinden ayrı bir maruziyet:
+  // derleme argümanları imajın içinde taşınır ve host dışına çıkabilir,
+  // env host'ta kalır ama host'taki her şeye açıktır.
+  // Denetim kaydına yalnızca ADLARI yazılır (audit.RedactEnv).
+  //
+  // Değişikliği BİR SONRAKİ dağıtımda etkili olur — Docker çalışan bir
+  // konteynerin ortamını değiştiremez.
+  map<string, string> env = 13;
 }
 
 // App, AppSpec artı sunucu tarafından üretilen alanlar.
@@ -375,6 +387,28 @@ message UpdateAppRequest {
   optional string git_branch = 3;
   optional string health_path = 4;
   optional uint32 replicas = 5;
+
+  // ── env: BİRLEŞTİRİLİR, değiştirilmez ────────────────────────────
+  //
+  // Yukarıdaki dört alan `optional` çünkü "belirtilmedi" ile "temizle"
+  // ayrımı gerçek. Harita alanları için bu ayrım proto3'te TEMSİL
+  // EDİLEMEZ: map'in presence'ı yoktur, boş harita ile gönderilmemiş
+  // harita tel üzerinde aynıdır. `optional map` proto3'te geçersizdir.
+  //
+  // Bu yüzden semantik birleştirme olmak ZORUNDA: env'de adı geçen
+  // anahtarlar yazılır/güncellenir, geçmeyenlere dokunulmaz. Aksi hâlde
+  // yalnızca alan adını değiştiren bir istek, env taşımadığı için
+  // uygulamanın bütün değişkenlerini silerdi.
+  map<string, string> env = 6;
+
+  // Silinecek anahtarlar. Birleştirme tek başına bir anahtarı
+  // kaldıramaz ve boş dizeye ayarlamak silmek DEĞİLDİR — konteyner
+  // değişkeni "tanımlı ama boş" görür.
+  //
+  // Bir anahtarın hem env'de hem burada geçmesi ÇELİŞKİDİR ve sunucu
+  // tarafından reddedilir; sessizce bir tarafı seçmek, kullanıcının iki
+  // niyetinden hangisinin uygulandığını belirsiz bırakırdı.
+  repeated string env_remove = 7;
 }
 
 message UpdateAppResponse {
@@ -389,6 +423,21 @@ message UpdateAppResponse {
   // normal), ama kullanıcının bunu bilmesi şart. Yalnızca "tamam"
   // demek, yeni alan adının canlıda cevap verdiğini ima ederdi.
   string proxy_detail = 2;
+
+  // Ortam değişkenlerinin durumu. BOŞ ise env'e dokunulmadı.
+  //
+  // ── Neden proxy_detail'e yazılmıyor? ──────────────────────────────
+  //
+  // Akla yakın olurdu — iki uyarı, tek alan. Ama o alanın adı "ters
+  // vekil" diyor ve içine env mesajı koymak alanın ADINI yalancı
+  // yapardı. Bu projede kodun sahip olmadığı bir şeyi anlatması ayrı
+  // bir karar olarak kaydedildi (K-079); aynı hatayı bu kez alan adıyla
+  // yapmanın gereği yok.
+  //
+  // İki alan ayrı olduğu için istemci hangi uyarının hangi mekanizmaya
+  // ait olduğunu bilir ve ikisi AYNI ANDA doğru olabilir: alan adı da
+  // env de değişmiş bir güncelleme iki farklı şey söylemek zorunda.
+  string env_detail = 3;
 }
 
 message ListAppsRequest {}

@@ -363,7 +363,34 @@ func (r *Rollout) ensureReplicas(
 	return recreated, nil
 }
 
+// copyEnv, ortam haritasının KOPYASINI verir.
+//
+// Go'da harita atamak referansı paylaşır. Uygulama tanımındaki haritayı
+// doğrudan sürücüye geçirmek, alt katmanlardan birinin onu değiştirmesi
+// hâlinde kontrol düzlemindeki kaydın da bozulması demekti — ve bu tür
+// bir bozulmanın kaynağını bulmak neredeyse imkânsızdır, çünkü değişiklik
+// hiçbir yazma yolundan geçmez.
+//
+// nil girdi nil döner: "ortam yok" ile "boş ortam" arasında sürücü
+// açısından fark yok ve boş harita ayırmanın gereği yok.
+func copyEnv(env map[string]string) map[string]string {
+	if env == nil {
+		return nil
+	}
+	out := make(map[string]string, len(env))
+	for k, v := range env {
+		out[k] = v
+	}
+	return out
+}
+
 // createReplica, tek bir replikayı uygulama tanımından kurar.
+//
+// ⚠ Alan listesi ELLE yazılmış ve derleyici eksik alanı YAKALAMAZ: atlanan
+// alan Go'nun sıfır değerine düşer. `Env` bir dönem tam da böyle eksikti —
+// şema, doğrulama ve CLI hazır olsaydı bile konteyner ortamsız doğardı ve
+// her katman yeşil görünürdü. Buraya alan eklerken internal/deploy/env_test.go
+// ve volumes için karşılığı olan testin var olduğundan emin olun.
 func (r *Rollout) createReplica(
 	ctx context.Context, app store.App, rel store.Release, index uint32,
 ) error {
@@ -372,6 +399,7 @@ func (r *Rollout) createReplica(
 		ReleaseID:     rel.ID,
 		Index:         index,
 		CommitSHA:     rel.CommitSHA,
+		Env:           copyEnv(app.Env),
 		ContainerPort: app.ContainerPort,
 		Limits: execclient.Limits{
 			MemoryBytes: app.MemoryBytes,

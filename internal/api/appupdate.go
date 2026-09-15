@@ -44,6 +44,14 @@ func (s *Server) UpdateApp(
 				"ilerletirdi, yani sessiz bir işlemsizlik olurdu"))
 	}
 
+	// Çelişki kontrolü BİRLEŞTİRMEDEN ÖNCE: `applyEnv` sırayı
+	// belirlemiş durumda (önce yaz, sonra sil), yani çelişki buraya
+	// ulaşırsa sessizce silme kazanırdı. Kullanıcının iki zıt niyetinden
+	// birini sessizce seçmek, seçimi ondan gizlemek demektir.
+	if err := validateEnvRemove(req.GetEnv(), req.GetEnvRemove()); err != nil {
+		return nil, s.denied(ctx, action, tgt, params, err)
+	}
+
 	current, err := s.store.GetApp(ctx, appID)
 	if err != nil {
 		// Var olmayan bir uygulamaya yazma DENEMESİ de zincire girer:
@@ -75,6 +83,12 @@ func (s *Server) UpdateApp(
 	// kullanılan yolda açık tutmak olurdu.
 	replicasChanged := upd.Replicas != nil && *upd.Replicas != current.Replicas
 
+	// Env, ters vekili İLGİLENDİRMİYOR — uzlaştırma tetiklemiyor.
+	// Konteynerin ortamı rota tablosundan değil, oluşturma anından
+	// geliyor; uzlaştırmak hiçbir şeyi değiştirmezdi. Burada saptanan
+	// tek şey, kullanıcıya SÖYLENECEK olan.
+	envChanged := upd.ChangesEnv()
+
 	app, opErr := s.store.UpdateApp(ctx, appID, upd)
 	if err := s.completed(ctx, action, tgt, params, opErr); err != nil {
 		return nil, appError(err)
@@ -88,7 +102,35 @@ func (s *Server) UpdateApp(
 		}
 		resp.ProxyDetail = detail
 	}
+	if envChanged {
+		resp.EnvDetail = envNeedsRedeploy(appID)
+	}
 	return resp, nil
+}
+
+// envNeedsRedeploy, env değişikliğinin HENÜZ ETKİLİ OLMADIĞINI söyler.
+//
+// ── Neden uzlaştırma yetmiyor? ──────────────────────────────────────
+//
+// Alan adı değişikliği uzlaştırmayla anında taşınıyor, çünkü rota
+// `apps` tablosundan ÜRETİLİYOR. Env öyle değil: konteynerin ortamı
+// oluşturma anında çekirdeğe yazılıyor ve Docker onu sonradan
+// değiştiremez. Yani burada "uzlaştır ve bitir" diye bir seçenek yok —
+// yeni ortam ancak konteyner YENİDEN KURULUNCA doğar.
+//
+// ── Neden sessizce başarılı denmiyor? ───────────────────────────────
+//
+// `moveTraffic` bu dersi zaten bir kez öğretti: kayıt değişip
+// gerçekliğin değişmemesi, kullanıcının komutu "çalıştı" sanması
+// demek. Env'de bedeli daha ağır — kullanıcı DATABASE_URL'i ayarlar,
+// uygulama hâlâ eski (ya da hiç) değeri görür, ve hatayı veritabanı
+// tarafında aramaya başlar. Komutun kendisi şüpheli listesine bile
+// girmez.
+func envNeedsRedeploy(appID string) string {
+	return fmt.Sprintf(
+		"⚠ env KAYDEDİLDİ ama ÇALIŞAN KONTEYNERLER hâlâ eski ortamla "+
+			"koşuyor — Docker çalışan bir konteynerin ortamını "+
+			"değiştiremez. Uygulayın: panely deploy %s", appID)
 }
 
 // moveTraffic, alan adı değişikliğini ters vekile yansıtır.
@@ -153,6 +195,20 @@ func updateFromProto(req *panelyv1.UpdateAppRequest) store.AppUpdate {
 		v := req.GetReplicas()
 		upd.Replicas = &v
 	}
+	// Haritalar ve dilimler KOPYALANIYOR, proto'nunki paylaşılmıyor:
+	// istek nesnesi çağrı bittikten sonra gRPC tarafından yeniden
+	// kullanılabilir ve depo katmanı bu haritayı çağrıdan sonra da
+	// tutabilir.
+	if len(req.GetEnv()) > 0 {
+		env := make(map[string]string, len(req.GetEnv()))
+		for k, v := range req.GetEnv() {
+			env[k] = v
+		}
+		upd.Env = env
+	}
+	if len(req.GetEnvRemove()) > 0 {
+		upd.EnvRemove = append([]string(nil), req.GetEnvRemove()...)
+	}
 	return upd
 }
 
@@ -174,6 +230,18 @@ func updateAuditParams(req *panelyv1.UpdateAppRequest) map[string]string {
 	}
 	if req.Replicas != nil {
 		params["replicas"] = strconv.FormatUint(uint64(req.GetReplicas()), 10)
+	}
+	// ⚠ DEĞERLER DEĞİL, yalnızca anahtar adları.
+	//
+	// Denetim zinciri EKLE-SADECE: `audit_log` üzerinde UPDATE ve DELETE
+	// tetikleyici düzeyinde yasak. Buraya bir kez yazılan sır SİLİNEMEZ
+	// ve veritabanı yedekleri de onu taşır. Anahtar adının yazılması ise
+	// şart — "kim hangi değişkeni ayarladı" denetlenebilir kalmalı.
+	for k := range req.GetEnv() {
+		params["env."+k] = "[REDACTED]"
+	}
+	for _, k := range req.GetEnvRemove() {
+		params["env_remove."+k] = "kaldırıldı"
 	}
 	return params
 }

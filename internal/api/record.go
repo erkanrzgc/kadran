@@ -40,7 +40,7 @@ func (s *Server) recordAction(
 	outcome audit.Outcome,
 	detail string,
 ) error {
-	paramsJSON, err := audit.MarshalParams(audit.RedactSensitive(params))
+	paramsJSON, err := audit.MarshalParams(redactSensitive(params))
 	if err != nil {
 		return status.Errorf(codes.Internal, "denetim parametreleri kodlanamadı: %v", err)
 	}

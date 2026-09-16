@@ -112,7 +112,7 @@ type Record struct {
 	// ParamsJSON, eylemin parametreleridir.
 	//
 	// ÇAĞIRAN SORUMLULUĞU: buraya yazmadan önce RedactEnv (ortam
-	// değişkenleri için, varsayılan REDDET) veya RedactSensitive (karışık
+	// değişkenleri için, varsayılan REDDET) veya çağıranın kendi politikası (karışık
 	// parametreler için) uygulanmalı, sonra MarshalParams ile kodlanmalı.
 	//
 	// Zincir ekle-sadece'dir ve kayıtlar hash'lenir: buraya bir kez düz

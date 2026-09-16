@@ -40,7 +40,7 @@ import (
 // record, executor günlüğüne bir kayıt yazar.
 //
 // params ÇAĞIRAN tarafından redakte edilmiş olmalıdır (audit.RedactEnv /
-// audit.RedactSensitive). Bu fonksiyon redaksiyon YAPMAZ: burada yapsaydı,
+// çağıranın kendi politikası). Bu fonksiyon redaksiyon YAPMAZ: burada yapsaydı,
 // hangi alanın hassas olduğunu bilmeyen genel bir yer karar veriyor olurdu.
 func (s *Server) record(action, target string, params map[string]string, outcome audit.Outcome, detail string) error {
 	paramsJSON := ""

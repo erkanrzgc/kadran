@@ -153,7 +153,7 @@ func appTarget(appID string) string { return "app/" + appID }
 //
 // Kaynak üçlüsü ve yapılandırma AÇIK yazılır: denetimin işi "hangi
 // tanım kaydedildi" sorusunu yanıtlamak. Derleme argümanlarının
-// DEĞERLERİ yazılmaz — RedactSensitive recordAction içinde uygulanıyor,
+// DEĞERLERİ yazılmaz — redactSensitive recordAction içinde uygulanıyor,
 // ama burada adları da ayrıca ayrıştırılmıyor: değer hiç girmiyor.
 func appAuditParams(spec *panelyv1.AppSpec) map[string]string {
 	params := map[string]string{

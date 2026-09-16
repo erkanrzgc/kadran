@@ -290,6 +290,45 @@ message AppSpec {
   // Değişikliği BİR SONRAKİ dağıtımda etkili olur — Docker çalışan bir
   // konteynerin ortamını değiştiremez.
   map<string, string> env = 13;
+
+  // Kalıcı disk bağlamaları.
+  //
+  // Değişikliği BİR SONRAKİ dağıtımda etkili olur — bağlama konteyner
+  // oluşturulurken kuruluyor ve Docker onu sonradan değiştiremez.
+  repeated AppVolume volumes = 14;
+}
+
+// AppVolume, kullanıcıya görünen hacim tanımıdır.
+//
+// ── Neden exec.proto'daki VolumeMount YENİDEN KULLANILMIYOR? ────────
+//
+// Şekil neredeyse aynı ve `ResourceLimits` gibi common.proto'ya taşımak
+// akla yakındı. YAPILMADI ve sebebi ölçüldü:
+// `scripts/check-exec-surface.sh` yasak alanları (host_path, image,
+// privileged…) tarıyor ve taraması exec.proto'dan başlıyor. VolumeMount
+// oradan çıkarsaydı, ona eklenen bir `host_path` alanı ayrıcalıklı
+// şemaya girer ama taramanın kapsamı dışında kalırdı.
+//
+// (Tarama o sırada ölçülüp içe aktarılan şemaları da kapsayacak şekilde
+// düzeltildi; yine de güvenlik sınırını tarif eden mesajın TEK BİR
+// dosyada, denetlenebilir hâlde durması tercih edildi.)
+//
+// İki mesajın ayrı olması ayrıca doğru yönde bir kısıt: kullanıcıya
+// görünen sözleşmenin değişmesi, ayrıcalıklı beyaz listeyi kendiliğinden
+// değiştiremez. Dönüşüm internal/api'de AÇIKÇA yapılıyor.
+message AppVolume {
+  // ^[a-z0-9][a-z0-9-]{0,63}$ — hacmin diskteki KİMLİĞİ.
+  //
+  // ⚠ HOST YOLU ALANI YOKTUR. Gerçek yolu executor kuruyor:
+  //   /var/lib/panely/volumes/<app_id>/<name>
+  string name = 1;
+
+  // Konteyner İÇİNDEKİ bağlama noktası. Mutlak ve temiz olmalı;
+  // "/" olamaz, /proc /sys /dev altına düşemez, başka bir bağlama
+  // noktasını kapsayamaz.
+  string mount_path = 2;
+
+  bool read_only = 3;
 }
 
 // App, AppSpec artı sunucu tarafından üretilen alanlar.
@@ -409,6 +448,20 @@ message UpdateAppRequest {
   // tarafından reddedilir; sessizce bir tarafı seçmek, kullanıcının iki
   // niyetinden hangisinin uygulandığını belirsiz bırakırdı.
   repeated string env_remove = 7;
+
+  // ── Hacimler: env ile AYNI semantik ──────────────────────────────
+  //
+  // `repeated` alanların da presence'ı yok, yani "hiç verilmedi" ile
+  // "boş liste" ayırt edilemez. Birleştirme ADA göre yapılır: aynı ada
+  // sahip bir hacim, bağlama noktası değişse bile aynı dizini gösterir.
+  repeated AppVolume volumes = 8;
+
+  // Ayırılacak hacim adları.
+  //
+  // ⚠ VERİYİ SİLMEZ. Yalnızca bağlamayı kaldırır; diskteki dizin olduğu
+  // gibi kalır. Aynı çizgi `app delete`'te de geçerli — yıkıcı olan asla
+  // örtük olmaz.
+  repeated string volume_remove = 9;
 }
 
 message UpdateAppResponse {
@@ -438,6 +491,12 @@ message UpdateAppResponse {
   // ait olduğunu bilir ve ikisi AYNI ANDA doğru olabilir: alan adı da
   // env de değişmiş bir güncelleme iki farklı şey söylemek zorunda.
   string env_detail = 3;
+
+  // Hacimlerin durumu. BOS ise hacimlere dokunulmadi.
+  //
+  // env_detail ile ayni gerekceyle AYRI: iki uyari ayni anda dogru
+  // olabilir ve tek alan bunlardan birini yutardi.
+  string volume_detail = 4;
 }
 
 message ListAppsRequest {}

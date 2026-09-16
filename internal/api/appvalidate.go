@@ -92,6 +92,9 @@ func validateAppSpec(spec *panelyv1.AppSpec) error {
 	if err := validateEnv(spec.GetEnv()); err != nil {
 		return err
 	}
+	if err := validateVolumes(spec.GetVolumes()); err != nil {
+		return err
+	}
 	if p := spec.GetContainerPort(); p == 0 || p > 65535 {
 		return fmt.Errorf("container_port 1-65535 arasında olmalı (%d)", p)
 	}

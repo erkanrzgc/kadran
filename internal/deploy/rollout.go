@@ -384,13 +384,48 @@ func copyEnv(env map[string]string) map[string]string {
 	return out
 }
 
+// replicaVolumes, hacim listesini sürücünün tipine ÇEVİRİR ve kopyalar.
+//
+// ── Neden kopya? ─────────────────────────────────────────────────────
+//
+// Go'da dilim ataması alttaki diziyi paylaşır. Uygulama tanımındaki
+// dilimi doğrudan geçirmek, alt katmanlardan birinin onu değiştirmesi
+// hâlinde kontrol düzlemindeki kaydın da bozulması demekti — ve o
+// değişiklik hiçbir yazma yolundan geçmediği için kaynağı bulunamazdı.
+//
+// Çevrim ayrıca AÇIK bir sınır: depo tipi ile sürücü tipi ayrı kalıyor,
+// yani birinde yapılan bir değişiklik diğerine sessizce sızmıyor.
+//
+// nil girdi nil döner: "hacim yok" için boş dilim ayırmanın gereği yok.
+func replicaVolumes(vols []store.VolumeMount) []execclient.VolumeMount {
+	if len(vols) == 0 {
+		return nil
+	}
+	out := make([]execclient.VolumeMount, 0, len(vols))
+	for _, v := range vols {
+		out = append(out, execclient.VolumeMount{
+			VolumeName: v.Name,
+			MountPath:  v.MountPath,
+			// ⚠ ReadOnly TAŞINMALI. Düşerse salt-okunur olması istenen
+			// bir hacim YAZILABİLİR bağlanır — sessiz bir yetki
+			// genişlemesi ve hiçbir hata üretmez.
+			ReadOnly: v.ReadOnly,
+		})
+	}
+	return out
+}
+
 // createReplica, tek bir replikayı uygulama tanımından kurar.
 //
 // ⚠ Alan listesi ELLE yazılmış ve derleyici eksik alanı YAKALAMAZ: atlanan
 // alan Go'nun sıfır değerine düşer. `Env` bir dönem tam da böyle eksikti —
 // şema, doğrulama ve CLI hazır olsaydı bile konteyner ortamsız doğardı ve
-// her katman yeşil görünürdü. Buraya alan eklerken internal/deploy/env_test.go
-// ve volumes için karşılığı olan testin var olduğundan emin olun.
+// her katman yeşil görünürdü (K-082).
+//
+// Buraya alan eklerken, o alanın GERÇEKTEN buradan geçtiğini sınayan bir
+// test yazın: internal/deploy/env_test.go ve volumes_test.go bunun iki
+// örneği. Her ikisi de dağıtım YOLUNU ve İYİLEŞTİRME yolunu ayrı ayrı
+// sınıyor, çünkü ikisi farklı çağrı yolları.
 func (r *Rollout) createReplica(
 	ctx context.Context, app store.App, rel store.Release, index uint32,
 ) error {
@@ -400,6 +435,7 @@ func (r *Rollout) createReplica(
 		Index:         index,
 		CommitSHA:     rel.CommitSHA,
 		Env:           copyEnv(app.Env),
+		Volumes:       replicaVolumes(app.Volumes),
 		ContainerPort: app.ContainerPort,
 		Limits: execclient.Limits{
 			MemoryBytes: app.MemoryBytes,

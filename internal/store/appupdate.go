@@ -123,6 +123,14 @@ func (u AppUpdate) ChangesEnv() bool {
 	return len(u.Env) > 0 || len(u.EnvRemove) > 0
 }
 
+// ChangesVolumes, guncellemenin hacimlere dokunup dokunmadigini soyler.
+//
+// ChangesEnv ile ayni gerekce: cagiran bunu kullaniciyi UYARMAK icin
+// kullaniyor, cunku baglama ancak bir sonraki dagitimda kuruluyor.
+func (u AppUpdate) ChangesVolumes() bool {
+	return len(u.Volumes) > 0 || len(u.VolumeRemove) > 0
+}
+
 // ChangesDomain, güncellemenin alan adını GERÇEKTEN değiştirip
 // değiştirmediğini söyler.
 //

@@ -51,6 +51,9 @@ func (s *Server) UpdateApp(
 	if err := validateEnvRemove(req.GetEnv(), req.GetEnvRemove()); err != nil {
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
+	if err := validateVolumeRemove(req.GetVolumes(), req.GetVolumeRemove()); err != nil {
+		return nil, s.denied(ctx, action, tgt, params, err)
+	}
 
 	current, err := s.store.GetApp(ctx, appID)
 	if err != nil {
@@ -88,6 +91,7 @@ func (s *Server) UpdateApp(
 	// geliyor; uzlaştırmak hiçbir şeyi değiştirmezdi. Burada saptanan
 	// tek şey, kullanıcıya SÖYLENECEK olan.
 	envChanged := upd.ChangesEnv()
+	volumesChanged := upd.ChangesVolumes()
 
 	app, opErr := s.store.UpdateApp(ctx, appID, upd)
 	if err := s.completed(ctx, action, tgt, params, opErr); err != nil {
@@ -104,6 +108,9 @@ func (s *Server) UpdateApp(
 	}
 	if envChanged {
 		resp.EnvDetail = envNeedsRedeploy(appID)
+	}
+	if volumesChanged {
+		resp.VolumeDetail = volumesNeedRedeploy(appID)
 	}
 	return resp, nil
 }
@@ -209,6 +216,12 @@ func updateFromProto(req *panelyv1.UpdateAppRequest) store.AppUpdate {
 	if len(req.GetEnvRemove()) > 0 {
 		upd.EnvRemove = append([]string(nil), req.GetEnvRemove()...)
 	}
+	if len(req.GetVolumes()) > 0 {
+		upd.Volumes = volumesFromProto(req.GetVolumes())
+	}
+	if len(req.GetVolumeRemove()) > 0 {
+		upd.VolumeRemove = append([]string(nil), req.GetVolumeRemove()...)
+	}
 	return upd
 }
 
@@ -243,5 +256,29 @@ func updateAuditParams(req *panelyv1.UpdateAppRequest) map[string]string {
 	for _, k := range req.GetEnvRemove() {
 		params["env_remove."+k] = "kaldırıldı"
 	}
+	for _, v := range req.GetVolumes() {
+		params["volume."+v.GetName()] = v.GetMountPath()
+	}
+	for _, n := range req.GetVolumeRemove() {
+		params["volume_remove."+n] = "ayrıldı"
+	}
 	return params
+}
+
+// volumesNeedRedeploy, hacim degisikliginin HENUZ ETKILI OLMADIGINI
+// soyler.
+//
+// Baglama konteyner olusturulurken kuruluyor; calisan bir konteynere
+// sonradan disk eklenemez. Env ile ayni sinif ve ayni gerekce:
+// kaydin degisip gercekligin degismemesi, kullanicinin komutun
+// calistigini sanmasi demek.
+//
+// Burada bedeli ozellikle agir: kullanici diski bagladigini sanip
+// uygulamanin verisini oraya yazdigini varsayar. Oysa veri konteynerin
+// KENDI katmaninda durur ve bir sonraki dagitimda KAYBOLUR.
+func volumesNeedRedeploy(appID string) string {
+	return fmt.Sprintf(
+		"\u26a0 hacim tanimi KAYDEDILDI ama CALISAN KONTEYNERLER hâlâ eski "+
+			"baglamalarla kosuyor -- disk konteyner olusturulurken baglanir. "+
+			"Uygulayin: panely deploy %s", appID)
 }

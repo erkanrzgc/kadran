@@ -90,6 +90,7 @@ func appFromProto(spec *panelyv1.AppSpec) store.App {
 		DockerfilePath: spec.GetDockerfilePath(),
 		BuildArgs:      spec.GetBuildArgs(),
 		Env:            spec.GetEnv(),
+		Volumes:        volumesFromProto(spec.GetVolumes()),
 		ContainerPort:  spec.GetContainerPort(),
 		Replicas:       spec.GetReplicas(),
 		HealthPath:     spec.GetHealthPath(),
@@ -111,6 +112,7 @@ func appToProto(a store.App) *panelyv1.App {
 			DockerfilePath: a.DockerfilePath,
 			BuildArgs:      a.BuildArgs,
 			Env:            a.Env,
+			Volumes:        volumesToProto(a.Volumes),
 			ContainerPort:  a.ContainerPort,
 			Replicas:       a.Replicas,
 			HealthPath:     a.HealthPath,
@@ -170,6 +172,13 @@ func appAuditParams(spec *panelyv1.AppSpec) map[string]string {
 	for k := range spec.GetEnv() {
 		params["env."+k] = "[REDACTED]"
 	}
+	// Hacim adi ve baglama noktasi SIR DEGIL: "hangi disk nereye
+	// baglandi" sorusu denetlenebilir kalmali. Host yolu ise hicbir
+	// yerde gecmiyor -- kayitta gorunmesi, onun istekten geldigi
+	// izlenimini yaratirdi. Yolu executor kuruyor.
+	for _, v := range spec.GetVolumes() {
+		params["volume."+v.GetName()] = v.GetMountPath()
+	}
 	return params
 }
 
@@ -206,4 +215,39 @@ func appError(err error) error {
 	default:
 		return status.Error(codes.Internal, err.Error())
 	}
+}
+
+// volumesFromProto, kullaniciya gorunen hacimleri depo tipine cevirir.
+//
+// Donusum ACIK: proto tipini dogrudan depoya tasimak, kullaniciya gorunen
+// sozlesmenin degismesi hâlinde diskteki bicimi de sessizce degistirirdi.
+func volumesFromProto(in []*panelyv1.AppVolume) []store.VolumeMount {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]store.VolumeMount, 0, len(in))
+	for _, v := range in {
+		out = append(out, store.VolumeMount{
+			Name:      v.GetName(),
+			MountPath: v.GetMountPath(),
+			ReadOnly:  v.GetReadOnly(),
+		})
+	}
+	return out
+}
+
+// volumesToProto, depo tipini kullaniciya gorunen tipe cevirir.
+func volumesToProto(in []store.VolumeMount) []*panelyv1.AppVolume {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make([]*panelyv1.AppVolume, 0, len(in))
+	for _, v := range in {
+		out = append(out, &panelyv1.AppVolume{
+			Name:      v.Name,
+			MountPath: v.MountPath,
+			ReadOnly:  v.ReadOnly,
+		})
+	}
+	return out
 }

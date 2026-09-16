@@ -129,7 +129,62 @@ EOF
 bash "$CHECKER" "$WORK/shell.proto" >/dev/null 2>&1
 expect "serbest kabuk alanı yakalandı" 1 $?
 
-# ── 7. Satır sınırı gerçekten uygulanıyor mu? ────────────────────────
+# ── 7. İÇE AKTARILAN şemadaki yasak alan yakalanıyor mu? ─────────────
+#
+# ÖLÇÜLMÜŞ KÖR NOKTA: kontrol bir dönem yalnızca kendisine verilen dosyayı
+# tarıyordu. `common.proto`'yu `exec.proto` içe aktarıyor ve oradaki
+# `ResourceLimits` doğrudan `ContainerCreateRequest`'in içinde duruyor —
+# yani oraya yazılan yasak bir alan ayrıcalıklı şemanın parçası olurdu ama
+# kontrol "değişmezler korunuyor" derdi.
+#
+mkdir -p "$WORK/panely/v1"
+cat > "$WORK/panely/v1/ortak.proto" <<'EOF'
+syntax = "proto3";
+package panely.v1;
+
+message Paylasilan {
+  string host_path = 1;
+}
+EOF
+cat > "$WORK/panely/v1/ana.proto" <<'EOF'
+syntax = "proto3";
+package panely.v1;
+
+import "panely/v1/ortak.proto";
+
+message Istek {
+  Paylasilan ortak = 1;
+}
+EOF
+bash "$CHECKER" "$WORK/panely/v1/ana.proto" >/dev/null 2>&1
+expect "içe aktarılan şemadaki yasak alan yakalandı" 1 $?
+
+# ── 8. KONTROL GRUBU: temiz bir içe aktarma yanlış alarm üretmemeli ───
+#
+# Üsttteki test tek başına "her içe aktarmada patla" diyen bir uygulamayı
+# da geçirirdi.
+cat > "$WORK/panely/v1/temiz.proto" <<'EOF'
+syntax = "proto3";
+package panely.v1;
+
+message Temiz {
+  string ad = 1;
+}
+EOF
+cat > "$WORK/panely/v1/ana2.proto" <<'EOF'
+syntax = "proto3";
+package panely.v1;
+
+import "panely/v1/temiz.proto";
+
+message Istek2 {
+  Temiz temiz = 1;
+}
+EOF
+bash "$CHECKER" "$WORK/panely/v1/ana2.proto" >/dev/null 2>&1
+expect "temiz içe aktarma yanlış alarm üretmiyor" 0 $?
+
+# ── 9. Satır sınırı gerçekten uygulanıyor mu? ────────────────────────
 #
 # Sınırı 1'e indirip mevcut kodun aşmasını bekliyoruz. Sınır hiç
 # uygulanmıyor olsaydı bu da geçerdi ve kimse fark etmezdi.

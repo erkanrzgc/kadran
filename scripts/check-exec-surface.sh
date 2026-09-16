@@ -138,7 +138,49 @@ if [[ ! -f "$SCHEMA" ]]; then
     exit 2
 fi
 
-schema_body="$(strip_comments "$SCHEMA")"
+# ── Kapsam: exec.proto YETMEZ, İÇE AKTARDIKLARI da taranır ───────────
+#
+# Bu kontrol bir dönem yalnızca exec.proto'yu tarıyordu ve ÖLÇÜLMÜŞ bir
+# kör noktası vardı:
+#
+#   exec.proto'ya   host_path eklendi → yakalandı  ✓
+#   common.proto'ya host_path eklendi → YEŞİL GEÇTİ ✗
+#
+# Oysa common.proto'yu exec.proto içe aktarıyor ve `ResourceLimits`
+# doğrudan `ContainerCreateRequest`'in içinde duruyor. Yani yasak bir
+# alan oraya yazılsaydı ayrıcalıklı şemanın parçası olurdu ve bu kontrol
+# "değişmezler korunuyor" derdi.
+#
+# Kapsamın dar tutulması, tam da bu betiğin ayrıcalıklı KOD tarafında
+# düzelttiği hatanın şema tarafındaki ikiziydi (K-034: sabit yol listesi,
+# yeni bir paket eklenince sessizce kapsam dışı kalıyordu). Orada çözüm
+# derleyiciden türetmekti; burada çözüm `import` satırlarından türetmek.
+#
+# Yerel import'lar (panely/v1/...) izleniyor; google/protobuf bizim
+# değişmezlerimizin konusu değil.
+collect_schemas() {
+    local main="$1" dir
+    dir="$(dirname "$main")"
+    printf '%s\n' "$main"
+    grep -oE '^import "panely/v1/[a-z_]+\.proto"' "$main" 2>/dev/null |
+        sed -E 's|^import "panely/v1/||; s|"$||' |
+        while read -r name; do
+            [[ -f "$dir/$name" ]] && printf '%s\n' "$dir/$name"
+        done
+}
+
+schema_body=""
+scanned=0
+while read -r f; do
+    [[ -n "$f" ]] || continue
+    schema_body+="$(strip_comments "$f")"$'\n'
+    scanned=$((scanned + 1))
+done < <(collect_schemas "$SCHEMA")
+
+if [[ $scanned -lt 1 ]]; then
+    echo "şema taranamadı: $SCHEMA" >&2
+    exit 2
+fi
 
 echo "==> Ayrıcalıklı kod boyutu"
 
@@ -265,7 +307,7 @@ before_fields=$fail
 for field in "${forbidden_fields[@]}"; do
     if grep -Eqi "^[[:space:]]*${field_label}${field_type}[[:space:]]+${field}[[:space:]]*=[[:space:]]*[0-9]+" \
         <<<"$schema_body"; then
-        note_failure "exec.proto içinde yasak alan: $field"
+        note_failure "ayrıcalıklı şemada yasak alan: $field (exec.proto ya da içe aktardıkları)"
     fi
 done
 [[ $fail -eq $before_fields ]] && note_ok "yasak alan yok (${#forbidden_fields[@]} desen tarandı)"

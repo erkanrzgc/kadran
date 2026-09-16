@@ -64,7 +64,10 @@ func (s *Server) DeleteApp(
 	tgt := appTarget(appID)
 	params := map[string]string{}
 
-	if _, err := s.store.GetApp(ctx, appID); err != nil {
+	// Tanim SILMEDEN ONCE okunuyor ve TUTULUYOR: kayit gidince hangi
+	// hacimlerin diskte kaldigini soyleyebilecek kimse kalmaz.
+	app, err := s.store.GetApp(ctx, appID)
+	if err != nil {
 		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "uygulama bulunamadı")
 		return nil, appError(err)
 	}
@@ -98,6 +101,16 @@ func (s *Server) DeleteApp(
 		return nil, s.completed(ctx, action, tgt, params, err)
 	}
 
+	// Hacim adlari SILMEDEN ONCE okunuyor: kayit gidince hangi hacimlerin
+	// diskte kaldigini soyleyebilecek kimse kalmaz.
+	kept := make([]string, 0, len(app.Volumes))
+	for _, v := range app.Volumes {
+		kept = append(kept, v.Name)
+	}
+	if len(kept) > 0 {
+		params["volumes_kept"] = strconv.Itoa(len(kept))
+	}
+
 	counts, err := s.store.DeleteApp(ctx, appID)
 	if err != nil {
 		return nil, s.completed(ctx, action, tgt, params, err)
@@ -113,6 +126,7 @@ func (s *Server) DeleteApp(
 		ContainersRemoved:  removed,
 		ReleasesDeleted:    counts.Releases,
 		DeploymentsDeleted: counts.Deployments,
+		VolumesKept:        kept,
 	}, nil
 }
 

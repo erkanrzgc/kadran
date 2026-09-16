@@ -48,6 +48,8 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	blkio := fs.Uint("blkio-weight", 500, "blok G/Ç ağırlığı (10-1000)")
 	buildArgs := c.stringMapFlag(fs, "build-arg", "derleme argümanı ANAHTAR=DEĞER (tekrarlanabilir)")
 	env := c.stringMapFlag(fs, "env", "ortam değişkeni ANAHTAR=DEĞER (tekrarlanabilir); DEĞERLERİ docker inspect ile okunabilir, SIR KOYMAYIN")
+	volumes := c.volumeFlag(fs, "volume",
+		"kalıcı disk AD:/bağlama/noktası[:ro] (tekrarlanabilir)")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
 	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
 	if err := fs.Parse(args); err != nil {
@@ -80,6 +82,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		DockerfilePath: *dockerfile,
 		BuildArgs:      *buildArgs,
 		Env:            *env,
+		Volumes:        *volumes,
 		ContainerPort:  uint32(*port),     //nolint:gosec // sunucu 1-65535 doğruluyor
 		Replicas:       uint32(*replicas), //nolint:gosec // sunucu 1-64 doğruluyor
 		HealthPath:     *health,
@@ -236,6 +239,21 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 	//
 	// Adların basılması ise şart: "DATABASE_URL ayarlı mı" sorusunun
 	// cevabı olmadan bu bölüm hiçbir işe yaramazdı.
+	// Hacimler DEGERLERIYLE basiliyor: baglama noktasi sir degil ve
+	// "hangi disk nereye bagli" sorusunun cevabi olmadan bu bolum ise
+	// yaramaz. Host yolu yine de basilmiyor -- onu executor kuruyor ve
+	// burada gostermek istekten geldigi izlenimini verirdi.
+	if vols := s.GetVolumes(); len(vols) > 0 {
+		fmt.Fprintf(c.stdout, "  Disk     : %d hacim\n", len(vols))
+		for _, v := range vols {
+			mode := "yazilabilir"
+			if v.GetReadOnly() {
+				mode = "salt-okunur"
+			}
+			fmt.Fprintf(c.stdout, "             %s -> %s (%s)\n",
+				v.GetName(), v.GetMountPath(), mode)
+		}
+	}
 	if env := s.GetEnv(); len(env) > 0 {
 		fmt.Fprintf(c.stdout, "  Env      : %s\n",
 			strings.Join(sortedKeys(env), ", "))

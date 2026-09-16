@@ -626,6 +626,17 @@ message DeleteAppResponse {
 
   // Silinen dağıtım geçmişi satırı sayısı.
   uint32 deployments_deleted = 4;
+
+  // DİSKTE BIRAKILAN hacimlerin adları.
+  //
+  // ⚠ Bu alan SİLİNMEYENLERİ sayıyor, silinenleri değil. `app delete`
+  // hacim verisine DOKUNMAZ: geri alınamaz bir veri kaybının tek bir
+  // komutun yan etkisi olarak gerçekleşmesi bu projede kabul edilmiyor.
+  //
+  // Sessiz kalmak da kabul edilemezdi: kullanıcı uygulamayı sildiğinde
+  // diskin de gittiğini varsayar ve aylarca farkına varmadan yer
+  // tüketir. Ne silindiği kadar NE SİLİNMEDİĞİ de söylenmeli.
+  repeated string volumes_kept = 5;
 }
 
 // RollbackResponse, trafiğin nereden nereye taşındığını söyler.

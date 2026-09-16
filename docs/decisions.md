@@ -3988,3 +3988,115 @@ olduğunu doğruluyor). Yani `api.proto`'ya alan eklemenin bütçe maliyeti
 **sıfır**. Hafızadaki "sıradaki iş bütçeye çarpacak" notu executor işleri
 için doğru, bu iş için yanlıştı. Bütçe iş öncesi ve sonrası 2493'te
 kaldı.
+
+## K-085 — "Aynı son-mil şekli" varsayımı, ölçünce yarısı doğru çıktı
+
+Kalıcı disk işi, env'in ikizi sanılıyordu ve hafızaya öyle yazılmıştı:
+ayrıcalıklı katman hazır, eksik olan yalnızca sütun + şema alanı + CLI +
+`createReplica`'da doldurma. İlk üçü doğruydu. Dördüncüsü eksikti.
+
+**Ölçüm.** Canlı sunucuda:
+
+```
+docker run -v <kök>/_probe/data:/veri --user 101:101 alpine \
+  sh -c 'echo x > /veri/test.txt'
+→ sh: can't create /veri/test.txt: Permission denied
+```
+
+Sebep: hiçbir yerde `MkdirAll` yoktu. Bind kaynağı eksikse Docker onu
+kendisi yaratıyor ve sahibi **root:root** oluyor. Panely'nin canlı
+imajlarının ikisi `USER 101` ile koşuyor (`Config.User` okundu: `101`,
+`101`, `""`).
+
+Sonuç, env'de **karşılığı olmayan** bir arıza sınıfı: hacim bağlanır,
+konteyner başlar, hiçbir hata çıkmaz, ve uygulama kendi kalıcı diskine
+yazamaz. Belirti dağıtımda değil, uygulamanın kendi günlüğünde ve saatler
+sonra görünür.
+
+**Çözüm.** Executor, imajın `Config.User`'ını okuyup dizini o kimliğe
+`chown` ediyor. Sayısal olmayan `USER` (ör. `nginx`) **açıkça
+reddediliyor**: adı kimliğe çevirmek imajın `/etc/passwd`'ını okumayı,
+yani ayrıcalıklı sürece bir dosya sistemi ayrıştırıcısı eklemeyi
+gerektirirdi. Sessizce 0'a düşmek en kötü seçenekti — yazamayan bir
+hacmi "hazır" ilan ederdi.
+
+**Elenen seçenek: `0777`.** Ucuzdu ve bütçeye sığardı. Reddedildi çünkü
+hacim kökü `drwxr-x--x`; `--x` sayesinde hosttaki herhangi bir kullanıcı
+bilinen yola geçip yazabilirdi. "Tek yöneticili bir VPS'te önemsiz"
+argümanı bu projenin kabul etmediği argümandır.
+
+**Taşınabilir ders:** "X'in aynısı" demek bir hipotezdir, plan değil.
+Hipotezi işe başlamadan önce ölçün — burada ölçüm 20 dakika sürdü ve
+tasarımın yarısını değiştirdi.
+
+## K-086 — Güvenlik denetçisinin şema taramasında kör nokta vardı
+
+Hacim mesajını `common.proto`'ya taşımak değerlendirilirken ölçüldü:
+
+```
+exec.proto'ya   host_path eklendi → ✗ yakalandı
+common.proto'ya host_path eklendi → "değişmezler korunuyor" ✓
+```
+
+`common.proto`'yu `exec.proto` içe aktarıyor ve `ResourceLimits`
+doğrudan `ContainerCreateRequest`'in içinde duruyor. Yani yasak bir alan
+oraya yazılsaydı **ayrıcalıklı şemanın parçası olurdu** ve kontrol yeşil
+verirdi.
+
+Bu, aynı betiğin **kod tarafında** çözdüğü hatanın şema tarafındaki
+ikizi: K-034'te sabit yol listesi yüzünden yeni bir paket sessizce kapsam
+dışı kalıyordu. Orada çözüm kapsamı derleyiciden türetmekti; burada
+çözüm `import` satırlarından türetmek.
+
+Düzeltmenin **kendi kanıtı** var: `check-exec-surface-test.sh`'e iki vaka
+eklendi — içe aktarılan şemadaki yasak alan yakalanıyor, **ve** temiz bir
+içe aktarma yanlış alarm üretmiyor. İkincisi olmadan "her içe aktarmada
+patla" diyen bir uygulama da geçerdi.
+
+`VolumeMount` sonuçta `exec.proto`'da BIRAKILDI ve api.proto'ya ayrı bir
+`AppVolume` kondu. Tarama artık içe aktarmaları kapsasa da, güvenlik
+sınırını tarif eden mesajların tek bir denetlenebilir dosyada durması
+tercih edildi — ve kullanıcıya görünen sözleşmenin değişmesi ayrıcalıklı
+beyaz listeyi kendiliğinden değiştiremiyor.
+
+## K-087 — Ders taşındı: 26 mutasyonun 26'sı İLK koşuda yakalandı
+
+`mutate-env.sh` ilk koşusunda üç mutasyon yeşil kalmıştı (K-083).
+`mutate-volumes.sh` ilk koşusunda **hiçbiri** kalmadı. Fark tesadüf
+değil; env'de öğrenilen üç şey baştan uygulandı:
+
+1. **Depo testleri diskten okuyor.** env'de `UpdateApp`'in DÖNÜŞÜNE bakan
+   testler, SQL hiç yazmasa bile geçiyordu. Hacim testleri en baştan
+   `GetApp` ile yeniden okuyor.
+2. **Doğrulama RPC seviyesinde de sınanıyor.** env'de bütün doğrulama
+   testleri fonksiyonu doğrudan çağırıyordu, yani `validateAppSpec`'ten
+   çağrıyı silmek hiçbir testi kırmıyordu.
+3. **Her iddianın bir kontrol grubu var.** "Hacimsiz uygulamaya hacim
+   uydurulmuyor", "temiz içe aktarma yanlış alarm üretmiyor",
+   "`:rw` salt-okunur yapmıyor" — hepsi "her zaman evet de" diyen bir
+   uygulamayı eleyen testler.
+
+Ders, mutasyon sayısını artırmak değil: **bir kez ölçülen zayıflık
+sınıfını bir sonraki işe ŞABLON olarak taşımak.**
+
+## K-088 — Silme komutu NE SİLMEDİĞİNİ de söylemeli
+
+`app delete` hacim verisine dokunmuyor. Bu bilinçli: geri alınamaz bir
+veri kaybının tek bir komutun yan etkisi olarak gerçekleşmesi bu projede
+kabul edilmiyor (aynı çizgi `-volume-rm`'de de geçerli — o da yalnızca
+bağlamayı kaldırıyor).
+
+Ama **sessiz kalmak** da kabul edilemezdi. Kullanıcı uygulamayı
+sildiğinde diskin de gittiğini varsayar; varsaymadığında bile nerede
+durduğunu bilmez. Aylarca farkına varmadan yer tüketir.
+
+Yanıt artık `volumes_kept` taşıyor ve CLI onu açıkça basıyor:
+"N hacmin VERİSİ DİSKTE DURUYOR (silinmedi)".
+
+Mesaj **yolu adlandırmıyor** ve bu da kasıtlı: hacim kökü executor'ın
+yapılandırması, panelyd onu bilmiyor. Bilmediği bir yolu yazmak
+doğrulanmamış bir iddia olurdu — K-079'un sınıfı.
+
+**Taşınabilir ders:** "ne yapıldı" kadar "ne yapılmadı" da çıktının
+parçasıdır. Bir komutun dokunmadığı şey, kullanıcının dokunulduğunu
+sandığı şeyse, susmak yanlış bilgi vermekle aynı kapıya çıkar.

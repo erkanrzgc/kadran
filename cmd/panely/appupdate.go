@@ -23,6 +23,11 @@ type appUpdateFlags struct {
 	// (bkz. api.proto UpdateAppRequest.env).
 	env       map[string]string
 	envRemove []string
+
+	// Hacimler de birlestirilir, ADA gore. Gerekce env ile ayni:
+	// proto3'te repeated alanlarin presence'i yok.
+	volumes      []*panelyv1.AppVolume
+	volumeRemove []string
 }
 
 // runAppUpdate, var olan bir uygulamanın alanlarını değiştirir.
@@ -40,6 +45,10 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 			"değişkenlere DOKUNULMAZ")
 	envRemove := c.stringSliceFlag(fs, "env-rm",
 		"silinecek ortam değişkeni adı (tekrarlanabilir)")
+	volumes := c.volumeFlag(fs, "volume",
+		"kalıcı disk AD:/bağlama/noktası[:ro]; adı geçmeyen hacimlere DOKUNULMAZ")
+	volumeRemove := c.stringSliceFlag(fs, "volume-rm",
+		"ayırılacak hacim adı (VERİYİ SİLMEZ, yalnızca bağlamayı kaldırır)")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
 	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
 	if err := fs.Parse(args); err != nil {
@@ -68,12 +77,14 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	// ve testten doğrudan çağrılabilsin.
 	v.env = *env
 	v.envRemove = *envRemove
+	v.volumes = *volumes
+	v.volumeRemove = *volumeRemove
 
 	req := buildUpdateRequest(fs.Arg(0), v, set)
 	if isEmptyUpdate(req) {
 		return c.usageError("değiştirilecek bir alan verilmedi — " +
-			"-domain, -branch, -health-path, -replicas, -env veya " +
-			"-env-rm kullanın")
+			"-domain, -branch, -health-path, -replicas, -env, " +
+			"-env-rm, -volume veya -volume-rm kullanın")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -137,6 +148,21 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		}
 	}
 
+	for _, vol := range req.GetVolumes() {
+		mode := "yazilabilir"
+		if vol.GetReadOnly() {
+			mode = "salt-okunur"
+		}
+		fmt.Fprintf(c.stdout, "  Disk    : %s -> %s (%s)\n",
+			vol.GetName(), vol.GetMountPath(), mode)
+	}
+	for _, name := range req.GetVolumeRemove() {
+		// ⚠ "AYRILDI" deniyor, "silindi" DEGIL. Diskteki veri duruyor ve
+		// kullanicinin bunu bilmesi sart: "silindi" okuyan biri veriyi
+		// kaybettigini sanar ve yedekten donmeye kalkar.
+		fmt.Fprintf(c.stdout, "  Disk    : %s AYRILDI (veri diskte duruyor)\n", name)
+	}
+
 	// Ters vekilin durumu SUSULAMAZ. Alan adı değişip trafiğin
 	// taşınmaması mümkün ve o durumda "güncellendi" tek başına yanıltıcı.
 	if d := resp.GetProxyDetail(); d != "" {
@@ -148,6 +174,11 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	// DATABASE_URL'in devreye girdiğini sanması demek — ve uygulama
 	// çalışmayınca hatayı veritabanı tarafında araması.
 	if d := resp.GetEnvDetail(); d != "" {
+		fmt.Fprintf(c.stdout, "\n%s\n", d)
+	}
+	// Hacim uyarisi da SUSULAMAZ ve AYRI: env ile hacim ayni anda
+	// degismis olabilir ve ikisi farkli sey soylemek zorunda.
+	if d := resp.GetVolumeDetail(); d != "" {
 		fmt.Fprintf(c.stdout, "\n%s\n", d)
 	}
 	return exitOK
@@ -225,13 +256,20 @@ func buildUpdateRequest(appID string, v appUpdateFlags, set map[string]bool) *pa
 	if set["env-rm"] {
 		req.EnvRemove = v.envRemove
 	}
+	if set["volume"] {
+		req.Volumes = v.volumes
+	}
+	if set["volume-rm"] {
+		req.VolumeRemove = v.volumeRemove
+	}
 	return req
 }
 
 func isEmptyUpdate(req *panelyv1.UpdateAppRequest) bool {
 	return req.Domain == nil && req.GitBranch == nil &&
 		req.HealthPath == nil && req.Replicas == nil &&
-		len(req.GetEnv()) == 0 && len(req.GetEnvRemove()) == 0
+		len(req.GetEnv()) == 0 && len(req.GetEnvRemove()) == 0 &&
+		len(req.GetVolumes()) == 0 && len(req.GetVolumeRemove()) == 0
 }
 
 // orNone, boş değeri görünür kılar.

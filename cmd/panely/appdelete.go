@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 )
@@ -59,5 +60,24 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 	fmt.Fprintf(c.stdout, "%s silindi · %d konteyner · %d sürüm · %d dağıtım kaydı\n",
 		resp.GetAppId(), resp.GetContainersRemoved(),
 		resp.GetReleasesDeleted(), resp.GetDeploymentsDeleted())
+
+	// ⚠ NE SİLİNMEDİĞİ de söylenmeli.
+	//
+	// `app delete` hacim verisine dokunmuyor — geri alınamaz bir veri
+	// kaybının tek bir komutun yan etkisi olması bu projede kabul
+	// edilmiyor. Ama sessiz kalmak da kabul edilemez: kullanıcı
+	// uygulamayı sildiğinde diskin de gittiğini varsayar ve aylarca
+	// farkına varmadan yer tüketir.
+	//
+	// Mesaj yolu ADLANDIRMIYOR: hacim kökü executor'ın yapılandırması ve
+	// panelyd onu bilmiyor. Bilmediği bir yolu yazmak, doğrulanmamış bir
+	// iddia olurdu.
+	if kept := resp.GetVolumesKept(); len(kept) > 0 {
+		fmt.Fprintf(c.stdout,
+			"\n⚠ %d hacmin VERİSİ DİSKTE DURUYOR (silinmedi): %s\n"+
+				"  Panely kalıcı diski kendiliğinden yok etmez. Yer açmak "+
+				"isterseniz sunucudaki hacim dizinini elle kaldırın.\n",
+			len(kept), strings.Join(kept, ", "))
+	}
 	return exitOK
 }

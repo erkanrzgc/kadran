@@ -221,10 +221,30 @@ jobs:
       # uyuşmazlığı yüzünden bütün testler sessizce atlandı ve adım YEŞİL
       # geçti. Atlanan test ile geçen testi ayırt edemeyen bir kontrol,
       # yeşil rozetten başka bir şey üretmez.
+      # ── ROOT olarak koşuyor ve bu ÜRETİME SADAKATTİR ────────────────
+      #
+      # `panely-exec` üretimde root çalışıyor. Sürücü, hacim dizinini
+      # oluşturup sahibini imajın kullanıcısına devrediyor ve `chown`
+      # ayrıcalık ister.
+      #
+      # Bu adım bir dönem normal runner kullanıcısıyla koşuyordu ve
+      # hacim sahipliği eklendiğinde ateşledi:
+      #
+      #   chown /var/lib/panely/volumes/e2etest/data: operation not permitted
+      #
+      # Hata TESTİN kendisindeydi, kodun değil: üretimdeki ayrıcalıkla
+      # koşmayan bir E2E, üretimdeki davranışı ölçmüyor. Aynı sınıf bu
+      # depoda daha önce de görüldü (Docker'ı olmayan ortamda sessizce
+      # SKIP eden testler).
+      #
+      # `env "PATH=$PATH"`: sudo kendi güvenli PATH'ini kurar ve
+      # setup-go'nun kurduğu `go` orada yoktur.
       - name: Docker sürücüsü E2E
         env:
           PANELY_E2E_REQUIRE_DOCKER: "1"
-        run: go test -tags dockere2e -count=1 -v ./internal/dockerdrv/
+        run: |
+          sudo -E env "PATH=$PATH" \
+            go test -tags dockere2e -count=1 -v ./internal/dockerdrv/
 
       # Testin KENDİSİ sınanıyor: sertleştirme kaldırılınca hacim testi
       # BAŞARISIZ olmalı, sessizce geçmemeli.

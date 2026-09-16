@@ -3879,3 +3879,112 @@ birlikte ele alınacak.
 **Canlıda ölçüldü:** `portfolio` (canlı) reddedildi, `blog`/`hello`/
 `ozelrepo` silindi (2+3+3 sürüm), site 34 yoklamanın hepsinde 200,
 denetim zinciri geçerli, artık satır sıfır.
+
+## K-081 — Birleştirme bir tercih değil, şemanın temsil edebildiği tek davranış
+
+`app update -env` için üç semantik düşünüldü: tamamen değiştir,
+birleştir, birleştir + ayrı silme. Tartışma kullanılabilirlik üzerinden
+başladı ve orada kalsaydı yanlış cevaba varacaktı — çünkü asıl kısıt
+kullanıcı deneyimi değil, **tel formatı**.
+
+proto3'te `map<string,string>` alanlarının **presence'ı yoktur** ve
+`optional map` geçersizdir. Yani "hiç verilmedi" ile "boş harita
+gönderildi" tel üzerinde **aynı şeydir**. Diğer dört güncellenebilir
+alan (`domain`, `git_branch`, `health_path`, `replicas`) `optional`
+sayesinde bu ayrımı taşıyor; harita taşıyamaz.
+
+Sonuç: "tamamen değiştir" semantiği dürüstçe uygulanamaz. Uygulansaydı
+`-env` yazmayan **her** güncelleme — yalnızca alan adını değiştiren bir
+komut bile — uygulamanın bütün ortam değişkenlerini silerdi. Go
+tarafına işaretçi eklemek bunu çözmez; tel üzerinde var olmayan bir
+bilgiyi Go'da varmış gibi göstermek yalnızca hatayı gizlerdi.
+
+Silme bu yüzden **ayrı bir alan** (`env_remove`): birleştirme tek başına
+bir anahtarı kaldıramaz ve boş dizeye ayarlamak silmek değildir —
+konteyner değişkeni "tanımlı ama boş" görür, "tanımlı mı" diye bakan
+uygulama yanlış cevap alır.
+
+Aynı anahtarın hem `env`'de hem `env_remove`'da geçmesi ÇELİŞKİ sayılıp
+reddediliyor. Sessizce bir tarafı seçmek, kullanıcının iki niyetinden
+hangisinin uygulandığını belirsiz bırakır ve belirsizlik er geç
+haritanın gezilme sırasına bağlı bir hataya dönüşür.
+
+**Taşınabilir ders:** bir API kararını kullanılabilirlik gerekçesiyle
+savunmadan önce, şemanın o davranışı temsil edip edemediğine bakın.
+Temsil edilemeyen bir semantik, ne kadar arzu edilirse edilsin,
+uygulandığında sessiz veri kaybına dönüşür.
+
+## K-082 — Env zinciri sekiz katman ve hiçbiri derleme hatası vermez
+
+Ortam değişkeni desteği CLI → proto → doğrulama → depo → göç → rollout →
+execclient → sürücü hattından geçiyor. Bu hattın herhangi bir halkasında
+alanı düşürmek **derlemeyi kırmaz**: Go'da atlanan alan sıfır değerine
+düşer.
+
+En kritik halka `rollout.createReplica`. Ayrıcalıklı katman (executor
+doğrulaması, `RedactEnv`, `dockerdrv.envList`) env'i aylardır destekliyor
+ve çalışıyordu; eksik olan tek şey `CreateReplicaOptions`'a `Env`
+yazılmasıydı. O satır olmadan şema, göç, doğrulama, denetim ve CLI'ın
+hepsi doğru çalışır, `app show` değişkeni gösterir, komut "başarılı" der
+— ve konteyner ortamsız doğar.
+
+Bu, K-080'in birebir aynısı: **mekanizma bağlandı, son halkası
+unutuldu.** Fark şu ki bu kez hata yazılmadan önce arandı ve önce testi
+yazıldı.
+
+`createReplica`'ya, alan listesinin elle tutulduğunu ve derleyicinin
+yardım etmeyeceğini söyleyen bir uyarı eklendi. `Volumes` hâlâ aynı
+durumda ve aynı tuzağı bekliyor.
+
+## K-083 — Yeşil mutasyonun üçüncü sebebi bu kez de çıktı, ama farklı yerden
+
+`mutate-env.sh` ilk koşusunda üç mutasyon yeşil kaldı ve **üçünün sebebi
+farklıydı** — K-080'in listelediği üç kategorinin canlı bir örneği:
+
+1. **Zayıf test (yanlış sebeple geçiyordu).** Bayt bütçesi testi
+   `string(rune('A'+i))` ile anahtar üretiyordu; i>25 için `[`, `\`, `]`
+   çıkıyor ve `validateEnv` bunları **anahtar deseninden** reddediyordu.
+   Test "hata döndü" diye geçiyordu ama hata bütçe kontrolünden
+   gelmiyordu — bütçeyi kaldıran mutasyon bu yüzden yeşil kaldı.
+   Düzeltme: geçerli anahtarlar **ve** hatanın sebebini de iddia etmek.
+
+2. **Eksik test.** `validateEnv`'i `validateAppSpec`'ten çıkaran mutasyon
+   hiçbir testi kırmadı: bütün doğrulama testleri fonksiyonu **doğrudan**
+   çağırıyordu. Fonksiyon kusursuz çalışıyor, hiç kullanılmıyordu.
+   Düzeltme: geçersiz env ile `CreateApp`/`UpdateApp` RPC'lerini çağıran
+   testler.
+
+3. **Zayıf mutasyon.** `set["env"]` kontrolünü kaldıran mutasyon korunan
+   özelliği **kırmıyor**: `-env` verilmediğinde `stringMapFlag` boş ama
+   nil olmayan bir harita döndürüyor (ölçüldü), ve hem `isEmptyUpdate`
+   hem `ChangesEnv` `len()`'e bakıyor — boş harita atamak ile hiç
+   atamamak aynı sonucu veriyor. Mutasyon betikten ÇIKARILDI, kontrol
+   kodda BIRAKILDI: niyeti belgeliyor ve yardımcı bir gün nil dönerse
+   koruyacak.
+
+Üçüncüsü `mutate-scaledown.sh`'deki elenen mutasyonla aynı sınıf. Kural
+pekişti: **yeşil bir mutasyon bir bulgudur, bir arıza değil** — ama hangi
+kategoriye düştüğü ölçülmeden karara bağlanamaz. "Testi güçlendir"
+refleksi üçte birinde yanlış cevaptır.
+
+## K-084 — Uyarı mesajını doğru alana yazmak
+
+`app update -env` "kaydedildi ama konteynerler eski ortamla koşuyor"
+uyarısı üretmek zorunda (Docker çalışan konteynerin ortamını
+değiştiremez). Hazır bir alan vardı: `UpdateAppResponse.proxy_detail`.
+
+Kullanılmadı. O alanın adı "ters vekil" diyor ve içine env mesajı
+koymak alanın **adını yalancı** yapardı — K-079'un kaydettiği hatanın
+alan adıyla yapılan hâli. Ayrıca iki uyarı **aynı anda** doğru olabilir:
+hem alan adı hem env değişmiş bir güncelleme iki farklı şey söylemek
+zorunda ve tek alan bunlardan birini yutardı.
+
+`env_detail` açıldı. Maliyeti üretilmiş kodda birkaç satır; kazancı,
+istemcinin hangi uyarının hangi mekanizmaya ait olduğunu bilmesi.
+
+**Ayrıca ölçüldü:** `internal/pb/*` ayrıcalıklı yüzey bütçesinden
+**hariç** (üretilmiş kod, ve betik dosyaların gerçekten üretilmiş
+olduğunu doğruluyor). Yani `api.proto`'ya alan eklemenin bütçe maliyeti
+**sıfır**. Hafızadaki "sıradaki iş bütçeye çarpacak" notu executor işleri
+için doğru, bu iş için yanlıştı. Bütçe iş öncesi ve sonrası 2493'te
+kaldı.

@@ -164,13 +164,25 @@ func TestValidateEnvEnforcesTotalByteBudget(t *testing.T) {
 	big := map[string]string{}
 	// 40 × 1 KiB = 40 KiB > 32 KiB. Hiçbir DEĞER tek başına büyük değil;
 	// yalnızca toplam sınırı aşıyor.
+	//
+	// ⚠ Anahtarlar GEÇERLİ olmak zorunda. İlk yazımda `string(rune('A'+i))`
+	// kullanılmıştı ve i>25 için '[', '\\', ']' gibi karakterler üretiyordu;
+	// validateEnv bunları ANAHTAR DESENİNDEN reddediyor, bayt bütçesinden
+	// değil. Test geçiyordu ama yanlış sebeple: bütçe kontrolünü kaldıran
+	// mutasyon YEŞİL kaldı çünkü hata zaten başka bir yerden geliyordu.
 	for i := range 40 {
-		big[string(rune('A'+i))+"_BUYUK"] = strings.Repeat("x", 1024)
+		big["K_"+strconv.Itoa(i)] = strings.Repeat("x", 1024)
 	}
-	if err := validateEnv(big); err == nil {
-		t.Error("toplam bayt sınırı aşıldığı hâlde kabul edildi — "+
-			"executor bunu dağıtımda reddeder ve kullanıcı sebebi",
-			"anlamaz")
+
+	err := validateEnv(big)
+	if err == nil {
+		t.Fatal("toplam bayt sınırı aşıldığı hâlde kabul edildi — " +
+			"executor bunu dağıtımda reddeder ve kullanıcı sebebi anlamaz")
+	}
+	// Hatanın SEBEBİ de doğrulanıyor: "bir hata döndü" iddiası, hatanın
+	// bambaşka bir kontrolden gelmesi hâlinde de geçerdi.
+	if !strings.Contains(err.Error(), "toplam") {
+		t.Errorf("hata bayt bütçesinden gelmiyor: %v", err)
 	}
 }
 
@@ -292,5 +304,50 @@ func TestUpdateAppEnvActuallyPersists(t *testing.T) {
 	got := mustGetSpec(t, srv, "blog")
 	if got.GetEnv()["DATABASE_URL"] != "postgres://db/blog" {
 		t.Errorf("env yazilmadi: %+v", got.GetEnv())
+	}
+}
+
+// TestCreateAppRejectsInvalidEnv, dogrulamanin RPC yolunda GERCEKTEN
+// kosuldugunu dogrular.
+//
+// validateEnv'in dogru calismasi yetmez -- validateAppSpec'ten
+// CAGRILMASI gerekir. Birim testleri fonksiyonu dogrudan cagirdigi icin
+// cagriyi silmek onlarin hicbirini kirmaz: fonksiyon kusursuz calisir,
+// hic kullanilmaz.
+//
+// Olculdu: bu test yokken "validateEnv AppSpec dogrulamasindan
+// cikarildi" mutasyonu YESIL kaldi.
+func TestCreateAppRejectsInvalidEnv(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+
+	spec := testSpec()
+	spec.Env = map[string]string{"GECERSIZ-AD": "x"}
+
+	_, err := srv.CreateApp(t.Context(), &panelyv1.CreateAppRequest{Spec: spec})
+	if err == nil {
+		t.Fatal("gecersiz env anahtari kabul edildi -- executor bunu " +
+			"dagitimda reddeder ve kullanici sebebini goremez")
+	}
+	if !strings.Contains(err.Error(), "GECERSIZ-AD") {
+		t.Errorf("hata hangi anahtari anlatmiyor: %v", err)
+	}
+}
+
+// TestUpdateAppRejectsInvalidEnv, guncelleme yolunun da dogruladigini
+// dogrular.
+//
+// Ayri bir yol: UpdateApp BIRLESTIRILMIS tanimi dogruluyor. Dogrulama
+// birlestirmeden once yapilsaydi tek basina gecerli gorunen bir delta
+// mevcut durumla birlesip gecersiz bir tanim uretebilirdi.
+func TestUpdateAppRejectsInvalidEnv(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	mustCreateApp(t, srv, testSpec())
+
+	_, err := srv.UpdateApp(t.Context(), &panelyv1.UpdateAppRequest{
+		AppId: "blog",
+		Env:   map[string]string{"1RAKAMLA": "x"},
+	})
+	if err == nil {
+		t.Fatal("gecersiz env anahtari guncellemede kabul edildi")
 	}
 }

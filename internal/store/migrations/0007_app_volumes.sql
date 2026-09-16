@@ -1,0 +1,34 @@
+-- Uygulamanın kalıcı disk bağlamaları.
+--
+-- ── HOST YOLU SAKLANMAZ ─────────────────────────────────────────────
+--
+-- Burada yalnızca hacim ADI ve konteyner İÇİNDEKİ bağlama noktası
+-- duruyor. Gerçek yolu executor kuruyor:
+--
+--   /var/lib/panely/volumes/<app_id>/<volume_name>
+--
+-- Bu, `exec.proto`'daki VolumeMount kararının veritabanı tarafındaki
+-- karşılığı: yol alıp doğrulamak TOCTOU'ya açıktır, girdiyi hiç almamak
+-- kategorik olarak daha güçlüdür. Veritabanına host yolu yazmak o kararı
+-- arkadan delerdi — ele geçirilmiş bir panelyd satırı değiştirip
+-- executor'a keyfî bir yol gösterebilirdi.
+--
+-- ── Neden JSON sütun? ───────────────────────────────────────────────
+--
+-- `build_args_json` ve `env_json` ile aynı gerekçe: hacimler hiçbir
+-- zaman tek tek sorgulanmıyor, her okuyucu listenin tamamını istiyor
+-- (konteyner kurulurken hepsi birden geçiyor). Ayrı bir tablo her
+-- okumaya JOIN, her yazmaya sil-yeniden-ekle eklerdi.
+--
+-- Varsayılan '[]' — harita değil DİZİ. NULL üçüncü bir durum yaratır ve
+-- her okuyucuyu NULL kontrolüne zorlardı; var olan satırlar bu sütunu
+-- almadan yazıldığı için varsayılan şart.
+--
+-- ── ⚠ VERİ BU SÜTUNLA SİLİNMEZ ──────────────────────────────────────
+--
+-- Bir hacmi listeden çıkarmak yalnızca BAĞLAMAYI kaldırır; diskteki
+-- dizin olduğu gibi kalır. `app delete` de aynı çizgide: uygulama
+-- silinir, hacim dizini bırakılır. Yıkıcı olan asla örtük olmaz —
+-- geri alınamaz bir işlemin tek bir komutun yan etkisi olarak
+-- gerçekleşmesi bu projede kabul edilmiyor.
+ALTER TABLE apps ADD COLUMN volumes_json TEXT NOT NULL DEFAULT '[]';

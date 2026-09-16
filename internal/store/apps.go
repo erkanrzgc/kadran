@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
 
 	"modernc.org/sqlite"
@@ -17,6 +18,23 @@ var ErrAppNotFound = errors.New("uygulama bulunamadı")
 
 // ErrAppExists, aynı kimlikle bir uygulamanın zaten var olduğunu bildirir.
 var ErrAppExists = errors.New("uygulama zaten var")
+
+// VolumeMount, kalıcı bir hacmin uygulamaya nasıl bağlandığıdır.
+//
+// Alan adları JSON'da SABİT: sütun serileştirilmiş hâlde saklandığı için
+// bir alanı yeniden adlandırmak, diskteki mevcut satırları sessizce
+// okunamaz hâle getirir. Değiştirmek gerekirse göç yazılmalı.
+type VolumeMount struct {
+	// Name, ^[a-z0-9][a-z0-9-]{0,63}$ — executor'ın kısıtıyla aynı.
+	Name string `json:"name"`
+	// MountPath, konteyner İÇİNDEKİ bağlama noktasıdır.
+	MountPath string `json:"mount_path"`
+	// ReadOnly, bağlamanın salt-okunur olduğunu söyler.
+	//
+	// ⚠ Kaybolması SESSİZ BİR YETKİ GENİŞLEMESİDİR: salt-okunur olması
+	// istenen bir hacim yazılabilir bağlanır ve kimse fark etmez.
+	ReadOnly bool `json:"read_only,omitempty"`
+}
 
 // App, kontrol düzlemindeki bir uygulama tanımıdır.
 //
@@ -47,6 +65,16 @@ type App struct {
 	// konteynerin ortamını değiştiremez, bu bir tasarım tercihi değil
 	// altyapının kısıtıdır.
 	Env map[string]string
+
+	// Volumes, kalıcı disk bağlamalarıdır.
+	//
+	// ⚠ HOST YOLU TAŞIMAZ — yalnızca hacim adı ve konteyner içindeki
+	// bağlama noktası. Yolu executor kuruyor (göç 0007'deki gerekçe).
+	//
+	// Env gibi, değişikliği BİR SONRAKİ dağıtımda etkili olur: bağlama
+	// konteyner oluşturulurken kuruluyor ve Docker onu sonradan
+	// değiştiremez.
+	Volumes []VolumeMount
 
 	ContainerPort uint32
 	Replicas      uint32
@@ -90,18 +118,24 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
 	}
 
+	app.Volumes = sortedVolumes(app.Volumes)
+	vols, err := json.Marshal(app.Volumes)
+	if err != nil {
+		return App{}, fmt.Errorf("hacimler serileştirilemedi: %w", err)
+	}
+
 	const q = `
 		INSERT INTO apps (
 			id, git_host, git_owner, git_repo, git_branch,
-			dockerfile_path, build_args_json, env_json,
+			dockerfile_path, build_args_json, env_json, volumes_json,
 			container_port, replicas, health_path, domain,
 			memory_bytes, cpu_millis, blkio_weight,
 			release_seq, created_at, updated_at
-		) VALUES (?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?, 0,?,?)`
+		) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?, 0,?,?)`
 
 	_, err = s.db.ExecContext(ctx, q,
 		app.ID, app.GitHost, app.GitOwner, app.GitRepo, app.GitBranch,
-		app.DockerfilePath, string(args), string(env),
+		app.DockerfilePath, string(args), string(env), string(vols),
 		app.ContainerPort, app.Replicas, app.HealthPath, app.Domain,
 		app.MemoryBytes, app.CPUMillis, app.BlkioWeight,
 		now.UnixNano(), now.UnixNano(),
@@ -186,7 +220,7 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 // geçer, ve hata ancak yanlış depo derlendiğinde görülür.
 const appSelect = `
 	SELECT id, git_host, git_owner, git_repo, git_branch,
-	       dockerfile_path, build_args_json, env_json,
+	       dockerfile_path, build_args_json, env_json, volumes_json,
 	       container_port, replicas, health_path, domain,
 	       memory_bytes, cpu_millis, blkio_weight,
 	       release_seq, created_at, updated_at
@@ -197,11 +231,12 @@ func scanApp(sc scanner) (App, error) {
 		app          App
 		argsJSON     string
 		envJSON      string
+		volsJSON     string
 		created, upd int64
 	)
 	err := sc.Scan(
 		&app.ID, &app.GitHost, &app.GitOwner, &app.GitRepo, &app.GitBranch,
-		&app.DockerfilePath, &argsJSON, &envJSON,
+		&app.DockerfilePath, &argsJSON, &envJSON, &volsJSON,
 		&app.ContainerPort, &app.Replicas, &app.HealthPath, &app.Domain,
 		&app.MemoryBytes, &app.CPUMillis, &app.BlkioWeight,
 		&app.ReleaseSeq, &created, &upd,
@@ -220,6 +255,10 @@ func scanApp(sc scanner) (App, error) {
 	// döndürebilir. Normalleştirme burada kapanıyor ki okuyucuların
 	// hiçbiri nil kontrolü yapmak zorunda kalmasın.
 	app.Env = sortedArgs(app.Env)
+	if err := json.Unmarshal([]byte(volsJSON), &app.Volumes); err != nil {
+		return App{}, fmt.Errorf("hacimler çözümlenemedi: %w", err)
+	}
+	app.Volumes = sortedVolumes(app.Volumes)
 	app.CreatedAt = time.Unix(0, created)
 	app.UpdatedAt = time.Unix(0, upd)
 	return app, nil
@@ -236,6 +275,28 @@ func sortedArgs(m map[string]string) map[string]string {
 		return map[string]string{}
 	}
 	return m
+}
+
+// sortedVolumes, nil dilimi boş dilime çevirir ve ADA göre sıralar.
+//
+// ── Neden sıralama GEREKLİ? ──────────────────────────────────────────
+//
+// Haritalarda `encoding/json` anahtarları kendisi sıralıyor, dilimlerde
+// SIRALAMIYOR. Sıralamadan yazmak, aynı hacim kümesinin çağrı sırasına
+// göre farklı JSON üretmesi demekti: `-volume a -volume b` ile
+// `-volume b -volume a` diskte FARKLI satırlar bırakır, `app show`
+// çıktısı değişir ve iki kaydı karşılaştıran her şey yanlış "değişti"
+// der.
+//
+// Ada göre sıralamak aynı kümeyi daima aynı bayta indirger.
+func sortedVolumes(v []VolumeMount) []VolumeMount {
+	if v == nil {
+		return []VolumeMount{}
+	}
+	out := make([]VolumeMount, len(v))
+	copy(out, v)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // isUniqueViolation, hatanın birincil anahtar/benzersizlik ihlali olup

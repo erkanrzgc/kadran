@@ -83,13 +83,33 @@ type AppUpdate struct {
 	// değil. Çağıran bunu kullanıcıya SÖYLEMEK zorunda.
 	Env       map[string]string
 	EnvRemove []string
+
+	// Volumes, EKLENECEK ya da GÜNCELLENECEK hacimlerdir; VolumeRemove
+	// ise AYIRILACAK hacim adlarıdır.
+	//
+	// Semantik env ile aynı ve sebebi de aynı: proto3'te `repeated`
+	// alanların da presence'ı yoktur, yani "hiç verilmedi" ile "boş liste
+	// gönderildi" tel üzerinde ayırt edilemez. Tamamen değiştirme
+	// semantiği, `-volume` yazmayan her güncellemenin bütün bağlamaları
+	// silmesi demekti.
+	//
+	// Birleştirme ADA göre yapılır: aynı ada sahip bir hacim, bağlama
+	// noktası değişse bile AYNI hacimdir — diskte aynı dizini gösterir.
+	// Bağlama noktasına göre eşleştirmek, yolu değiştiren bir
+	// güncellemenin diskte ikinci bir dizin doğurmasına yol açardı.
+	//
+	// ⚠ VolumeRemove VERİYİ SİLMEZ, yalnızca bağlamayı kaldırır.
+	// Diskteki dizin olduğu gibi kalır. Yıkıcı olan asla örtük olmaz.
+	Volumes      []VolumeMount
+	VolumeRemove []string
 }
 
 // IsEmpty, hiçbir alanın belirtilmediğini söyler.
 func (u AppUpdate) IsEmpty() bool {
 	return u.Domain == nil && u.GitBranch == nil &&
 		u.HealthPath == nil && u.Replicas == nil &&
-		len(u.Env) == 0 && len(u.EnvRemove) == 0
+		len(u.Env) == 0 && len(u.EnvRemove) == 0 &&
+		len(u.Volumes) == 0 && len(u.VolumeRemove) == 0
 }
 
 // ChangesEnv, güncellemenin ortam değişkenlerine dokunup dokunmadığını
@@ -141,6 +161,7 @@ func (u AppUpdate) applyTo(app *App) {
 		app.Replicas = *u.Replicas
 	}
 	applyEnv(app, u.Env, u.EnvRemove)
+	applyVolumes(app, u.Volumes, u.VolumeRemove)
 }
 
 // applyEnv, birleştirmeyi YENİ bir haritaya yapar.
@@ -175,6 +196,54 @@ func applyEnv(app *App, set map[string]string, remove []string) {
 		delete(merged, k)
 	}
 	app.Env = merged
+}
+
+// applyVolumes, hacim birleştirmesini YENİ bir dilime yapar.
+//
+// ── Neden kopya? ─────────────────────────────────────────────────────
+//
+// applyEnv ile aynı gerekçe, bir derece daha sinsi: Go'da dilim kopyası
+// ALTTAKİ DİZİYİ paylaşır. Yerinde değiştirmek yalnızca geçici birleşimi
+// değil, `current` olarak tutulan mevcut kaydı da bozardı.
+//
+// ── Eşleştirme ADA göre ──────────────────────────────────────────────
+//
+// Bağlama noktasına göre eşleştirmek akla yakındı ama yanlış olurdu:
+// yolu değiştiren bir güncelleme, diskte AYNI dizini gösteren ikinci bir
+// giriş doğururdu. Ad, hacmin diskteki kimliğidir.
+//
+// Sıra: önce yaz, sonra ayır — API katmanı çelişkiyi zaten reddediyor,
+// yine de davranış belirsiz bırakılmıyor.
+func applyVolumes(app *App, set []VolumeMount, remove []string) {
+	if len(set) == 0 && len(remove) == 0 {
+		return
+	}
+	merged := make([]VolumeMount, 0, len(app.Volumes)+len(set))
+	merged = append(merged, app.Volumes...)
+
+	for _, v := range set {
+		replaced := false
+		for i := range merged {
+			if merged[i].Name == v.Name {
+				merged[i] = v
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			merged = append(merged, v)
+		}
+	}
+
+	for _, name := range remove {
+		for i := range merged {
+			if merged[i].Name == name {
+				merged = append(merged[:i], merged[i+1:]...)
+				break
+			}
+		}
+	}
+	app.Volumes = sortedVolumes(merged)
 }
 
 // UpdateApp, var olan bir uygulamanın değiştirilebilir alanlarını yazar.
@@ -218,15 +287,20 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
 	}
 
+	vols, err := json.Marshal(sortedVolumes(app.Volumes))
+	if err != nil {
+		return App{}, fmt.Errorf("hacimler serileştirilemedi: %w", err)
+	}
+
 	const q = `
 		UPDATE apps SET
 			git_branch = ?, health_path = ?, domain = ?, replicas = ?,
-			env_json = ?, updated_at = ?
+			env_json = ?, volumes_json = ?, updated_at = ?
 		WHERE id = ?`
 
 	if _, err := tx.ExecContext(ctx, q,
 		app.GitBranch, app.HealthPath, app.Domain, app.Replicas,
-		string(env), app.UpdatedAt.UnixNano(), app.ID,
+		string(env), string(vols), app.UpdatedAt.UnixNano(), app.ID,
 	); err != nil {
 		if isUniqueViolation(err) {
 			// Kimlik değişmiyor, dolayısıyla ihlal edilebilecek TEK kısıt

@@ -27,6 +27,9 @@ type fakeDocker struct {
 	containers []listEntry
 	// status, bir sonraki yanıtın HTTP kodu. 0 ise 200/201.
 	status int
+	// imageUser, /images/<ad>/json'ın bildireceği Config.User.
+	// Boş dize "USER yok" demektir ve root anlamına gelir.
+	imageUser string
 }
 
 type recorded struct {
@@ -66,6 +69,18 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 			_ = json.NewEncoder(w).Encode(f.containers)
 			return
 		}
+		// İmaj sorgusu: konteynerin hangi kullanıcıyla koşacağını
+		// söyleyen tek kaynak. Hacim dizininin sahibi buradan türetiliyor.
+		// ⚠ ÖNEK DEĞİL, İÇERİK araması: istemci API sürümünü yola
+		// gömüyor (/v1.48/images/...). Önek kontrolü hiç eşleşmez ve
+		// sahte daemon sessizce 201 döner — ilk yazımda tam bu oldu.
+		if strings.Contains(r.URL.Path, "/images/") &&
+			strings.HasSuffix(r.URL.Path, "/json") {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"Config": map[string]any{"User": f.imageUser},
+			})
+			return
+		}
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"Id":"sahte"}`))
 	}))
@@ -73,18 +88,28 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 	return f
 }
 
-// op, uzlaşma DIŞINDAKİ ilk isteği döndürür.
+// op, HAZIRLIK DIŞINDAKİ ilk isteği döndürür.
 //
 // İstemci her bağlantıda önce `/version` çağırıp API sürümünü uzlaşıyor;
 // indeks 0'a bakan testler bu yüzden yanlış isteği inceler.
+//
+// İmaj sorgusu da hazırlıktır: hacimli bir konteyner oluşturulurken
+// sürücü, sahipliği belirlemek için önce `/images/<etiket>/json`
+// çağırıyor. O çağrının gövdesi BOŞ (GET) ve onu "ölçülen işlem" sanan
+// test `unexpected end of JSON input` ile kırılır — hacim sahipliği
+// eklenince tam bu oldu.
 func (f *fakeDocker) op(t *testing.T) recorded {
 	t.Helper()
 	for _, r := range f.requests {
-		if r.Path != "/version" {
-			return r
+		if r.Path == "/version" {
+			continue
 		}
+		if strings.Contains(r.Path, "/images/") && strings.HasSuffix(r.Path, "/json") {
+			continue
+		}
+		return r
 	}
-	t.Fatal("uzlaşma dışında hiç istek gitmedi — test bir şey ölçmüyor")
+	t.Fatal("hazırlık dışında hiç istek gitmedi — test bir şey ölçmüyor")
 	return recorded{}
 }
 
@@ -96,8 +121,19 @@ func (f *fakeDocker) client(volumeRoot string) *Client {
 // hardenedRoot, sertleştirme kontrolünü geçen sahte bir mountinfo kurar.
 func hardenedRoot(t *testing.T, opts string) string {
 	t.Helper()
-	root := "/var/lib/panely/volumes"
-	f := filepath.Join(t.TempDir(), "mountinfo")
+	// ⚠ Kök GEÇİCİ dizin, üretim yolu DEĞİL.
+	//
+	// Eskiden burada "/var/lib/panely/volumes" sabiti duruyordu ve
+	// zararsızdı: sürücü yalnızca bir bind DİZESİ üretiyordu, diske
+	// dokunmuyordu. Hacim sahipliği eklenince sürücü artık dizini
+	// GERÇEKTEN oluşturuyor — sabit yol, testin geliştirme makinesinde
+	// (ve Windows'ta C:ar\...) gerçek dizin yaratması demekti.
+	dir := t.TempDir()
+	root := filepath.ToSlash(filepath.Join(dir, "volumes"))
+	if err := os.MkdirAll(root, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	f := filepath.Join(dir, "mountinfo")
 	line := "415 406 8:1 /vol " + root + " " + opts + " - ext4 /dev/sda1 rw\n"
 	if err := os.WriteFile(f, []byte(line), 0o600); err != nil {
 		t.Fatal(err)
@@ -321,8 +357,11 @@ func TestCreateAllowsHardenedVolumeRoot(t *testing.T) {
 	spec := validSpec()
 	spec.Mounts = []Mount{{VolumeName: "data", MountPath: "/data"}}
 
+	// chown dikişi: bu test Windows'ta da koşuyor ve os.Chown orada yok.
+	captureChown(t)
 	f := newFakeDocker(t)
-	c := f.client(hardenedRoot(t, "rw,nosuid,nodev,relatime"))
+	root := hardenedRoot(t, "rw,nosuid,nodev,relatime")
+	c := f.client(root)
 	if err := c.ContainerCreate(context.Background(), spec); err != nil {
 		t.Fatalf("sertleştirilmiş kökte reddedildi: %v", err)
 	}
@@ -335,7 +374,8 @@ func TestCreateAllowsHardenedVolumeRoot(t *testing.T) {
 	if err := json.Unmarshal(f.op(t).Body, &body); err != nil {
 		t.Fatal(err)
 	}
-	want := "/var/lib/panely/volumes/blog/data:/data"
+	// Beklenen dize KÖKTEN türetiliyor: kök artık geçici bir dizin.
+	want := root + "/blog/data:/data"
 	if len(body.HostConfig.Binds) != 1 || body.HostConfig.Binds[0] != want {
 		t.Errorf("Binds %v, beklenen [%s]", body.HostConfig.Binds, want)
 	}

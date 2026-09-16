@@ -125,8 +125,18 @@ type hostConfig struct {
 func (c *Client) ContainerCreate(ctx context.Context, spec CreateSpec) error {
 	// Sertleştirme yerinde değilse hacim bağlanmaz. Sessizce korumasız
 	// bağlamaktansa reddetmek doğru davranış (K-038, K-039).
+	//
+	// ⚠ SIRA: sertleştirme ÖNCE doğrulanır, dizin SONRA oluşturulur.
+	// Tersi, kontrol başarısız olduğunda bile hostta dizin bırakırdı —
+	// reddedilen bir işlemin yan etkisi olmamalı.
 	if len(spec.Mounts) > 0 {
 		if err := c.checkVolumeRootHardened(); err != nil {
+			return err
+		}
+		// Dizinler ve sahiplik BURADA hazırlanıyor, Docker'a
+		// bırakılmıyor: Docker eksik bind kaynağını root:root olarak
+		// yaratır ve uid 101 ile koşan uygulama yazamaz (ölçüldü).
+		if err := c.prepareVolumes(ctx, spec); err != nil {
 			return err
 		}
 	}

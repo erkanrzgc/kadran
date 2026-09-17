@@ -4233,3 +4233,131 @@ doğrulaması — gerçek bir limit-yükseltme kararıyla karşılaşacak.**
 Betiğin kendi kuralı gereği o karar, küçültmenin neden tercih
 edilmediğinin yazılı gerekçesini ister; bu paragraf o gerekçenin
 ölçülmüş hâlidir.
+
+## K-090 — Budamanın saklama kümesini CANLI SUNUCU doğruladı
+
+`panely prune` saklama politikası: **aktif sürüm + bir önceki AKTİF
+sürüm**. Gerisi durdurulup siliniyor.
+
+İki tane, daha azı değil. K-061 duran konteynerleri kasten biriktiriyor
+çünkü geri alma duran bir konteyneri **başlatıyor** (saniyeler), imajdan
+kurmuyor (dakikalar). Geri alma hedefini budamak, K-061'in bütün
+gerekçesini çökertirdi — üstelik "budama başarılı" diyerek.
+
+### Gerçek veri, tasarım kararını kanıtladı
+
+"Bir önceki" dağıtım GEÇMİŞİNDEN okunuyor, `releases.seq`'ten değil. Bu
+ayrım teorik değildi; canlı sunucuda `portfolio`'nun geçmişi şöyleydi:
+
+```
+seq  sürüm  aktif oldu            bıraktı
+ 3   r3     2026-08-14 21:29      2026-09-01 18:03
+ 4   r4     2026-09-01 18:03      2026-09-01 18:04
+ 5   r3     2026-09-01 18:04      2026-09-01 18:05
+ 6   r4     2026-09-01 18:05      2026-09-01 18:07
+ 7   r3     2026-09-01 18:07      2026-09-01 18:08
+ 8   r5     2026-09-01 18:08      HÂLÂ AKTİF
+```
+
+1 Eylül'deki geri alma denemeleri sürüm sırasını aktivasyon sırasından
+ayırmış. En son BIRAKAN sürüm **r3**, r4 değil — yani `panely rollback`
+r3'e gider.
+
+`releases.seq` kullanan bir uygulama r4'ü korur ve **r3'ü silerdi**:
+geri alma hedefinin ta kendisini. Budama "başarılı" der, hata aylar
+sonra rollback yavaşlayınca görülürdü.
+
+Göç 0005 tam olarak bu ayrım için yazılmıştı; burada ilk kez bir
+TÜKETİCİSİ oldu ve gerekçesi gerçek veriyle doğrulandı.
+
+### Ayrıcalıklı yüzey: 0 satır
+
+`ContainerRemove` RPC'si zaten vardı (`app delete` kullanıyor). Eksik
+olan tek şey POLİTİKAYDI ve politika `internal/api`'de — executor'ın
+içe aktarma grafiğinin dışında. Yüzey 2498'de kıpırdamadı.
+
+**Taşınabilir ders:** yeni bir yetenek her zaman yeni bir RPC istemez.
+Önce var olan yüzeyin ne kadarının kullanılmadığına bakmak, bütçe
+tartışmasını tamamen gereksiz kılabiliyor.
+
+### `app_id` ZORUNLU — boş "hepsi" DEĞİL
+
+proto3'te `string` presence taşımaz: "gönderilmedi" ile "boş
+gönderildi" telde ayırt edilemez (K-081'in aynı kökü). Boşu "bütün
+uygulamalar" saysaydık, alanı doldurmayı unutan bir çağıran **yıkıcı**
+bir işlemi her uygulamaya uygulatırdı — hata almadan.
+
+"Hepsini buda" isteği CLI'da `-all` bayrağı ve `ListApps` üzerinden bir
+döngü. Orası ayrıcalıksız kod; oradaki bir hata geri alınabilir, şemadaki
+bir belirsizlik değil.
+
+Aynı akıl yürütme fail-closed'da da geçerli: aktif sürüm okunamıyorsa
+hiçbir şeye dokunulmuyor. "Korunacak sürüm yok, öyleyse hepsini sil",
+`app delete`'in yıkıcılığını kapısız bir komuta kaçırmak olurdu.
+
+### ⚠ Bir mutasyon, SEKİZ testin göremediği bir deliği ölçtü
+
+"`PreviousActiveRelease` hatası sessizce yutuluyor" mutasyonu sekiz
+testin sekizini de **yeşil** geçti. Sebep: `default:` dalı testte hiç
+uyarılmıyordu, çünkü sahte depo yalnızca başarı ya da
+`ErrNoPreviousDeployment` döndürüyordu — üçüncü bir hata tipi hiç
+üretilmiyordu.
+
+Yutulduğunda ne olurdu: geçici bir okuma hatasında saklama kümesi
+`{aktif}` olarak kalır ve budama **geri alma hedefini siler.** Sessiz,
+yıkıcı, ve başarılı görünerek.
+
+Düzeltme `deploymentReader` arayüzü oldu. Gerekçe Executor arayüzüyle
+birebir aynı: **başarısızlık yolları ancak cevap kontrol edilebilirse
+sınanabilir.** Somut `*store.Store`'a bağlı kalındığı sürece o dalı
+uyarmanın hiçbir yolu yoktu.
+
+### ⚠ Betiğin KENDİSİNDE iki kusur çıktı
+
+**1. `-run` süzgeci yeni testi kapsamıyordu.** Yeni test
+`TestKeepSetFailsOnUnexpectedDeploymentError` adındaydı, süzgeç ise
+`TestPrune`. Test yazıldıktan sonra bile mutasyon yeşil kaldı ve sebep
+kodda değil ÖLÇÜM ARACINDAYDI. K-071'in tam tekrarı.
+
+**2. Bir mutasyon ZAYIF çıktı.** "Saklama kümesi yalnızca aktif sürümü
+tutuyor" mutasyonu erken bir `return` ekliyordu; `prev` kullanılmadan
+kaldığı için **derleyici** hata veriyordu ve `go test` sıfırdan farklı
+dönüyordu. Betik bunu "yakalandı" sayıyordu ama yakalayan test değil
+derleyiciydi.
+
+**Yanlış sebeple kırmızı, yanlış sebeple yeşil kadar değersizdir.**
+Mutasyon gerekçesiyle çıkarıldı; aynı değişmezi derlenebilir kod üreten
+başka bir mutasyon zaten ölçüyor.
+
+### Canlı ölçüm: 292 MB → 6.0 MB
+
+```
+budama öncesi   /var/lib/docker/containers   292 M   16 konteyner
+budama sonrası                               186 M    7 konteyner
+yeniden dağıtım + ikinci budama                6 M    8 konteyner
+```
+
+Kontrol grubu sağ kaldı: `elastic_poincare` ve `strange_nash` — Panely
+etiketi taşımayan iki konteyner — hiç dokunulmadan duruyor. Testte de
+adlarıyla aranıyorlar; sayı saymak yetmezdi, "9 kaldırıldı" iddiası
+yanlış dokuzu kaldırılsa da geçerdi.
+
+Rotasyonun uygulandığı da ayırt edici şekilde ölçüldü:
+
+```
+YENİ konteyner       map[max-file:3 max-size:10m]
+politika ÖNCESİ      map[]
+```
+
+İkisi aynı çıksaydı ölçüm hiçbir şey söylemezdi.
+
+### ⚠ Eski bir konteyner saklama kümesindeyse logu BİR TUR daha kalır
+
+Yeniden dağıtımdan sonra eski konteyner geri alma hedefi oluyor ve
+politika onu korumak zorunda — devasa logu dahil. Diskin gerçekten
+düşmesi için İKİ tur dağıtım gerekti.
+
+Bu bir kusur değil, politikanın doğru sonucu; ama "rotasyonu indirdim,
+disk sınırlandı" demek yanlış olurdu. Sunucuda hâlâ bir tane
+politika-öncesi konteyner var (`pfprobe_r6`, geri alma hedefi) ve bir
+sonraki dağıtımda düşecek.

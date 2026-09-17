@@ -44,8 +44,15 @@ mutate() {
     restore
     if ! python -c "
 import io,sys
+class _S(str):
+    def replace(self,a,b,*r):
+        out=str.replace(self,a,b,*r)
+        if out==self:
+            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+            sys.exit(8)
+        return _S(out)
 p='$file'
-s=io.open(p,encoding='utf-8').read()
+s=_S(io.open(p,encoding='utf-8').read())
 o=s
 $expr
 if s==o:
@@ -53,6 +60,27 @@ if s==o:
 io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — betik bozuk, ölçüm YAPILMADI"
+        fail=1
+        return
+    fi
+
+    # ── MUTANT DERLENMELİ ───────────────────────────────
+    #
+    # Derlenmeyen bir mutant `go test`'i düşürür ve betik bunu
+    # "yakalandı" diye okur — yani testin iddiası hiç sınanmadan YEŞİL
+    # rapor üretilir. K-092'de `mutate-alarm.sh`'ın EN ÖNEMLİ dört
+    # mutasyonu tam olarak böyle sahte çıktı; K-096 kapıyı bütün
+    # betiklere yaydı.
+    #
+    # `-run '^$'` seçildi çünkü paketi VE test dosyalarını derler ama
+    # hiçbir test koşmaz. `go build` yalnızca üretim kodunu derlerdi;
+    # test kodunun derlenmesini bozan bir mutasyon yine sahte
+    # "yakalandı" verirdi.
+    local build_out
+    if ! build_out=$(go test "$pkg" -run '^$' -count=1 2>&1); then
+        echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI,"
+        echo "     mutasyon derlenebilir olacak şekilde yazılmalı. Derleyici:"
+        echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
         return
     fi
@@ -126,7 +154,7 @@ mutate "saglik olcusu >= yerine > (bir fazla sayar)" "$ROLLOUT" \
 
 UPD='TestUpdateAppReconcilesWhenReplicaCountChanges|TestUpdateAppSkipsReconcileWhenNothingRoutableChanges'
 
-mutate "replika uzlastirma tetikleyicisi kaldirildi" "$APPUPDATE"     "s=s.replace('if domainMoved || replicasChanged {','if domainMoved {',1)"     "./internal/api/" "$UPD"
+mutate "replika uzlastirma tetikleyicisi kaldirildi" "$APPUPDATE"     "s=s.replace('\tif domainMoved || replicasChanged {','\t_ = replicasChanged\n\tif domainMoved {',1)"     "./internal/api/" "$UPD"
 
 mutate "replika esitlik kontrolu yok (her zaman tetikler)" "$APPUPDATE"     "s=s.replace('replicasChanged := upd.Replicas != nil and *upd.Replicas != current.Replicas'.replace(' and ',' && '),'replicasChanged := upd.Replicas != nil',1)"     "./internal/api/" "$UPD"
 

@@ -4955,3 +4955,113 @@ olabileceğini de sınamak gerekir.** "Canlı doğrulandı" başlığı,
 altındaki her satırın gerçekten koştuğunu kanıtlamaz. Kanıt, ölçümü
 üreten ikilinin kimliğidir — yeni sürüm yüklendiğine dair kanıt
 (K-088'deki `/proc/<pid>/exe`) daemon için vardı, **CLI için yoktu**.
+
+---
+
+## K-096 — On iki mutasyon betiği denetlendi: 147 mutasyonun 14'ü hiçbir şey ölçmüyordu
+
+**Tarih:** 18 Eylül 2026
+**Durum:** denetim + düzeltme; iki GERÇEK test boşluğu bulundu ve kapatıldı
+
+K-092, derleme kapısı kusurunun diğer on bir betikte de olabileceğini
+kaydetmişti. Varsayılmadı, **ölçüldü**.
+
+### Ölçüm
+
+Kapı on iki betiğe de eklendi ve hepsi koşuldu:
+
+```
+147 mutasyon
+├─ 133 gerçekten ölçüyordu
+└─  14 SAHTE  (mutant derlenmiyordu, `go test` derleme hatasından
+               düşüyordu ve betik bunu "yakalandı" diye okuyordu)
+```
+
+Sahtelerin dokuz betiğe dağıldığı görüldü. Hepsi taşıyıcı özellikleri
+hedefliyordu: API canlılık kontrolü, şema doğrulaması, çelişki
+kontrolü, belirlenimsiz JSON, budama. **Bu on dört özellik için
+testlerin koruduğuna dair hiçbir kanıt yoktu.**
+
+### Kapı neden `go build` değil
+
+`go test <pkg> -run '^$'` seçildi: paketi **ve test dosyalarını**
+derler, hiçbir test koşmaz. `go build` yalnızca üretim kodunu derler;
+test kodunun derlenmesini bozan bir mutasyon yine sahte "yakalandı"
+verirdi. (`internal/client` dışında hiçbir hedef pakette `TestMain`
+yok, dolayısıyla `-run '^$'` yan etkisiz.)
+
+K-092'de `mutate-alarm.sh`'a konan `go build` kapısı bu yüzden
+yükseltildi. Kapı ayrıca derleyici çıktısını **bastırıyor**: sebebini
+göstermeyen bir kapı düzeltmeyi zorlaştırıyordu.
+
+### Sahtelerin üç sebebi
+
+| sebep | adet | düzeltme |
+|---|---|---|
+| `declared and not used` | 7 | `_ = x` |
+| `imported and not used` | 3 | import'u kullanan ETKİSİZ çağrı |
+| `undefined` | 2 | silinen bildirim geri kondu |
+| kabuk kaçışı sızması | 1 | aşağıda |
+| kod kayması | 1 | aşağıda |
+
+**Kabuk kaçışı sızması.** `mutate-appdelete.sh` Go kaynağına
+`false \&\& err` yazıyordu: `\&\&` bash'te çift tırnak içinde
+korunuyor ve Python dizesine harfiyen giriyor. Go bunu `& &` artı
+geçersiz karakter olarak okuyor.
+
+**Kod kayması — ve `mutate()`'in yapısal kusuru.**
+`mutate-env.sh`'ın üç `replace`'inden ikincisi artık eşleşmiyordu:
+hacimler eklenince UPDATE cümlesi `string(env), string(vols), …`
+olmuştu. `mutate()` yalnızca "dosya toptan değişti mi" diye
+baktığından, **yarım uygulanmış bir mutasyon tam mutasyon gibi
+ölçülüyordu.**
+
+Kapatıldı — 147 ifadenin hiçbirine dokunmadan: `s` artık bir `str`
+alt sınıfı ve `replace` hiçbir şey değiştirmezse süreç düşüyor.
+
+### 🔴 Sahtelerin arkasında İKİ GERÇEK BOŞLUK vardı
+
+Mutantlar derlenir hale gelince ikisi **kırmızıya dönmedi**. K-080'in
+kuralı uygulandı (yeşil kalan mutasyon ya testin ya MUTASYONUN
+zayıflığını gösterir) ve ikisi farklı çıktı:
+
+**1. `sortedVolumes` — MUTASYON zayıftı.** "Hep false" karşılaştırıcı
+küçük dilimde sırayı hiç değiştirmiyordu. Sıralama **tersine**
+çevrilince yakalandı. Test suçsuzdu.
+
+**2. `pruneGrace` — SAHTE zayıftı, test değil.** Budamanın SIGTERM ile
+SIGKILL arasında verdiği süreyi hiçbir test sınamıyordu. Sebep:
+`fakeExec.StopRelease` süreyi `_ time.Duration` ile **atıyordu** —
+sahte, tam da sınanması gereken argümanı düşürüyordu.
+
+Sıfır süre demek, budanan konteynerin anında SIGKILL ile öldürülmesi
+demek: açık bağlantılar kopar, tampondaki yazımlar diske inmez.
+"Durdurma" sessizce "öldürme"ye dönüşürdü. `stopGraces` kaydediliyor
+ve `TestPruneGivesContainersTimeToStop` eklendi.
+
+**İki kusur üst üste duruyordu:** sahte kaydeden bir sahte nesne, ve
+onu görünmez kılan bir mutasyon betiği.
+
+### CI: kapı ZORUNLU
+
+Kapıları tek tek eklemek yetmez — kapısız eklenen yeni bir betik
+sınıfı sessizce geri getirirdi. CI artık her `scripts/mutate-*.sh`
+dosyasında kapının varlığını şart koşuyor. Denetimin kendisi de
+sınandı: bir betikten kapı kasten kaldırılınca kırmızıya döndü.
+
+### Son durum
+
+```
+147 mutasyon · 147 yakalandı · 0 sahte · 0 yarım · 0 boşluk
+```
+
+### Taşınabilir ders
+
+K-093 "yakalanan mutasyon yanlış sebeple kırmızı olabilir" dedi.
+K-095 "bir ölçüm hiç yapılmamış olabilir" ekledi. K-096 üçüncüsünü
+koyuyor: **ölçüm aracının kendisi düzenli denetlenmeli.** On iki
+betik iki yıl boyunca "bütün mutasyonlar yakalandı" raporlarken
+onda biri hiçbir şey ölçmüyordu — ve rapor hep yeşildi.
+
+Bir kusur bir yerde bulunduğunda sorulacak soru "düzelttim mi"
+değil, **"aynı sınıf başka nerede?"**

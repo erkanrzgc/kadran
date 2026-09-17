@@ -39,8 +39,15 @@ mutate() {
     restore
     if ! python -c "
 import io,sys
+class _S(str):
+    def replace(self,a,b,*r):
+        out=str.replace(self,a,b,*r)
+        if out==self:
+            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+            sys.exit(8)
+        return _S(out)
 p='$file'
-s=io.open(p,encoding='utf-8').read()
+s=_S(io.open(p,encoding='utf-8').read())
 o=s
 $expr
 if s==o:
@@ -48,6 +55,27 @@ if s==o:
 io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — betik bozuk, ölçüm YAPILMADI"
+        fail=1
+        return
+    fi
+
+    # ── MUTANT DERLENMELİ ───────────────────────────────
+    #
+    # Derlenmeyen bir mutant `go test`'i düşürür ve betik bunu
+    # "yakalandı" diye okur — yani testin iddiası hiç sınanmadan YEŞİL
+    # rapor üretilir. K-092'de `mutate-alarm.sh`'ın EN ÖNEMLİ dört
+    # mutasyonu tam olarak böyle sahte çıktı; K-096 kapıyı bütün
+    # betiklere yaydı.
+    #
+    # `-run '^$'` seçildi çünkü paketi VE test dosyalarını derler ama
+    # hiçbir test koşmaz. `go build` yalnızca üretim kodunu derlerdi;
+    # test kodunun derlenmesini bozan bir mutasyon yine sahte
+    # "yakalandı" verirdi.
+    local build_out
+    if ! build_out=$(go test ./internal/store/ -run '^$' -count=1 2>&1); then
+        echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI,"
+        echo "     mutasyon derlenebilir olacak şekilde yazılmalı. Derleyici:"
+        echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
         return
     fi
@@ -73,7 +101,7 @@ mutate "yedek hatası yutuluyor" "$STORE" \
 				}''','''				_ = snapshotBeforeMigrate(ctx, s.db, s.path, \"yanlis-ad\")''',1)"
 
 mutate "taze veritabanı kontrolü kaldırıldı" "$STORE" \
-    "s=s.replace('if !fresh {','if true {',1)"
+    "s=s.replace('\t\t\tif !fresh {','\t\t\t_ = fresh\n\t\t\tif true {',1)"
 
 mutate "snapshot no-op yapıldı" "$BACKUP" \
     "s=s.replace('''	// Bellek veritabanının dosyası yok; testler buradan geçer.
@@ -90,7 +118,7 @@ mutate "budama devre dışı" "$BACKUP" \
     "s=s.replace('''	sort.Strings(matches)
 	for _, old := range matches[:len(matches)-backupKeep] {
 		_ = os.Remove(old)
-	}''','''	_ = matches''',1)"
+	}''','''	sort.Strings(matches)''',1)"
 
 mutate "budama yanlış uçtan siliyor (en yenileri atıyor)" "$BACKUP" \
     "s=s.replace('for _, old := range matches[:len(matches)-backupKeep] {','for _, old := range matches[backupKeep:] {',1)"

@@ -37,8 +37,15 @@ mutate() {
     restore
     if ! python -c "
 import io,sys
+class _S(str):
+    def replace(self,a,b,*r):
+        out=str.replace(self,a,b,*r)
+        if out==self:
+            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+            sys.exit(8)
+        return _S(out)
 p='$file'
-s=io.open(p,encoding='utf-8').read()
+s=_S(io.open(p,encoding='utf-8').read())
 o=s
 $expr
 if s==o:
@@ -46,6 +53,27 @@ if s==o:
 io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — betik bozuk, ölçüm YAPILMADI"
+        fail=1
+        return
+    fi
+
+    # ── MUTANT DERLENMELİ ───────────────────────────────
+    #
+    # Derlenmeyen bir mutant `go test`'i düşürür ve betik bunu
+    # "yakalandı" diye okur — yani testin iddiası hiç sınanmadan YEŞİL
+    # rapor üretilir. K-092'de `mutate-alarm.sh`'ın EN ÖNEMLİ dört
+    # mutasyonu tam olarak böyle sahte çıktı; K-096 kapıyı bütün
+    # betiklere yaydı.
+    #
+    # `-run '^$'` seçildi çünkü paketi VE test dosyalarını derler ama
+    # hiçbir test koşmaz. `go build` yalnızca üretim kodunu derlerdi;
+    # test kodunun derlenmesini bozan bir mutasyon yine sahte
+    # "yakalandı" verirdi.
+    local build_out
+    if ! build_out=$(go test ./internal/store/ -run '^$' -count=1 2>&1); then
+        echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI,"
+        echo "     mutasyon derlenebilir olacak şekilde yazılmalı. Derleyici:"
+        echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
         return
     fi
@@ -98,7 +126,7 @@ mutate "şema doğrulaması tamamen kaldırıldı" "$REST" \
     "import re
 i=s.index('	// Şema kontrolü')
 j=s.index('	return nil', i)
-s=s[:i]+'	_ = n\n'+s[j:]"
+s=s[:i]+s[j:]"
 
 mutate "integrity_check sonucu yok sayılıyor" "$REST" \
     "s=s.replace('''	if result != \"ok\" {''','''	if false {''',1)"

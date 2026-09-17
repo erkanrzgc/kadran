@@ -15,14 +15,42 @@ mutate() {
     restore
     if ! python -c "
 import io,sys
+class _S(str):
+    def replace(self,a,b,*r):
+        out=str.replace(self,a,b,*r)
+        if out==self:
+            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+            sys.exit(8)
+        return _S(out)
 p='$file'
-s=io.open(p,encoding='utf-8').read(); o=s
+s=_S(io.open(p,encoding='utf-8').read()); o=s
 $expr
 if s==o: sys.exit(9)
 io.open(p,'w',encoding='utf-8').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — ölçüm YAPILMADI"; fail=1; return
     fi
+    # ── MUTANT DERLENMELİ ───────────────────────────────
+    #
+    # Derlenmeyen bir mutant `go test`'i düşürür ve betik bunu
+    # "yakalandı" diye okur — yani testin iddiası hiç sınanmadan YEŞİL
+    # rapor üretilir. K-092'de `mutate-alarm.sh`'ın EN ÖNEMLİ dört
+    # mutasyonu tam olarak böyle sahte çıktı; K-096 kapıyı bütün
+    # betiklere yaydı.
+    #
+    # `-run '^$'` seçildi çünkü paketi VE test dosyalarını derler ama
+    # hiçbir test koşmaz. `go build` yalnızca üretim kodunu derlerdi;
+    # test kodunun derlenmesini bozan bir mutasyon yine sahte
+    # "yakalandı" verirdi.
+    local build_out
+    if ! build_out=$(go test "$pkg" -run '^$' -count=1 2>&1); then
+        echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI,"
+        echo "     mutasyon derlenebilir olacak şekilde yazılmalı. Derleyici:"
+        echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
+        fail=1
+        return
+    fi
+
     if go test "$pkg" -run "$want" >/dev/null 2>&1; then
         echo "  KIRMIZI OLMADI: $name  (test: $want)"; fail=1
     else
@@ -44,7 +72,7 @@ mutate "konteyner hatasina ragmen kayitlar siliniyor" "$A" ./internal/api/ \
 
 mutate "API canlilik kontrolu silindi" "$A" ./internal/api/ \
     "TestDeleteRefusesLiveApp" \
-    "s=s.replace('if live, err := s.store.ActiveDeployment(ctx, appID); err == nil {','if live, err := s.store.ActiveDeployment(ctx, appID); false \&\& err == nil {',1)"
+    "s=s.replace('if live, err := s.store.ActiveDeployment(ctx, appID); err == nil {','if live, err := s.store.ActiveDeployment(ctx, appID); false and err == nil {'.replace(' and ',' && '),1)"
 
 mutate "durdurma atlandi (dogrudan kaldir)" "$A" ./internal/api/ \
     "TestDeleteRemovesContainersThenRecords" \

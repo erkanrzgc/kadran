@@ -34,8 +34,15 @@ mutate() {
     restore
     if ! python -c "
 import io,sys
+class _S(str):
+    def replace(self,a,b,*r):
+        out=str.replace(self,a,b,*r)
+        if out==self:
+            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+            sys.exit(8)
+        return _S(out)
 p='$SRC'
-s=io.open(p,encoding='utf-8').read()
+s=_S(io.open(p,encoding='utf-8').read())
 o=s
 $expr
 if s==o:
@@ -43,6 +50,27 @@ if s==o:
 io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — betik bozuk, ölçüm YAPILMADI"
+        fail=1
+        return
+    fi
+
+    # ── MUTANT DERLENMELİ ───────────────────────────────
+    #
+    # Derlenmeyen bir mutant `go test`'i düşürür ve betik bunu
+    # "yakalandı" diye okur — yani testin iddiası hiç sınanmadan YEŞİL
+    # rapor üretilir. K-092'de `mutate-alarm.sh`'ın EN ÖNEMLİ dört
+    # mutasyonu tam olarak böyle sahte çıktı; K-096 kapıyı bütün
+    # betiklere yaydı.
+    #
+    # `-run '^$'` seçildi çünkü paketi VE test dosyalarını derler ama
+    # hiçbir test koşmaz. `go build` yalnızca üretim kodunu derlerdi;
+    # test kodunun derlenmesini bozan bir mutasyon yine sahte
+    # "yakalandı" verirdi.
+    local build_out
+    if ! build_out=$(go test ./internal/api/ -run '^$' -count=1 2>&1); then
+        echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI,"
+        echo "     mutasyon derlenebilir olacak şekilde yazılmalı. Derleyici:"
+        echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
         return
     fi
@@ -100,7 +128,7 @@ mutate "durdurma atlanıyor (force=true ile koparma)" \
     "s=s.replace('\t\tif _, err := s.exec.StopRelease(ctx, appID, relID, pruneGrace); err != nil {\n\t\t\treturn removed, fmt.Errorf(\"sürüm %s durdurulamadı: %w\", relID, err)\n\t\t}\n','',1)"
 
 mutate "pruneGrace sıfır (SIGTERM ile SIGKILL arasında süre yok)" \
-    "s=s.replace('const pruneGrace = 10 * time.Second','const pruneGrace = 0',1)"
+    "s=s.replace('const pruneGrace = 10 * time.Second','const pruneGrace = 0 * time.Second',1)"
 
 # ── NE YAPILMADIĞI söyleniyor mu (K-088) ────────────────────────────
 

@@ -420,3 +420,45 @@ func TestKeepSetFailsOnUnexpectedDeploymentError(t *testing.T) {
 		t.Errorf("saklama kümesi %v, {r9: aktif} bekleniyordu", keep)
 	}
 }
+
+// TestPruneGivesContainersTimeToStop, budamanın konteynere SIGTERM ile
+// SIGKILL arasında GERÇEK bir süre tanıdığını doğrular.
+//
+// ── Bu test neden sonradan yazıldı ─────────────────────────
+//
+// `pruneGrace`i sıfırlayan mutasyon hiçbir testi kırmıyordu. Sebep
+// testlerin değil, SAHTENİN zayıflığıydı: `fakeExec` süreyi
+// `_ time.Duration` ile atıyordu, dolayısıyla hiçbir iddia ona
+// ulaşamıyordu. Mutasyon "yakalandı" raporlanıyordu çünkü mutant
+// DERLENMİYORDU — iki ayrı kusur üst üste (K-096).
+//
+// Sıfır süre demek, budanan konteynerin SIGKILL ile anında
+// öldürülmesi demek: açık bağlantılar kopar, tampondaki yazımlar
+// diske inmez. "Durdurma" sessizce "öldürme"ye dönüşürdü.
+func TestPruneGivesContainersTimeToStop(t *testing.T) {
+	exec := &fakeExec{replicas: []execclient.Replica{
+		replica("blog", "r1", 0), replica("blog", "r2", 0),
+		replica("blog", "r3", 0), replica("blog", "r4", 0),
+	}}
+	srv, db := newDeleteServer(t, exec)
+	seedReleases(t, db, "blog", 4)
+	activate(t, db, "blog", "r1", "r2", "r3", "r4")
+
+	if _, err := srv.PruneApp(context.Background(),
+		&panelyv1.PruneAppRequest{AppId: "blog"}); err != nil {
+		t.Fatalf("budama başarısız: %v", err)
+	}
+
+	// Kontrol: kurgu gerçekten durdurma yolunu koşturmalı. Boş bir
+	// liste üzerinde dönen bir döngü, hiçbir şey sınamadan geçerdi.
+	if len(exec.stopGraces) == 0 {
+		t.Fatal("hiçbir StopRelease çağrısı kaydedilmedi — " +
+			"test budama yolunu koşturmuyor")
+	}
+	for i, g := range exec.stopGraces {
+		if g <= 0 {
+			t.Errorf("%d. durdurmada zarif kapanma süresi %v — "+
+				"konteyner SIGKILL ile anında ölür", i, g)
+		}
+	}
+}

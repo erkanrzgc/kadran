@@ -54,10 +54,15 @@ type fakeExec struct {
 	// başarılı gösterirdi — K-073'ün tam şekli.
 	replicas  []execclient.Replica
 	stopCalls []string
-	rmCalls   []string
-	stopErr   error
-	rmErr     error
-	listErr   error
+	// stopGraces, StopRelease'e geçilen zarif kapanma süresini
+	// KAYDEDER. Önceden `_ time.Duration` ile atılıyordu; bu yüzden
+	// `pruneGrace`i sıfırlayan mutasyon hiçbir testi kırmıyordu.
+	// Sahte, tam da sınanması gereken argümanı düşürüyordu (K-096).
+	stopGraces []time.Duration
+	rmCalls    []string
+	stopErr    error
+	rmErr      error
+	listErr    error
 }
 
 func (f *fakeExec) ListReplicas(_ context.Context, appID string) ([]execclient.Replica, error) {
@@ -90,9 +95,10 @@ func (f *fakeExec) ContainerLogs(
 }
 
 func (f *fakeExec) StopRelease(
-	_ context.Context, appID, releaseID string, _ time.Duration,
+	_ context.Context, appID, releaseID string, grace time.Duration,
 ) (uint32, error) {
 	f.stopCalls = append(f.stopCalls, appID+"/"+releaseID)
+	f.stopGraces = append(f.stopGraces, grace)
 	if f.stopErr != nil {
 		return 0, f.stopErr
 	}

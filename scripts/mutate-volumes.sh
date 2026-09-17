@@ -54,8 +54,15 @@ mutate() {
     restore
     if ! python3 -c "
 import io,sys
+class _S(str):
+    def replace(self,a,b,*r):
+        out=str.replace(self,a,b,*r)
+        if out==self:
+            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+            sys.exit(8)
+        return _S(out)
 p='$file'
-s=io.open(p,encoding='utf-8').read()
+s=_S(io.open(p,encoding='utf-8').read())
 o=s
 $expr
 if s==o:
@@ -63,6 +70,27 @@ if s==o:
 io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — betik bozuk, ölçüm YAPILMADI"
+        fail=1
+        return
+    fi
+
+    # ── MUTANT DERLENMELİ ───────────────────────────────
+    #
+    # Derlenmeyen bir mutant `go test`'i düşürür ve betik bunu
+    # "yakalandı" diye okur — yani testin iddiası hiç sınanmadan YEŞİL
+    # rapor üretilir. K-092'de `mutate-alarm.sh`'ın EN ÖNEMLİ dört
+    # mutasyonu tam olarak böyle sahte çıktı; K-096 kapıyı bütün
+    # betiklere yaydı.
+    #
+    # `-run '^$'` seçildi çünkü paketi VE test dosyalarını derler ama
+    # hiçbir test koşmaz. `go build` yalnızca üretim kodunu derlerdi;
+    # test kodunun derlenmesini bozan bir mutasyon yine sahte
+    # "yakalandı" verirdi.
+    local build_out
+    if ! build_out=$(go test "$pkg" -run '^$' -count=1 2>&1); then
+        echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI,"
+        echo "     mutasyon derlenebilir olacak şekilde yazılmalı. Derleyici:"
+        echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
         return
     fi
@@ -101,7 +129,7 @@ mutate "chown hic cagrilmiyor" "$DRV_OWN" \
     "./internal/dockerdrv/" "Volume|Image|Chown|Create"
 
 mutate "MkdirAll kaldirildi (Docker'a birakildi)" "$DRV_OWN" \
-    "s=s.replace('if err := os.MkdirAll(dir, 0o750); err != nil {','if false {',1)" \
+    "s=s.replace('if err := os.MkdirAll(dir, 0o750); err != nil {','if err := os.ErrInvalid; false {',1)" \
     "./internal/dockerdrv/" "Volume|Create"
 
 mutate "sayisal olmayan USER sessizce 0 oluyor" "$DRV_OWN" \
@@ -115,7 +143,7 @@ mutate "prepareVolumes ContainerCreate'ten cikarildi" "$DRV_CNT" \
 # ── Depo: yazma ve okuma yolları ─────────────────────────────────────
 
 mutate "appSelect'ten volumes_json dusuruldu" "$STORE_APPS" \
-    "s=s.replace('build_args_json, env_json, volumes_json,\n\t       container_port','build_args_json, env_json,\n\t       container_port',1); s=s.replace('&argsJSON, &envJSON, &volsJSON,','&argsJSON, &envJSON,',1); s=s.replace('\tif err := json.Unmarshal([]byte(volsJSON), &app.Volumes); err != nil {','\tif false {',1)" \
+    "s=s.replace('build_args_json, env_json, volumes_json,\n\t       container_port','build_args_json, env_json,\n\t       container_port',1); s=s.replace('&argsJSON, &envJSON, &volsJSON,','&argsJSON, &envJSON,',1); s=s.replace('\tif err := json.Unmarshal([]byte(volsJSON), &app.Volumes); err != nil {','\t_ = volsJSON\n\tif false {',1)" \
     "./internal/store/" "Volume"
 
 mutate "UPDATE cumlesi volumes_json yazmiyor" "$STORE_UPD" \
@@ -135,7 +163,7 @@ mutate "IsEmpty hacimleri saymiyor" "$STORE_UPD" \
     "./internal/store/" "Volume"
 
 mutate "sortedVolumes siralamiyor (belirlenimsiz JSON)" "$STORE_APPS" \
-    "s=s.replace('\tsort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })\n','',1)" \
+    "s=s.replace('\tsort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })\n','\tsort.Slice(out, func(i, j int) bool { return out[i].Name > out[j].Name })\n',1)" \
     "./internal/store/" "Volume"
 
 # ── Doğrulama ────────────────────────────────────────────────────────
@@ -157,7 +185,7 @@ mutate "ayni ad iki kez kabul ediliyor" "$API_VAL" \
     "./internal/api/" "Volume"
 
 mutate "celiski kontrolu (ekle+ayir) devre disi" "$API_VAL" \
-    "s=s.replace('\t\t\tif v.GetName() == name {','\t\t\tif false {',1)" \
+    "s=s.replace('\t\t\tif v.GetName() == name {','\t\t\t_ = v\n\t\t\tif false {',1)" \
     "./internal/api/" "Volume"
 
 mutate "validateVolumes AppSpec dogrulamasindan cikarildi" "$API_SPEC" \
@@ -177,7 +205,7 @@ mutate "depo->proto cevriminde ReadOnly dusuyor" "$API_APPS" \
 # ── Dürüstlük: sessizce başarılı deme ────────────────────────────────
 
 mutate "yeniden dagitim uyarisi susturuldu" "$API_UPD" \
-    "s=s.replace('\tif volumesChanged {\n\t\tresp.VolumeDetail = volumesNeedRedeploy(appID)\n\t}\n','',1)" \
+    "s=s.replace('\tif volumesChanged {\n\t\tresp.VolumeDetail = volumesNeedRedeploy(appID)\n\t}\n','\t_ = volumesChanged\n',1)" \
     "./internal/api/" "TestUpdateAppWarnsVolumes"
 
 # ── CLI ──────────────────────────────────────────────────────────────

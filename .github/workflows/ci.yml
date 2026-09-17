@@ -352,6 +352,28 @@ jobs:
             exit 1
           fi
 
+          # ⚠ K-096: DERLEME KAPISI OLMAYAN BETİK ÖLÇMÜYOR.
+          #
+          # Derlenmeyen bir mutant `go test`'i düşürür; kapısız bir
+          # betik bunu "yakalandı" diye okur ve testin iddiası hiç
+          # sınanmadan YEŞİL rapor üretir. K-092'de bu gerçekten oldu:
+          # `mutate-alarm.sh`'ın kenar tetiklemeyi sınayan EN ÖNEMLİ
+          # dört mutasyonu hiçbir şey ölçmüyordu.
+          #
+          # Kapıları tek tek eklemek yetmez: kapısız eklenen YENİ bir
+          # betik sınıfı sessizce geri getirirdi. Varlık burada
+          # zorunlu tutuluyor.
+          gate_missing=0
+          for s in "${scripts[@]}"; do
+            if ! grep -q "MUTANT DERLENM" "$s"; then
+              echo "::error::$s derleme kapısı taşımıyor — derlenmeyen mutantlar sahte 'yakalandı' üretir (bkz. K-096)" >&2
+              gate_missing=1
+            fi
+          done
+          if [ "$gate_missing" -ne 0 ]; then
+            exit 1
+          fi
+
           fail=0
           for s in "${scripts[@]}"; do
             echo "──────────────────────────────────────────"

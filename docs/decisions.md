@@ -4595,3 +4595,50 @@ sebeple yakalanıyor: `uzunluk 22, 20 bekleniyordu`.
 Platform farkı bu sınıfı görünür kılan en ucuz araç — mutasyon
 betiklerinin CI'da (Linux) koşması, yerel Windows koşusunun tek başına
 yeterli olmadığını kanıtladı.
+
+### Budama ÜRETİM YOLUNDAN hiç koşmamıştı
+
+Budamayı sınayan bütün testler `snapshotAt`'i çağırıyordu — yani saati
+enjekte edilen TEST yolunu. Üretimde çağrılan `Snapshot()` ise
+`time.Now()` kullanıyor ve budamayı ilk kez **24 yedek biriktikten
+sonra**, yani kurulumdan bir gün sonra tetikliyor.
+
+Kısacası üretim girişi hiç budama yapmamıştı: ne yerelde, ne canlıda.
+Bir hata olsaydı 24 saat sonra, GERÇEK yedekler silinirken ortaya
+çıkardı.
+
+Canlı sunucuda ölçüldü. 30 sentetik yedek + 3 gerçek yedek biriktirilip
+panelyd yeniden başlatıldı (açılış yedeği → `Snapshot` →
+`pruneSnapshots`):
+
+```
+ÖNCE : panely-*.db 33 · pre-restore-*.db 1 · göç yedeği 2
+SONRA: panely-*.db 24 · pre-restore-*.db 1 · göç yedeği 2
+en eski kalan: panely-20260911T000000Z.db  (01–10 silindi)
+```
+
+Üç ayrı ad uzayının birbirine karışmadığı da böylece ÖLÇÜLDÜ, akıl
+yürütmeyle değil: budama yalnızca kendi desenine dokundu, geri yükleme
+güvenlik kopyasına ve göç öncesi yedeklere dokunmadı.
+
+Testte de kapatıldı: `TestSnapshotPrunesViaProductionPath` eski adlı
+dosyalar biriktirip GERÇEK `Snapshot`'ı bir kez çağırıyor, ve
+`mutate-restore.sh`'a "üretim yolunda budama çağrısı kaldırıldı"
+mutasyonu eklendi (12/12 yakalanıyor).
+
+**Taşınabilir ders:** saati enjekte edilebilir yapmak testi mümkün
+kılıyor ama bir tuzak da kuruyor — bütün testler enjekte edilen yolu
+kullanırsa, ÜRETİM girişi hiç sınanmamış olur. En az bir test gerçek
+girişten geçmeli.
+
+### Bilinen ve kabul edilen: kurulum yolu iki yerde yazılı
+
+`panely backup list` çıktısı geri yükleme yordamını yazarken
+`/usr/local/lib/panely/panelyd` yolunu **sabit** taşıyor
+(`cmd/panely/backup.go`), oysa gerçek kurulum yolu systemd biriminde
+duruyor. Bugün doğru ve tatbikat tam o yola karşı koştu, ama bu
+`--config /etc/panely/panelyd.toml` yarasıyla aynı sınıf: iki yer, tek
+doğruluk kaynağı yok.
+
+Bilerek kontrol YAZILMADI — çıktı metni için birim dosyasını ayrıştıran
+bir test, koruduğundan fazla kırılganlık getirirdi. Kayıt burada dursun.

@@ -129,6 +129,15 @@ mutate "damga değişken genişliğe çevrildi" "$SNAP" \
 mutate "yedek dizini veritabanının dizinine eşitlendi" "$SNAP" \
     "s=s.replace('''	return filepath.Join(filepath.Dir(dbPath), snapshotDirName)''','''	return filepath.Dir(dbPath)''',1)"
 
+# URETIM YOLU: Snapshot() -> pruneSnapshots. Budamayi sinayan butun
+# diger testler snapshotAt'i (saat enjekte edilen TEST yolu)
+# cagiriyordu; uretim girisi hic budama yapmamisti - ne yerelde ne
+# canlida. Bir hata olsaydi 24 saat sonra, GERCEK yedekler silinirken
+# ortaya cikardi.
+mutate "uretim yolunda budama cagrisi kaldirildi" "$SNAP" \
+    "s=s.replace('''\tpruneSnapshots(dir)
+\treturn info, nil''','''\treturn info, nil''',1)"
+
 mutate "yedek zamanı dosya adı yerine sabit" "$SNAP" \
     "s=s.replace('''	t, err := time.Parse(snapshotStamp, base)
 	if err != nil {

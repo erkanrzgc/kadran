@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -238,5 +239,77 @@ func TestSnapshotStampIsFixedWidth(t *testing.T) {
 			t.Errorf("kronolojik olarak %v < %v ama sözlük sırası tersi: %q > %q",
 				a, b, fa, fb)
 		}
+	}
+}
+
+// TestSnapshotPrunesViaProductionPath, budamanın ÜRETİM yolundan
+// koştuğunu doğrular.
+//
+// ── Neden ayrı bir test gerekti ─────────────────────────────────────
+//
+// Budamayı sınayan bütün testler `snapshotAt`'i çağırıyordu — yani
+// saati enjekte edilen TEST yolunu. Üretimde çağrılan `Snapshot()` ise
+// `time.Now()` kullanıyor ve budamayı ilk kez 24 yedek biriktikten
+// SONRA, yani kurulumdan bir gün sonra tetikliyor.
+//
+// Kısacası üretim girişi hiç budama yapmamıştı: ne yerelde ne canlıda.
+// Bir hata olsaydı 24 saat sonra, GERÇEK yedekler silinirken ortaya
+// çıkardı.
+//
+// Test önce eski adlı dosyaları biriktiriyor, sonra GERÇEK `Snapshot`'ı
+// bir kez çağırıyor.
+func TestSnapshotPrunesViaProductionPath(t *testing.T) {
+	s, path := newSnapshotStore(t)
+	ctx := context.Background()
+
+	dir := SnapshotDir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	// SnapshotKeep+5 tane ESKİ adlı yedek. Adları 2026-01-xx, yani
+	// birazdan alınacak gerçek yedekten kesinlikle eski.
+	var oldest string
+	for i := 1; i <= SnapshotKeep+5; i++ {
+		name := filepath.Join(dir,
+			snapshotPrefix+fmt.Sprintf("202601%02dT000000Z", i)+snapshotExt)
+		if err := os.WriteFile(name, []byte("eski yedek"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if i == 1 {
+			oldest = name
+		}
+	}
+	// Budamanın DOKUNMAMASI gereken tuzak: geri yükleme güvenlik kopyası.
+	decoy := filepath.Join(dir, restorePrefix+"20260101T000000Z"+snapshotExt)
+	if err := os.WriteFile(decoy, []byte("guvenlik kopyasi"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// ── ÜRETİM GİRİŞİ ────────────────────────────────────────────────
+	// snapshotAt DEĞİL: Snapshot. Aradaki fark bu testin tamamı.
+	fresh, err := s.Snapshot(ctx)
+	if err != nil {
+		t.Fatalf("yedek alınamadı: %v", err)
+	}
+
+	got, err := ListSnapshots(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != SnapshotKeep {
+		t.Errorf("budamadan sonra %d yedek var, %d bekleniyordu",
+			len(got), SnapshotKeep)
+	}
+	if _, err := os.Stat(oldest); !os.IsNotExist(err) {
+		t.Errorf("EN ESKİ yedek duruyor: %s — budama üretim yolundan koşmadı",
+			oldest)
+	}
+	if _, err := os.Stat(fresh.Path); err != nil {
+		t.Errorf("YENİ alınan yedek silindi: %v", err)
+	}
+	if _, err := os.Stat(decoy); err != nil {
+		t.Errorf("budama geri yükleme güvenlik kopyasını sildi: %v — "+
+			"o dosya geri dönüşün son halkası", err)
 	}
 }

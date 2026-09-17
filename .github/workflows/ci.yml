@@ -310,3 +310,66 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  # ══════════════════════════════════════════════════════════════════
+  #  Mutasyon: testlerin GERÇEKTEN bir şey koruduğunu sına
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # Bu iş 17 Eylül'de eklendi ve eklenme sebebi bir boşluktu: sekiz
+  # mutasyon betiği aylardır vardı ama HİÇBİRİ CI'da koşmuyordu. Yalnızca
+  # elle çalıştırılan bir betik guard değildir — koruduğu değişmez
+  # sessizce kırılabilir ve rozet yeşil kalır.
+  #
+  # ⚠ Betikler TEK TEK sayılmıyor, glob'la bulunuyor. Liste tutmak, yeni
+  # bir betiğin unutulmasına davetiye olurdu — tam da bu işi doğuran hata.
+  mutation:
+    name: Mutasyon (testler gerçekten koruyor mu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      # Betikler mutasyonu `python` ile uyguluyor. Ubuntu imajında
+      # `python3` garanti, `python` DEĞİL — açıkça kuruluyor.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Bütün mutasyon betikleri
+        run: |
+          set -uo pipefail
+
+          # Boş glob sessizce geçerdi: hiç betik bulunmazsa döngü hiç
+          # dönmez ve adım YEŞİL olur — hiçbir şey ölçmeden.
+          shopt -s nullglob
+          scripts=(scripts/mutate-*.sh)
+          echo "bulunan betik: ${#scripts[@]}"
+          if [ "${#scripts[@]}" -lt 9 ]; then
+            echo "::error::yalnızca ${#scripts[@]} mutasyon betiği bulundu — glob bozuk ya da betikler silinmiş" >&2
+            exit 1
+          fi
+
+          fail=0
+          for s in "${scripts[@]}"; do
+            echo "──────────────────────────────────────────"
+            echo "▶ $s"
+            if ! bash "$s"; then
+              echo "::error::$s başarısız — bir mutasyon yakalanmadı" >&2
+              fail=1
+            fi
+          done
+
+          # ⚠ Betikler kaynağı `trap restore EXIT` ile geri yüklüyor.
+          # Bozuk bir restore, SONRAKİ betiğin ölçümünü sessizce
+          # geçersiz kılardı: mutasyona uğramış bir dosyanın üstüne
+          # ikinci mutasyon uygulanır ve sonuç yorumlanamaz hâle gelir.
+          # Ağacın temiz döndüğü ayrıca kanıtlanıyor.
+          if ! git diff --exit-code; then
+            echo "::error::mutasyon betikleri kaynağı geri yükleyemedi — yukarıdaki ölçümler GÜVENİLMEZ" >&2
+            exit 1
+          fi
+
+          exit "$fail"

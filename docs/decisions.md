@@ -4100,3 +4100,136 @@ doğrulanmamış bir iddia olurdu — K-079'un sınıfı.
 **Taşınabilir ders:** "ne yapıldı" kadar "ne yapılmadı" da çıktının
 parçasıdır. Bir komutun dokunmadığı şey, kullanıcının dokunulduğunu
 sandığı şeyse, susmak yanlış bilgi vermekle aynı kapıya çıkar.
+
+## K-089 — "Budama = imaj silme" varsayımı ölçünce çöktü: sorun günlüktü
+
+Plan aylardır şunu diyordu: imajlar hiç silinmiyor, o yüzden bir
+`ImageRemove` RPC'si gerekiyor, o yüzden ayrıcalıklı yüzey bütçesinde
+kavga çıkacak. Kod yazmadan önce canlı sunucu ölçüldü ve plan çöktü.
+
+### Ölçüm
+
+```
+/var/lib/docker                    408 MB
+├─ containers/  (JSON günlükler)   289 MB   ← %71
+└─ rootfs/      (BÜTÜN imajlar)    119 MB
+```
+
+En büyük dört günlük:
+
+```
+panely_portfolio_r5_0   ÇALIŞIYOR   110 MB
+panely_web_r1_0         ÇALIŞIYOR    69 MB
+panely_pfprobe_r3_0     durmuş       68 MB
+panely_pfprobe_r1_0     durmuş       33 MB
+```
+
+Yani **tek bir konteynerin günlüğü, sunucudaki bütün imajların toplamından
+büyüktü.** Planlanan iş, son 14 bütçe satırını üç sorunun EN KÜÇÜĞÜNE
+harcayacaktı.
+
+### ⚠ `docker images` ve `docker system df` bu ölçüm için KULLANILAMAZ
+
+İlk bakış yanıltıcıydı: `docker images` 18 adet `<none>` imaj gösteriyordu
+ve neredeyse hepsi **520 MB** yazıyordu. Toplasan ~9 GB eder — oysa disk
+toplam 4.5 GB doluydu.
+
+Sebep: paylaşılan katmanlar her imaja AYRI AYRI sayılıyor. Aynı çelişki
+`docker system df` çıktısında da göründü:
+
+```
+Images   27   5   1.112GB   RECLAIMABLE: -8.495e+08B (-76%)
+```
+
+**Negatif geri kazanılabilir alan.** Bir araç imkânsız bir sayı basıyorsa
+ölçtüğü şey aradığın şey değildir. Gerçeği `du -sh` söyledi.
+
+Bu K-084'ün akrabası ama yeni bir sınıf: orada yanlış ALANA yazılmıştı,
+burada **doğru araç yanlış soruyu cevaplıyordu.**
+
+### Çözüm ve neden bu şekli aldı
+
+`HostConfig.LogConfig` sürücüde **sabit politika** olarak yazıldı:
+`json-file` + `max-size=10m` + `max-file=3` → konteyner başına ≤ 30 MiB.
+
+Şekil CapDrop/PidsLimit ile birebir aynı ve sebebi de aynı: Docker'ın
+varsayılan günlük tavanı YOKTUR, yani alanı yazmamak "sınırsız"ı seçmek
+demek. Sürücüdeki öteki sertleştirmeler alanı HİÇ TANIMLAMAYARAK çalışıyor
+(`Privileged`, `CapAdd`, `Devices`); bu öyle çalışamaz, pozitif ifade şart.
+
+`Type` alanı da yük taşıyor ve yazılmaması iki şeyi birden kırardı:
+host'un daemon'ı varsayılan sürücüyü değiştirmişse `max-size` geçersiz bir
+seçenek olur **ve** `ContainerLogs` yalnızca json-file okuyabildiği için
+`panely logs` çalışmaz.
+
+Proto'ya alan EKLENMEDİ: çağıran günlük politikası isteyemez, executor
+kendi kararını uygular. Tasarım kuralı 3 korunuyor.
+
+### Rotasyon `panely logs`'u kırıyor mu? — ölçüldü, hayır
+
+```
+max-size=1m max-file=3 → docker logs 15.022 satır   diskte 2.3 MB (.log .log.1 .log.2)
+KONTROL rotasyonsuz    → docker logs 60.000 satır   diskte 9.0 MB
+```
+
+Okuma döndürülmüş dosyaları da kapsıyor. Takas açık ve kabul edildi:
+tavanın ötesindeki ESKİ geçmiş silinir. Kontrol grubu olmadan "15.022
+satır okundu" tek başına hiçbir şey söylemezdi — 60.000'e karşı okunduğu
+için anlamlı.
+
+### İki testi BİRBİRİNE BAĞLAMAK gerekti
+
+İlk hâlde mekanizma testi gövdeyi okuyordu ("max-size boş değil"), sınır
+testi sabitleri okuyordu ("10m makul"). İkisi bağlı değildi ve arada
+**delik** vardı: gövdeye elle `"max-size": "0"` yazan bir değişiklik
+birinci iddiayı geçer (alan dolu), sabitlere dokunmadığı için ikinciyi de
+geçer, ve tavan sessizce kalkar.
+
+Mekanizma testi artık gövdeyi SABİTLE karşılaştırıyor. Zincir kapandı:
+gövde sabiti taşıyor + sabit sınırlı ⇒ gövde sınırlı. Mutasyon betiğinde
+üç mutasyon tam olarak bu deliği ölçüyor ve delik kapanmadan önce
+yeşil geçiyorlardı.
+
+**Taşınabilir ders:** iki test aynı değişmezin iki yarısını koruyorsa,
+aralarındaki bağ da sınanmalı. Ayrı ayrı yeşil olmaları birleşimlerinin
+yeşil olduğunu göstermez.
+
+### ⚠ Sekiz mutasyon betiği CI'da HİÇ KOŞMUYORDU
+
+Bu iş sırasında bulundu: `scripts/mutate-*.sh` ailesi aylardır vardı ama
+`ci.yml` hiçbirini çağırmıyordu. Yalnızca elle çalıştırılan bir betik
+guard değildir — koruduğu değişmez sessizce kırılır, rozet yeşil kalır.
+K-071'in ("yeşil kalan mutasyon") bir üst katmanı: mutasyon hiç
+koşmuyorsa yeşil kalıp kalmadığı da bilinmiyor.
+
+Yeni `mutation` işi betikleri **glob'la** buluyor, liste tutmuyor — liste
+tutmak yeni betiğin unutulmasına davetiye olurdu, yani bu işi doğuran
+hatanın aynısı. İki kendi-kendini-sınama var: boş glob reddediliyor
+(9 betikten az bulunursa hata) ve koşu sonunda `git diff --exit-code` ile
+ağacın temiz döndüğü kanıtlanıyor (bozuk bir `restore`, SONRAKİ betiğin
+ölçümünü sessizce geçersiz kılardı).
+
+### ⚠ Mevcut konteynerler ETKİLENMEZ
+
+Günlük yapılandırması oluşturma anında sabitlenir; env ve hacimlerle aynı
+sınıf. Canlı `portfolio_r5_0` ve `web_r1_0` **yeniden dağıtılana kadar**
+110 MB ve 69 MB'lık günlüklerini büyütmeye devam eder. Politikayı indirip
+"disk sınırlandı" demek K-088'in reddettiği şekil olurdu; bu yüzden iş,
+üç canlı uygulamanın yeniden dağıtımı ve `du` ile ölçülen düşüşle
+bitiyor.
+
+### Bütçe: 2486 → 2498, ve küçültme kuyusu kurudu
+
+Rotasyon 12 ayrıcalıklı satıra mal oldu. **2 satır kaldı.**
+
+16 Eylül'de `deadcode` 73 satır açmıştı; bu sefer aynı komut üç aday
+buldu ve üçü de işe yaramaz: `audit.Verifier.Count` (1 satır ama api ve
+store KULLANIYOR, taşınamaz — `audit.Verifier`'ın metodu),
+`audit.VerifyAll` (~8 satır, audit'in kendi meşru API'si) ve
+`sdnotify.Status` (1 satır, panelyd kullanıyor).
+
+**Bir sonraki executor işi — imaj budama ya da denetim zinciri çapraz
+doğrulaması — gerçek bir limit-yükseltme kararıyla karşılaşacak.**
+Betiğin kendi kuralı gereği o karar, küçültmenin neden tercih
+edilmediğinin yazılı gerekçesini ister; bu paragraf o gerekçenin
+ölçülmüş hâlidir.

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -316,6 +317,100 @@ func TestPidsLimitIsBounded(t *testing.T) {
 	if defaultPidsLimit > 4096 {
 		t.Errorf("defaultPidsLimit %d — bu kadar yüksek bir tavan fork "+
 			"bombasını durdurmaz", defaultPidsLimit)
+	}
+}
+
+// ── Günlük rotasyonu ─────────────────────────────────────────────────
+
+// TestCreatePinsLogRotation, oluşturma gövdesinin günlük tavanını
+// TAŞIDIĞINI doğrular.
+//
+// ── Bu testin koruduğu şey ──────────────────────────────────────────
+//
+// Canlı sunucuda ölçüldü: `/var/lib/docker`ın %71'i (289/408 MB)
+// döndürülmeyen JSON günlüğüydü ve tek bir ÇALIŞAN konteyner 110 MB
+// biriktirmişti. Docker'ın varsayılanı sınırsız, yani alanı yazmamak
+// tavanı koymaz — CapDrop ile aynı sınıf.
+//
+// `Type` ayrıca sınanıyor ve bu gereksiz değil: sürücü json-file
+// olmazsa `max-size` geçersiz bir seçenek olur VE ContainerLogs okuyamaz.
+// Yani tek bir eksik alan hem tavanı hem `panely logs`'u düşürür.
+func TestCreatePinsLogRotation(t *testing.T) {
+	f := newFakeDocker(t)
+	c := f.client(hardenedRoot(t, "rw,nosuid,nodev,relatime"))
+	if err := c.ContainerCreate(context.Background(), validSpec()); err != nil {
+		t.Fatal(err)
+	}
+
+	var body struct {
+		HostConfig struct {
+			LogConfig struct {
+				Type   string            `json:"Type"`
+				Config map[string]string `json:"Config"`
+			} `json:"LogConfig"`
+		} `json:"HostConfig"`
+	}
+	if err := json.Unmarshal(f.op(t).Body, &body); err != nil {
+		t.Fatal(err)
+	}
+
+	lc := body.HostConfig.LogConfig
+	if lc.Type != "json-file" {
+		t.Errorf("LogConfig.Type %q — json-file değilse max-size geçersiz "+
+			"bir seçenek olur ve ContainerLogs günlüğü okuyamaz", lc.Type)
+	}
+	// ⚠ Değerler SABİTLERLE KARŞILAŞTIRILIYOR, "boş değil" ile DEĞİL.
+	//
+	// Bu, PidsLimit testinden bilerek ayrılıyor. Orada sabit test içinde
+	// tekrarlanıyor (512), çünkü tek bir sayı. Burada iki test var:
+	// aşağıdaki TestLogRotationIsBounded SABİTLERİ doğruluyor, bu test
+	// GÖVDEYİ. İkisi birbirine bağlanmazsa arada bir delik kalır —
+	// gövdeye elle `"max-size": "0"` yazan bir değişiklik "boş değil"
+	// iddiasını geçer, sabit denetimi de sabite hiç dokunulmadığı için
+	// geçer, ve tavan sessizce kalkar.
+	//
+	// Bağ kurulunca zincir kapanıyor: gövde sabiti taşıyor + sabit
+	// sınırlı ⇒ gövde sınırlı.
+	if got := lc.Config["max-size"]; got != defaultLogMaxSize {
+		t.Errorf("max-size %q, %q bekleniyordu — Docker'ın varsayılanı "+
+			"SINIRSIZ, alanı yazmamak tavan koymaz", got, defaultLogMaxSize)
+	}
+	if got := lc.Config["max-file"]; got != defaultLogMaxFiles {
+		t.Errorf("max-file %q, %q bekleniyordu — rotasyon dosya sayısı "+
+			"sınırsız kalır", got, defaultLogMaxFiles)
+	}
+}
+
+// TestLogRotationIsBounded, SEÇİLEN değerlerin gerçekten bir tavan
+// ürettiğini doğrular.
+//
+// Yukarıdaki test mekanizmayı sınıyor, bu test seçimi. Ayrım taşıyıcı:
+// `max-size: "0"` gönderilse gövde yine dolu görünür ama tavan YOKTUR.
+func TestLogRotationIsBounded(t *testing.T) {
+	n, err := strconv.Atoi(defaultLogMaxFiles)
+	if err != nil || n < 1 {
+		t.Fatalf("defaultLogMaxFiles %q — sayısal ve en az 1 olmalı",
+			defaultLogMaxFiles)
+	}
+	if n > 10 {
+		t.Errorf("defaultLogMaxFiles %q — tavan = dosya × boyut, "+
+			"bu kadar çok dosya tavanı anlamsızlaştırır", defaultLogMaxFiles)
+	}
+
+	size := defaultLogMaxSize
+	unit := size[len(size)-1]
+	if unit != 'k' && unit != 'm' && unit != 'g' {
+		t.Fatalf("defaultLogMaxSize %q — birimsiz değeri Docker BAYT sayar; "+
+			"k/m/g bekleniyordu", size)
+	}
+	v, err := strconv.Atoi(size[:len(size)-1])
+	if err != nil || v <= 0 {
+		t.Fatalf("defaultLogMaxSize %q — 0 ve ayrıştırılamayan değer "+
+			"tavanı kaldırır", size)
+	}
+	if unit == 'g' || (unit == 'm' && v > 100) {
+		t.Errorf("defaultLogMaxSize %q — konteyner başına bu kadar günlük, "+
+			"tavanın çözmek için var olduğu sorunun kendisi", size)
 	}
 }
 

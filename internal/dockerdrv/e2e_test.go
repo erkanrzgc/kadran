@@ -380,3 +380,70 @@ func containerMountOptions(t *testing.T, c *Client, mountPath string) string {
 	}
 	return ""
 }
+
+// TestLogRotationAppliesOnRealDocker, günlük tavanının daemon TARAFINDAN
+// UYGULANDIĞINI doğrular.
+//
+// ── Neden birim testi yetmiyor ──────────────────────────────────────
+//
+// Sahte daemon'a karşı koşan test yalnızca "ürettiğimiz JSON doğru"
+// diyor. Docker o alanı tanımasa, geçersiz bulsa ya da sessizce yok
+// saysa test yine yeşil kalırdı. Burada konteyner gerçekten kuruluyor ve
+// yapılandırma daemon'dan GERİ OKUNUYOR.
+//
+// ── Kontrol grubu ───────────────────────────────────────────────────
+//
+// PidsLimit de aynı inspect'ten doğrulanıyor. Sebebi şu: inspect boş bir
+// yapı döndürseydi (yanlış yol, yanlış alan adı, bozuk ayrıştırma)
+// LogConfig iddiaları da çökerdi ama sonuç "tavan uygulanmıyor" diye
+// okunurdu. Bilinen-doğru ikinci bir alan, ölçümün GERÇEKTEN ölçtüğünü
+// gösteriyor.
+func TestLogRotationAppliesOnRealDocker(t *testing.T) {
+	c := e2eClient(t)
+	ctx := context.Background()
+	buildTestImage(t, c)
+	cleanup(t, c)
+	t.Cleanup(func() { cleanup(t, c) })
+
+	spec := CreateSpec{
+		AppID: e2eApp, ReleaseID: "r1", Replica: 0, CommitSHA: e2eSHA,
+		MemoryBytes: 64 << 20, CPUMillis: 250, BlkioWeight: 500,
+	}
+	if err := c.ContainerCreate(ctx, spec); err != nil {
+		t.Fatalf("ContainerCreate: %v", err)
+	}
+
+	var insp struct {
+		HostConfig struct {
+			LogConfig struct {
+				Type   string            `json:"Type"`
+				Config map[string]string `json:"Config"`
+			} `json:"LogConfig"`
+			PidsLimit int64 `json:"PidsLimit"`
+		} `json:"HostConfig"`
+	}
+	path := "/containers/" + containerName(e2eApp, "r1", 0) + "/json"
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, nil, &insp); err != nil {
+		t.Fatalf("inspect: %v", err)
+	}
+
+	// Kontrol grubu ÖNCE: inspect gerçekten okuyor mu?
+	if insp.HostConfig.PidsLimit != defaultPidsLimit {
+		t.Fatalf("kontrol grubu çöktü: PidsLimit %d, %d bekleniyordu — "+
+			"inspect yolu boş okuyor, aşağıdaki iddialar ölçüm DEĞİL",
+			insp.HostConfig.PidsLimit, defaultPidsLimit)
+	}
+
+	lc := insp.HostConfig.LogConfig
+	if lc.Type != "json-file" {
+		t.Errorf("daemon sürücüyü %q tuttu — ContainerLogs okuyamaz", lc.Type)
+	}
+	if got := lc.Config["max-size"]; got != defaultLogMaxSize {
+		t.Errorf("daemon max-size %q tuttu, %q bekleniyordu — tavan yok",
+			got, defaultLogMaxSize)
+	}
+	if got := lc.Config["max-file"]; got != defaultLogMaxFiles {
+		t.Errorf("daemon max-file %q tuttu, %q bekleniyordu",
+			got, defaultLogMaxFiles)
+	}
+}

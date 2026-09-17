@@ -23,6 +23,37 @@ import (
 // tavan, tavansızlıktan iyidir.
 const defaultPidsLimit = 512
 
+// defaultLogMaxSize ve defaultLogMaxFiles, konteyner günlüğünün diskte
+// kaplayabileceği azami yeri belirler: max-file × max-size = 30 MiB.
+//
+// ── Neden gerekti: ÖLÇÜLDÜ, tahmin edilmedi ─────────────────────────
+//
+// Canlı sunucuda `/var/lib/docker` 408 MB'tı ve bunun 289 MB'ı (%71)
+// döndürülmeyen JSON günlükleriydi. Tek bir ÇALIŞAN konteynerin günlüğü
+// 110 MB'a ulaşmıştı. Bütün imajlar toplamı (119 MB) o tek dosyadan
+// biraz büyüktü — yani "budama = imaj silme" varsayımı yanlıştı.
+//
+// ⚠ `docker images` ve `docker system df` bu ölçüm için KULLANILAMAZ:
+// paylaşılan katmanları her imaja ayrı ayrı sayıyorlar ve df
+// RECLAIMABLE'ı NEGATİF (-%76) basıyordu. Gerçeği `du` söyledi.
+//
+// ── Neden 3 × 10 MiB ───────────────────────────────────────────────
+//
+// Ölçülen hız ~8 MB/gün (portfolio, 2 hafta). 30 MiB tavanı yaklaşık
+// dört günlük geçmiş demek — hafta sonu çıkan bir arızayı pazartesi
+// incelemeye yetiyor. Daha küçüğü hata ayıklamayı imkânsızlaştırır,
+// daha büyüğü tavanın anlamını azaltır.
+//
+// Rotasyonun `panely logs`'u KIRMADIĞI ölçüldü: 1 MiB × 3 ile koşan bir
+// konteynerde `docker logs` 15.022 satır döndürdü ve diskte üç dosya
+// vardı (.log, .log.1, .log.2) — yani okuma döndürülmüş dosyaları da
+// kapsıyor. Kontrol grubu (rotasyonsuz) 60.000 satır ve 9 MB gösterdi.
+// Takas açık ve kabul edildi: tavanın ötesindeki ESKİ geçmiş silinir.
+const (
+	defaultLogMaxSize  = "10m"
+	defaultLogMaxFiles = "3"
+)
+
 // Mount, tek bir hacim bağlamasıdır. Host yolu YOKTUR; sürücü kurar.
 type Mount struct {
 	VolumeName string
@@ -114,6 +145,23 @@ type hostConfig struct {
 	RestartPolicy struct {
 		Name string `json:"Name"`
 	} `json:"RestartPolicy"`
+
+	// LogConfig, konteyner günlüğüne SABİT bir tavan koyar.
+	//
+	// ⚠ Bu alan CapDrop/PidsLimit ile aynı sınıfta: Docker'ın varsayılanı
+	// "sınırsız"dır, yani alanı yazmamak tavanı KOYMAZ. Pozitif bir ifade
+	// gerekiyor.
+	//
+	// `Type` açıkça yazılıyor ve bu YÜK TAŞIYOR: host'un daemon'ı
+	// varsayılan sürücüyü `journald` (ya da başka bir şey) yapmış olabilir
+	// ve o zaman `max-size` geçersiz bir seçenek olurdu. Üstelik
+	// ContainerLogs yalnızca json-file'ı okuyabiliyor — sürücüyü sabitlemek
+	// `panely logs`'un host yapılandırmasından BAĞIMSIZ çalışmasını
+	// garanti eden şey.
+	LogConfig struct {
+		Type   string            `json:"Type"`
+		Config map[string]string `json:"Config"`
+	} `json:"LogConfig"`
 }
 
 // ContainerCreate, tek bir replika oluşturur. Başlatmaz.
@@ -159,6 +207,10 @@ func (c *Client) ContainerCreate(ctx context.Context, spec CreateSpec) error {
 		},
 	}
 	body.HostConfig.RestartPolicy.Name = "no"
+	body.HostConfig.LogConfig.Type = "json-file"
+	body.HostConfig.LogConfig.Config = map[string]string{
+		"max-size": defaultLogMaxSize, "max-file": defaultLogMaxFiles,
+	}
 
 	if spec.ContainerPort > 0 {
 		body.ExposedPorts = map[string]struct{}{

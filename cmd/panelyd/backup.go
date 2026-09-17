@@ -76,15 +76,31 @@ func runBackupScheduler(
 // alınamadığını ancak geri yüklemeye çalışırken öğrenmek, bu dilimin
 // var olma sebebini ortadan kaldırırdı. Alarm işi (sıradaki dilim) bu
 // satırı bir bildirime bağlayacak.
+//
+// ── Zamanlı yedek denetim zincirine GİRMİYOR ────────────────────────
+//
+// Yalnızca `panely backup create` (yani bir İNSANIN isteği) zincire
+// yazılıyor. Canlı sunucuda doğrulandı: açılıştaki yedek journal'da
+// var, zincirde YOK.
+//
+// Gerekçe record.go'daki kuralın aynısı: zincir, durum değiştiren
+// KASITLI eylemlerin kaydı. Saatte bir otomatik kayıt yılda ~8.760
+// satır demek ve gerçekten önemli olan girdileri (dağıtım, silme,
+// geri alma) boğardı. Zamanlı yedeğin izi journal'da ve dosyanın
+// kendi adında duruyor.
 func takeBackup(ctx context.Context, db *store.Store) {
 	start := time.Now()
-	path, err := db.Snapshot(ctx)
+	snap, err := db.Snapshot(ctx)
 	if err != nil {
 		slog.Error("YEDEK ALINAMADI — geri dönüş penceresi eskiyor",
 			"hata", err)
 		return
 	}
-	slog.Info("yedek alındı", "dosya", path, "sure", time.Since(start))
+	// Alanlar TEK TEK yazılıyor. İlk hâli struct'ı olduğu gibi
+	// veriyordu ve journal'da `dosya="{Path:... Bytes:... Taken:...}"`
+	// diye tek bir kalabalık alan çıkıyordu — gerçek sunucuda görüldü.
+	slog.Info("yedek alındı",
+		"dosya", snap.Path, "bayt", snap.Bytes, "sure", time.Since(start))
 }
 
 // runRestore, bir yedeği veritabanının yerine koyar ve süreci sonlandırır.

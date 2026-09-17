@@ -4497,3 +4497,67 @@ bağlanabilirlik).
 `panely` CLI'ı da kullanılamazdı: o istemci makinesinde duruyor ve
 api.sock üzerinden konuşuyor — yani tam da kapalı olması gereken
 daemon'a.
+
+### CANLI SUNUCU doğrulaması (17 Eyl)
+
+Binary `/proc/<pid>/exe` ile doğrulandı (`systemctl is-active` YETMEZ —
+[[service-active-does-not-prove-new-binary]]):
+
+```
+md5sum /proc/3722166/exe → 481283f8ba02dd85a58bad4b1847c783
+yerel bin/linux-amd64/panelyd → 481283f8ba02dd85a58bad4b1847c783
+```
+
+Açılış yedeği alındı: 131.072 bayt, **12,7 ms**, dizin `0700 panely:panely`.
+Sıfır yeniden başlatma, journal temiz, `panely.erkanrzgc.dev` → 200.
+
+#### Geri yükleme TATBİKATI — üretime dokunmadan
+
+Geri yükleme üretim veritabanını takas eden yıkıcı bir işlem. Tatbikat
+bu yüzden `--db` ile AYRI bir kopya üzerinde koştu: gerçek binary,
+gerçek dosya sistemi, gerçek SQLite, sıfır üretim riski.
+
+Ayırt edici olması için tatbikat veritabanına üretimde OLMAYAN bir
+işaretçi kondu:
+
+```
+ÖNCE : ISARETCI: geri-yukleme-oncesi   · uygulama sayısı 3
+SONRA: isaretci YOK (no such table)    · uygulama sayısı 3
+```
+
+İşaretçi gitti, uygulamalar kaldı — yani dosya gerçekten değişti ve
+yedeğin içeriği sağlam.
+
+**En güçlü kanıt güvenlik kopyasında:** içinde İKİ işaretçi de var,
+`wal-icinde` dahil. O satır WAL modunda yazılmıştı. Yani `VACUUM INTO`,
+ham `cp`'nin KAYBEDECEĞİ WAL'deki yazmaları gerçekten taşıyor — bu
+dilimin tasarım gerekçesi canlıda ölçülmüş oldu.
+
+Geri yüklemeden sonra dizinde yalnızca `panely.db` ve `backups/` kaldı;
+yan dosyalar yok.
+
+#### Denetim zinciri: kasıtlı eylem girer, zamanlayıcı girmez
+
+```
+121 | backup.create | {"bayt":"131072","dosya":"panely-20260917T153535Z.db"}
+```
+
+Parametre yalnızca dosya ADINI taşıyor, tam yolu değil. Kontrol
+grubuyla doğrulandı (`app.prune` satırları dolu döndü) — ilk sorgu
+yanlış tablo adı kullanmıştı ve kontrol grubu boş sonucu "sızıntı yok"
+diye okumamı ENGELLEDİ.
+
+Zamanlı yedek zincire GİRMİYOR, yalnızca `panely backup create`
+giriyor: canlıda ölçüldü (açılış yedeği journal'da var, zincirde yok).
+Saatte bir otomatik kayıt yılda ~8.760 satır demek ve asıl önemli
+girdileri boğardı.
+
+#### Bu dilimin KAPATMADIĞI şey
+
+- **Hacim verisi** — ölçülerek kapsam dışı bırakıldı (yukarıda).
+- **Uzak kopya** — yedekler sunucunun KENDİ diskinde. Disk ölürse
+  yedek de ölür. `IPAddressDeny=any` yüzünden panelyd dışarı
+  konuşamıyor; çözüm ya ağ politikası ya sunucu dışından `rsync`/
+  Litestream. Master spec bunu Faz 5'e koyuyor.
+- **Zamanlayıcı daemon'a bağlı** — panelyd çökmüşse yedek de alınmaz.
+  Sıradaki iş (alarm) bunu görünür kılacak.

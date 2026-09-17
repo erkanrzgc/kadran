@@ -79,6 +79,15 @@ func (s *stubService) DeleteApp(
 	return nil, errors.New("stubService: DeleteApp beklenmiyordu")
 }
 
+// PruneApp de sessizce başarı DÖNMÜYOR. Bu stub taşıma katmanını
+// sınıyor; bir RPC'yi "çalışıyor" gösterip hiçbir şey yapmamak,
+// K-011'in önlemek için var olduğu sessiz boşluğun ta kendisi olurdu.
+func (s *stubService) PruneApp(
+	context.Context, *panelyv1.PruneAppRequest,
+) (*panelyv1.PruneAppResponse, error) {
+	return nil, errors.New("stubService: PruneApp beklenmiyordu")
+}
+
 func (s *stubService) Ping(context.Context, *panelyv1.PingRequest) (*panelyv1.PingResponse, error) {
 	s.pingCalls++
 	return &panelyv1.PingResponse{

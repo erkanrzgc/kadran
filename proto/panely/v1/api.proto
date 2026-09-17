@@ -124,6 +124,31 @@ service PanelyService {
   // Canlı sürümü olan bir uygulama için sunucu FAILED_PRECONDITION
   // döner ve hangi sürümün canlı olduğunu söyler.
   rpc DeleteApp(DeleteAppRequest) returns (DeleteAppResponse);
+
+  // PruneApp, ESKİ sürümlerin konteynerlerini kaldırır.
+  //
+  // ── Saklama politikası ──────────────────────────────────────────
+  //
+  // Korunanlar: AKTİF sürüm ve bir önceki AKTİF sürüm. Başka her şeyin
+  // konteynerleri durdurulup siliniyor.
+  //
+  // İki tanesi, daha azı değil: K-061 duran konteynerleri KASTEN
+  // biriktiriyor, çünkü duran bir konteyneri başlatmak saniyeler,
+  // imajdan kurmak dakikalar sürüyor ve geri alma bunun üstüne oturuyor.
+  // Geri alma hedefini budamak, K-061'in gerekçesini çökertirdi.
+  //
+  // ⚠ "Bir önceki" dağıtım GEÇMİŞİNDEN (`deployments`) okunuyor,
+  // `releases.seq`'ten DEĞİL. Göç 0005 tam olarak bunun için var:
+  // r5 canlıyken r3'e geri alınmışsa sıradaki geri alma hedefi r5'tir.
+  // Sıra numarası aktivasyon geçmişi değildir.
+  //
+  // ── Aktif sürüm bilinemiyorsa REDDEDİLİR ────────────────────────
+  //
+  // Hiç dağıtımı olmayan bir uygulamada "korunacak sürüm yok" sonucu
+  // çıkarmak, BÜTÜN konteynerleri silmek demekti — yani `app delete`'in
+  // yıkıcılığını kapısız bir komuta kaçırmak. Sunucu bu durumda
+  // FAILED_PRECONDITION döner.
+  rpc PruneApp(PruneAppRequest) returns (PruneAppResponse);
 }
 
 message PingRequest {
@@ -662,4 +687,70 @@ message RollbackResponse {
   // belirgin şekilde uzun sürer. Bu alan, operatörün "neden 40 saniye
   // sürdü" sorusunu günlüğe bakmadan yanıtlamasını sağlar.
   bool recreated = 4;
+}
+
+// PruneAppRequest, tek bir uygulamanın eski sürüm konteynerlerini hedefler.
+message PruneAppRequest {
+  // app_id ZORUNLUDUR ve boş değer "hepsi" ANLAMINA GELMEZ.
+  //
+  // ── Neden bu ayrım yazılıyor ────────────────────────────────────
+  //
+  // proto3'te `string` presence taşımaz: "gönderilmedi" ile "boş
+  // gönderildi" telde AYIRT EDİLEMEZ (K-081'in aynı kökü). Boş değeri
+  // "bütün uygulamalar" saysaydık, alanı doldurmayı unutan bir çağıran
+  // YIKICI bir işlemi her uygulamaya uygulatmış olurdu — hem de hata
+  // almadan.
+  //
+  // Sunucu boş app_id'yi REDDEDER. "Hepsini buda" isteği CLI'da
+  // ListApps üzerinden bir DÖNGÜ olarak kuruluyor: orası ayrıcalıksız
+  // kod ve oradaki bir hata geri alınabilir.
+  string app_id = 1;
+
+  // dry_run, NE SİLİNECEĞİNİ bildirir ama SİLMEZ.
+  //
+  // Yıkıcı bir işlemde bunun maliyeti bir alan, karşılığı operatörün
+  // kararı ölçtükten sonra vermesi. Yanıtın geri kalanı iki modda da
+  // aynı doldurulur; tek fark containers_removed'ın 0 kalmasıdır.
+  bool dry_run = 2;
+}
+
+// PruneAppResponse, NEYİN silindiğini ve NEYİN KORUNDUĞUNU sayar.
+//
+// Korunanlar da dönüyor ve bu K-088'in dersi: "3 konteyner silindi" tek
+// başına operatöre en çok merak ettiği şeyi söylemiyor — geri alma hâlâ
+// çalışıyor mu? Korunan sürümlerin adları bu soruyu doğrudan yanıtlıyor.
+message PruneAppResponse {
+  string app_id = 1;
+
+  // KORUNAN sürümler: aktif sürüm ve bir önceki AKTİF sürüm.
+  //
+  // ⚠ "Bir önceki" dağıtım GEÇMİŞİNDEN okunuyor, `releases.seq`'ten
+  // DEĞİL. r5 canlıyken r3'e geri alınmışsa bir sonraki geri alma
+  // hedefi r5'tir, r2 değil; sıra numarası bunu söyleyemez (göç 0005).
+  repeated string kept_releases = 2;
+
+  // Konteynerleri kaldırılan sürümler.
+  repeated string pruned_releases = 3;
+
+  // Kaldırılan konteyner sayısı. dry_run'da HER ZAMAN 0.
+  uint32 containers_removed = 4;
+
+  // ── SİLİNMEYENLER ───────────────────────────────────────────────
+  //
+  // Bu alanlar K-088 ile aynı sebeple var: kullanıcı "budadım" deyince
+  // diskin tamamen toparlandığını varsayar.
+
+  // İmajlara DOKUNULMADI. Budama yalnızca konteyner kaldırıyor;
+  // `panely/<app>:<sha>` imajları yerinde duruyor.
+  //
+  // Sebep muhasebe değil ölçüm: canlı sunucuda bütün imajlar 119 MB,
+  // günlükler 289 MB'tı (K-089). İmaj budama ayrı bir iş ve ayrıcalıklı
+  // yüzeyde `ImageRemove` RPC'si istiyor.
+  bool images_untouched = 5;
+
+  // Silinmiş uygulamaların YETİM konteynerleri kapsam DIŞI.
+  //
+  // Budama uygulama başına çalışıyor ve yetimlerin app_id'si artık
+  // hiçbir kayda karşılık gelmiyor — bu RPC onları göremez.
+  bool orphans_out_of_scope = 6;
 }

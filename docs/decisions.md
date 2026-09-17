@@ -4743,3 +4743,77 @@ Düzeltme iki katmanlı:
 ⚠ **Bu kusur muhtemelen diğer mutasyon betiklerinde de var.** Derleme
 kapısı yalnızca `mutate-alarm.sh`'a eklendi; diğer on bir betik
 taranmadı. Ayrı bir iş.
+
+### CANLI SUNUCU doğrulaması (17 Eyl)
+
+Binary `/proc/<pid>/exe` ile doğrulandı (`ff628d6b…`). Göç 0008
+uygulandı ve **K-091'in göç-öncesi yedeği kendiliğinden ateşledi**:
+
+```
+/var/lib/panely/panely.db.pre-0006_app_env
+/var/lib/panely/panely.db.pre-0007_app_volumes
+/var/lib/panely/panely.db.pre-0008_alarms   ← yeni
+```
+
+Yani bu dilimin dağıtımı, bir önceki dilimin mekanizmasını gerçek
+koşulda sınamış oldu.
+
+#### Sağlıklı sistemde SIFIR gürültü
+
+```
+panely alarms → "etkin alarm yok"   (çıkış kodu 0)
+journal ALARM satırı → yok
+disk %87 boş → eşiklerin çok üstünde, alarm yok
+```
+
+Bu negatif sonuç, pozitif olanlar kadar önemli: sağlıklı bir sunucuda
+alarm üreten bir sistem ilk günden kapatılırdı.
+
+#### Kenar tetikleme KESİN olarak ölçüldü
+
+Yedek dizini yazılamaz yapıldı (`chmod 0500`), panelyd **iki kez** üst
+üste yeniden başlatıldı, sonra izinler düzeltilip bir kez daha
+başlatıldı. Aynı pencerede sayım:
+
+```
+panelyd başlangıcı : 4
+durum=acildi       : 1
+durum=kapandi      : 1
+```
+
+**Dört başlangıç, tek bildirim.** İkisinde yedek başarısızdı ve ikinci
+başarısızlık SESSİZ kaldı — alarm zaten açıktı. `since` damgası da
+değişmedi (`1789676049`).
+
+Bu, durumun bellekte tutulması hâlinde KESİNLİKLE başarısız olacak
+tek ölçüm: bellekteki bir uygulama her açılışta yeniden ateşlerdi ve
+sayım 2 çıkardı. Süreç sınırını aşan kenar tetikleme burada kanıtlandı.
+
+Kapanış da ölçüldü: izinler düzelince `durum=kapandi` (WARN seviyesi,
+açılış ERROR'du) ve tablo boşaldı.
+
+#### Operatör yüzeyi
+
+```
+CİDDİYET  SÜREDİR  TÜR            HEDEF      AYRINTI
+KRİTİK    16sn     backup_failed  panely.db  zamanlı yedek alınamıyor…
+UYARI: alarmlar DIŞARI GÖNDERİLMİYOR — …
+ÇIKIŞ KODU: 1
+```
+
+Çıkış kodu 1 kasıtlı: etkin alarm varken sıfır dönmek,
+`panely alarms && echo tamam` gibi bir kabuk zincirinde arızayı
+görünmez kılardı.
+
+Tatbikat boyunca site 200 döndü, otomatik yeniden başlatma sayısı 0.
+
+#### Bu dilimin KAPATMADIĞI şey
+
+- **Teslimat** — alarmlar sunucudan ÇIKMIYOR. Görülmeleri için ya
+  `panely alarms` çalıştırılmalı ya journal okunmalı. Ağ duvarı
+  ölçüldü; çözüm kullanıcının kararı.
+- **Vekil alarmı yalnızca AÇILIŞTA** — uzlaştırma açılışta koşuyor,
+  dolayısıyla sonraki bir bozulmayı bu koşul görmez.
+- **Gözetmenin kendi durumu hâlâ bellekte** — panelyd çökünce geri
+  çekilme sayaçları sıfırlanır. Alarm durumu diskte, gözetim durumu
+  değil; ikisi kasten ayrı.

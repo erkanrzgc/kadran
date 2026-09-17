@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -180,5 +181,62 @@ func TestListSnapshotsOnMissingDirIsEmpty(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("yedek listesi boş değil: %v", got)
+	}
+}
+
+// TestSnapshotStampIsFixedWidth, damganın SABİT GENİŞLİKTE olduğunu
+// doğrudan sınar.
+//
+// ── Neden ayrı bir test gerekti ─────────────────────────────────────
+//
+// TestSnapshotPruneKeepsNewest sıralamayı sınıyor ama damga biçimini
+// DEĞİL: kullandığı zamanlar tam dakika, yani saniye altı kısım her
+// zaman boş. Değişken genişlikli bir biçim (RFC3339Nano gibi) o testten
+// YEŞİL geçer.
+//
+// CI bunu ortaya çıkardı: "damga değişken genişliğe çevrildi" mutasyonu
+// Windows'ta yakalanıyordu ama Linux'ta KAÇIYORDU. Sebep platformdu —
+// RFC3339Nano dosya adına iki nokta üst üste koyuyor, Windows bunu
+// reddediyor, Linux kabul ediyor. Yani mutasyon Windows'ta YANLIŞ
+// SEBEPLE yakalanmıştı: sıralama bozulduğu için değil, dosya adı
+// geçersiz olduğu için.
+//
+// Bu test biçimin kendisini ölçüyor, dolayısıyla her iki platformda da
+// aynı şeyi söylüyor.
+func TestSnapshotStampIsFixedWidth(t *testing.T) {
+	// Saniye altı kısımları KASTEN farklı: değişken genişlikli bir biçim
+	// bunları farklı uzunlukta basar.
+	times := []time.Time{
+		time.Date(2026, 9, 17, 10, 0, 0, 0, time.UTC),
+		time.Date(2026, 9, 17, 10, 0, 0, 500000000, time.UTC),
+		time.Date(2026, 9, 17, 10, 0, 0, 123456789, time.UTC),
+		time.Date(2026, 1, 2, 3, 4, 5, 900000000, time.UTC),
+	}
+
+	want := len(times[0].Format(snapshotStamp))
+	for _, tm := range times {
+		got := tm.Format(snapshotStamp)
+		if len(got) != want {
+			t.Errorf("damga %q uzunluğu %d, %d bekleniyordu — DEĞİŞKEN "+
+				"GENİŞLİK sözlük sırasını kronolojik sıradan ayırır ve "+
+				"budama yanlış dosyayı siler", got, len(got), want)
+		}
+		// Dosya adında kullanılıyor: yola izin verilmeyen karakter
+		// taşımamalı. Windows iki nokta üst üsteyi reddediyor.
+		if strings.ContainsAny(got, `:/\`) {
+			t.Errorf("damga %q dosya adında geçersiz karakter taşıyor", got)
+		}
+	}
+
+	// Sözlük sırası = kronolojik sıra, doğrudan sınanıyor.
+	for i := 1; i < len(times); i++ {
+		a, b := times[i-1], times[i]
+		if a.After(b) {
+			continue
+		}
+		if fa, fb := a.Format(snapshotStamp), b.Format(snapshotStamp); fa > fb {
+			t.Errorf("kronolojik olarak %v < %v ama sözlük sırası tersi: %q > %q",
+				a, b, fa, fb)
+		}
 	}
 }

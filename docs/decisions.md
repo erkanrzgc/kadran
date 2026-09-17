@@ -4561,3 +4561,37 @@ girdileri boğardı.
   Litestream. Master spec bunu Faz 5'e koyuyor.
 - **Zamanlayıcı daemon'a bağlı** — panelyd çökmüşse yedek de alınmaz.
   Sıradaki iş (alarm) bunu görünür kılacak.
+
+### CI, mutasyonun YANLIŞ SEBEPLE yakalandığını gösterdi
+
+Yerelde (Windows) `mutate-restore.sh` 11/11 yakalıyordu. CI'da (Linux)
+biri kaçtı:
+
+```
+KIRMIZI OLMADI: damga değişken genişliğe çevrildi
+```
+
+Mutasyon `snapshotStamp`'i `20060102T150405Z`'den RFC3339Nano'ya
+çeviriyor. Windows'ta yakalanmasının sebebi **sıralamanın bozulması
+değildi**: RFC3339Nano dosya adına `:` koyuyor, Windows bu karakteri
+dosya adında kabul etmiyor, `VACUUM INTO` başarısız oluyor ve test
+kırmızıya dönüyordu. Linux `:` kabul ediyor, dosyalar oluşuyor — ve
+testin kullandığı zamanlar TAM DAKİKA olduğu için saniye altı kısım her
+zaman boş kalıyor, yani damgalar zaten eşit genişlikte çıkıyor ve
+sıralama bozulmuyordu.
+
+Yani mutasyon iki platformda da testin **iddia ettiği şeyi**
+sınamıyordu.
+
+Düzeltme, biçimin kendisini ölçen bir test:
+`TestSnapshotStampIsFixedWidth` saniye altı kısımları KASTEN farklı
+zamanları biçimlendirip uzunluklarının eşit olduğunu doğruluyor
+(ve dosya adında geçersiz karakter bulunmadığını). Mutasyon artık doğru
+sebeple yakalanıyor: `uzunluk 22, 20 bekleniyordu`.
+
+**Taşınabilir ders:** yakalanan bir mutasyon da sorgulanmalı. K-080
+"yeşil kalan mutasyonun üç sebebi"ni sayıyordu; bunun simetriği de var:
+**kırmızıya dönen bir mutasyon, beklenen sebeple dönmemiş olabilir.**
+Platform farkı bu sınıfı görünür kılan en ucuz araç — mutasyon
+betiklerinin CI'da (Linux) koşması, yerel Windows koşusunun tek başına
+yeterli olmadığını kanıtladı.

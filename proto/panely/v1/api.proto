@@ -149,6 +149,66 @@ service PanelyService {
   // yıkıcılığını kapısız bir komuta kaçırmak. Sunucu bu durumda
   // FAILED_PRECONDITION döner.
   rpc PruneApp(PruneAppRequest) returns (PruneAppResponse);
+
+  // CreateBackup, kontrol düzlemi veritabanının anlık bir yedeğini alır.
+  //
+  // Zamanlı yedekleme zaten arka planda koşuyor (--backup-interval);
+  // bu çağrı, riskli bir işlemden hemen ÖNCE taze bir yedek istemek
+  // içindir.
+  //
+  // ⚠ KAPSAM: yalnızca veritabanı. Uygulamaların kalıcı disk verisi
+  // (/var/lib/panely/volumes) DAHİL DEĞİL — o dizinleri panelyd
+  // okuyamıyor (gerçek sunucuda ölçüldü: root:root 0750, panelyd
+  // uid 999). Yanıttaki volumes_excluded alanı bunu her çağrıda
+  // tekrar söylüyor.
+  rpc CreateBackup(CreateBackupRequest) returns (CreateBackupResponse);
+
+  // ListBackups, diskteki zamanlı yedekleri en yeniden eskiye listeler.
+  //
+  // Yedeklemenin GERÇEKTEN çalıştığını görmenin tek yolu bu: "yedek
+  // alınıyor olmalı" varsayımı, geri yüklemeye ihtiyaç duyulan güne
+  // kadar sınanmaz.
+  rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+}
+
+// BackupInfo, tek bir yedek dosyasını tanımlar.
+message BackupInfo {
+  // Sunucudaki tam yol. Geri yükleme bu yolu ister.
+  string path = 1;
+
+  // Dosya boyutu, bayt.
+  int64 bytes = 2;
+
+  // Yedeğin alındığı an (unix saniye, UTC).
+  //
+  // Dosyanın değiştirilme zamanından DEĞİL, ADINDAN çözülür: dosya
+  // kopyalanırsa mtime kayar, ad ise yedeğin gerçekten hangi ana ait
+  // olduğunu taşır.
+  int64 taken_unix = 3;
+}
+
+message CreateBackupRequest {}
+
+message CreateBackupResponse {
+  BackupInfo backup = 1;
+
+  // Hacim verisinin kapsam DIŞI olduğunu bildirir; her zaman true.
+  //
+  // Sabit bir değeri telde taşımak gereksiz görünebilir ama K-088'in
+  // dersi bu: kullanıcı "yedek aldım" deyince her şeyin yedeklendiğini
+  // varsayar. Alanın varlığı, istemcinin bunu yazdırmasını sağlıyor.
+  bool volumes_excluded = 2;
+}
+
+message ListBackupsRequest {}
+
+message ListBackupsResponse {
+  // En yeniden eskiye sıralı.
+  repeated BackupInfo backups = 1;
+
+  // Saklanan en fazla yedek sayısı. Listenin neden kısaldığını
+  // açıklıyor — eksik yedek bir arıza sanılmasın.
+  uint32 keep = 2;
 }
 
 message PingRequest {

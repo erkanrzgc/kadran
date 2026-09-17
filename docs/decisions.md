@@ -4361,3 +4361,139 @@ Bu bir kusur değil, politikanın doğru sonucu; ama "rotasyonu indirdim,
 disk sınırlandı" demek yanlış olurdu. Sunucuda hâlâ bir tane
 politika-öncesi konteyner var (`pfprobe_r6`, geri alma hedefi) ve bir
 sonraki dağıtımda düşecek.
+
+## K-091 — Yedekleme ve geri yükleme: yerel, zamanlı, SINANMIŞ dönüş
+
+Kontrol düzlemi veritabanı artık saatlik yedekleniyor ve yedekten
+GERİ DÖNÜŞ YOLU var. Üç parça: `Store.Snapshot` (VACUUM INTO, ayrı
+dizin, 24 tane saklanır), `store.Restore` (doğrula → güvenlik kopyası →
+yan dosyaları sil → yerine koy) ve `panely backup create|list`.
+
+Kabul ölçütü yedeğin VARLIĞI değil, GERİ DÖNÜŞÜN sınanmasıydı — K-078
+bunu bir kez öğretmişti ve o ders burada da geçerli.
+
+### Ayrıcalıklı yüzey: 0 satır (ölçüldü, tartışılmadı)
+
+Bütçe 2498/2500'dü, yani iki satır kalmıştı ve bu dilim büyük
+görünüyordu. Tartışmaya girmeden önce kapsam ÖLÇÜLDÜ:
+
+```
+go list -deps ./cmd/panely-exec | grep panely
+→ audit, dockerdrv, pb, pbconv, version, exec, sdnotify,
+  grpcserve, logutil, peercred, sockets
+```
+
+`internal/store`, `internal/api` ve `cmd/panely` bu listede YOK. Yedek
+kodu tamamen bütçe dışı bir bölgede yaşıyor. Yüzey 2498'de kıpırdamadı.
+
+**Taşınabilir ders (K-090'ın ikizi):** bütçe tartışmasına girmeden önce
+işin bütçenin İÇİNDE olup olmadığı ölçülmeli. İki iş üst üste bütçeyi
+hiç kıpırdatmadan bitti.
+
+### Hacim verisi KAPSAM DIŞI — ve bu ölçülerek saptandı
+
+Varsayım değil, ölçüm. Canlı sunucuda:
+
+```
+drwxr-x--x root:panely   /var/lib/panely/volumes
+drwxr-x--- root:root     /var/lib/panely/volumes/pfprobe
+drwxr-x--- 101:101       /var/lib/panely/volumes/pfprobe/veri
+
+sudo -u panely ls /var/lib/panely/volumes/pfprobe/veri/
+→ Permission denied
+```
+
+panelyd (uid 999) uygulama dizinine **traverse bile edemiyor**: engel
+`veri` dizininde değil, bir üstündeki `root:root 0750`'de. Yani hacim
+yedeği yetkisiz daemon'dan İMKÂNSIZ; ya yeni bir executor RPC'si
+(bütçe) ya da hacim dizinlerinin `panely` grubuna açılması gerekir —
+ikincisi "panelyd uygulama verisini okuyamaz" güvencesini takas eder ve
+bu kullanıcının kararıdır, benim değil.
+
+Bu yüzden kapsam dışılık ÜÇ yerde birden yazılı: `CreateBackupResponse`
+içinde bir alan, CLI çıktısında bir uyarı satırı, ve `--restore`
+sonrasında stderr'e bir uyarı. K-088'in dersi: kullanıcı "yedek aldım"
+deyince her şeyin yedeklendiğini varsayar.
+
+### Uzak yedek (R2) neden bu dilimde yok
+
+panelyd'nin systemd birimi `IPAddressDeny=any` + yalnızca
+`172.16.0.0/12` veriyor. Yani daemon internete ULAŞAMIYOR — R2'ye
+yükleme, ağ politikasının gevşetilmesini gerektiren AYRI bir karar.
+Master spec §9 Litestream'i Faz 5'e koyuyor ve o sıralama doğru.
+
+### Mutasyon testi, ASIL iddiayı çürüttü
+
+`TestRestoreRemovesStaleWAL` bu dilimin gurur duyduğum testiydi: bayat
+bir WAL üretip geri yüklemenin sessizce etkisiz kalmadığını sınıyor.
+Mutasyon betiği yan dosya silmeyi TAMAMEN kaldırdı ve test **YEŞİL
+KALDI**.
+
+Sebep ölçüldü: `safetyCopy` veritabanını açıp kapatıyor, SQLite temiz
+kapanışta WAL'i checkpoint edip yan dosyaları KENDİSİ siliyor.
+
+```
+safetyCopy ÖNCE : -wal var, -shm var
+safetyCopy SONRA: -wal yok, -shm yok
+```
+
+Yani test, silmenin çalıştığını değil SONUCUN doğru olduğunu
+kanıtlıyordu. İkisi aynı şey değil. Bu, K-080'in üç sebebinden
+üçüncüsü: gizli kod tutarsızlığı.
+
+Silme yine de gerekli — ama yalnızca güvenlik kopyası KOŞMADIĞINDA:
+`.db` yokken yan dosyalar duruyorsa (operatör bozuk dosyayı kenara
+aldı) hiçbir şey checkpoint etmez.
+`TestRestoreRemovesSidecarsWhenNoSafetyCopy` tam o yolu sınıyor ve
+mutasyonu yakalıyor.
+
+### integrity_check'in NE YAKALAMADIĞI ölçüldü
+
+Doğrulayıcının ilk yorumu "sayfa düzeyinde bozulmayı da yakalar"
+diyordu. **Yanlıştı.** SQLite sayfa başına sağlama tutmuyor:
+
+| bozulma | integrity_check |
+|---|---|
+| 1024–2048 XOR (sayfanın boş alanı) | **"ok"** |
+| 2. sayfa sıfırlandı | `btreeInitPage() returns error code 11` |
+| kuyruk XOR | hata: `disk image is malformed` |
+| dosya kesildi | hata: `disk image is malformed` |
+| başlık XOR | hata: `file is not a database` |
+
+Güvence "bit düzeyinde sağlam"a değil, "açılabilir ve yapısı tutarlı"ya
+eşit. Yorum düzeltildi.
+
+Bu ölçüm iki testi de düzeltti: hem "bozuk dosya reddedilir" testi
+yanlış bozulma biçimi kullanıyordu, hem de `result != "ok"` dalı hiç
+çalışmıyordu (kesilmiş dosya HATA veriyor, metin değil).
+
+### Mutasyon betiğinin kendisi de zayıf çıktı
+
+`mutate-restore.sh` 11 mutasyon taşıyor. İlk turda BEŞİ yeşil kaldı ve
+üçü farklı sebepten:
+
+- **zayıf test:** `SnapshotDir` mutasyonu, testin beklentiyi sınanan
+  fonksiyonun kendi çıktısıyla karşılaştırmasından geçti — totolojik
+  iddia. Beklenti artık elle yazılıyor.
+- **zayıf mutasyon:** "şema sorgusunun hatası yutuluyor" davranışı hiç
+  değiştirmiyordu; hemen ardından gelen `n == 0` kontrolü reddi yine
+  üretiyor. İki kontrol birbirini yedekliyor, yani mutasyon gerçek bir
+  kusur değildi. Yerine şema doğrulamasının TAMAMINI kaldıran mutasyon
+  kondu.
+- **gizli tutarsızlık:** yukarıdaki WAL bulgusu.
+
+K-080 bu üç sebebi ayrı ayrı saymıştı; bu dilimde ÜÇÜ BİRDEN aynı
+betikte çıktı.
+
+### Geri yükleme neden RPC değil
+
+Çalışan daemon'ın altından veritabanını çekmek, açık dosya tanıtıcısı
+eski inode'u tuttuğu için "geri yükledim ama hiçbir şey değişmedi"
+durumunu üretir. `panelyd --restore <yedek>` sunucuda, daemon KAPALIYKEN
+koşuyor ve soketi yoklayarak bunu DOĞRULUYOR (soket dosyasının varlığı
+yetmez — temiz kapanmayan daemon onu geride bırakır; ölçülen şey
+bağlanabilirlik).
+
+`panely` CLI'ı da kullanılamazdı: o istemci makinesinde duruyor ve
+api.sock üzerinden konuşuyor — yani tam da kapalı olması gereken
+daemon'a.

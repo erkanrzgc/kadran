@@ -60,6 +60,11 @@ func run() error {
 		clientGroup = flag.String("client-group", defaultClientGroup, "api.sock'a erişebilecek grup")
 		showVersion = flag.Bool("version", false, "sürümü yazdır ve çık")
 		debug       = flag.Bool("debug", false, "ayrıntılı günlük (PANELY_DEBUG=1 ile de açılır)")
+
+		backupEvery = flag.Duration("backup-interval", defaultBackupInterval,
+			"zamanlı yedek aralığı (0 = kapalı)")
+		restoreFrom = flag.String("restore", "",
+			"verilen yedeği geri yükle ve çık (daemon KAPALI olmalı)")
 	)
 	flag.Parse()
 
@@ -80,6 +85,19 @@ func run() error {
 		return errors.New(
 			"panelyd root çalışmamalı — executor ayrımının anlamı kalmaz. " +
 				"systemd unit dosyasında User=panely olduğunu doğrulayın")
+	}
+
+	// ── Geri yükleme: veritabanı AÇILMADAN önce ─────────────────────
+	//
+	// store.Open göçleri uygular ve dosyayı yaratır. Geri yükleme tam da
+	// o dosyayı değiştireceği için önce koşmak ZORUNDA; sonra koşsaydı
+	// açtığımız tutamağın altından dosyayı çekerdik.
+	//
+	// Root kontrolünden SONRA: geri yükleme root çalışırsa dosyanın
+	// sahibi root olur ve panelyd bir daha yazamaz — sessiz ve
+	// açıklanması zor bir arıza.
+	if *restoreFrom != "" {
+		return runRestore(*dbPath, *socketPath, *restoreFrom)
 	}
 
 	clientGID, err := lookupGID(*clientGroup)
@@ -219,6 +237,10 @@ func run() error {
 		return err
 	}
 	go func() { _ = supervisor.Run(shutdown) }()
+
+	// Zamanlı yedekleme. Gözetmenle aynı kapanış bağlamını paylaşıyor:
+	// tek iptal kaynağı, tanımlı kapanış.
+	go runBackupScheduler(shutdown, db, *backupEvery)
 
 	slog.Info("daemon hazır",
 		"surum", version.Version,

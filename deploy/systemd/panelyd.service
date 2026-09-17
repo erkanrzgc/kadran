@@ -20,7 +20,8 @@ ExecStart=/usr/local/lib/panely/panelyd \
     --socket /run/panely/api.sock \
     --exec-socket /run/panely-exec/exec.sock \
     --db /var/lib/panely/panely.db \
-    --client-group panely-client
+    --client-group panely-client \
+    --backup-interval 1h
 Restart=on-failure
 RestartSec=2s
 

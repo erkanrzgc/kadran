@@ -347,7 +347,7 @@ jobs:
           shopt -s nullglob
           scripts=(scripts/mutate-*.sh)
           echo "bulunan betik: ${#scripts[@]}"
-          if [ "${#scripts[@]}" -lt 10 ]; then
+          if [ "${#scripts[@]}" -lt 11 ]; then
             echo "::error::yalnızca ${#scripts[@]} mutasyon betiği bulundu — glob bozuk ya da betikler silinmiş" >&2
             exit 1
           fi

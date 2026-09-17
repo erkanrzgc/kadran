@@ -88,6 +88,19 @@ func (s *stubService) PruneApp(
 	return nil, errors.New("stubService: PruneApp beklenmiyordu")
 }
 
+// Yedekleme RPC'leri de sessizce başarı dönmüyor; gerekçe PruneApp'ta.
+func (s *stubService) CreateBackup(
+	context.Context, *panelyv1.CreateBackupRequest,
+) (*panelyv1.CreateBackupResponse, error) {
+	return nil, errors.New("stubService: CreateBackup beklenmiyordu")
+}
+
+func (s *stubService) ListBackups(
+	context.Context, *panelyv1.ListBackupsRequest,
+) (*panelyv1.ListBackupsResponse, error) {
+	return nil, errors.New("stubService: ListBackups beklenmiyordu")
+}
+
 func (s *stubService) Ping(context.Context, *panelyv1.PingRequest) (*panelyv1.PingResponse, error) {
 	s.pingCalls++
 	return &panelyv1.PingResponse{

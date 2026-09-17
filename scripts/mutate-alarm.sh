@@ -162,6 +162,16 @@ mutate "kritik eşik uyarının üstüne çıkarıldı" "$WATCH" ./cmd/panelyd/ 
 mutate "kapanma bandı yok sayılıyor" "$WATCH" ./cmd/panelyd/ \
     "s=s.replace('	case free >= diskClearFree:','	case true:',1)"
 
+echo "== Kimlik eşleşmesi =="
+
+# Açılış ve kapanış AYNI kimliği kullanmalı. Ayrışırlarsa alarm açılır
+# ama bir daha asla kapanmaz — sessiz ve kalıcı bir sahte alarm, yani
+# bu projede bir kontrolü öldüren şeyin ta kendisi.
+#
+# Bu mutasyon olmasa, TestDiskAlarmIDMatchesClearID'in gerçekten bir şey
+# koruduğu bilinmezdi: iddia ettiği sapmayı hiçbir test üretmiyor.
+mutate "yükseltme kimliği kapatmadan ayrıştı" "$WATCH" ./cmd/panelyd/     "s=s.replace('		ID:       diskAlarmID,','		ID:       diskAlarmID + \"-v2\",',1)"
+
 restore
 if [[ $fail -ne 0 ]]; then
     echo

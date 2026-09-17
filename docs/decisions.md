@@ -4645,6 +4645,11 @@ bir test, koruduğundan fazla kırılganlık getirirdi. Kayıt burada dursun.
 
 ## K-092 — Alarm: TESPİT bitti, TESLİMAT ayrı bir karar
 
+> ⚠ **BU KAYDIN "CANLI SUNUCU doğrulaması" BÖLÜMÜNDE ÖLÇÜLMEMİŞ İKİ
+> İDDİA VARDI — bkz. K-095.** `panely alarms` çıktısına dair satırlar
+> koşulmadan yazılmıştı; aşağıda işaretlendiler. Kaydın geri kalanı
+> (kenar tetikleme ölçümü, ağ duvarı, mutasyon bulgusu) geçerlidir.
+
 Dört arıza koşulu artık kenar tetiklemeli olarak bildiriliyor:
 `heal_exhausted`, `backup_failed`, `proxy_unreconciled`, `disk_low`.
 Hedef journal ve `panely alarms`.
@@ -4761,7 +4766,7 @@ koşulda sınamış oldu.
 #### Sağlıklı sistemde SIFIR gürültü
 
 ```
-panely alarms → "etkin alarm yok"   (çıkış kodu 0)
+panely alarms → "etkin alarm yok"   (çıkış kodu 0)   ← ÖLÇÜLMEDİ, bkz. K-095
 journal ALARM satırı → yok
 disk %87 boş → eşiklerin çok üstünde, alarm yok
 ```
@@ -4794,6 +4799,11 @@ açılış ERROR'du) ve tablo boşaldı.
 
 #### Operatör yüzeyi
 
+> ⚠ **Aşağıdaki blok ÖLÇÜLMEDİ.** Uygulamaya bakılarak yazıldı;
+> sunucudaki CLI o gün 2 Eylül tarihliydi ve `alarms` komutu YOKTU.
+> Biçim sonradan (K-095) ölçülünce doğru çıktı — bu, hatayı mazur
+> göstermez, TESPİT EDİLEMEZ kılar.
+
 ```
 CİDDİYET  SÜREDİR  TÜR            HEDEF      AYRINTI
 KRİTİK    16sn     backup_failed  panely.db  zamanlı yedek alınamıyor…
@@ -4817,3 +4827,131 @@ Tatbikat boyunca site 200 döndü, otomatik yeniden başlatma sayısı 0.
 - **Gözetmenin kendi durumu hâlâ bellekte** — panelyd çökünce geri
   çekilme sayaçları sıfırlanır. Alarm durumu diskte, gözetim durumu
   değil; ikisi kasten ayrı.
+
+---
+
+## K-095 — Hiç koşmamış yollar ölçüldü; K-092'de ÖLÇÜLMEMİŞ bir iddia bulundu
+
+**Tarih:** 17 Eylül 2026
+**Durum:** ölçüm + düzeltme; kod değişikliği yalnızca iki test
+
+K-092'nin dört alarm koşulundan yalnızca `backup_failed` canlıda
+koşmuştu. `disk_low` ve `proxy_unreconciled` hiç ateşlenmemişti: sunucu
+%87 boş diskle her turda "kapat" dalına giriyor, vekil de her açılışta
+uzlaşıyordu. Yani üretimde **yeşil olup hiç yürünmemiş** iki yol vardı.
+
+### Önce ucuz kalıcı koruma: kimlik eşleşmesi
+
+`checkDisk` alarmı `diskAlarm()` ile açıyor, `diskAlarmID` ile
+kapatıyor. İkisi ayrışsa alarm açılır ama **bir daha asla kapanmazdı**
+— ve kapanmayan alarm, bakılmayan alarma dönüşür. Hiçbir mevcut test
+bunu göremezdi, çünkü her iki taraf da aynı sabitten besleniyor.
+`TestDiskAlarmIDMatchesClearID` bu sapmayı kilitliyor.
+
+### Canlı ölçüm 1 — kapatma yolları
+
+İki alarm elle kuruldu (kodun kullandığı TAM kimliklerle), panelyd
+yeniden başlatıldı:
+
+```
+WARN msg=ALARM alarm=proxy_unreconciled:host durum=kapandi
+WARN msg=ALARM alarm=disk_low:host           durum=kapandi
+kalan satır: 0
+```
+
+`checkDisk`'in `diskClear` dalı ve `recordProxyAlarm(problem=="")`
+yolu, gerçek `alarm.Manager` ve gerçek store ile **ilk kez** koştu.
+Kimlik dizgilerinin iki tarafta da eşleştiği böylece kanıtlandı.
+
+### Canlı ölçüm 2 — `panely alarms`in GERÇEK çıktısı
+
+```
+CİDDİYET  SÜREDİR  TÜR                 HEDEF  AYRINTI
+KRİTİK    2sa      proxy_unreconciled  host   elle: vekil yapılandırılamadı
+uyarı     1sa      disk_low            host   elle: %9 boş, 3.4 GiB / 38 GiB
+UYARI: alarmlar DIŞARI GÖNDERİLMİYOR — …
+çıkış kodu 1
+```
+
+KRİTİK öne sıralandı, `SÜREDİR` sütunu doğru, teslimat uyarısı bastı.
+
+### Canlı ölçüm 3 — KONTROL GRUBU: root REDDEDİLİYOR
+
+Aynı komut root olarak:
+
+```
+failed to write client preface: broken pipe   (çıkış 1)
+```
+
+panelyd istemci grubu üyeliğini **root'a karşı bile** uyguluyor. Bu
+iyi bir özellik ve daha önce hiç ölçülmemişti. Kontrol grubu olmasa
+`panely-client`'ın başarısı "herkes bağlanabiliyor" diye okunabilirdi.
+
+⚠ **Ret SESSİZ.** Journal'da tek satır yok. Bağlanamayan bir istemciyi
+teşhis eden operatör sunucu tarafından hiçbir şey alamıyor. Bu, projenin
+kendi kuralıyla aynı aileden bir kusur: teşhis edilemeyen bir ret,
+yanlış alarm kadar güven yakar.
+
+### 🔴 K-092'de ÖLÇÜLMEMİŞ İDDİA
+
+K-092, "CANLI SUNUCU doğrulaması" başlığı altında `panely alarms`
+çıktısı ve `çıkış kodu 0` bildiriyordu. Kanıt bunun **koşulmadığını**
+gösteriyor:
+
+```
+/tmp/panely-stage/panely → 2 Eylül tarihli (c33b58d)
+--help → ne `alarms` var ne `backup`
+/usr/local/bin → BOŞ; sunucuda başka panely ikilisi yok
+```
+
+CLI, kurulduğu iddia edilen komutlardan iki hafta eskiydi. O satırlar
+uygulamaya bakılarak yazıldı.
+
+**En rahatsız edici yanı:** biçim, bugün gerçekten ölçülünce **doğru
+çıktı**. Yani kayıt okunarak yakalanamazdı. Ölçülmemiş ama doğru görünen
+bir iddia, yanlış olandan daha tehlikelidir — kendini ele vermez.
+"Ölç, iddia etme" kuralının koruduğu şey tam olarak budur ve bu kez
+kural bizzat kuralı yazan kayıtta çiğnendi.
+
+### Yeni bulgu — çıkış kodu ÇAKIŞMASI (kod DEĞİŞTİRİLMEDİ)
+
+`1` hem "etkin alarm var" hem "bağlanamadım" demek. Kontrol grubunda
+ikisi de 1 döndü.
+
+Zararlı yön **kapalı**: bağlantı arızası "sorun var" diye okunuyor,
+yani sessizce iyi görünmüyor. Ters yön (alarm var ama 0 dönmek)
+mümkün değil. `cmd/panely/main.go` doğrulandı: 0/1/2/3 tanımlı, **4
+gerçekten boşta** — ama bu bir sözleşme değişikliği ve `panely alarms`
+üretimde toplam BİR kez koştu. Kullanım verisi yokken sözleşmeyi
+değiştirmek, bu kayıttaki hatanın aynısını tekrarlamak olurdu.
+**Bilinen boşluk olarak bırakıldı; karar kullanıcının.**
+
+### Yan bulgu — SSH taşıması bu sunucuda HİÇ kurulmamış
+
+`panely-client` kullanıcısı var ama `authorized_keys` **boş**, zorlanmış
+komut yok. `panely <komut> kullanıcı@sunucu` bu sunucuya karşı hiç
+çalışmadı; `root@` ile denenince MOTD gRPC önsözünü bozuyor
+("frame too large") — hata doğru ama sebebi hedefin yanlış olması.
+
+Bunun kapsamı bu dilimden geniş: projenin **bütün** CLI canlı
+doğrulamaları yerel soket üzerinden yapılmış, belgelenen SSH yolundan
+değil. K-091 ve öncesi bu gözle okunmalı. Ayrı bir iş.
+
+### Bilinen boşluk CANLIDA görüldü
+
+Tatbikat temizlenirken `disk_low` kendiliğinden kapandı (5 dakikalık
+tur), ama `proxy_unreconciled` **tabloda kaldı**. K-092 bunu zaten
+"vekil alarmı yalnızca AÇILIŞTA" diye kaydetmişti; burada sonucu
+görüldü: uzlaştırma yeniden koşana kadar kapanamayan bir alarm.
+
+Satır elle silinmedi — panelyd yeniden başlatıldı ve alarm üretim
+yolundan kapandı (`durum=kapandi`). Temizliğin kendisi bir ölçüm oldu.
+
+### Taşınabilir ders
+
+Bir mutasyonun yanlış sebeple kırmızıya dönebileceğini K-093'te
+öğrenmiştik. Bu kayıt bir üstünü ekliyor: **bir ölçümün hiç yapılmamış
+olabileceğini de sınamak gerekir.** "Canlı doğrulandı" başlığı,
+altındaki her satırın gerçekten koştuğunu kanıtlamaz. Kanıt, ölçümü
+üreten ikilinin kimliğidir — yeni sürüm yüklendiğine dair kanıt
+(K-088'deki `/proc/<pid>/exe`) daemon için vardı, **CLI için yoktu**.

@@ -4642,3 +4642,104 @@ doğruluk kaynağı yok.
 
 Bilerek kontrol YAZILMADI — çıktı metni için birim dosyasını ayrıştıran
 bir test, koruduğundan fazla kırılganlık getirirdi. Kayıt burada dursun.
+
+## K-092 — Alarm: TESPİT bitti, TESLİMAT ayrı bir karar
+
+Dört arıza koşulu artık kenar tetiklemeli olarak bildiriliyor:
+`heal_exhausted`, `backup_failed`, `proxy_unreconciled`, `disk_low`.
+Hedef journal ve `panely alarms`.
+
+### Dilim neden ikiye bölündü
+
+Alarmın iki bağımsız yarısı var: **tespit** (hangi koşul, hangi eşik,
+ne zaman) ve **teslimat** (baytları Telegram'a götürmek). İkincisinin
+bir duvarı var ve duvar ÖLÇÜLDÜ:
+
+```
+systemd-run --uid=panely --property=IPAddressDeny=any \
+            --property=IPAddressAllow=172.16.0.0/12 \
+            curl https://api.telegram.org/
+→ status=6   (couldn't resolve host)
+
+KONTROL GRUBU — aynı istek kısıtsız:
+→ 302
+```
+
+Kontrol grubu şart: `status=6`'yı tek başına okumak "sunucunun
+internet'i yok" diye de yorumlanabilirdi. İkisi birlikte, engelin
+politikanın kendisi olduğunu kanıtlıyor.
+
+Teslimat için ya panelyd'nin ağ politikası gevşetilmeli (ele geçirilen
+daemon'a dışarı sızma yeteneği vermek demek) ya ayrı bir gönderici
+süreç yazılmalı. İkisi de bu dilimden büyük ve ikisi de kullanıcının
+kararı. Tespit o kararı beklemek zorunda değil — ve teslimatı önce
+yapmak, hangi alarmların doğru olduğunu bilmeden boru döşemek olurdu.
+
+### Ayrıcalıklı yüzey: yine 0 satır
+
+`go list -deps ./cmd/panely-exec | grep panely` çıktısında
+`internal/health` YOK. Üç iş üst üste (K-090 budama, K-091 yedekleme,
+K-092 alarm) bütçeyi hiç kıpırdatmadan bitti; yüzey 2498'de duruyor.
+
+### Kenar tetikleme neden VERİTABANINDA
+
+Alarm durumu panelyd'nin ömründen UZUN yaşamak zorunda. Bellekte
+tutulsaydı `Restart=on-failure` ile çöküp kalkan bir daemon her
+açılışta BÜTÜN alarmları yeniden ateşlerdi — yani en çok gürültüyü tam
+da en kötü durumda üretirdi.
+
+Tekilleştirme uygulama mantığında bir `if` ile değil, BİRİNCİL ANAHTAR
+çakışmasıyla yapılıyor (`ON CONFLICT(id) DO NOTHING`): iki eşzamanlı
+yükseltme aynı satırı hedefler ve yalnızca biri kazanır.
+
+`since` KORUNUYOR: üzerine yazan bir uygulama, üç gündür bozuk olan bir
+şeyi her turda "az önce bozuldu" diye gösterirdi.
+
+### "Bir kez bildir" kuralının açtığı boşluk
+
+Kural tek başına "kötüleştiğini haber verme"ye dönüşüyordu: %9 boş
+diskle uyarı açılır, disk %3'e inince ikinci yükseltme sessizce
+yutulurdu. `EscalateAlarm` bunu kapatıyor — ciddiyet ARTIYORSA satır
+güncellenir ve yeniden bildirilir.
+
+Tersi YAPILMIYOR: kritikten uyarıya düşürme yok. Eşiğin etrafında gidip
+gelen bir koşul aksi hâlde her turda ciddiyet değiştirirdi.
+
+Aynı gerekçe disk eşiklerinde HİSTEREZİS olarak duruyor: alarm %15'te
+açılıyor ama ancak %20'nin üstünde kapanıyor. Aradaki bant kasten
+"ne aç ne kapat" bölgesi.
+
+### Ölçemiyorsak alarm AÇMIYORUZ
+
+Executor'a ulaşılamadığında ya da disk toplamı sıfır okunduğunda alarm
+durumu DEĞİŞTİRİLMİYOR. "Ölçemedim" ile "disk doldu" aynı şey değil ve
+birincisini ikincisi gibi bildirmek yanlış alarmın tanımı olurdu.
+
+### 🔴 Mutasyon betiğinin EN ÖNEMLİ dört satırı hiçbir şey ölçmüyordu
+
+`mutate-alarm.sh` ilk koşuda 16/16 "yakalandı" verdi. K-093'ün kendi
+dersi uygulandı — yakalanan mutasyon da sorgulanmalı — ve dördünün
+sahte olduğu görüldü:
+
+```
+if fresh {  →  if true {
+go test → FAIL  github.com/.../internal/alarm [build failed]
+                "fresh declared and not used"
+```
+
+Yani kenar tetiklemeyi sınayan DÖRT mutasyonun hiçbiri testin iddiasını
+ölçmemişti; `go test` derleme hatasından düşüyordu ve betik bunu
+"yakalandı" diye okuyordu.
+
+Düzeltme iki katmanlı:
+
+1. Mutasyonlar `_ = fresh` ile derlenebilir yapıldı. Artık kırmızı
+   gerçekten iddiadan geliyor:
+   `10 turda 10 bildirim üretildi, 1 bekleniyordu`
+2. **Betiğe DERLEME KAPISI eklendi.** `mutate()` artık testi koşmadan
+   önce `go build` yapıyor; derlenmeyen mutant "ölçüm YAPILMADI" diye
+   raporlanıyor. Bu, sınıfın tamamını kapatıyor.
+
+⚠ **Bu kusur muhtemelen diğer mutasyon betiklerinde de var.** Derleme
+kapısı yalnızca `mutate-alarm.sh`'a eklendi; diğer on bir betik
+taranmadı. Ayrı bir iş.

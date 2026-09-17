@@ -115,11 +115,30 @@ func (c *fakeClock) Sleep(_ context.Context, d time.Duration) error {
 	return nil
 }
 
+// fakeAlarms, yükseltilen ve kapatılan alarmları kaydeder.
+//
+// NopAlarms KULLANILMIYOR: gözetmenin "artık kurtaramıyorum" bildirimi
+// bu dilimin iddialarından biri ve hiçbir şey yapmayan bir hedefle
+// sınanamaz.
+type fakeAlarms struct {
+	raised  []store.Alarm
+	cleared []string
+}
+
+func (f *fakeAlarms) Raise(_ context.Context, a store.Alarm) {
+	f.raised = append(f.raised, a)
+}
+
+func (f *fakeAlarms) Clear(_ context.Context, id string) {
+	f.cleared = append(f.cleared, id)
+}
+
 type harness struct {
 	sup    *Supervisor
 	healer *fakeHealer
 	store  *fakeStore
 	audit  *fakeAuditor
+	alarms *fakeAlarms
 	clock  *fakeClock
 }
 
@@ -134,12 +153,15 @@ func newHarnessWith(t *testing.T, healer *fakeHealer, opts Options) *harness {
 		AppID: testApp, ReleaseID: testRel, Domain: "example.test", ContainerPort: 8080,
 	}}}
 	au := &fakeAuditor{}
+	al := &fakeAlarms{}
 	cl := &fakeClock{now: time.Unix(1_700_000_000, 0)}
-	sup, err := New(healer, st, au, cl, opts)
+	sup, err := New(healer, st, au, al, cl, opts)
 	if err != nil {
 		t.Fatalf("gözetmen kurulamadı: %v", err)
 	}
-	return &harness{sup: sup, healer: healer, store: st, audit: au, clock: cl}
+	return &harness{
+		sup: sup, healer: healer, store: st, audit: au, alarms: al, clock: cl,
+	}
 }
 
 // cycles, n tur koşturur.
@@ -385,27 +407,36 @@ func TestConstructorRejectsIncompleteWiring(t *testing.T) {
 	ok := &fakeHealer{}
 	st := &fakeStore{}
 	au := &fakeAuditor{}
+	al := &fakeAlarms{}
 	cl := &fakeClock{}
 
 	cases := map[string]func() (*Supervisor, error){
-		"saat yok":         func() (*Supervisor, error) { return New(ok, st, au, nil, DefaultOptions) },
-		"iyileştirici yok": func() (*Supervisor, error) { return New(nil, st, au, cl, DefaultOptions) },
-		"depo yok":         func() (*Supervisor, error) { return New(ok, nil, au, cl, DefaultOptions) },
-		"denetçi yok":      func() (*Supervisor, error) { return New(ok, st, nil, cl, DefaultOptions) },
+		"saat yok":         func() (*Supervisor, error) { return New(ok, st, au, al, nil, DefaultOptions) },
+		"iyileştirici yok": func() (*Supervisor, error) { return New(nil, st, au, al, cl, DefaultOptions) },
+		"depo yok":         func() (*Supervisor, error) { return New(ok, nil, au, al, cl, DefaultOptions) },
+		"denetçi yok":      func() (*Supervisor, error) { return New(ok, st, nil, al, cl, DefaultOptions) },
+		// Alarm hedefi de ZORUNLU: nil geçilebilseydi, sessiz arızaya
+		// karşı yazılmış mekanizma sessizce kapatılabilirdi.
+		"alarm yok": func() (*Supervisor, error) { return New(ok, st, au, nil, cl, DefaultOptions) },
 		"aralık sıfır": func() (*Supervisor, error) {
 			o := DefaultOptions
 			o.Interval = 0
-			return New(ok, st, au, cl, o)
+			return New(ok, st, au, al, cl, o)
 		},
 		"eşik sıfır": func() (*Supervisor, error) {
 			o := DefaultOptions
 			o.FailuresBeforeHeal = 0
-			return New(ok, st, au, cl, o)
+			return New(ok, st, au, al, cl, o)
+		},
+		"alarm eşiği sıfır": func() (*Supervisor, error) {
+			o := DefaultOptions
+			o.HealsBeforeAlarm = 0
+			return New(ok, st, au, al, cl, o)
 		},
 		"tavan tabandan küçük": func() (*Supervisor, error) {
 			o := DefaultOptions
 			o.BackoffMax = time.Second
-			return New(ok, st, au, cl, o)
+			return New(ok, st, au, al, cl, o)
 		},
 	}
 	for name, build := range cases {
@@ -430,5 +461,112 @@ func TestDefaultsFitTheThirtySecondCriterion(t *testing.T) {
 	if detect > criterion/2 {
 		t.Errorf("tespit %v sürüyor, ölçütün (%v) yarısından fazlası — "+
 			"iyileştirmeye ve konteyner açılışına pay kalmıyor", detect, criterion)
+	}
+}
+
+// healUntil, geri çekilmeyi aşarak n iyileştirme denemesi ürettirir.
+//
+// Saat elle ilerletiliyor: gözetmen bir sonraki denemeyi
+// `nextHealAt`'e göre erteliyor ve gerçek saatle beklemek testi hem
+// yavaş hem titrek yapardı.
+func (h *harness) healUntil(n int) {
+	for h.healer.heals < n {
+		h.clock.now = h.clock.now.Add(DefaultOptions.BackoffMax)
+		h.cycles(DefaultOptions.FailuresBeforeHeal)
+	}
+}
+
+// TestAlarmOpensOnlyAfterThreshold, alarmın ERKEN çalmadığını doğrular.
+//
+// Tek bir başarısız iyileştirme, imaj çekilirken ya da host anlık yük
+// altındayken de olur. Alarm hemen çalsaydı, kendiliğinden düzelen
+// durumlar için gürültü üretir ve güvenilirliğini ilk günden yakardı.
+func TestAlarmOpensOnlyAfterThreshold(t *testing.T) {
+	healer := &fakeHealer{healthy: false, healErr: errors.New("imaj yok")}
+	h := newHarness(t, healer)
+
+	// Eşiğin BİR ALTINA kadar götür.
+	h.healUntil(DefaultOptions.HealsBeforeAlarm - 1)
+	if len(h.alarms.raised) != 0 {
+		t.Fatalf("eşik aşılmadan alarm açıldı (%d iyileştirme): %d alarm",
+			healer.heals, len(h.alarms.raised))
+	}
+
+	// Eşiği aş.
+	h.healUntil(DefaultOptions.HealsBeforeAlarm)
+	if len(h.alarms.raised) == 0 {
+		t.Fatal("eşik aşıldı ama alarm AÇILMADI — gözetmen kurtaramıyor " +
+			"ve kimsenin haberi yok")
+	}
+
+	got := h.alarms.raised[0]
+	if got.Kind != "heal_exhausted" {
+		t.Errorf("alarm türü %q", got.Kind)
+	}
+	if got.Target != testApp {
+		t.Errorf("alarm hedefi %q, %q bekleniyordu", got.Target, testApp)
+	}
+	if got.Severity != store.SeverityCritical {
+		t.Errorf("alarm ciddiyeti %q, kritik bekleniyordu", got.Severity)
+	}
+	// Hata metni SIZMAMALI: alarm ayrıntısı denetim zincirine de düşüyor
+	// ve zincir ekle-sadece.
+	if strings.Contains(got.Detail, "imaj yok") {
+		t.Errorf("alarm ayrıntısı hata METNİNİ taşıyor: %q", got.Detail)
+	}
+}
+
+// TestAlarmClearsWhenAppRecovers, düzelen uygulamanın alarmını
+// kapattığını doğrular.
+//
+// Kapanmayan bir alarm, bakılmayan bir alarma dönüşür.
+func TestAlarmClearsWhenAppRecovers(t *testing.T) {
+	healer := &fakeHealer{healthy: false, healErr: errors.New("imaj yok")}
+	h := newHarness(t, healer)
+
+	h.healUntil(DefaultOptions.HealsBeforeAlarm)
+	if len(h.alarms.raised) == 0 {
+		t.Fatal("alarm açılmadı")
+	}
+
+	// Uygulama kendiliğinden düzeliyor.
+	healer.healthy = true
+	h.cycles(1)
+
+	wantID := "heal_exhausted:" + testApp
+	found := false
+	for _, id := range h.alarms.cleared {
+		if id == wantID {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("uygulama düzeldi ama alarm kapatılmadı: %v",
+			h.alarms.cleared)
+	}
+}
+
+// TestHealthyAppClearsAlarmEvenWithoutPriorFailure, kapatmanın
+// `st.unhealthy` kontrolüne BAĞLI OLMADIĞINI doğrular.
+//
+// ── Neden bu ayrım önemli ───────────────────────────────────────────
+//
+// panelyd çöküp kalktığında bellekteki gözetim durumu sıfırlanır ama
+// alarm satırı DİSKTE durur. Kapatmayı `st.unhealthy`'ye bağlasaydık,
+// yeniden başlatmadan sonra sağlıklı dönen bir uygulamanın alarmı
+// sonsuza kadar açık kalırdı — ve tam da o alarm, operatörün "bozuk"
+// sandığı şey olurdu.
+func TestHealthyAppClearsAlarmEvenWithoutPriorFailure(t *testing.T) {
+	healer := &fakeHealer{healthy: true}
+	h := newHarness(t, healer)
+
+	h.cycles(2)
+
+	if len(h.alarms.cleared) == 0 {
+		t.Error("sağlıklı uygulama için hiç kapatma çağrılmadı — yeniden " +
+			"başlatmadan sonra kalan alarm asla kapanmazdı")
+	}
+	if len(h.alarms.raised) != 0 {
+		t.Errorf("sağlıklı uygulama alarm açtı: %v", h.alarms.raised)
 	}
 }

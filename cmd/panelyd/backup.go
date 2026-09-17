@@ -8,6 +8,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/erkanrzgc/panely/internal/alarm"
 	"github.com/erkanrzgc/panely/internal/store"
 )
 
@@ -38,7 +39,8 @@ const defaultBackupInterval = time.Hour
 // daemon zaten veri de üretmiyor, yani kaçırılan yedek yeni bir şey
 // taşımazdı.
 func runBackupScheduler(
-	ctx context.Context, db *store.Store, every time.Duration,
+	ctx context.Context, db *store.Store, am *alarm.Manager,
+	every time.Duration,
 ) {
 	if every <= 0 {
 		slog.Warn("zamanlı yedekleme KAPALI",
@@ -50,7 +52,7 @@ func runBackupScheduler(
 	// boyunca hiç yedek olmazdı ve operatör bunu ancak ihtiyaç anında
 	// fark ederdi. Ayrıca kurulumun doğruluğunu hemen görünür kılıyor —
 	// dizin izni yanlışsa bir saat sonra değil, şimdi öğreniyoruz.
-	takeBackup(ctx, db)
+	takeBackup(ctx, db, am)
 
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -59,7 +61,7 @@ func runBackupScheduler(
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			takeBackup(ctx, db)
+			takeBackup(ctx, db, am)
 		}
 	}
 }
@@ -74,8 +76,8 @@ func runBackupScheduler(
 //
 // ⚠ Ama sessiz de kalmıyor. Sessiz arıza en pahalı arıza: yedek
 // alınamadığını ancak geri yüklemeye çalışırken öğrenmek, bu dilimin
-// var olma sebebini ortadan kaldırırdı. Alarm işi (sıradaki dilim) bu
-// satırı bir bildirime bağlayacak.
+// var olma sebebini ortadan kaldırırdı. Bu yüzden başarısızlık artık
+// bir ALARM açıyor ve başarı onu kapatıyor.
 //
 // ── Zamanlı yedek denetim zincirine GİRMİYOR ────────────────────────
 //
@@ -88,14 +90,31 @@ func runBackupScheduler(
 // satır demek ve gerçekten önemli olan girdileri (dağıtım, silme,
 // geri alma) boğardı. Zamanlı yedeğin izi journal'da ve dosyanın
 // kendi adında duruyor.
-func takeBackup(ctx context.Context, db *store.Store) {
+func takeBackup(ctx context.Context, db *store.Store, am *alarm.Manager) {
 	start := time.Now()
 	snap, err := db.Snapshot(ctx)
 	if err != nil {
 		slog.Error("YEDEK ALINAMADI — geri dönüş penceresi eskiyor",
 			"hata", err)
+		// Yedeksiz kalmak KRİTİK: bu, geri dönüş yolunun kendisinin
+		// kaybolması demek ve fark edilmesi en geç olan arıza türü —
+		// ancak geri yüklemeye ihtiyaç duyulduğu gün anlaşılır.
+		am.Raise(ctx, store.Alarm{
+			ID:       alarm.KindBackupFailed + ":panely.db",
+			Kind:     alarm.KindBackupFailed,
+			Target:   "panely.db",
+			Severity: store.SeverityCritical,
+			Since:    time.Now(),
+			// Hata METNİ yazılmıyor: dosya yolu ve disk durumu
+			// taşıyabilir, alarm ayrıntısı ise denetim zincirine de
+			// düşüyor ve zincir ekle-sadece.
+			Detail: "zamanlı yedek alınamıyor — geri dönüş yolu YOK",
+		})
 		return
 	}
+	// Başarılı yedek, varsa alarmı kapatır. Kenar tetiklemeli: alarm
+	// yoksa sessiz.
+	am.Clear(ctx, alarm.KindBackupFailed+":panely.db")
 	// Alanlar TEK TEK yazılıyor. İlk hâli struct'ı olduğu gibi
 	// veriyordu ve journal'da `dosya="{Path:... Bytes:... Taken:...}"`
 	// diye tek bir kalabalık alan çıkıyordu — gerçek sunucuda görüldü.

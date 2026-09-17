@@ -21,6 +21,7 @@ import (
 
 	"google.golang.org/grpc"
 
+	"github.com/erkanrzgc/panely/internal/alarm"
 	"github.com/erkanrzgc/panely/internal/api"
 	"github.com/erkanrzgc/panely/internal/audit"
 	"github.com/erkanrzgc/panely/internal/deploy"
@@ -65,6 +66,9 @@ func run() error {
 			"zamanlı yedek aralığı (0 = kapalı)")
 		restoreFrom = flag.String("restore", "",
 			"verilen yedeği geri yükle ve çık (daemon KAPALI olmalı)")
+
+		diskEvery = flag.Duration("disk-check-interval", defaultDiskInterval,
+			"disk doluluk ölçüm aralığı (0 = kapalı)")
 	)
 	flag.Parse()
 
@@ -231,16 +235,31 @@ func run() error {
 		context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stopSignals()
 
+	// ── Alarm ────────────────────────────────────────────────────────
+	//
+	// Hedef şimdilik journal. Teslimat (Telegram/webhook) AYRI bir karar:
+	// panelyd'nin systemd birimi `IPAddressDeny=any` taşıyor ve dışarı
+	// çıkamıyor — ölçüldü, kısıtlı ortamda curl DNS bile çözemedi.
+	// Tespit o kararı beklemek zorunda değil.
+	alarms := alarm.New(db, alarm.LogSink{})
+
 	supervisor, err := health.New(
-		rollout, db, db, health.SystemClock(), health.DefaultOptions)
+		rollout, db, db, alarms, health.SystemClock(), health.DefaultOptions)
 	if err != nil {
 		return err
 	}
 	go func() { _ = supervisor.Run(shutdown) }()
 
+	// Ters vekil açılışta uzlaştırılamadıysa TRAFİK AKMIYOR demektir.
+	// Bu, koddaki en yüksek ciddiyetli koşul ve şimdiye kadar tek izi
+	// bir slog.Error satırıydı.
+	recordProxyAlarm(shutdown, alarms, proxyProblem)
+
+	go watchDisk(shutdown, exec, alarms, *diskEvery)
+
 	// Zamanlı yedekleme. Gözetmenle aynı kapanış bağlamını paylaşıyor:
 	// tek iptal kaynağı, tanımlı kapanış.
-	go runBackupScheduler(shutdown, db, *backupEvery)
+	go runBackupScheduler(shutdown, db, alarms, *backupEvery)
 
 	slog.Info("daemon hazır",
 		"surum", version.Version,

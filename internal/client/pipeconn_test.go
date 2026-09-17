@@ -88,6 +88,13 @@ func (s *stubService) PruneApp(
 	return nil, errors.New("stubService: PruneApp beklenmiyordu")
 }
 
+// Alarm RPC'si de sessizce başarı dönmüyor; gerekçe PruneApp'ta.
+func (s *stubService) ListAlarms(
+	context.Context, *panelyv1.ListAlarmsRequest,
+) (*panelyv1.ListAlarmsResponse, error) {
+	return nil, errors.New("stubService: ListAlarms beklenmiyordu")
+}
+
 // Yedekleme RPC'leri de sessizce başarı dönmüyor; gerekçe PruneApp'ta.
 func (s *stubService) CreateBackup(
 	context.Context, *panelyv1.CreateBackupRequest,

@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/erkanrzgc/panely/internal/alarm"
 	"github.com/erkanrzgc/panely/internal/audit"
 	"github.com/erkanrzgc/panely/internal/store"
 )
@@ -43,6 +44,37 @@ type Deployments interface {
 type Auditor interface {
 	AppendAudit(ctx context.Context, rec audit.Record) (audit.Record, error)
 }
+
+// Alarms, gözetmenin "artık kurtaramıyorum" noktasını dışarı bildirir.
+//
+// ── Neden gözetmen bunu kendisi karar vermiyor ──────────────────────
+//
+// Gözetmen iyileştirmeyi SONSUZA KADAR deniyor ve bu doğru: geçici bir
+// arıza (dolu disk, düşen bağımlılık) sonradan düzelebilir ve o an
+// uygulama kendiliğinden ayağa kalkmalı. Ama denemeyi sürdürmek ile
+// "her şey yolunda" demek aynı şey değil — art arda başarısız
+// iyileştirme, operatörün bilmesi gereken bir durumdur.
+//
+// Alarm mantığı burada DEĞİL çünkü kenar tetikleme durumu panelyd'nin
+// ömründen uzun yaşamak zorunda; gözetmenin kendi durumu ise bilerek
+// bellekte ve süreçle birlikte ölüyor.
+type Alarms interface {
+	Raise(ctx context.Context, a store.Alarm)
+	Clear(ctx context.Context, id string)
+}
+
+// NopAlarms, hiçbir şey bildirmeyen alarm hedefidir.
+//
+// Yalnızca alarm davranışını sınamayan testler için. Üretimde
+// kullanılması, sessiz arızaya karşı yazılmış mekanizmanın sessizce
+// kapatılması olurdu.
+type NopAlarms struct{}
+
+// Raise, hiçbir şey yapmaz.
+func (NopAlarms) Raise(context.Context, store.Alarm) {}
+
+// Clear, hiçbir şey yapmaz.
+func (NopAlarms) Clear(context.Context, string) {}
 
 // Clock, bekleme davranışını sınanabilir kılar.
 //
@@ -88,6 +120,9 @@ type Options struct {
 	BackoffBase time.Duration
 	// BackoffMax, geri çekilmenin üst sınırı.
 	BackoffMax time.Duration
+	// HealsBeforeAlarm, alarm açılmadan önce kaç iyileştirmenin ARDIŞIK
+	// başarısız olması gerektiği.
+	HealsBeforeAlarm int
 }
 
 // DefaultOptions, Faz 1 ölçütü #3'ün bütçesine göre seçildi.
@@ -108,6 +143,13 @@ var DefaultOptions = Options{
 	FailuresBeforeHeal: 3,
 	BackoffBase:        15 * time.Second,
 	BackoffMax:         10 * time.Minute,
+	// Üç ardışık başarısız iyileştirme ≈ 15+30+60 = 105 saniye.
+	//
+	// `1` OLMAZ: tek bir başarısız iyileştirme, imaj çekilirken ya da
+	// host anlık yük altındayken de olur ve alarm hemen çalarsa
+	// kendiliğinden düzelen durumlar için gürültü üretir — yani alarmın
+	// güvenilirliğini ilk günden yakar.
+	HealsBeforeAlarm: 3,
 }
 
 // appState, tek bir uygulamanın gözetim durumudur.
@@ -129,6 +171,7 @@ type Supervisor struct {
 	healer Healer
 	store  Deployments
 	audit  Auditor
+	alarms Alarms
 	clock  Clock
 	opts   Options
 
@@ -138,9 +181,12 @@ type Supervisor struct {
 }
 
 // New, gözetmeni kurar.
-func New(h Healer, d Deployments, a Auditor, c Clock, o Options) (*Supervisor, error) {
-	if h == nil || d == nil || a == nil || c == nil {
-		return nil, errors.New("health: iyileştirici, depo, denetçi ve saat zorunlu")
+func New(
+	h Healer, d Deployments, a Auditor, al Alarms, c Clock, o Options,
+) (*Supervisor, error) {
+	if h == nil || d == nil || a == nil || al == nil || c == nil {
+		return nil, errors.New(
+			"health: iyileştirici, depo, denetçi, alarm ve saat zorunlu")
 	}
 	if o.Interval <= 0 || o.FailuresBeforeHeal <= 0 {
 		return nil, errors.New("health: aralık ve başarısızlık eşiği sıfır olamaz")
@@ -148,8 +194,11 @@ func New(h Healer, d Deployments, a Auditor, c Clock, o Options) (*Supervisor, e
 	if o.BackoffBase <= 0 || o.BackoffMax < o.BackoffBase {
 		return nil, errors.New("health: geri çekilme tabanı sıfır olamaz ve tavanı aşamaz")
 	}
+	if o.HealsBeforeAlarm <= 0 {
+		return nil, errors.New("health: alarm eşiği sıfır olamaz")
+	}
 	return &Supervisor{
-		healer: h, store: d, audit: a, clock: c, opts: o,
+		healer: h, store: d, audit: a, alarms: al, clock: c, opts: o,
 		state: map[string]*appState{},
 	}, nil
 }
@@ -263,6 +312,17 @@ func (s *Supervisor) markHealthy(ctx context.Context, appID string, st *appState
 	st.unhealthy = false
 	st.heals = 0
 	st.nextHealAt = time.Time{}
+
+	// Alarm KOŞULSUZ kapatılıyor — `st.unhealthy` kontrolünün dışında.
+	//
+	// Gerekçe yeniden başlatma: panelyd çöküp kalktığında bellekteki
+	// `st` sıfırlanır ama alarm satırı diskte DURUR. Kapatmayı
+	// `st.unhealthy`'ye bağlasaydık, yeniden başlatmadan sonra sağlıklı
+	// dönen bir uygulamanın alarmı sonsuza kadar açık kalırdı — ve
+	// kapanmayan bir alarm, bakılmayan bir alarma dönüşür.
+	//
+	// Kapatma da kenar tetiklemeli: etkin alarm yoksa sessiz.
+	s.alarms.Clear(ctx, alarm.KindHealExhausted+":"+appID)
 }
 
 // heal, iyileştirmeyi dener ve geri çekilmeyi ilerletir.
@@ -300,6 +360,31 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 			"deneme", st.heals, "sonraki", st.nextHealAt, "hata", healErr)
 		s.record(ctx, "app.heal", d, audit.OutcomeFailure,
 			fmt.Sprintf(`{"attempt":%d,"error":%q}`, st.heals, healErr.Error()))
+
+		// ── "Kurtaramazsa haberin olmaz" ────────────────────────────
+		//
+		// Gözetmen denemeyi sürdürüyor ve sürdürmeli; ama eşiği aşan
+		// ardışık başarısızlık artık geçici bir dalgalanma değil.
+		//
+		// Her başarısızlıkta değil, EŞİKTEN SONRA her turda çağrılıyor:
+		// alarmın kendisi kenar tetiklemeli olduğu için tekrarlar
+		// sessizce yutuluyor ve burada ayrıca sayaç tutmaya gerek yok.
+		if st.heals >= s.opts.HealsBeforeAlarm {
+			s.alarms.Raise(ctx, store.Alarm{
+				ID:       alarm.KindHealExhausted + ":" + d.AppID,
+				Kind:     alarm.KindHealExhausted,
+				Target:   d.AppID,
+				Severity: store.SeverityCritical,
+				Since:    s.clock.Now(),
+				// ⚠ healErr'in METNİ yazılmıyor: alarm ayrıntısı
+				// denetim zincirine de düşüyor ve zincir ekle-sadece.
+				// Derleme/çalıştırma hatası kullanıcının deposundan
+				// gelen metin taşıyabilir (K-053'ün aynı gerekçesi).
+				Detail: fmt.Sprintf(
+					"%d ardışık iyileştirme başarısız — gözetmen "+
+						"uygulamayı ayağa kaldıramıyor", st.heals),
+			})
+		}
 		return
 	}
 	slog.Info("iyileştirme uygulandı", "uygulama", d.AppID,

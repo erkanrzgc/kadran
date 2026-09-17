@@ -85,6 +85,7 @@ func commands() []command {
 		{"rollback", "<uygulama> [hedef]", "trafiği bir önceki sürüme geri çevirir", (*cli).runRollback},
 		{"logs", "[-f] <uygulama> [hedef]", "canlı sürümün çıktısını akıtır", (*cli).runLogs},
 		{"prune", "[-dry-run] <uygulama>|-all [hedef]", "eski sürümlerin konteynerlerini kaldırır", (*cli).runPrune},
+		{"alarms", "[hedef]", "etkin arıza koşullarını listeler", (*cli).runAlarms},
 		{"backup", "<create|list> [hedef]", "veritabanı yedeklerini alır ve listeler", (*cli).runBackup},
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},

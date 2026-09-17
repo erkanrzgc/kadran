@@ -169,6 +169,66 @@ service PanelyService {
   // alınıyor olmalı" varsayımı, geri yüklemeye ihtiyaç duyulan güne
   // kadar sınanmaz.
   rpc ListBackups(ListBackupsRequest) returns (ListBackupsResponse);
+
+  // ListAlarms, ŞU AN etkin arıza koşullarını listeler.
+  //
+  // ⚠ Bu bir GEÇMİŞ değil, ETKİN KÜME. "Ne oldu" sorusunun cevabı
+  // denetim zincirinde; burası yalnızca "şu an ne bozuk" sorusunu
+  // cevaplıyor ve düzelen koşul listeden DÜŞER.
+  //
+  // ⚠ TESLİMAT AYRI BİR KARAR. Alarmlar şu an yalnızca journal'a ve bu
+  // listeye düşüyor; Telegram/webhook YOK. Sebep ölçüldü: panelyd'nin
+  // systemd birimi IPAddressDeny=any taşıyor ve dışarı çıkamıyor.
+  rpc ListAlarms(ListAlarmsRequest) returns (ListAlarmsResponse);
+}
+
+// AlarmSeverity, alarmın aciliyetidir.
+//
+// İki seviye yeter: "şimdi bak" ve "bilmen iyi olur". Daha ince bir
+// ölçek, eşikleri ezberlemek zorunda kalan bir okuyucu üretir.
+enum AlarmSeverity {
+  ALARM_SEVERITY_UNSPECIFIED = 0;
+  ALARM_SEVERITY_WARNING = 1;
+  ALARM_SEVERITY_CRITICAL = 2;
+}
+
+// AlarmInfo, etkin bir arıza koşuludur.
+message AlarmInfo {
+  // Alarmın kimliği: "tür:hedef" (ör. "heal_exhausted:pfprobe").
+  string id = 1;
+
+  // Alarm türü: heal_exhausted, backup_failed, proxy_unreconciled,
+  // disk_low.
+  string kind = 2;
+
+  // Neyin bozuk olduğu: uygulama kimliği, "panely.db" ya da "host".
+  string target = 3;
+
+  AlarmSeverity severity = 4;
+
+  // Koşulun BAŞLADIĞI an (unix saniye, UTC).
+  //
+  // "Ne zamandır bozuk" sorusunun cevabı ve alarm listesinde en çok
+  // bakılan alan. Koşul sürdükçe DEĞİŞMEZ.
+  int64 since_unix = 5;
+
+  // İnsan okuyacak açıklama.
+  string detail = 6;
+}
+
+message ListAlarmsRequest {}
+
+message ListAlarmsResponse {
+  // En CİDDİDEN ve en ESKİDEN başlayarak sıralı.
+  repeated AlarmInfo alarms = 1;
+
+  // Bildirimin dışarı GÖNDERİLMEDİĞİNİ bildirir; şimdilik her zaman
+  // true.
+  //
+  // Sabit bir değeri telde taşımak gereksiz görünebilir ama K-088'in
+  // dersi: kullanıcı "alarm var" deyince haberdar edileceğini varsayar.
+  // Alanın varlığı, istemcinin bunu yazdırmasını sağlıyor.
+  bool delivery_is_local_only = 2;
 }
 
 // BackupInfo, tek bir yedek dosyasını tanımlar.

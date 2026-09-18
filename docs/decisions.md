@@ -5065,3 +5065,101 @@ onda biri hiçbir şey ölçmüyordu — ve rapor hep yeşildi.
 
 Bir kusur bir yerde bulunduğunda sorulacak soru "düzelttim mi"
 değil, **"aynı sınıf başka nerede?"**
+
+---
+
+## K-097 — Sunucu sertleştirmesi: saldırı ÖLÇÜLDÜ, parola girişi kapatıldı
+
+**Tarih:** 18 Eylül 2026
+**Durum:** canlıda uygulandı ve kontrol gruplu doğrulandı
+
+Dışarıdan bir Linux sertleştirme kontrol listesi geldi. Maddeleri
+tartışmak yerine **sunucu listeye karşı ölçüldü**.
+
+### Zaten daha iyisi vardı
+
+| liste maddesi | panely'deki hâli |
+|---|---|
+| "Container'ları `127.0.0.1:PORT` ile bağla" | konteynerler host'a **hiç port yayımlamıyor** |
+| "Ters vekil kullan" | özel derleme Caddy, `file_server` binary'de YOK |
+| "Servisleri root yerine kısıtlı kullanıcıyla çalıştır" | uid 999 + `IPAddressDeny=any` + `CapabilityBoundingSet=` |
+| "Otomatik güvenlik güncellemeleri" | `unattended-upgrades` aktif, 0 bekleyen |
+
+Dışa açık dinleyen yalnızca üç port: 22, 80, 443.
+
+### 🔴 Ölçülen asıl açık
+
+```
+sshd -T → passwordauthentication yes     (derlenmiş VARSAYILAN;
+                                          sshd_config'te tanım YOKTU)
+```
+
+Hiçbir dosyada `PasswordAuthentication` satırı yoktu — ayar varsayılandan
+geliyordu. "Yapılandırmada yok" ile "kapalı" aynı şey değil; `sshd -T`
+etkin değeri okumasaydı bu görünmezdi.
+
+### Saldırı gerçek ve devam ediyor — ÖLÇÜLDÜ
+
+fail2ban kurulur kurulmaz saniyeler içinde üç IP banladı. Ardından
+journal okundu:
+
+```
+son 24 saat, başarısız giriş : 17.820
+farklı kaynak IP             : 119
+en çok denenen kullanıcılar  : admin(279) user(238) ubuntu(220)
+                               debian(114) deploy(69) test(46)
+```
+
+Dakikada ~12 deneme, kesintisiz. Parola girişi açıkken bunların her
+biri bir şanstı.
+
+### Yapılanlar
+
+**Swap 4 GiB** (`vm.swappiness=10`): 3,8 GB RAM'li makinede OOM
+tamponu. Swappiness düşük — RAM tercih edilsin, swap yalnızca gerçek
+baskıda devreye girsin.
+
+**fail2ban**, yalnızca `sshd` jail'i: `maxretry=5`, `bantime=1h`.
+
+**Parola girişi kapatıldı** — `/etc/ssh/sshd_config.d/00-panely-hardening.conf`:
+
+```
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+```
+
+`00-` öneki kasıtlı: **sshd İLK gördüğü tanımı kullanır**, dolayısıyla
+bu dosya `50-cloud-init.conf` gibi sonraki drop-in'leri etkisiz kılar.
+Sonuncunun kazandığını varsaymak yaygın bir hatadır.
+
+### Sıra: doğrula → uygula → KONTROL GRUBUYLA doğrula
+
+1. Önce anahtarla girilebildiği kanıtlandı (`-o PasswordAuthentication=no`
+   ile bağlanıldı) — kilitlenme riski uygulamadan ÖNCE kapatıldı.
+2. `sshd -t` restart ÖNCESİ koşuldu. Bozuk yapılandırmayla restart,
+   kendini kilitlemenin klasik yoludur.
+3. Restart sonrası **yeni** bir bağlantı açıldı:
+
+```
+DENEY          (anahtar)  → GİRİŞ BAŞARILI
+KONTROL GRUBU  (parola zorlandı) → Permission denied (publickey)
+```
+
+Kontrol grubu şart: yalnızca deneyin geçmesi, parola yolunun hâlâ açık
+olup olmadığını söylemezdi.
+
+### Kapatılmayan: UZAK yedek
+
+Yedekler **yalnızca yerel** (`/var/lib/panely/backups`). rclone/restic/
+borg kurulu değil. Disk giderse yedekler de gider — K-091'in kapsam
+dışı bıraktığı şey buydu ve hâlâ açık. Hedef ve kimlik bilgisi
+gerektirdiği için **kullanıcının kararı**.
+
+### Taşınabilir ders
+
+Bir güvenlik tavsiyesi listesi, üzerinde tartışılacak bir metin değil,
+**sisteme karşı koşulacak bir ölçüm**dir. Ölçünce iki şey çıktı:
+listenin "en kritik" dediği madde zaten daha iyi karşılanmıştı, ve
+kimsenin bakmadığı bir varsayılan 24 saatte 17.820 denemeye kapı
+tutuyordu.

@@ -5163,3 +5163,133 @@ Bir güvenlik tavsiyesi listesi, üzerinde tartışılacak bir metin değil,
 listenin "en kritik" dediği madde zaten daha iyi karşılanmıştı, ve
 kimsenin bakmadığı bir varsayılan 24 saatte 17.820 denemeye kapı
 tutuyordu.
+
+---
+
+## K-098 — Uzak yedek: şifreli, özel anahtar sunucuda YOK
+
+**Tarih:** 18 Eylül 2026
+**Durum:** boru hattı canlıda uçtan uca kanıtlandı; hedef yapılandırması kullanıcıda
+
+K-091 yerel yedeklemeyi getirdi ama kapsamı açıkça yereldi: disk
+giderse yedekler de giderdi. K-097 bunu kırmızı bir açık olarak
+kaydetti. Bu kayıt kapatıyor.
+
+### Şifreleme tercih değil, ZORUNLU — ölçüldü
+
+```
+sqlite3 yedek.db "SELECT env_json FROM apps"
+→ {"DATABASE_URL":"postgres://panely:<parola>@db:5432/..."}
+```
+
+Yedekler uygulama sırlarını düz metin taşıyor. Üçüncü tarafa şifresiz
+göndermek, sırları o tarafa vermek olurdu.
+
+### Özel anahtar bu makinede YOK
+
+`age` AÇIK ANAHTARLA şifreliyor. Sunucuda yalnızca alıcı açık anahtarı
+duruyor. **Sunucu ele geçirilse bile saldırgan geçmiş yedekleri
+çözemez** — yalnızca yenilerini yazabilir.
+
+Bedeli dürüstçe yazıldı: özel anahtar kaybolursa yedekler
+kurtarılamaz.
+
+### Neden AYRI bir birim
+
+panelyd `IPAddressDeny=any` taşıyor (K-092, kontrol gruplu ölçüldü).
+Yükleme yeteneğini panelyd'ye vermek o özelliği çöpe atardı. Yükleyici
+ayrı bir systemd birimi: ağ görüyor, ama **yerel yedeklere yalnızca
+okuma** erişimi var (`ProtectSystem=strict`, `ReadWritePaths` YOK).
+Ele geçirilse bile yedekleri bozamaz.
+
+`TestOffsiteUploaderIsTheOnlyUnitWithNetwork` bu ayrımı kilitliyor —
+kural iki AYRI dosya arasındaki ilişkide yaşadığı için hiçbir birim
+testi tek başına göremezdi.
+
+Bu aynı zamanda ertelenen **alarm teslimatı** kararının şeklini de
+kuruyor: "ayrı gönderici süreç" artık soyut bir seçenek değil,
+çalışan bir örneği var.
+
+### Boru hattı ÜÇÜNCÜ TARAF OLMADAN kanıtlandı
+
+Yerel bir rclone hedefiyle uçtan uca koşuldu:
+
+```
+24 anlık görüntü → şifrelendi → yüklendi → boyut DOĞRULANDI
+indirildi → YEREL makinede çözüldü → integrity_check = ok
+schema_migrations = 8 · 3 uygulama · 131 denetim kaydı · sır yerinde
+```
+
+Kontrol grupları:
+
+| deney | sonuç |
+|---|---|
+| doğru anahtarla çöz | ✅ SQLite format 3 |
+| **yanlış anahtarla çöz** | ✅ `no identity matched any of the recipients` |
+| şifreli dosyanın başlığı | `age-encryption.o…` (SQLite DEĞİL) |
+
+Çözme **sunucuda değil, yerelde** yapıldı — kanıtlanması gereken yol
+buydu.
+
+### 🔴 Çalıştırmasaydık görülmeyecek hata: SONSUZ DÖNGÜ
+
+İlk sürüm en eski uzak yedekleri `OFFSITE_KEEP`e göre siliyordu.
+Ölçüldü:
+
+```
+OFFSITE_KEEP=5, yerelde 24 anlık görüntü
+1. koşu : yüklendi=24            → 19 silindi
+2. koşu : yüklendi=19 atlandı=5  → 19 silindi
+3. koşu : yüklendi=19 atlandı=5  → 19 silindi
+```
+
+Budama, bir sonraki koşunun yeniden yükleyeceği dosyaları siliyordu.
+Her koşuda aynı 19 dosya yeniden şifrelenip yükleniyor ve hemen
+siliniyordu — **ve birim her seferinde BAŞARILI raporluyordu.** Ücretli
+bir sağlayıcıda bu, sonsuza kadar süren ve kimsenin fark etmediği bir
+masraftı.
+
+Kural değişti: **hâlâ yerelde olan bir yedek uzaktan silinmez.** Uzak
+kopyanın işi, yerel kopya gittikten sonra başlıyor.
+
+Düzeltme iki yönden de doğrulandı:
+
+```
+yerelde duran → silinmiyor  (3 koşu: 24 / 0 / 0 yükleme)
+yerelde OLMAYAN → siliniyor (uydurma eski dosya kondu, silindi)
+```
+
+İkinci ölçüm şart: yalnızca ilkine bakmak "budama hiç çalışmıyor"
+durumunu da geçerli gösterirdi.
+
+### Sertleştirme KAZARA kanıtlandı
+
+İlk canlı koşuda 24 dosyanın hepsi düştü:
+
+```
+Failed to copy: open /var/backups/...: read-only file system
+```
+
+Sebep testin kurgusuydu (yerel hedef), ama sonuç gerçekti:
+`ProtectSystem=strict` + `ReadWritePaths` yokluğu **gerçekten**
+uygulanıyor. Üretimde hedef ağ olduğu için sorun değil.
+
+Aynı koşu ikinci bir şeyi de kanıtladı: 24 başarısızlık, `yüklendi=0
+başarısız=24`, çıkış 1, birim `failed`. **Kısmi başarı başarı
+sayılmıyor.**
+
+### Kullanıcıda kalan iki adım
+
+1. `age-keygen` ile anahtar çifti (özel anahtar SUNUCUYA GİRMEZ)
+2. `rclone config` ile hedef — ve sağlayıcıda **silme yetkisi VERME**
+
+İkincisi "ele geçirilen sunucu uzak yedekleri silebilir" satırını
+kapatan tek şey. Şifreleme okumayı engelliyor, silmeyi engellemiyor.
+B2'de `deleteFiles` verilmez; S3'te `s3:DeleteObject` reddedilir.
+
+### Kapatılmayan
+
+- **Arıza bildirilmiyor.** Birim `failed` kalır ama kimse haber almaz.
+  Alarm teslimatı hâlâ açık bir karar (K-092).
+- **Hacim verisi yine kapsam dışı** (K-091): panelyd o dizinleri
+  okuyamıyor.

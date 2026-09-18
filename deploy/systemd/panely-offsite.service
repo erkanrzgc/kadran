@@ -1,0 +1,67 @@
+[Unit]
+# Panely uzak yedek yükleyicisi.
+#
+# ── Neden panelyd'nin İÇİNDE değil ───────────────────────────────────
+#
+# panelyd `IPAddressDeny=any` taşıyor ve hiçbir ağ hedefine ulaşamıyor
+# (K-092'de kontrol gruplu ölçüldü). Bu, ele geçirilen bir kontrol
+# düzleminin dışarı veri sızdırmasını engelliyor. Yükleme yeteneğini
+# panelyd'ye eklemek o özelliği ortadan kaldırırdı.
+#
+# Ayrı birim, ayrı politika: burası ağ görüyor, panelyd görmüyor.
+Description=Panely uzak yedek yükleyicisi
+Documentation=file:/usr/local/lib/panely/offsite/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=panely
+Group=panely
+
+ExecStart=/usr/local/lib/panely/offsite/panely-offsite.sh
+
+# ── Yedeklere YALNIZCA OKUMA ─────────────────────────────────────────
+#
+# Yükleyicinin yazma ihtiyacı yok. ProtectSystem=strict zaten her şeyi
+# salt okunur yapıyor; burada ReadWritePaths VERİLMİYOR. Sonuç: bu
+# süreç ele geçirilse bile yerel yedekleri BOZAMAZ.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Yetki gerekmiyor: uid 999, yalnızca dosya okuyup ağa yazıyor.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# ── Ağ: panelyd'den TEK farkı bu ─────────────────────────────────────
+#
+# Yükleyici internete çıkmak ZORUNDA. Ama yerel ağa erişimi
+# engelleniyor: ele geçirilse bile konteyner ağını ya da host
+# servislerini tarayamasın.
+IPAddressDeny=localhost link-local multicast
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Düz metin yedek PrivateTmp içinde üretiliyor ve süreç bitince yok
+# oluyor; kalıcı diske hiç yazılmıyor.
+PrivateTmp=yes
+
+# Ağ ve şifreleme yavaş olabilir ama sonsuz değil.
+TimeoutStartSec=30min

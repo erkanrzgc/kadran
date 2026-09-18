@@ -1,0 +1,25 @@
+[Unit]
+Description=Panely uzak yedek yükleyicisini günlük çalıştırır
+Documentation=file:/usr/local/lib/panely/offsite/README.md
+
+[Timer]
+# ── Neden günde bir ──────────────────────────────────────────────────
+#
+# Yerel yedek SAATTE bir alınıyor (K-091, `--backup-interval 1h`) ve
+# 24 tanesi tutuluyor. Günde bir yükleme, disk tamamen giderse en fazla
+# bir günlük veri kaybı demek. Daha sık yüklemek ağ ve saklama
+# maliyetini artırır; bu proje için kabul edilen sınır bir gün.
+OnCalendar=daily
+
+# ── Neden rastgele gecikme ───────────────────────────────────────────
+#
+# Sabit bir saatte yüklemek, sağlayıcı tarafında da bizde de ani yük
+# üretir. RandomizedDelaySec bunu yayıyor.
+RandomizedDelaySec=30min
+
+# Makine kapalıyken kaçan koşu, açılışta telafi edilir. Bu OLMASAYDI
+# bir gün kapalı kalan sunucu o günün yedeğini sessizce atlardı.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

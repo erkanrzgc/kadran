@@ -42,11 +42,24 @@ anahtar** sunucuya gider, dosyanın tamamı sende kalır.
 > (parola yöneticisi + çevrimdışı kopya). Kaybolursa yedekler
 > çözülemez. Sunucuda saklama — orada durması bütün amacı bozar.
 
-### 2. Uzak hedefi tanımla (sunucuda)
+### 2. Uzak hedefi tanımla (sunucuda, root olarak)
 
 ```bash
-rclone config
+sudo install -d -m 0755 -o root -g root /etc/panely
+sudo rclone config --config /etc/panely/rclone.conf
+sudo chown root:panely /etc/panely/rclone.conf
+sudo chmod 0640 /etc/panely/rclone.conf
 ```
+
+Yol SABİT: birim `RCLONE_CONFIG=/etc/panely/rclone.conf` ile başlıyor.
+
+> ⚠ **Yapılandırmayı `/var/lib/panely` altına KOYMA** (rclone'un
+> `panely` kullanıcısı için varsayılan yeri orası). O dizin daemon'un;
+> ele geçirilen bir panelyd oradaki dosyayı silip yerine kendisininkini
+> koyabilir — dosyanın sahibi root olsa bile. rclone yapılandırması
+> komut çalıştırabildiği için (ör. webdav `bearer_token_command`), bu
+> ağı olmayan daemon'a ağ gören bir süreçte komut çalıştırma yolu açardı.
+> `/etc/panely` root'un dizini; `panely` orada dosya silemez. Bkz. K-100.
 
 Hedefi `panely-offsite` diye adlandır. Backblaze B2 ve S3 uyumlu her
 sağlayıcı çalışır.
@@ -67,7 +80,6 @@ kuralını kullan.
 ### 3. Yapılandırmayı yaz (sunucuda)
 
 ```bash
-sudo install -d -m 0755 /etc/panely
 sudo tee /etc/panely/offsite.conf >/dev/null <<'CONF'
 OFFSITE_REMOTE=panely-offsite:panely-yedek
 OFFSITE_RECIPIENT=age1...            # 1. adımdaki AÇIK anahtar
@@ -77,9 +89,12 @@ sudo chmod 0640 /etc/panely/offsite.conf
 sudo chgrp panely /etc/panely/offsite.conf
 ```
 
-rclone yapılandırması da `panely` kullanıcısının okuyabileceği yerde
-olmalı (`/var/lib/panely/.config/rclone/rclone.conf` ya da
-`RCLONE_CONFIG` ile gösterilen bir yol).
+⚠ `rclone.conf` sağlayıcı anahtarını taşır ve yükleyici ile daemon aynı
+kullanıcıyla (`panely`) koştuğu için daemon onu OKUYABİLİR — ama
+DEĞİŞTİREMEZ. Bu yüzden 2. adımdaki silme yetkisi kısıtı zorunlu:
+okunan anahtar yedekleri silemesin. OAuth tabanlı sağlayıcılar
+(Google Drive, OneDrive) jetonu yenileyip dosyaya YAZMAK ister; salt
+okunur dosyada bu başarısız olur. Anahtar tabanlı B2/S3 kullan.
 
 ### 4. Zamanlayıcıyı aç
 

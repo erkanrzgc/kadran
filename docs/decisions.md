@@ -5562,3 +5562,70 @@ ve yerine başkası konabilir.
 
 Ayrıcalıklı bir sürecin okuduğu ya da yazdığı her yol, **o süreçten daha
 az ayrıcalıklı biri tarafından yazılabilen bir dizinde durmamalı.**
+
+---
+
+## K-101 — Uzak yedek yapılandırması root'un dizinine sabitlendi
+
+**Tarih:** 21 Eylül 2026
+**Durum:** düzeltildi, canlıya kuruldu; zamanlayıcı hâlâ KAPALI
+
+K-100'ün iki bulgusundan süresi daralan buydu: kullanıcının sıradaki
+adımı `rclone config` çalıştırmak ve belge onu daemon'un dizinine
+yönlendiriyordu. Bu yüzden yürütücü günlüğünden ÖNCE kapatıldı.
+
+### Üç katman
+
+1. **Birim:** `Environment=RCLONE_CONFIG=/etc/panely/rclone.conf`.
+   `/etc/panely` root'un dizini (`0755 root:root`, Ağustos'tan beri
+   `caddy.json` da orada).
+2. **Betik:** yapılandırma dosyasının VE köke kadar her üst dizinin
+   root'a ait olduğunu ve grup/diğerlerinin yazamadığını doğruluyor;
+   değilse çalışmayı reddediyor. `-w` ile sınamak işe yaramazdı: birim
+   `ProtectSystem=strict` ile koşuyor, bu ad alanında her şey salt
+   okunur görünür. Tehdit bu sürecin değil, daemon'un yazabilmesi.
+3. **Test:** `TestOffsiteRcloneConfigOutsideDaemonDirs` — birimin
+   `RCLONE_CONFIG` yolunu `panelyd.service`'in `ReadWritePaths`'iyle
+   karşılaştırıyor. İki elle mutasyonla sınandı: satır silinince ve yol
+   `/var/lib/panely` altına taşınınca kırmızıya döndü.
+
+### Canlıda dört durum
+
+Betik `panely` olarak, geçici bir `offsite.conf` ile koşturuldu:
+
+```
+a) RCLONE_CONFIG tanımsız                     → red
+b) /var/lib/panely altında, dosya ROOT 0640   → red (sahip=999, dizinde yakalandı)
+c) KONTROL: /etc/panely, root:panely 0640     → korumayı GEÇTİ, rclone'a ulaştı
+d) /etc/panely altında, dosya panely'nin      → red
+```
+
+(b) K-100'ün tam vakası: dosyanın sahibi root olduğu hâlde dizin
+daemon'un. Kontrol grubu (c) olmasa korumanın her şeyi reddettiği
+ihtimali açık kalırdı.
+
+### İlk ölçüm GEÇERSİZDİ — iki kez
+
+1. Betik `/root` altına kopyalanmıştı; `panely` okuyamadı ve dört durum
+   da aynı "Permission denied" ile düştü. Aynı çıktı dört farklı
+   beklenti için — ölçüm hiçbir şey ölçmüyordu, kontrol grubu bunu
+   hemen gösterdi.
+2. İkinci denemede dört durum yine aynı hatayı verdi, bu kez
+   **sözdizimi**: `${RCLONE_CONFIG:?… daemon'un …}` içindeki kesme işareti
+   bash'te tırnak açıyor ve betiğin tamamı ayrıştırılamıyor.
+
+İkincisi yayına çıksaydı yükleyici her gece `failed` kalırdı ve bunu
+bildiren hiçbir şey yok (K-098: arıza alarmı bağlı değil). CI hiçbir
+kabuk betiğinin sözdizimini denetlemiyordu. Artık `lint` işi depodaki
+her `*.sh` için `bash -n` koşuyor; bozuk sürümde çıkış 2 verdiği
+gözlendi, 25 betiğin hepsi temiz.
+
+### Kalan açık: aynı kullanıcı
+
+Yükleyici ile daemon aynı kullanıcıyla (`panely`) koşuyor, yani daemon
+`rclone.conf`'u OKUYABİLİR — değiştiremez. Sağlayıcı anahtarının silme
+yetkisi olmaması (K-098) bu yüzden zorunlu. Ayrı bir kullanıcı daha
+güçlü olurdu; bugünkü tehdit (komut çalıştırma) bunsuz kapandı.
+
+Kalıntı temizliği: `/var/lib/panely/.config/rclone` — K-098
+denemelerinden kalan boş bir dizin — silindi.

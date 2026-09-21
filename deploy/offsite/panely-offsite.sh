@@ -63,6 +63,38 @@ OFFSITE_KEEP="${OFFSITE_KEEP:-30}"
 command -v age    >/dev/null || die "age kurulu değil"
 command -v rclone >/dev/null || die "rclone kurulu değil"
 
+# ── rclone yapılandırması daemon'un DEĞİŞTİREMEYECEĞİ yerde olmalı ─────
+#
+# rclone yapılandırması komut çalıştırabilir (webdav
+# `bearer_token_command`). Bu betik AĞ GÖREN tek birimde koşuyor; ağı
+# olmayan panelyd bu dosyayı değiştirebilseydi, ağa çıkan bir süreçte
+# komut çalıştırmış olurdu (K-100).
+#
+# RCLONE_CONFIG tanımsızsa rclone `$HOME/.config/rclone` altına bakar —
+# `panely` için orası /var/lib/panely, yani TAM OLARAK daemon'un dizini.
+#
+# `-w` ile sınamak İŞE YARAMAZ: birim ProtectSystem=strict ile koşuyor,
+# bu ad alanında her şey salt okunur görünür. Tehdit bu sürecin değil,
+# DAEMON'un yazabilmesi. O yüzden sahiplik ve kip okunuyor: dosya ve
+# köke kadar her üst dizin root'un olmalı ve grup/diğerleri
+# yazamamalı. Dosyanın kendi izni yetmez — yazılabilir bir dizindeki
+# root dosyası silinip yerine başkası konabilir (K-100'de ölçüldü).
+# (`${VAR:?…}` burada KULLANILMIYOR: iletideki kesme işareti o sözdizimi
+# içinde tırnak açar ve betiğin tamamını bozar — ilk sürümde oldu.)
+[[ -n "${RCLONE_CONFIG:-}" ]] \
+    || die "RCLONE_CONFIG tanımlı değil — rclone daemon'un dizinine bakardı (bkz. K-100)"
+[[ -r "$RCLONE_CONFIG" ]] || die "rclone yapılandırması okunamadı: $RCLONE_CONFIG"
+yol="$RCLONE_CONFIG"
+while :; do
+    read -r sahip kip < <(stat -c '%u %a' "$yol") \
+        || die "sahiplik okunamadı: $yol"
+    if [[ "$sahip" != 0 ]] || (( 8#$kip & 8#022 )); then
+        die "$yol root'a ait değil ya da başkası yazabiliyor (sahip=$sahip kip=$kip) — rclone yapılandırması daemon'un değiştirebileceği bir yerde (bkz. K-100)"
+    fi
+    [[ "$yol" == / ]] && break
+    yol="$(dirname "$yol")"
+done
+
 [[ -d "$BACKUP_DIR" ]] || die "yedek dizini yok: $BACKUP_DIR"
 
 # ── Alıcı anahtarı BİÇİM olarak doğrula ──────────────────────────────

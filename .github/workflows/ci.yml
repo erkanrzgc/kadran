@@ -59,6 +59,20 @@ jobs:
       - name: go vet
         run: go vet ./...
 
+      # Kabuk betiklerinin SÖZDİZİMİ. Hiçbir test betiklerin çoğunu
+      # koşturmuyor; `panely-offsite.sh` gibi bir betik yalnızca sunucuda,
+      # zamanlayıcıyla koşar. Bozuk bir sözdizimi orada ilk kez görülür ve
+      # birim her gece sessizce `failed` kalırdı. K-101'de tam olarak bu
+      # oldu: `${VAR:?…}` içindeki bir kesme işareti betiğin tamamını
+      # bozdu ve yalnızca canlı sunucuda koşunca fark edildi.
+      - name: Kabuk betiklerinin sözdizimi (bash -n)
+        run: |
+          bozuk=0
+          while IFS= read -r f; do
+            bash -n "$f" || { echo "::error file=$f::bash -n başarısız" >&2; bozuk=1; }
+          done < <(git ls-files '*.sh')
+          exit "$bozuk"
+
       # # Sürüm sabiti neden hem action'ı hem linter'ı kapsıyor?
       #
       # action v6 YALNIZCA golangci-lint v1, v7+ YALNIZCA v2 destekliyor.

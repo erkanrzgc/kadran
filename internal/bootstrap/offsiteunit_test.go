@@ -105,6 +105,68 @@ func TestOffsiteUploaderCannotWriteToDisk(t *testing.T) {
 	}
 }
 
+// daemonYazilabilirYollar, panelyd.service'in ReadWritePaths
+// yönergelerini döndürür — daemon'un yazabildiği, dolayısıyla içindeki
+// HER dosyayı silip değiştirebildiği dizinler.
+func daemonYazilabilirYollar(t *testing.T) []string {
+	t.Helper()
+	var yollar []string
+	for _, satir := range strings.Split(unitOku(t, "panelyd.service"), "\n") {
+		if deger, ok := strings.CutPrefix(satir, "ReadWritePaths="); ok {
+			yollar = append(yollar, strings.Fields(deger)...)
+		}
+	}
+	if len(yollar) == 0 {
+		t.Fatal("panelyd.service'te ReadWritePaths yok — ölçüm geçersiz: " +
+			"karşılaştırılacak bir şey bulunamadı")
+	}
+	return yollar
+}
+
+// altinda, yol'un dizin'in kendisi ya da altında olup olmadığını söyler.
+func altinda(yol, dizin string) bool {
+	dizin = strings.TrimSuffix(dizin, "/")
+	return yol == dizin || strings.HasPrefix(yol, dizin+"/")
+}
+
+// TestOffsiteRcloneConfigOutsideDaemonDirs, yükleyicinin rclone
+// yapılandırmasının daemon'un DEĞİŞTİREMEYECEĞİ bir yerde olduğunu
+// doğrular.
+//
+// ── Kapatılan delik (K-100) ──────────────────────────────────────────
+//
+// Birim RCLONE_CONFIG tanımlamıyordu. rclone o zaman
+// `$HOME/.config/rclone` altına bakar ve `panely`nin ev dizini
+// /var/lib/panely — daemon'un kendi dizini. Dosya root'a ait olsa bile
+// daemon onu silip yerine kendisininkini koyabilir; bu canlıda bir
+// sınama dosyasıyla ölçüldü. rclone yapılandırması komut çalıştırabildiği
+// için (webdav `bearer_token_command`) bu, ağı olmayan daemon'a ağ gören
+// bir süreçte komut çalıştırma yolu açardı.
+//
+// İki dosya arasındaki bir ilişki: hiçbir birim testi tek başına göremez.
+func TestOffsiteRcloneConfigOutsideDaemonDirs(t *testing.T) {
+	var yol string
+	for _, satir := range strings.Split(unitOku(t, "panely-offsite.service"), "\n") {
+		if deger, ok := strings.CutPrefix(satir, "Environment=RCLONE_CONFIG="); ok {
+			yol = strings.TrimSpace(deger)
+		}
+	}
+	if yol == "" {
+		t.Fatal("panely-offsite.service RCLONE_CONFIG tanımlamıyor — rclone " +
+			"$HOME/.config/rclone'a, yani daemon'un dizinine bakar")
+	}
+	if !strings.HasPrefix(yol, "/") {
+		t.Fatalf("RCLONE_CONFIG göreli: %q — hangi dizine düştüğü çalışma dizinine bağlı", yol)
+	}
+
+	for _, dizin := range daemonYazilabilirYollar(t) {
+		if altinda(yol, dizin) {
+			t.Errorf("rclone yapılandırması %q, daemon'un yazabildiği %q altında — "+
+				"ele geçirilen panelyd yükleyicinin yapılandırmasını değiştirebilir", yol, dizin)
+		}
+	}
+}
+
 // TestOffsiteTimerSurvivesDowntime, kaçan bir koşunun telafi
 // edildiğini doğrular.
 //

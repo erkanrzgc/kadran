@@ -21,6 +21,16 @@ Group=panely
 
 ExecStart=/usr/local/lib/panely/offsite/panely-offsite.sh
 
+# rclone yapılandırmasının yeri SABİT ve root'un dizininde.
+#
+# Tanımsız bırakılsaydı rclone `$HOME/.config/rclone` altına bakardı;
+# `panely`nin ev dizini /var/lib/panely, yani daemon'un yazabildiği
+# dizin. Oradaki bir dosya root'a ait olsa bile daemon onu silip yerine
+# kendisininkini koyabilir, ve rclone yapılandırması komut
+# çalıştırabilir — ağı olmayan daemon'a ağ gören bir süreçte komut
+# yolu (K-100). Betik de yolun sahipliğini ayrıca doğruluyor.
+Environment=RCLONE_CONFIG=/etc/panely/rclone.conf
+
 # ── Yedeklere YALNIZCA OKUMA ─────────────────────────────────────────
 #
 # Yükleyicinin yazma ihtiyacı yok. ProtectSystem=strict zaten her şeyi

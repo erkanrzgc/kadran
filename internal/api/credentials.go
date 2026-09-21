@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"time"
 
@@ -58,7 +59,30 @@ type callerCreds struct {
 	peer credentials.TransportCredentials
 }
 
+// ServerHandshake, el sıkışmayı yürütür ve BAŞARISIZLIĞI günlüğe yazar.
+//
+// ── Ret SESSİZ olmamalı (K-095) ──────────────────────────────────────
+//
+// gRPC el sıkışma hatalarını kendi günlükçüsüne yazıyor ve o günlükçü
+// varsayılan olarak sessiz. Yani root ya da yanlış gruptaki bir
+// kullanıcı reddedildiğinde istemci "connection reset by peer" görüyor,
+// sunucu journal'ında TEK SATIR yok. `usermod -aG panely-client` ile
+// eklenen ikinci bir yönetici (SO_PEERCRED yalnızca birincil grubu
+// raporlar) sorununu sunucu tarafında hiç bulamazdı.
+//
+// Hata metni peercred'den gelir ve `pid= uid= gid=` taşır; KİMİN
+// reddedildiği böylece görünür. Soketin dizini 0750 panely:panely-client
+// olduğundan buraya ulaşabilen herkes zaten yerel ve ayrıcalıklıdır;
+// satırları çoğaltarak günlüğü boğma riski ihmal edilebilir.
 func (c *callerCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
+	conn, info, err := c.handshake(raw)
+	if err != nil {
+		slog.Warn("api.sock bağlantısı reddedildi", "sebep", err)
+	}
+	return conn, info, err
+}
+
+func (c *callerCreds) handshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	conn, peerInfo, err := c.peer.ServerHandshake(raw)
 	if err != nil {
 		return nil, nil, err

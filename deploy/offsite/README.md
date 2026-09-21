@@ -72,10 +72,67 @@ yedekleri silebilir" satırını kapatan tek şey:
   Object Lock / sürümleme aç.
 - **S3:** IAM politikasında `s3:DeleteObject` reddedilsin, kovada
   versioning + MFA delete açık olsun.
+- **Cloudflare R2:** aşağıdaki ayrı bölüme bak — R2'de "yaz ama silme"
+  izni YOK, koruma başka yoldan kuruluyor.
 
 Silme yetkisi vermezsen betiğin uzak budaması çalışmaz; bu bir
-kusur değil, tercih. `OFFSITE_KEEP` yerine sağlayıcının yaşam döngüsü
-kuralını kullan.
+kusur değil, tercih. `offsite.conf`'a `OFFSITE_PRUNE=hayir` yaz ve
+eskiyenleri sağlayıcının yaşam döngüsü kuralına bırak.
+
+#### Cloudflare R2 (ücretsiz katman: 10 GB, çıkış ücreti yok)
+
+Ölçülen boyut (21 Eyl): şifreli bir yedek 143.592 bayt. Günde 24
+yedek × 90 gün ≈ 310 MB — ücretsiz katmanın çok altında. Uygulama
+eklendikçe veritabanı büyür; oran değişirse yeniden ölç.
+
+⚠ **R2 token'larında silmesiz yazma izni YOK.** Seçenekler Admin
+Read & Write, Admin Read, Object Read & Write, Object Read. Yazabilen
+her token SİLEBİLİR. Silmeyi durduran şey kovadaki **bucket lock**:
+
+1. Kova oluştur: `panely-yedek` (Standard sınıf — ücretsiz katman
+   Infrequent Access'e UYGULANMIYOR).
+2. **Bucket lock** kuralı ekle: önek `panely-`, saklama **30 gün**.
+   Kilitli bir nesne o süre dolmadan silinemez ve üzerine yazılamaz.
+3. **Yaşam döngüsü** kuralı ekle: önek `panely-`, **90 gün** sonra sil.
+   Kilitten uzun olmalı; kilit her zaman önceliklidir.
+4. API token: **Object Read & Write**, YALNIZCA `panely-yedek` kovasına.
+   Admin token KULLANMA: kova yönetimi yetkisi taşır ve kilit bir kova
+   ayarıdır — sunucudaki bir anahtarın kilidi değiştirebilmesi,
+   kilidin amacını boşa çıkarırdı.
+5. Sunucuda `rclone config --config /etc/panely/rclone.conf` ile
+   `panely-offsite` adında bir `s3` hedefi kur. Sonuç şöyle görünmeli:
+
+   ```ini
+   [panely-offsite]
+   type = s3
+   provider = Cloudflare
+   access_key_id = …
+   secret_access_key = …
+   endpoint = https://<hesap-kimliği>.r2.cloudflarestorage.com
+   acl = private
+   no_check_bucket = true
+   ```
+
+   `no_check_bucket = true` ŞART: nesne düzeyindeki token kova
+   oluşturamaz ve rclone aksi hâlde "Access Denied" ile düşer
+   (Cloudflare'in kendi belgesi).
+6. `offsite.conf`'a `OFFSITE_PRUNE=hayir` yaz. Budama kilitli
+   dosyaları silmeye çalışıp her koşuda hata basardı.
+
+**Kilit ölçülmeden güvenilmez.** Cloudflare belgesi kilidin token
+iznine ağır bastığını açıkça YAZMIYOR. Kurulumdan sonra aynı token'la
+iki silme denenmeli:
+
+- kilitli önekte (`panely-…`) bir dosya → **reddedilmeli**
+- kilitsiz önekte bir sınama dosyası → **silinmeli** (kontrol grubu:
+  token'ın silme yetkisi olduğunu, reddin kilitten geldiğini kanıtlar)
+
+⚠ **Kilidin bedeli — maliyet.** Sunucu ele geçirilirse yazabilen
+anahtar kovaya `panely-` önekli BÜYÜK dosyalar yükleyebilir. Ücretsiz
+katman 10 GB; üstü ücretli, ve kilit bu dosyaların da 30 gün
+silinmesini engeller. Kilit süresini gereğinden uzun tutma; 30 gün,
+"fark et ve müdahale et" için yeterli bir pencere. Cloudflare
+hesabındaki kullanım/fatura bildirimlerini kontrol et.
 
 ### 3. Yapılandırmayı yaz (sunucuda)
 
@@ -84,6 +141,7 @@ sudo tee /etc/panely/offsite.conf >/dev/null <<'CONF'
 OFFSITE_REMOTE=panely-offsite:panely-yedek
 OFFSITE_RECIPIENT=age1...            # 1. adımdaki AÇIK anahtar
 OFFSITE_KEEP=30
+# OFFSITE_PRUNE=hayir                # R2 / silmesiz token: budamayı kapat
 CONF
 sudo chmod 0640 /etc/panely/offsite.conf
 sudo chgrp panely /etc/panely/offsite.conf

@@ -5778,3 +5778,68 @@ bir günlük gerçek reddi boğardı. Soket dizini `0750
 panely:panely-client` olduğu için oraya ulaşabilen herkes zaten yerel
 ve ayrıcalıklı; satırları çoğaltarak journal'ı doldurma riski ihmal
 edilebilir.
+
+---
+
+## K-104 — Uzak yedek hedefi olarak Cloudflare R2 hazırlandı
+
+**Tarih:** 21 Eylül 2026
+**Durum:** betik + belge; sunucuya KURULMADI, zamanlayıcı KAPALI
+
+Kullanıcı Cloudflare'in ücretsiz hizmetlerini kullanmak istiyor. İlk
+aday uzak yedek, çünkü K-098'in mekanizması hazır ve yalnızca bir hedef
+bekliyor. Ölçülen: alan adı (`erkanrzgc.dev`) Vercel DNS'te, Cloudflare'de
+DEĞİL. R2 alan adına bağlı olmadığı için hemen kullanılabilir; proxy,
+WAF, Tunnel ve DNS-01 ise DNS taşımasını gerektirir (kullanıcının kararı).
+
+### R2, K-098'in varsayımını kırıyor
+
+K-098 "sağlayıcıda silme yetkisi verme" diyordu. R2'nin belgesi
+(21 Eyl okundu) dört token izni sayıyor: Admin Read & Write, Admin Read,
+Object Read & Write, Object Read. **Silmesiz yazma yok** — yazabilen her
+token silebilir. Silmeyi durduracak şey kovadaki **bucket lock**
+(önek başına saklama süresi).
+
+Bunun iki sonucu var:
+
+1. **Betiğin budaması kilitle çatışır.** Kilitli dosyayı silmeye
+   çalışan budama her koşuda hata basardı. `OFFSITE_KEEP=0` bu işi
+   GÖRMEZDİ: o değer "yerelde olmayan her şeyi sil" demek. Açık bir
+   anahtar eklendi: `OFFSITE_PRUNE=evet|hayir` (varsayılan `evet`,
+   bilinmeyen değer reddediliyor). `hayir` iken eskiyenleri R2'nin
+   yaşam döngüsü kuralı siliyor.
+2. **Kilidin token'a ağır bastığı BELGEDE YAZMIYOR.** Belge kilidin
+   silmeyi ve üzerine yazmayı engellediğini söylüyor, ama Object Read &
+   Write token'ına karşı da geçerli olduğunu açıkça söylemiyor. Kurulumda
+   kontrol gruplu ölçülecek: kilitli önekte silme reddedilmeli, kilitsiz
+   önekte aynı token'la silme BAŞARILI olmalı.
+
+### Anahtar sunucuda ölçüldü
+
+Yerel bir rclone hedefiyle, yerelde olmayan eski bir dosya konup betik
+koşturuldu:
+
+```
+OFFSITE_PRUNE=evet   → "1 tanesi siliniyor", eski dosya SİLİNDİ   (kontrol)
+OFFSITE_PRUNE=hayir  → "uzak budama KAPALI",  eski dosya DURUYOR
+OFFSITE_PRUNE=belki  → HATA, çıkış 1
+```
+
+Şifreli bir yedeğin boyutu da ölçüldü: 143.592 bayt. Günde 24 × 90 gün
+≈ 310 MB; ücretsiz katman 10 GB.
+
+### Belgeye eklenen bedel
+
+Kilit silmeyi durduruyor ama YAZMAYI durdurmuyor. Ele geçirilen bir
+sunucu kovayı `panely-` önekli büyük dosyalarla doldurabilir; 10 GB'ın
+üstü ücretli ve kilit o dosyaların da 30 gün silinmesini engelliyor.
+Kilit süresi bu yüzden "fark et ve müdahale et" penceresi kadar
+tutuldu (30 gün), yaşam döngüsü 90 gün.
+
+### Koddan okunan, henüz ÖLÇÜLMEYEN bir boşluk
+
+Yükleme döngüsü uzaktaki dosyayı yalnızca ADIYLA atlıyor
+(`grep -qxF "$enc" "$remote_list"`). Bir yükleme yanlış boyutla kalırsa
+o koşu doğru biçimde başarısız oluyor; ama sonraki koşu dosyayı "zaten
+var" diye atlıyor ve yeşil bitiyor. Bozuk kopya kalıcı olur ve R2'de
+kilit onu yeniden yazmayı da engeller. Ayrı iş; önce ölçülecek.

@@ -35,8 +35,9 @@
 # süreç onu okuyabiliyor. `panely` kullanıcısı ele geçirilirse saldırgan
 # uzak yedekleri SİLEBİLİR. Şifreleme okumayı engelliyor, silmeyi
 # engellemiyor. Gerçek koruma sağlayıcı tarafında: B2'de silme yetkisi
-# olmayan bir uygulama anahtarı, ya da S3'te Delete'i reddeden bir
-# politika. Bkz. deploy/offsite/README.md.
+# olmayan bir uygulama anahtarı, S3'te Delete'i reddeden bir politika,
+# R2'de ise kovadaki bucket lock (R2 token'larında silmesiz yazma izni
+# yok). Bkz. deploy/offsite/README.md.
 set -uo pipefail
 
 CONF="${PANELY_OFFSITE_CONF:-/etc/panely/offsite.conf}"
@@ -59,6 +60,20 @@ source "$CONF"
 : "${OFFSITE_REMOTE:?offsite.conf içinde OFFSITE_REMOTE tanımlı değil}"
 : "${OFFSITE_RECIPIENT:?offsite.conf içinde OFFSITE_RECIPIENT (age açık anahtarı) tanımlı değil}"
 OFFSITE_KEEP="${OFFSITE_KEEP:-30}"
+
+# OFFSITE_PRUNE=hayir: uzak budama TAMAMEN kapalı; eskiyenleri
+# sağlayıcının yaşam döngüsü kuralı siler.
+#
+# Neden gerekli: Cloudflare R2'nin token'larında "yaz ama silme" izni
+# YOK (yalnızca Object Read & Write). Silmeyi engelleyen şey kovadaki
+# bucket lock (saklama kilidi). Kilitli dosyaları silmeye çalışan bir
+# budama her koşuda hata basardı. OFFSITE_KEEP=0 bu anlama GELMİYOR —
+# o "yerelde olmayan her şeyi sil" demek; açık bir anahtar gerekiyordu.
+OFFSITE_PRUNE="${OFFSITE_PRUNE:-evet}"
+case "$OFFSITE_PRUNE" in
+    evet|hayir) ;;
+    *) die "OFFSITE_PRUNE yalnızca 'evet' ya da 'hayir' olabilir: $OFFSITE_PRUNE" ;;
+esac
 
 command -v age    >/dev/null || die "age kurulu değil"
 command -v rclone >/dev/null || die "rclone kurulu değil"
@@ -189,32 +204,40 @@ done
 # Kök sebep: budama, bir sonraki koşunun yeniden yükleyeceği dosyaları
 # siliyordu. Yerelde duran bir yedeği uzaktan silmek zaten anlamsız —
 # uzak kopyanın işi, yerel kopya GİTTİKTEN sonra başlıyor.
-mapfile -t remote_all < <(rclone lsf "$OFFSITE_REMOTE" 2>/dev/null |
-                          grep -E '^panely-.*\.db\.age$' | sort)
+uzak_buda() {
+    mapfile -t remote_all < <(rclone lsf "$OFFSITE_REMOTE" 2>/dev/null |
+                              grep -E '^panely-.*\.db\.age$' | sort)
 
-prunable=()
-for r in "${remote_all[@]}"; do
-    # "panely-....db.age" → "panely-....db"
-    [[ -e "$BACKUP_DIR/${r%.age}" ]] && continue
-    prunable+=("$r")
-done
-
-keep_floor=$(( ${#remote_all[@]} - ${#prunable[@]} ))
-if (( OFFSITE_KEEP < keep_floor )); then
-    log "UYARI: OFFSITE_KEEP=$OFFSITE_KEEP ama yerelde $keep_floor yedek duruyor;" \
-        "onlar silinmiyor (silinseler bir sonraki koşu yeniden yüklerdi)."
-fi
-
-target_extra=$(( OFFSITE_KEEP - keep_floor ))
-(( target_extra < 0 )) && target_extra=0
-
-if (( ${#prunable[@]} > target_extra )); then
-    drop=$(( ${#prunable[@]} - target_extra ))
-    log "uzakta ${#remote_all[@]} yedek var — yerelde olmayan $drop tanesi siliniyor"
-    for ((i = 0; i < drop; i++)); do
-        rclone deletefile "$OFFSITE_REMOTE/${prunable[i]}" 2>/dev/null ||
-            echo "panely-offsite: silinemedi ${prunable[i]}" >&2
+    prunable=()
+    for r in "${remote_all[@]}"; do
+        # "panely-....db.age" → "panely-....db"
+        [[ -e "$BACKUP_DIR/${r%.age}" ]] && continue
+        prunable+=("$r")
     done
+
+    keep_floor=$(( ${#remote_all[@]} - ${#prunable[@]} ))
+    if (( OFFSITE_KEEP < keep_floor )); then
+        log "UYARI: OFFSITE_KEEP=$OFFSITE_KEEP ama yerelde $keep_floor yedek duruyor;" \
+            "onlar silinmiyor (silinseler bir sonraki koşu yeniden yüklerdi)."
+    fi
+
+    target_extra=$(( OFFSITE_KEEP - keep_floor ))
+    (( target_extra < 0 )) && target_extra=0
+
+    if (( ${#prunable[@]} > target_extra )); then
+        drop=$(( ${#prunable[@]} - target_extra ))
+        log "uzakta ${#remote_all[@]} yedek var — yerelde olmayan $drop tanesi siliniyor"
+        for ((i = 0; i < drop; i++)); do
+            rclone deletefile "$OFFSITE_REMOTE/${prunable[i]}" 2>/dev/null ||
+                echo "panely-offsite: silinemedi ${prunable[i]}" >&2
+        done
+    fi
+}
+
+if [[ "$OFFSITE_PRUNE" == evet ]]; then
+    uzak_buda
+else
+    log "uzak budama KAPALI (OFFSITE_PRUNE=hayir) — eskiyenleri sağlayıcının yaşam döngüsü kuralı siler"
 fi
 
 log "özet: yüklendi=$uploaded atlandı=$skipped başarısız=$failed"

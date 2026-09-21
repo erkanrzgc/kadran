@@ -62,10 +62,11 @@ crosses one of these is in scope and will be treated as high severity:
    client key incapable of anything but running that one binary. A shell, a tunnel,
    or a second command is in scope.
 4. **Forging or breaking the audit chain.** Writing a record attributed to another
-   actor, deleting a record without `panely audit verify` detecting it, or forging the
-   SSH fingerprint carried in the connection preamble.
-5. **Reading secrets** from the vault, from process memory, or from the audit log
-   (which redacts vault fields before writing).
+   actor, deleting a record without `panely audit verify` detecting it (other than
+   the known cross-chain gap listed below), or forging the SSH fingerprint carried
+   in the connection preamble.
+5. **Reading environment values or build arguments** from the audit log (both are
+   written as `[REDACTED]`) or from process memory.
 6. **Cross-application escape** — one deployed app reaching another app's volumes,
    network, or environment.
 
@@ -73,16 +74,22 @@ crosses one of these is in scope and will be treated as high severity:
 
 These are known and documented limitations, not undisclosed weaknesses:
 
-- **Container environment variables are visible to `docker inspect`.** The vault
-  protects secrets at rest, not at container runtime. The mitigation is that only
-  the executor can reach Docker. This boundary is documented, not hidden.
+- **There is no secret store yet.** Environment variables are stored in the
+  daemon's database (`0600`, owned by `panely`) and are visible to `docker inspect`
+  on the host. The mitigation is that only the executor can reach Docker. This
+  boundary is documented, not hidden.
+- **The two audit chains are not compared with each other.** Each is verified on
+  its own, so a compromised `panelyd` that drops records from *its own* chain is
+  not detected. Closing this needs the executor to return its record hash
+  (`docs/decisions.md`, K-079). Tampering with the *executor's* chain remains in
+  scope.
 - **Root on the server can do anything.** Panely defends against a compromised
   *panel*, not against an attacker who already holds root.
 - **Anyone in the `panely-client` group can talk to `api.sock`.** That is the
   design; group membership is the authorization boundary and is set up by
   `bootstrap`. Note the two groups are distinct and the distinction is
-  load-bearing: `panely-client` reaches `api.sock`, while `exec.sock` is
-  `0750 root:panely` and the client group cannot traverse to it at all.
+  load-bearing: `panely-client` reaches `api.sock`, while `exec.sock` sits in a
+  `0750 root:panely` directory the client group cannot traverse at all.
   Membership must be the user's *primary* group — `SO_PEERCRED` reports
   only that, so adding a second admin with `usermod -aG` yields a silent
   denial rather than access.

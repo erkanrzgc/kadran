@@ -80,7 +80,7 @@ type command struct {
 func commands() []command {
 	return []command{
 		{"status", "[hedef]", "sunucu ve daemon durumunu gösterir", (*cli).runStatus},
-		{"app", "<create|list|show> …", "uygulama tanımlarını yönetir", (*cli).runApp},
+		{"app", "<create|update|list|show|delete> …", "uygulama tanımlarını yönetir", (*cli).runApp},
 		{"deploy", "<uygulama> [hedef]", "bir commit'i derler ve trafiği ona çevirir", (*cli).runDeploy},
 		{"rollback", "<uygulama> [hedef]", "trafiği bir önceki sürüme geri çevirir", (*cli).runRollback},
 		{"logs", "[-f] <uygulama> [hedef]", "canlı sürümün çıktısını akıtır", (*cli).runLogs},

@@ -5446,3 +5446,119 @@ dizinini tek komutta veriyordu.
 **Bir suçlama da ölçümdür** ve aynı kurala tabidir. K-095 "ölç, iddia
 etme" kuralını savunurken onu çiğnedi. Kural en çok, kişinin kendini
 haklı bulduğu yerde gevşer.
+
+---
+
+## K-100 — README ölçülerek yeniden yazıldı; yürütücü günlüğü daemon'un dizininde duruyor
+
+**Tarih:** 21 Eylül 2026
+**Durum:** belge düzeltmesi + bir test; güvenlik bulgusu KAYDEDİLDİ,
+düzeltmesi ayrı iş
+
+README 8 Ağustos'tan beri değişmemişti. Yeniden yazmadan önce içindeki
+her iddia canlı sunucuya ya da koda karşı ölçüldü.
+
+### Yanlış çıkan iddialar
+
+| README / SECURITY.md diyordu | ölçülen |
+|---|---|
+| panelyd kendi kayıtlarını düşürse `audit verify` farkı yakalar | **K-079'da geri çekilmişti** — `exec.proto` ve SECURITY.md düzeltildi, README 6 hafta boyunca vaat etmeye devam etti. Karşılaştırma kodu yok |
+| `api.sock` grubu `panely` | `panely-client` |
+| arm64 gerçek donanımda hiç koşmadı | 14 Eyl'den beri CI'da gerçek ARM'da koşuyor |
+| Faz 1 "sürüyor" | canlıda |
+| üç ikili | beş: `panely-caddy` hiç yoktu |
+| `panely-connect` ~50 satır | 88 |
+| "on dört gerçek hata" | kaynaksız sayı; kaldırıldı |
+| masaüstü "asıl arayüz" | dört salt-okunur çağrı (`version`, `status`, `audit.list`, `audit.verify`) |
+| SECURITY.md: "vault" sırları korur | vault YOK; env değerleri `panely.db`'de düz metin |
+| CLI yardımı `app <create\|list\|show>` | `update` ve `delete` gizliydi |
+
+Son satır bir testle kilitlendi: `TestUsageListsEverySubcommand`,
+yardım metnindeki alt komut listesini dağıtıcının "bilinmeyen alt komut"
+mesajındaki listeyle karşılaştırıyor. Düzeltmeden önce kırmızıya döndüğü
+gözlendi (`["create" "list" "show"]` ≠ beş komut).
+
+### Doğru ama YANLIŞ SEBEPLE geçen bir kontrol
+
+README'nin güvenlik doğrulama listesi `ssh panely-client@sunucu docker ps`
+için "BAŞARISIZ OLMALI" diyordu. Ölçüldü: **çıkış 0.** Zorlanmış komut
+istenen komutu yok sayıyor, `api.sock`'a bağlanıyor ve geri gelen şey
+gRPC'nin ayar çerçevesi (`\0\0\006\004…`). Güvenlik özelliği doğru,
+kontrolün tarifi yanlıştı — "başarısız olmalı" diye okuyan biri çıkış
+0'ı görünce bir delik sanırdı. Artık beklenen çıktı yazıyor.
+
+`systemd-analyze security` için yazılı hedef `< 2.0` idi; `panely-exec`
+**2.4** ölçüldü. Hedef yerine birim başına ölçülen değerler yazıldı.
+
+### Kurulum bölümü TAZE KLONLA sınandı
+
+README'de kurulum bölümü hiç yoktu. Yazılan adımlar, GitHub'dan yeni
+alınmış bir klonda sırayla koşuldu:
+
+```
+buf generate OLMADAN go build   → no required module provides package
+                                  .../internal/pb/panely/v1        (kontrol grubu)
+buf generate + build-release.sh → 16 sn, dört sunucu ikilisi + panely
+```
+
+Üretilmiş kod depoda yok; kontrol grubu olmasa "klonla ve derle"
+yazılırdı ve ilk okuyucunun ilk komutu düşerdi. `bootstrap`'ın kendisi
+ise Ağustos başından beri taze bir sunucuda koşmadı — README bunu açıkça
+söylüyor.
+
+### 🔴 Güvenlik bulgusu: daemon, yürütücünün günlüğünü SİLEBİLİYOR
+
+`exec-audit.log` `root:panely 0640` — daemon içeriğine yazamıyor. Ama
+dosya `/var/lib/panely` içinde duruyor ve o dizin `panely:panely 0750`,
+yapışkan bit yok. Bir dizine yazma yetkisi, içindeki dosyayı silme ve
+yeniden adlandırma yetkisidir; dosyanın sahibi önemli değildir.
+
+Gerçek günlüğe dokunmadan, aynı dizinde kök sahipli bir sınama
+dosyasıyla ölçüldü:
+
+```
+panely → dosyaya ekleme      Permission denied     (kontrol: izin tutuyor)
+panely → rm                  çıkış 0, dosya gitti
+panely → aynı adla yeniden   yeni dosya, sahibi panely
+```
+
+Yürütücü günlüğü açılışta bir kez açıyor ve o tanımlayıcıya ekliyor
+(`/proc/<pid>/fd/3`); `Journal.Read` ise dosyayı YOLDAN açıyor. Yani
+ele geçirilen bir panelyd:
+
+1. günlüğü silip yerine kendi zincirini koyabilir — zincirde gizli
+   anahtar yok, hash'leri kendisi hesaplar;
+2. yürütücü gerçek kayıtları artık adı olmayan inode'a yazmaya devam
+   eder, `audit list/verify` sahte dosyayı okur;
+3. yürütücü yeniden başladığında sahte zinciri devralır.
+
+Bu SECURITY.md'nin 4. maddesi, yani **kapsam İÇİ**. "Daemon okuyabilir
+ama yazamaz" iddiası dosya izni için doğruydu; dizin izni onu boşa
+çıkarıyordu.
+
+### Aynı sınıf: uzak yedek yükleyicisinin yapılandırması
+
+`panely-offsite.service` `RCLONE_CONFIG` tanımlamıyor ve `panely`
+kullanıcısının ev dizini `/var/lib/panely`. Yani rclone yapılandırması
+yine daemon'un yazabildiği dizine düşer — ve `deploy/offsite/README.md`
+kullanıcıya tam olarak orayı öneriyordu.
+
+rclone yapılandırması komut çalıştırabilir: sunucudaki rclone 1.60.1'de
+webdav arka ucunun `bearer_token_command` alanı belgelenmiş olarak var
+(çalıştırılması ayrıca ölçülmedi). Daemon'un yazabildiği bir dosya böylece
+**ağ gören** bir süreçte komuta dönüşür — K-098'in ayırmaya çalıştığı
+şeyin tam tersi.
+
+Bugün istismar edilemez: zamanlayıcı kapalı ve `rclone.conf` yok. Ama
+kullanıcının sıradaki adımı tam olarak bu dosyayı oluşturmak. **Kullanıcı
+yapılandırmadan önce kapatılmalı.**
+
+### Ortak mekanizma ve taşınabilir ders
+
+İki bulgu da aynı yanılgıdan: **bir dosyanın korunması yalnızca kendi
+iznine değil, içinde durduğu dizinin iznine de bağlıdır.** `0640 root`
+bir dosya, yazılabilir bir dizinde, sahibi olmayan tarafından silinebilir
+ve yerine başkası konabilir.
+
+Ayrıcalıklı bir sürecin okuduğu ya da yazdığı her yol, **o süreçten daha
+az ayrıcalıklı biri tarafından yazılabilen bir dizinde durmamalı.**

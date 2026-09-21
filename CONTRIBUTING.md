@@ -8,7 +8,7 @@ the one thing that matters most in this codebase: **the privileged surface**.
 > If you write a comment claiming a security property, and an experiment could
 > falsify that comment, write the experiment.
 
-This is not a style preference. It has caught fourteen real bugs in this project,
+This is not a style preference. It keeps catching real bugs in this project,
 including several where the comment and the code disagreed and only the comment was
 read. A few examples now living in `docs/decisions.md`:
 
@@ -59,7 +59,13 @@ buf lint && buf format --diff --exit-code   # after editing proto/
 buf generate                        # after editing proto/
 scripts/check-exec-surface.sh
 scripts/check-exec-surface-test.sh
+for s in scripts/mutate-*.sh; do bash "$s"; done
 ```
+
+A mutation script breaks one protection on purpose and requires a test to fail.
+When you add an invariant, add a mutation for it. The mutant must compile — the
+scripts refuse to count a build failure as "caught", and CI checks that every
+script has that gate.
 
 `buf generate` succeeding does **not** mean `buf lint` will. Style rules —
 for example, a streaming RPC's response message must be named
@@ -101,9 +107,9 @@ open an issue** — see [SECURITY.md](SECURITY.md).
 
 ## Scope
 
-Panely deliberately does not have a web panel. The desktop app is the interface;
-adding a browser-facing control surface would reintroduce exactly the attack surface
-the architecture removes. PRs adding one will be declined regardless of quality.
+Panely deliberately does not have a web panel. The management interface stays
+behind SSH — the CLI today, the desktop app as it grows; adding a browser-facing
+control surface would reintroduce exactly the attack surface the architecture removes. PRs adding one will be declined regardless of quality.
 
 ## License
 

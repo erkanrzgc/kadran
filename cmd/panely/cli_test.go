@@ -332,3 +332,50 @@ func TestDiskCellWarnsOnlyWhenNearlyFull(t *testing.T) {
 			"en olası kesinti diskin dolmasıdır", tight)
 	}
 }
+
+// TestUsageListsEverySubcommand, yardım metnindeki alt komut listesinin
+// dağıtıcının KABUL ETTİĞİ listeyle aynı olduğunu doğrular.
+//
+// ── Neden var ────────────────────────────────────────────────────────
+//
+// `app update` ve `app delete` eklendi, dağıtıcıya ve hata mesajına
+// yazıldı — ama `panely -h` haftalarca `app <create|list|show>` demeye
+// devam etti. Yardım metnine bakan biri iki komutun varlığından
+// habersiz kalıyordu. Hiçbir test yakalamadı, çünkü iki liste ayrı
+// ayrı elle tutuluyor ve kimse onları karşılaştırmıyordu.
+//
+// Karşılaştırma bilinmeyen alt komut hatası üzerinden yapılıyor: o
+// mesaj dağıtıcının switch'inin hemen yanında duruyor ve sunucuya hiç
+// bağlanmadan üretiliyor.
+func TestUsageListsEverySubcommand(t *testing.T) {
+	for _, cmd := range commands() {
+		// Yalnızca alt komut listesi taşıyanlar: `<create|list>`.
+		// `<uygulama>` gibi tek bir konumsal argüman alt komut değildir.
+		end := strings.Index(cmd.args, ">")
+		if !strings.HasPrefix(cmd.args, "<") || end < 0 || !strings.Contains(cmd.args[:end], "|") {
+			continue
+		}
+		t.Run(cmd.name, func(t *testing.T) {
+			usage := strings.Split(cmd.args[1:strings.Index(cmd.args, ">")], "|")
+
+			c, _, errOut := newTestCLI("")
+			if code := c.run(context.Background(), []string{cmd.name, "yok-boyle-bir-alt-komut"}); code != exitUsage {
+				t.Fatalf("bilinmeyen alt komut çıkış kodu = %d, beklenen %d", code, exitUsage)
+			}
+			msg := errOut.String()
+			i := strings.LastIndex(msg, "—")
+			if i < 0 {
+				t.Fatalf("hata mesajında kabul edilen liste yok: %q", msg)
+			}
+			accepted := strings.FieldsFunc(
+				strings.ReplaceAll(msg[i+len("—"):], " veya ", ","),
+				func(r rune) bool { return r == ',' || r == ' ' || r == '\n' })
+
+			if strings.Join(usage, ",") != strings.Join(accepted, ",") {
+				t.Errorf("`panely -h` %q diyor, dağıtıcı %q kabul ediyor — "+
+					"yardım metni bir alt komutu gizliyor ya da olmayan birini vaat ediyor",
+					usage, accepted)
+			}
+		})
+	}
+}

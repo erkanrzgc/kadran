@@ -5397,6 +5397,35 @@ K-095'in geri kalanı bu düzeltmeden etkilenmiyor: kapatma yolları, root
 kontrol grubu, sessiz ret, çıkış kodu çakışması,
 `TestDiskAlarmIDMatchesClearID`.
 
+### Ayakta kalan iddia da yeniden ölçüldü: root reddi
+
+Aynı yöntemle kurulmuş olabilirdi — sonuçtan çıkarılmış bir mekanizma.
+Bir `root@` SSH denemesi "frame too large" ile düşmüştü (sebebin MOTD
+olduğu TAHMİN edildi, ölçülmedi); yani farklı sebepler aynı çıkış kodunu
+verebiliyordu. K-095'in ölçümü
+ise SSH'sız, sunucudaki yerel sokete yapılmıştı. 21 Eyl'de güncel CLI
+ile tekrarlandı (md5 iki uçta aynı, tek ikili, tek soket, aynı dakika):
+
+```
+panely-client (istemci grubu)       → "etkin alarm yok"            çıkış 0
+root                                → connection reset by peer     çıkış 1
+panely (daemon, soketin SAHİBİ)     → connection reset by peer     çıkış 1
+journal (aynı pencere)              → boş
+```
+
+Üçüncü satır ayırt edici: `panely` soket dosyasının sahibi, yani dosya
+izinleri onu durdurmuyor. Onu durduran şey yalnızca `SO_PEERCRED` grup
+politikası (`internal/api/credentials.go`, `AllowGIDs`). İddia duruyor
+ve sessiz ret de yeniden görüldü.
+
+### En ucuz kontrol hafızadaydı
+
+`real-server-finds-what-tests-cannot` hafıza notu Ağustos başındaki
+bootstrap'tan beri "SSH taşıması ilk kez gerçekten kullanıldı" diyor ve
+her oturumda bağlama
+yükleniyor. "Hiç kurulmamış" iddiası, oturum kaydına bile gerek
+kalmadan, zaten okunmuş bir notla çelişiyordu.
+
 ### Hâlâ doğru olan
 
 Sunucudaki staged CLI (`/tmp/panely-stage/panely`) gerçekten 2 Eyl

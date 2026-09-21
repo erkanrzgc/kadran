@@ -30,7 +30,7 @@ NotifyAccess=main
 #   ExecStart=
 #   ExecStart=/usr/local/lib/panely/panely-exec \
 #       --socket /run/panely-exec/exec.sock \
-#       --journal /var/lib/panely/exec-audit.log \
+#       --journal /var/lib/panely-exec/exec-audit.log \
 #       --allow-user panely --owner-group panely \
 #       --allow-repo erkanrzgc/portfolio,erkanrzgc/retain-io
 #
@@ -38,7 +38,7 @@ NotifyAccess=main
 # kısıt uygulanmıyor demektir.
 ExecStart=/usr/local/lib/panely/panely-exec \
     --socket /run/panely-exec/exec.sock \
-    --journal /var/lib/panely/exec-audit.log \
+    --journal /var/lib/panely-exec/exec-audit.log \
     --allow-user panely \
     --owner-group panely
 Restart=on-failure
@@ -91,7 +91,13 @@ CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
 
 # ProtectSystem=strict tüm dosya sistemini salt okunur yapar;
 # yazılabilir alanlar burada tek tek açılır.
+#
+# /var/lib/panely yalnızca hacimler için (/var/lib/panely/volumes).
+# Denetim günlüğü BURADA DEĞİL, root'un kendi dizininde: /var/lib/panely
+# daemon'undur ve daemon oradaki her dosyayı — sahibi root olsa bile —
+# silip yerine kendisininkini koyabilir (K-100, canlıda ölçüldü).
 ReadWritePaths=/var/lib/panely
+ReadWritePaths=/var/lib/panely-exec
 ReadWritePaths=/run/panely-exec
 
 # Docker soketine erişim (ProtectSystem=strict /run'ı kapsamaz ama

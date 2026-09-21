@@ -36,7 +36,7 @@ import (
 
 const (
 	defaultSocket      = "/run/panely-exec/exec.sock"
-	defaultJournal     = "/var/lib/panely/exec-audit.log"
+	defaultJournal     = "/var/lib/panely-exec/exec-audit.log"
 	defaultAllowedUser = "panely"
 	defaultOwnerGroup  = "panely"
 )

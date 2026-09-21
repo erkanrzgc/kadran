@@ -239,6 +239,13 @@ hash = SHA256(canonical(seq, ts, actor, source_ip, ssh_fingerprint,
 `panely audit verify` walks both chains and exits `3` if either is broken. Environment
 values and build arguments are written as `[REDACTED]`.
 
+The executor's journal lives in a root-only directory (`/var/lib/panely-exec`, `0700`);
+the daemon can neither read nor replace it, and asks the executor for it over RPC.
+It used to sit in the daemon's own directory, where the daemon could not write the
+root-owned file but *could* delete it and put its own chain in its place — a directory
+write permission covers unlinking. That was found by measurement and fixed
+([K-100, K-102](docs/decisions.md)).
+
 Identity is the client's **SSH public-key fingerprint**, transmitted in a connection
 preamble written by `panely-connect` before any remote byte is read — not in gRPC
 metadata, which the remote client controls and could forge.

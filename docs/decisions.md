@@ -5629,3 +5629,87 @@ güçlü olurdu; bugünkü tehdit (komut çalıştırma) bunsuz kapandı.
 
 Kalıntı temizliği: `/var/lib/panely/.config/rclone` — K-098
 denemelerinden kalan boş bir dizin — silindi.
+
+---
+
+## K-102 — Executor denetim günlüğü root'un dizinine taşındı
+
+**Tarih:** 21 Eylül 2026
+**Durum:** düzeltildi, canlıda taşındı ve ölçüldü
+
+K-100'ün ikinci bulgusu. Günlük `/var/lib/panely` (daemon'un dizini)
+içinden `/var/lib/panely-exec`'e (`0700 root:root`) taşındı. Daemon artık
+günlüğü okuyamıyor da — ihtiyacı yok: `panely audit` onu RPC ile
+executor'dan alıyor, dosyadan değil. Bu da ölçüldü: taşımadan sonra
+`audit verify` executor zincirini yine okudu.
+
+### Değişenler
+
+- `panely-tmpfiles.conf`: `d /var/lib/panely-exec 0700 root root`
+- `panely-exec.service`: `--journal /var/lib/panely-exec/exec-audit.log`,
+  `ReadWritePaths=/var/lib/panely-exec`. `/var/lib/panely` yalnızca
+  hacimler için kaldı.
+- `cmd/panely-exec`: varsayılan yol. Ayrıcalıklı yüzey 2498'de, değişmedi.
+- `install.sh`: eski günlük varsa executor'ı durdurup taşıyor.
+  **Taşımadan önce etkin ExecStart'a bakıyor**: bir drop-in eski yolu
+  taşıyorsa durup söylüyor. Canlı sunucuda tam olarak böyle bir drop-in
+  vardı (`10-allow-repo.conf`); yalnızca birim güncellenseydi günlük
+  taşınır, executor eski yerde BOŞ bir zincir başlatır ve geçmiş sessizce
+  kopardı. Kurulum sonrası iki yeni kontrol: `panely` günlük dizinine
+  yazamıyor, çalışan executor günlüğü yeni yolda açık tutuyor.
+
+### Testler — ve mutasyonun kendi zayıflığı
+
+`TestExecutorJournalOutsideDaemonDirs` üç dosyayı birlikte okuyor
+(executor birimi, daemon birimi, tmpfiles). `TestOwnedPathsAreActuallyCreated`
+ise eski bir boşluğu kapatıyor: `panelyOwnedPaths` listesi "bunları biz
+yaratıyoruz" diyerek öneksiz `ReadWritePaths`'e izin veriyordu ama bunu
+kimse doğrulamıyordu.
+
+Mutasyonlar yeni `scripts/mutate-units.sh`'ta (6/6). İlk koşuda biri
+**KIRMIZI OLMADI** — ve kusur testte değil mutasyondaydı: `replace`
+ilk eşleşmeyi aldı, o da birimin yorum bloğundaki örnek satırdı. Test
+yorumları okumadığı için yeşil kaldı. Mutasyon satır başına
+çapalanınca yakalandı. K-080'in "zayıf mutasyon" sebebi, bu kez
+betiğin ilk koşusunda.
+
+### Canlı taşıma
+
+`panelyd` executor'ı `Requires=` ile istiyor; executor durunca o da durdu
+(ölçüldü: `inactive`) ve ikisi birlikte başlatıldı. Taşıma boyunca site
+yoklandı:
+
+```
+önce    daemon 131 · executor 166 kayıt, GEÇERLİ · md5 7fff2277…
+sonra   daemon 132 · executor 166 kayıt, GEÇERLİ · md5 7fff2277…
+site    200 yoklamanın 200'ü → 200
+```
+
+### Düzeltme, açığı ölçen yöntemle doğrulandı
+
+Aynı deney iki dizinde — ikincisi kontrol grubu:
+
+```
+                                   /var/lib/panely-exec    /var/lib/panely
+panely → root dosyasını sil        Permission denied       çıkış 0 (silindi)
+panely → aynı adla sahte günlük    Permission denied       —
+panely → dizini listele            Permission denied       —
+```
+
+Kontrol grubu olmasa "silemedi" sonucu, deneyin hiçbir şeyi
+silemeyecek biçimde kurulmuş olmasından da gelebilirdi.
+
+### Kapatılmayan
+
+- **Taşınan günlüğün geçmişi doğrulanamaz.** 166 kayıt açık kaldığı
+  süre boyunca değiştirilebilir bir yerdeydi. Zincir geçerli, ama
+  gizli anahtarı olmayan bir hash zinciri, yazabilen biri tarafından
+  baştan kurulabilir. Bugünkü `GEÇERLİ`, geçmişin sahici olduğunu değil
+  yalnızca tutarlı olduğunu söyler.
+- **İki zincir hâlâ karşılaştırılmıyor** (K-079).
+- **`install.sh`'ın taşıma bloğu gerçek bir kurulumda koşmadı.** Canlı
+  taşıma aynı adımları elle, sırayla yaptı; bloğun kendisi bir sonraki
+  `bootstrap`'ta ya da taze bir sunucuda ilk kez koşacak.
+- Executor günlüğü açarken grubunu `--owner-group` (panely) yapıyor.
+  Dizin `0700` olduğu için bu artık etkisiz; ayrıcalıklı yüzeye
+  dokunmamak için kod değiştirilmedi.

@@ -153,6 +153,46 @@ install -m 0644 -o root -g root "$STAGE/var-lib-panely-volumes.mount" \
     /etc/systemd/system/var-lib-panely-volumes.mount
 systemctl daemon-reload
 
+# ── Executor denetim günlüğü daemon'un dizininden ÇIKARILIR ──────────
+#
+# Günlük eskiden $STATE_DIR içindeydi. Dosya root'undu ama dizin
+# panely'nin; daemon onu silip yerine kendi zincirini koyabiliyordu
+# (K-100, canlıda ölçüldü). Yeni yeri /var/lib/panely-exec (0700 root,
+# tmpfiles yukarıda yarattı).
+old_journal="$STATE_DIR/exec-audit.log"
+new_journal=/var/lib/panely-exec/exec-audit.log
+
+# Birimi güncellemek yetmez: operatörün `systemctl edit` ile eklediği
+# bir drop-in (ör. --allow-repo için) ExecStart'ı TAMAMEN yeniden yazar
+# ve eski yolu taşıyor olabilir. O durumda günlük taşınır, executor
+# eski yerde BOŞ bir zincir başlatır ve geçmiş sessizce kopar. Önce
+# etkin ExecStart'a bakılıyor, taşımaya ondan sonra geçiliyor.
+#
+# Çıktı önce değişkene alınıyor: `set -o pipefail` altında `… | grep -q`
+# yarışa açık — grep eşleşince erken çıkar, sol taraf SIGPIPE alır ve
+# boru hattı başarısız sayılır. Yani eşleşme "yok" okunabilirdi.
+exec_start="$(systemctl show -p ExecStart panely-exec.service)"
+if [[ "$exec_start" == *"$old_journal"* ]]; then
+    die "panely-exec'in etkin ExecStart'ı günlüğü hâlâ $old_journal olarak gösteriyor.
+Büyük ihtimalle bir drop-in (systemctl cat panely-exec). Düzelt:
+  --journal $new_journal
+sonra kurulumu yeniden çalıştır. Günlük TAŞINMADI."
+fi
+
+if [ -e "$old_journal" ]; then
+    [ -e "$new_journal" ] && die "iki günlük birden var: $old_journal ve $new_journal
+Hangisinin gerçek zincir olduğuna elle karar verilmeli; hiçbiri silinmedi."
+
+    # Executor günlüğü açılışta bir kez açıp tanımlayıcıyı tutuyor.
+    # Çalışırken taşınırsa eski inode'a yazmaya devam eder; bu yüzden
+    # önce durdurulur. Aşağıdaki `enable --now` onu yeni yolla başlatır.
+    systemctl stop panely-exec.service 2>/dev/null || true
+    mv "$old_journal" "$new_journal"
+    chown root:root "$new_journal"
+    chmod 0640 "$new_journal"
+    say "executor denetim günlüğü $new_journal konumuna taşındı"
+fi
+
 # Hacim kökü nodev,nosuid ile bağlanır. Birim ÖNCE etkinleştirilir ki
 # yeniden başlatmadan sonra da bağlansın; `enable` tek başına şimdi
 # bağlamaz, bu yüzden `start` da çağrılır (ikisi de idempotent).
@@ -449,6 +489,25 @@ if setpriv --reuid panely-client --regid panely-client --clear-groups \
     check_fail "panely-client exec.sock'u okuyabiliyor — panelyd atlanabilir"
 else
     check_ok "panely-client exec.sock'a erişemiyor"
+fi
+
+# 4b. Daemon, executor'ın denetim günlüğünün DİZİNİNE yazamamalı.
+#
+# Dosyanın izni yetmez: yazılabilir bir dizindeki root dosyası silinip
+# yerine başkası konabilir (K-100). Çalışan executor'ın açık tuttuğu
+# günlük de sınanıyor — bir drop-in eski yolu geri getirmiş olabilir.
+if setpriv --reuid panely --regid panely --clear-groups \
+        test -w "$(dirname "$new_journal")" 2>/dev/null; then
+    check_fail "panely, executor günlüğünün dizinine yazabiliyor — ayrıcalıklı kayıt değiştirilebilir"
+else
+    check_ok "panely executor günlüğünün dizinine yazamıyor"
+fi
+exec_pid="$(systemctl show -p MainPID --value panely-exec.service)"
+exec_fds="$(ls -l "/proc/$exec_pid/fd" 2>/dev/null || true)"
+if [[ "$exec_fds" == *"-> $new_journal"$'\n'* || "$exec_fds" == *"-> $new_journal" ]]; then
+    check_ok "executor günlüğü $new_journal konumunda tutuyor"
+else
+    check_fail "çalışan executor $new_journal dosyasını açık tutmuyor"
 fi
 
 # 5. İstemci kullanıcısı kabuk ALMAMALI (zorlanmış komut).

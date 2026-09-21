@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -29,9 +30,94 @@ import (
 // (öneksiz) olmaları doğru: yoksalar kurulum zaten bozuktur ve birimin
 // sessizce başlaması yanıltıcı olurdu.
 var panelyOwnedPaths = map[string]bool{
-	"/var/lib/panely":  true,
-	"/run/panely":      true,
-	"/run/panely-exec": true,
+	"/var/lib/panely":      true,
+	"/var/lib/panely-exec": true,
+	"/run/panely":          true,
+	"/run/panely-exec":     true,
+}
+
+// tmpfilesDizinleri, panely-tmpfiles.conf'un yarattığı dizinleri
+// yol → {kip, sahip, grup} olarak döndürür.
+func tmpfilesDizinleri(t *testing.T) map[string][3]string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd", "panely-tmpfiles.conf"))
+	if err != nil {
+		t.Fatalf("tmpfiles okunamadı: %v", err)
+	}
+	dizinler := map[string][3]string{}
+	for _, satir := range strings.Split(string(b), "\n") {
+		alan := strings.Fields(satir)
+		if len(alan) >= 5 && alan[0] == "d" {
+			dizinler[alan[1]] = [3]string{alan[2], alan[3], alan[4]}
+		}
+	}
+	return dizinler
+}
+
+// TestOwnedPathsAreActuallyCreated, panelyOwnedPaths'teki her yolun
+// tmpfiles tarafından GERÇEKTEN yaratıldığını doğrular.
+//
+// Liste "bunları biz oluşturuyoruz" diyerek öneksiz ReadWritePaths'e
+// izin veriyor. Listeye eklenen ama kimsenin yaratmadığı bir yol, tam
+// da o listenin önlemek için var olduğu 226/NAMESPACE hatasını geri
+// getirirdi — ve bu test olmadan liste yalnızca bir iddiaydı.
+func TestOwnedPathsAreActuallyCreated(t *testing.T) {
+	dizinler := tmpfilesDizinleri(t)
+	for yol := range panelyOwnedPaths {
+		if _, ok := dizinler[yol]; !ok {
+			t.Errorf("%s panelyOwnedPaths'te ama panely-tmpfiles.conf onu yaratmıyor", yol)
+		}
+	}
+}
+
+// TestExecutorJournalOutsideDaemonDirs, executor'ın denetim günlüğünün
+// daemon'un DEĞİŞTİREMEYECEĞİ bir dizinde durduğunu doğrular.
+//
+// ── Kapatılan delik (K-100) ──────────────────────────────────────────
+//
+// Günlük /var/lib/panely içindeydi: dosya root:panely 0640, dizin
+// panely:panely 0750. Daemon içeriğe yazamıyordu ama dizine yazma
+// yetkisi, dosyayı silip aynı adla yenisini koyma yetkisidir. Canlıda
+// kök sahipli bir sınama dosyasıyla ölçüldü: `rm` çıkış 0, yenisinin
+// sahibi panely. Ele geçirilen bir panelyd, ayrıcalıklı tarafın
+// kaydını kendi zinciriyle değiştirebilirdi.
+//
+// Üç dosya arasındaki bir ilişki — birim, daemon birimi, tmpfiles —
+// hiçbiri tek başına göremez.
+func TestExecutorJournalOutsideDaemonDirs(t *testing.T) {
+	alanlar := strings.Fields(unitOku(t, "panely-exec.service"))
+	var gunluk string
+	for i, alan := range alanlar {
+		if alan == "--journal" && i+1 < len(alanlar) {
+			gunluk = alanlar[i+1]
+		}
+	}
+	if gunluk == "" {
+		t.Fatal("panely-exec.service ExecStart'ında --journal yok — ölçüm geçersiz")
+	}
+
+	for _, dizin := range daemonYazilabilirYollar(t) {
+		if altinda(gunluk, dizin) {
+			t.Errorf("executor günlüğü %q, daemon'un yazabildiği %q altında — "+
+				"ele geçirilen panelyd ayrıcalıklı kaydı silip değiştirebilir", gunluk, dizin)
+		}
+	}
+
+	dizin := filepath.ToSlash(filepath.Dir(gunluk))
+	izin, ok := tmpfilesDizinleri(t)[dizin]
+	if !ok {
+		t.Fatalf("günlük dizini %s tmpfiles'ta yaratılmıyor — sahipliği belirsiz", dizin)
+	}
+	if izin[1] != "root" {
+		t.Errorf("günlük dizini %s sahibi %q, root olmalı", dizin, izin[1])
+	}
+	kip, err := strconv.ParseUint(izin[0], 8, 32)
+	if err != nil {
+		t.Fatalf("günlük dizini kipi okunamadı: %q", izin[0])
+	}
+	if kip&0o022 != 0 {
+		t.Errorf("günlük dizini %s kipi %s — grup ya da diğerleri yazabiliyor", dizin, izin[0])
+	}
 }
 
 // TestUnitsDoNotHardRequireForeignPaths, Panely'nin oluşturmadığı bir

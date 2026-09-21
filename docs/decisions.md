@@ -4645,10 +4645,11 @@ bir test, koruduğundan fazla kırılganlık getirirdi. Kayıt burada dursun.
 
 ## K-092 — Alarm: TESPİT bitti, TESLİMAT ayrı bir karar
 
-> ⚠ **BU KAYDIN "CANLI SUNUCU doğrulaması" BÖLÜMÜNDE ÖLÇÜLMEMİŞ İKİ
-> İDDİA VARDI — bkz. K-095.** `panely alarms` çıktısına dair satırlar
-> koşulmadan yazılmıştı; aşağıda işaretlendiler. Kaydın geri kalanı
-> (kenar tetikleme ölçümü, ağ duvarı, mutasyon bulgusu) geçerlidir.
+> ✅ **K-095 bu kayda "ölçülmemiş iddia" işareti koymuştu — O İŞARET
+> YANLIŞTI, bkz. K-099.** `panely alarms` çıktısına dair iki blok da
+> 17 Eyl **20:12:46Z** ve **20:15:05Z**'te, yerel `bin/panely.exe` ile
+> `panely-client@` SSH taşıması üzerinden gerçekten koştu — bu kayıt
+> 20:16:43Z'te yazıldı. Kaydın tamamı geçerlidir.
 
 Dört arıza koşulu artık kenar tetiklemeli olarak bildiriliyor:
 `heal_exhausted`, `backup_failed`, `proxy_unreconciled`, `disk_low`.
@@ -4766,7 +4767,7 @@ koşulda sınamış oldu.
 #### Sağlıklı sistemde SIFIR gürültü
 
 ```
-panely alarms → "etkin alarm yok"   (çıkış kodu 0)   ← ÖLÇÜLMEDİ, bkz. K-095
+panely alarms → "etkin alarm yok"   (çıkış kodu 0)   ← 20:12:46Z, bkz. K-099
 journal ALARM satırı → yok
 disk %87 boş → eşiklerin çok üstünde, alarm yok
 ```
@@ -4799,10 +4800,10 @@ açılış ERROR'du) ve tablo boşaldı.
 
 #### Operatör yüzeyi
 
-> ⚠ **Aşağıdaki blok ÖLÇÜLMEDİ.** Uygulamaya bakılarak yazıldı;
-> sunucudaki CLI o gün 2 Eylül tarihliydi ve `alarms` komutu YOKTU.
-> Biçim sonradan (K-095) ölçülünce doğru çıktı — bu, hatayı mazur
-> göstermez, TESPİT EDİLEMEZ kılar.
+> ✅ **Aşağıdaki blok 20:15:05Z'te ölçüldü** (K-099). K-095 buraya
+> "ölçülmedi" işareti koymuştu: sunucudaki CLI'ın 2 Eylül tarihli
+> olduğunu görüp ölçümün O ikiliyle yapıldığını varsaymıştı. Ölçüm
+> operatörün makinesindeki CLI ile, SSH üzerinden yapılmıştı.
 
 ```
 CİDDİYET  SÜREDİR  TÜR            HEDEF      AYRINTI
@@ -4830,10 +4831,16 @@ Tatbikat boyunca site 200 döndü, otomatik yeniden başlatma sayısı 0.
 
 ---
 
-## K-095 — Hiç koşmamış yollar ölçüldü; K-092'de ÖLÇÜLMEMİŞ bir iddia bulundu
+## K-095 — Hiç koşmamış yollar ölçüldü; ~~K-092'de ölçülmemiş bir iddia bulundu~~ (YANLIŞ — K-099)
 
 **Tarih:** 17 Eylül 2026
 **Durum:** ölçüm + düzeltme; kod değişikliği yalnızca iki test
+
+> ⚠ **Bu kaydın İKİ bölümü YANLIŞ — bkz. K-099:** "K-092'de ÖLÇÜLMEMİŞ
+> İDDİA" ve "SSH taşıması HİÇ kurulmamış". İkisi de aşağıda
+> işaretlendi. Geri kalanı (kapatma yolları, root kontrol grubu,
+> sessiz ret, çıkış kodu çakışması, kimlik testi) bağımsız olarak
+> ölçüldü ve geçerlidir.
 
 K-092'nin dört alarm koşulundan yalnızca `backup_failed` canlıda
 koşmuştu. `disk_low` ve `proxy_unreconciled` hiç ateşlenmemişti: sunucu
@@ -4892,7 +4899,14 @@ teşhis eden operatör sunucu tarafından hiçbir şey alamıyor. Bu, projenin
 kendi kuralıyla aynı aileden bir kusur: teşhis edilemeyen bir ret,
 yanlış alarm kadar güven yakar.
 
-### 🔴 K-092'de ÖLÇÜLMEMİŞ İDDİA
+### 🔴 K-092'de ÖLÇÜLMEMİŞ İDDİA — ⚠ BU BÖLÜM YANLIŞ (K-099)
+
+> ⚠ **Aşağıdaki kanıt yalnızca SUNUCUDAKİ ikilileri saydı.** CLI
+> tasarım gereği operatörün makinesinde koşar ve sunucuya
+> `panely-client@` ile bağlanır. K-092'nin ölçümü tam olarak böyle
+> yapılmıştı (20:12:46Z, yerel `bin/panely.exe`, 20:07:30Z'te
+> derlenmiş). Sayım o ikiliyi hiç içermedi; "hiçbir sunucu ikilisi
+> bunu yapamazdı" doğruydu, "hiç koşmadı" değildi.
 
 K-092, "CANLI SUNUCU doğrulaması" başlığı altında `panely alarms`
 çıktısı ve `çıkış kodu 0` bildiriyordu. Kanıt bunun **koşulmadığını**
@@ -4922,11 +4936,20 @@ Zararlı yön **kapalı**: bağlantı arızası "sorun var" diye okunuyor,
 yani sessizce iyi görünmüyor. Ters yön (alarm var ama 0 dönmek)
 mümkün değil. `cmd/panely/main.go` doğrulandı: 0/1/2/3 tanımlı, **4
 gerçekten boşta** — ama bu bir sözleşme değişikliği ve `panely alarms`
-üretimde toplam BİR kez koştu. Kullanım verisi yokken sözleşmeyi
+üretimde yalnızca birkaç kez koştu (⚠ burada "BİR kez" yazıyordu; K-092'nin
+iki SSH koşusu sayılmamıştı — K-099). Kullanım verisi yokken sözleşmeyi
 değiştirmek, bu kayıttaki hatanın aynısını tekrarlamak olurdu.
 **Bilinen boşluk olarak bırakıldı; karar kullanıcının.**
 
-### Yan bulgu — SSH taşıması bu sunucuda HİÇ kurulmamış
+### Yan bulgu — SSH taşıması bu sunucuda HİÇ kurulmamış — ⚠ YANLIŞ (K-099)
+
+> ⚠ **Yoklama yanlış dizine baktı.** Komut
+> `cat /home/panely-client/.ssh/authorized_keys 2>/dev/null` idi;
+> kullanıcının ev dizini `/var/lib/panely-client`. `2>/dev/null`
+> "dosya yok" hatasını yuttu ve yokluk "boş" diye okundu. Gerçekte
+> dosyada zorlanmış komutlu (`panely-connect`, `restrict`) bir anahtar
+> var (8 Ağu) ve 4 Ağu – 17 Eyl arasında **102** kabul edilmiş
+> `panely-client` girişi journal'da duruyor.
 
 `panely-client` kullanıcısı var ama `authorized_keys` **boş**, zorlanmış
 komut yok. `panely <komut> kullanıcı@sunucu` bu sunucuya karşı hiç
@@ -4955,6 +4978,9 @@ olabileceğini de sınamak gerekir.** "Canlı doğrulandı" başlığı,
 altındaki her satırın gerçekten koştuğunu kanıtlamaz. Kanıt, ölçümü
 üreten ikilinin kimliğidir — yeni sürüm yüklendiğine dair kanıt
 (K-088'deki `/proc/<pid>/exe`) daemon için vardı, **CLI için yoktu**.
+
+> ⚠ Ders geçerli, **ÖRNEĞİ yanlıştı** (K-099): bu kayıt ikiliyi yanlış
+> makinede aradı. Suçlama da bir ölçümdür ve aynı kurala tabidir.
 
 ---
 
@@ -5058,9 +5084,10 @@ sınandı: bir betikten kapı kasten kaldırılınca kırmızıya döndü.
 ### Taşınabilir ders
 
 K-093 "yakalanan mutasyon yanlış sebeple kırmızı olabilir" dedi.
-K-095 "bir ölçüm hiç yapılmamış olabilir" ekledi. K-096 üçüncüsünü
-koyuyor: **ölçüm aracının kendisi düzenli denetlenmeli.** On iki
-betik iki yıl boyunca "bütün mutasyonlar yakalandı" raporlarken
+K-095 "bir ölçüm hiç yapılmamış olabilir" ekledi (örneği yanlıştı,
+bkz. K-099). K-096 üçüncüsünü
+koyuyor: **ölçüm aracının kendisi düzenli denetlenmeli.** Betikler
+iki buçuk hafta boyunca (ilki 1 Eyl) "bütün mutasyonlar yakalandı" raporlarken
 onda biri hiçbir şey ölçmüyordu — ve rapor hep yeşildi.
 
 Bir kusur bir yerde bulunduğunda sorulacak soru "düzelttim mi"
@@ -5293,3 +5320,100 @@ B2'de `deleteFiles` verilmez; S3'te `s3:DeleteObject` reddedilir.
   Alarm teslimatı hâlâ açık bir karar (K-092).
 - **Hacim verisi yine kapsam dışı** (K-091): panelyd o dizinleri
   okuyamıyor.
+
+---
+
+## K-099 — K-095'in suçlaması YANLIŞTI: K-092'nin ölçümü gerçekten koştu
+
+**Tarih:** 21 Eylül 2026
+**Durum:** kayıt düzeltmesi; kod değişikliği yok
+
+K-095, K-092'nin `panely alarms` satırlarının "koşulmadan yazıldığını"
+kaydetti. **Koşmuşlardı.** İki bağımsız birincil kaynak aynı zaman
+çizelgesini veriyor: oturum kaydındaki araç sonuçları (modelin değil,
+aracın ürettiği metin) ve sunucunun sshd journal'ı.
+
+```
+20:07:02Z  6f0f82d   alarm tespiti commit'lendi
+20:07:30Z            bin/panely.exe derlendi (yerel, Windows)
+20:12:46Z            ./bin/panely.exe alarms panely-client@46.225.95.35
+                     → "etkin alarm yok", çıkış kodu 0
+20:12:49Z  sshd      Accepted publickey for panely-client
+20:15:05Z            aynı komut, etkin alarm varken
+                     → KRİTİK 16sn backup_failed panely.db …, çıkış kodu 1
+20:15:21Z  sshd      Accepted publickey for panely-client
+20:16:43Z  6f0ce16   K-092 yazıldı
+20:21:59Z            OTOMATİK BAĞLAM SIKIŞTIRMASI
+20:25:54Z            K-095 yoklaması: /home/panely-client/.ssh/authorized_keys
+20:36Z     9ed3640   K-095 push edildi
+```
+
+Ölçümün sunucuya karşı yapıldığının iç kontrolü de var: aynı koşu
+sunucunun diskini `38G 4.3G 32G 13%` diye bastı — K-092'nin "%87 boş"
+satırı. K-092'deki `16sn` değeri de araç çıktısıyla birebir aynı;
+uygulamaya bakarak tahmin edilebilecek bir sayı değil.
+
+### Suçlama nasıl kuruldu
+
+K-095 üç ayak üzerinde duruyordu:
+
+| ayak | durum |
+|---|---|
+| sunucudaki staged CLI 2 Eyl tarihli, `alarms` yok | doğru |
+| `/usr/local/bin` boş | doğru |
+| `panely-client`'ın `authorized_keys`'i boş | **YANLIŞ** — yanlış dizin |
+
+Kanıt "hiçbir SUNUCU ikilisi bunu üretemezdi" sonucunu destekliyordu ve
+bu doğruydu. Yazılan sonuç "hiç koşmadı" oldu. CLI tasarım gereği
+operatörün makinesinde koşar ve sunucuya SSH ile bağlanır — sayım o
+yolu hiç içermedi.
+
+Üçüncü ayak kritikti: SSH yolunu kapatmış gibi göründüğü için ilk iki
+ayak KESİN göründü. İki hata birbirini doğruladı. Yoklama
+`cat /home/panely-client/.ssh/authorized_keys 2>/dev/null` idi; ev
+dizini `/var/lib/panely-client`. `2>/dev/null` "dosya yok" hatasını
+yuttu ve yokluk "boş" okundu. Gerçekte dosyada zorlanmış komutlu bir
+anahtar var (8 Ağu) ve 4 Ağu – 17 Eyl arasında **102** kabul edilmiş
+`panely-client` girişi journal'da duruyor.
+
+### Sıkıştırma VESİLE, mekanizma değil
+
+Ölçüm ile suçlama arasında otomatik bir bağlam sıkıştırması var; komutun
+NASIL koştuğu özete taşınmadı. Ama bu tek başına hatayı üretmedi:
+birincil kaynak (oturum kaydı `.jsonl`) başından beri diskteydi ve
+18 Eyl'de sıfırlanan bir dosyayı kurtarmak için zaten kullanılmıştı.
+Suçlamadan önce ona bakılmadı.
+
+### Düzeltilen yerler
+
+- **K-092:** iki `⚠ ÖLÇÜLMEDİ` bandı ve bir satır içi işaret, ölçüm
+  zamanlarıyla değiştirildi.
+- **K-095:** başlık, iki bölüm (bantla işaretlendi, SİLİNMEDİ — hatanın
+  kendisi kayıtta kalmalı), "BİR kez koştu" satırı, ders notu.
+- **K-096:** "iki yıl boyunca" → "iki buçuk hafta" (ilk mutasyon betiği
+  1 Eyl'de eklendi; bu da doğrulanmadan yazılmış bir sayıydı).
+
+K-095'in geri kalanı bu düzeltmeden etkilenmiyor: kapatma yolları, root
+kontrol grubu, sessiz ret, çıkış kodu çakışması,
+`TestDiskAlarmIDMatchesClearID`.
+
+### Hâlâ doğru olan
+
+Sunucudaki staged CLI (`/tmp/panely-stage/panely`) gerçekten 2 Eyl
+tarihli. Sunucu ÜZERİNDE CLI koşturan biri için tuzak olmaya devam
+ediyor. Yalnızca K-092'nin ölçümüyle ilgisi yoktu.
+
+### Taşınabilir ders
+
+**Kapsamlı görünen bir olumsuzluk, arkasındaki sayım kadar iyidir.**
+"Hiçbir ikili bunu yapamazdı" demek bütün ikilileri saymayı gerektirir
+— ve sayılmayan yer, tasarımın ANA yoluydu.
+
+`2>/dev/null`, doğrulanmamış bir yolda "yanlış yol"u "yok"a çevirir.
+K-051'in ailesi: cevapsızlığı sonuç diye okumak. Yoklama önce
+ölçebildiğini kanıtlamalıydı — `getent passwd panely-client` ev
+dizinini tek komutta veriyordu.
+
+**Bir suçlama da ölçümdür** ve aynı kurala tabidir. K-095 "ölç, iddia
+etme" kuralını savunurken onu çiğnedi. Kural en çok, kişinin kendini
+haklı bulduğu yerde gevşer.

@@ -5737,3 +5737,44 @@ da metin; ayrıcalıklı yüzey 2498'de.
 
 Ders K-079'un kendisiyle aynı: **bir iddia geri çekildiğinde bütün
 kopyaları aranmalı.** K-079 iki kopyayı buldu, yedisini bıraktı.
+
+---
+
+## K-103 — api.sock reddi artık günlüğe yazılıyor
+
+**Tarih:** 21 Eylül 2026
+**Durum:** düzeltildi, canlıda ölçüldü
+
+K-095'in bulduğu kusur: panelyd yetkisiz bir bağlantıyı doğru biçimde
+reddediyordu ama journal'da tek satır yoktu. gRPC el sıkışma hatalarını
+kendi günlükçüsüne yazıyor ve o günlükçü varsayılan olarak sessiz.
+İstemci yalnızca `connection reset by peer` görüyordu.
+
+Somut zararı: `usermod -aG panely-client` ile eklenen ikinci bir
+yönetici (SO_PEERCRED yalnızca birincil grubu raporlar, SECURITY.md)
+reddedilir ve sunucu tarafında sebebine dair hiçbir iz bulamazdı.
+
+**Karar:** `internal/api/credentials.go`'daki sarmalayıcı her el sıkışma
+hatasını `pid/uid/gid` ile WARN olarak yazıyor. `internal/peercred`
+executor grafiğinde (yüzeyden yer yer, 2 satır kaldı); daemon tarafındaki
+sarmalayıcı grafikte değil — yüzey 2498'de kaldı.
+
+### Ölçüm
+
+`TestRejectedCallerIsLogged` düzeltmeden önce kırmızı gözlendi;
+`TestAcceptedCallerIsNotLoggedAsRejected` kontrol grubu. Canlıda
+(`e093541`, `/proc/<pid>/exe` md5 ile doğrulandı):
+
+```
+root             → reddedildi   pid=… uid=0   gid=0
+panely (soket sahibi) → reddedildi   pid=… uid=999 gid=988
+panely-client    → "etkin alarm yok", ret satırı YOK
+normal kullanım  → 4 SSH komutu, 4 giriş, 0 ret satırı
+yeniden başlatma → 120 yoklamanın 120'si 200
+```
+
+Son satır gürültü sorusunun cevabı: her bağlantıda "reddedildi" yazan
+bir günlük gerçek reddi boğardı. Soket dizini `0750
+panely:panely-client` olduğu için oraya ulaşabilen herkes zaten yerel
+ve ayrıcalıklı; satırları çoğaltarak journal'ı doldurma riski ihmal
+edilebilir.

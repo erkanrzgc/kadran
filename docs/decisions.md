@@ -5713,3 +5713,27 @@ silemeyecek biçimde kurulmuş olmasından da gelebilirdi.
 - Executor günlüğü açarken grubunu `--owner-group` (panely) yapıyor.
   Dizin `0700` olduğu için bu artık etkisiz; ayrıcalıklı yüzeye
   dokunmamak için kod değiştirilmedi.
+
+### K-079'un geri çektiği iddianın KALAN kopyaları
+
+Düzeltmeden sonra "0640 root:panely" ve "karşılaştırır" arandı. K-079
+iddiayı `exec.proto`'nun tasarım kurallarından ve SECURITY.md'den
+çekmişti, ama iddia yedi yerde daha yaşıyordu — biri **ayrıcalıklı
+kodun paket belgesinde** (`internal/exec/journal.go`: "VerifyAuditChain
+iki zinciri karşılaştırır ve düşürülen her kayıt fark olarak ortaya
+çıkar"), biri **kullanıcıya basılan bir mesajda**:
+
+```
+EXECUTOR ZİNCİRİ KIRIK. panelyd bu dosyaya yazamaz (0640 root:panely);
+bozulmuşsa root yetkisi kullanılmış demektir.
+```
+
+K-102'den önce bu mesajın sonucu yanlıştı: panelyd günlüğü
+değiştirebiliyordu. Artık doğru, ama gerekçesi dizin; mesaj buna göre
+yazıldı ve disk bozulması ihtimali eklendi. `api.proto`, `exec.proto`
+(iki yer), `api/server.go`, `api/record.go`, `cmd/panely/audit.go`,
+bir test yorumu ve bir test hata iletisi de düzeltildi. Hepsi yorum ya
+da metin; ayrıcalıklı yüzey 2498'de.
+
+Ders K-079'un kendisiyle aynı: **bir iddia geri çekildiğinde bütün
+kopyaları aranmalı.** K-079 iki kopyayı buldu, yedisini bıraktı.

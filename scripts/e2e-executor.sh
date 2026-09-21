@@ -117,7 +117,7 @@ fi
 # 2. Günlük dosyası panelyd tarafından OKUNABİLİR ama YAZILAMAZ olmalı.
 journal_perm="$(stat -c '%a' "$JOURNAL")"
 if [[ "$journal_perm" == "640" ]]; then
-    ok "denetim günlüğü 0640 (daemon okur, yazamaz)"
+    ok "denetim günlüğü 0640 (grup yazamaz; üretimde dizin 0700 root, K-102)"
 else
     bad "denetim günlüğü izinleri $journal_perm, beklenen 640"
 fi

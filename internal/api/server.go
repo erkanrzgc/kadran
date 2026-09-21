@@ -268,7 +268,7 @@ func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRe
 // panelyd'nin ele geçirilmesi tehdit modelinin merkezinde: kayıtlar
 // yalnızca panelyd'de olsaydı, ele geçirilmiş bir panelyd kendi yaptığı
 // ayrıcalıklı çağrıları hiç kaydetmeyebilirdi. Executor kendi günlüğüne
-// yazar ve panelyd o dosyaya YAZAMAZ (0640 root:panely).
+// yazar ve panelyd o dosyaya DOKUNAMAZ (root'un 0700 dizininde, K-102).
 //
 // ⚠ ÇAPRAZ DOĞRULAMA HENÜZ YOK — ve bu, yukarıdaki gerekçenin bugün
 // TAM OLARAK karşılanmadığı anlamına geliyor.

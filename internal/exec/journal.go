@@ -24,9 +24,17 @@ import (
 // kendi yaptığı çağrıları hiç kaydetmeyebilirdi.
 //
 // Executor bu yüzden kendi eylemlerini kendi dosyasına yazar. Dosya
-// 0640 root:panely'dir: panelyd OKUYABİLİR, YAZAMAZ. VerifyAuditChain iki
-// zinciri karşılaştırır ve panelyd'nin düşürdüğü her kayıt fark olarak
-// ortaya çıkar.
+// root'un dizinindedir (/var/lib/panely-exec, 0700): panelyd ne
+// okuyabilir ne değiştirebilir, zinciri ReadAuditJournal ile ister.
+//
+// ⚠ Bu yorum iki kez YANLIŞ bir şey söyledi:
+//   - "VerifyAuditChain iki zinciri karşılaştırır ve panelyd'nin düşürdüğü
+//     her kayıt fark olarak ortaya çıkar." Karşılaştırma kodu YOK (K-079);
+//     iki zincir ayrı ayrı doğrulanıyor.
+//   - "0640 root:panely: panelyd OKUYABİLİR, YAZAMAZ." Dosya için doğruydu,
+//     ama dosya panelyd'nin kendi dizinindeydi ve dizine yazma yetkisi
+//     silme yetkisidir. panelyd günlüğü silip yerine kendi zincirini
+//     koyabiliyordu (K-100, canlıda ölçüldü; K-102'de taşındı).
 //
 // # Neden SQLite değil?
 //
@@ -84,17 +92,17 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 	//
 	// # Neden "sadece oluştururken" yetmiyordu?
 	//
-	// Bu günlüğün 0640 root:panely olmasının tek amacı panelyd'nin onu
-	// OKUYABİLMESİ: çapraz doğrulama (panelyd'nin SQLite zinciri ile bu
-	// zincirin karşılaştırılması) buna dayanıyor. Dosya bir kez yanlış
-	// grupla var olduysa — yedekten geri alındı, elle oluşturuldu, ya da
-	// `-owner-group` farklı verilerek bir kez çalıştırıldı — eski kod onu
-	// bir daha ASLA düzeltmezdi.
+	// Kip her açılışta 0640'a çekilir: grup ve diğerleri YAZAMAZ,
+	// diğerleri OKUYAMAZ. Dosya bir kez gevşek kiple var olduysa —
+	// yedekten geri alındı, elle oluşturuldu — eski kod onu bir daha
+	// ASLA düzeltmezdi.
 	//
-	// Sonuç sessiz olurdu: executor sorunsuz açılır, ayrıcalıklı işlemler
-	// kaydedilmeye devam eder, ama panelyd günlüğü okuyamadığı için çapraz
-	// doğrulama çalışmaz. Yani tehdit modelinin "ele geçirilmiş panelyd
-	// kayıt düşüremez" iddiası, kimse fark etmeden geçersiz hâle gelirdi.
+	// ⚠ Grubun (panely) okuma izni bugün ETKİSİZ: günlük root'un 0700
+	// dizininde (K-102) ve panelyd dizine giremiyor; zinciri
+	// ReadAuditJournal ile alıyor. Bu yorumun önceki hâli grup iznini
+	// "panelyd'nin dosyayı okuyup kendi zinciriyle karşılaştırması" ile
+	// gerekçelendiriyordu; öyle bir karşılaştırma hiç yazılmadı (K-079).
+	// chown ayrıcalıklı yüzeye dokunmamak için yerinde bırakıldı.
 	//
 	// Executor root çalışır (main.go bunu başlangıçta doğrular), bu yüzden
 	// chown burada daima mümkündür ve başarısızlığı gerçek bir sorundur.
@@ -201,11 +209,11 @@ func (j *Journal) Append(rec audit.Record) (audit.Record, error) {
 // # Neden açılıştaki doğrulama yetmiyor?
 //
 // loadAndVerify yalnızca executor başlarken çalışır. Bu metodun tek gerçek
-// tüketicisi panelyd'nin ReadAuditJournal çağrısıdır ve amacı kendi
-// zincirini bu zincirle ÇAPRAZ DOĞRULAMAKTIR. Executor çalışırken dosyaya
-// sahte bir satır eklenirse, okuma anında doğrulama olmadan bu satır
-// "gerçek" gibi teslim edilirdi ve çapraz doğrulama iki doğrulanmamış
-// zinciri karşılaştırmış olurdu — yani hiçbir şey kanıtlamazdı.
+// tüketicisi panelyd'nin ReadAuditJournal çağrısıdır; panelyd executor
+// zincirini kendi tarafında da doğrular. (İki zinciri birbiriyle
+// KARŞILAŞTIRMAZ — o kod yok, K-079.) Executor çalışırken dosyaya sahte
+// bir satır eklenirse, okuma anında doğrulama olmadan bu satır "gerçek"
+// gibi teslim edilirdi ve panelyd'nin doğrulaması hiçbir şey kanıtlamazdı.
 //
 // Doğrulama daima seq 1'den başlar: zincir ancak baştan takip edilerek
 // kanıtlanabilir. Bu O(n)'dir, ama executor günlüğü yapısı gereği küçüktür

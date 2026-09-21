@@ -35,9 +35,16 @@ option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1"
 //     YOKTUR. Reddedilen istek değil, ifade edilemeyen istek.
 //
 //  4. HER İSTEK KENDİNİ DENETLER. Executor her çağrıyı kendi
-//     hash-zincirli günlüğüne yazar (0640 root:panely — panelyd okur,
-//     yazamaz). Yani ayrıcalıklı bir eylemin kaydı, o eylemi isteyen
-//     bileşenin YAZAMADIĞI bir dosyada durur.
+//     hash-zincirli günlüğüne yazar (/var/lib/panely-exec, 0700 root —
+//     panelyd ne okuyabilir ne değiştirebilir; ReadAuditJournal ile
+//     ister). Yani ayrıcalıklı bir eylemin kaydı, o eylemi isteyen
+//     bileşenin DOKUNAMADIĞI bir yerde durur.
+//
+//     ⚠ K-100'e kadar bu madde "0640 root:panely — panelyd okur,
+//     yazamaz" diyordu. Dosya için doğruydu, ama dosya panelyd'nin
+//     KENDİ dizinindeydi ve dizine yazma yetkisi silme yetkisidir:
+//     panelyd günlüğü silip yerine kendi zincirini koyabiliyordu
+//     (canlıda ölçüldü). K-102'de taşındı.
 //
 //     ⚠ AMA FARKI YAKALAYAN KOD HENÜZ YOK. `VerifyAuditChain` iki
 //     zinciri AYRI AYRI doğruluyor; "her executor kaydının daemon
@@ -62,7 +69,8 @@ service ExecutorService {
   rpc GetHostInfo(GetHostInfoRequest) returns (GetHostInfoResponse);
 
   // ReadAuditJournal, executor'ın kendi hash-zincirli günlüğünü döner.
-  // panelyd bunu kendi zinciriyle karşılaştırmak için okur.
+  // panelyd günlüğe dosyadan ULAŞAMAZ (/var/lib/panely-exec, 0700 root);
+  // tek yolu bu çağrı. Kendi zinciriyle karşılaştırmıyor (K-079).
   rpc ReadAuditJournal(ReadAuditJournalRequest) returns (ReadAuditJournalResponse);
 
   // ── Konteyner yaşam döngüsü (Faz 1, dilim 1) ────────────────────
@@ -204,7 +212,8 @@ message ContainerCreateRequest {
   // geçirilmiş bir panelyd, konteyneri `release=R` etiketleyip başka bir
   // commit'in imajını çalıştırabilir ve bu, geri almayı sessizce bozar.
   // Executor ikisini de kendi günlüğüne yazar; böylece sapma sonradan
-  // denetim zincirlerinin karşılaştırılmasıyla YAKALANABİLİR.
+  // denetim zincirlerinin karşılaştırılmasıyla yakalanabilir hâle gelir.
+  // ⚠ O karşılaştırmayı yapan kod bugün YOK (K-079); kayıt hazır, denetçi yok.
   string commit_sha = 2;
 
   // Kasa tarafından çözülmüş ortam değişkenleri.

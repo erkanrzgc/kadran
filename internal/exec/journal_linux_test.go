@@ -21,12 +21,14 @@ func setUmask(mask int) int { return syscall.Umask(mask) }
 //
 // # Neden önemli?
 //
-// Günlüğün 0640 root:panely olmasının tek amacı panelyd'nin onu
-// OKUYABİLMESİ; çapraz doğrulama buna dayanıyor. Dosya bir kez yanlış
-// izinlerle var olduysa, eski kod onu bir daha düzeltmiyordu ve sonuç
-// SESSİZ oluyordu: executor açılır, kayıt yazmaya devam eder, ama
-// panelyd okuyamadığı için "ele geçirilmiş panelyd kayıt düşüremez"
-// iddiası kimse fark etmeden geçersizleşir.
+// 0640, grubun ve diğerlerinin günlüğe YAZAMAMASINI sağlar. Dosya bir
+// kez gevşek izinlerle var olduysa (yedekten geri alındı, elle
+// oluşturuldu) eski kod onu bir daha düzeltmiyordu ve sonuç SESSİZ
+// oluyordu.
+//
+// ⚠ Bu yorum önceden izni "panelyd'nin okuyup çapraz doğrulama yapması"
+// ile gerekçelendiriyordu. Çapraz doğrulama yok (K-079) ve günlük artık
+// panelyd'nin giremediği bir dizinde (K-102).
 //
 // Chown burada sınanamaz (root gerektirir); sınanan chmod yoludur.
 // GroupGID sıfır verilerek chown atlanıyor.
@@ -49,8 +51,8 @@ func TestOpenJournalEnforcesModeOnExistingFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := info.Mode().Perm(); got != 0o640 {
-		t.Errorf("mod %04o, beklenen 0640 — panelyd günlüğü okuyamaz "+
-			"ve çapraz doğrulama sessizce çalışmaz", got)
+		t.Errorf("mod %04o, beklenen 0640 — gevşek kip düzeltilmedi, "+
+			"grup ya da diğerleri günlüğe erişebilir", got)
 	}
 }
 

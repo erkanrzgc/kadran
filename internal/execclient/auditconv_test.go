@@ -147,8 +147,9 @@ func TestEmptySlicesRoundTrip(t *testing.T) {
 }
 
 // TestSliceRoundTripKeepsChainVerifiable, tam bir zincirin protobuf'tan
-// geçtikten sonra hâlâ doğrulanabilir olduğunu gösterir. panelyd'nin
-// executor günlüğünü çapraz doğrulaması tam olarak bunu yapar.
+// geçtikten sonra hâlâ doğrulanabilir olduğunu gösterir. panelyd,
+// executor zincirini RPC ile alıp kendi tarafında doğrularken tam olarak
+// bunu yapar.
 func TestSliceRoundTripKeepsChainVerifiable(t *testing.T) {
 	var (
 		chain []audit.Record

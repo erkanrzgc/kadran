@@ -37,7 +37,9 @@ service PanelyService {
   rpc ListAuditRecords(ListAuditRecordsRequest) returns (ListAuditRecordsResponse);
 
   // VerifyAuditChain, zincirin tamamını yürür ve kurcalama tespit eder.
-  // Hem daemon hem executor zincirini doğrular ve ikisini karşılaştırır.
+  // Hem daemon hem executor zincirini AYRI AYRI doğrular.
+  // ⚠ İkisini birbiriyle KARŞILAŞTIRMAZ — o kod yok (K-079). Kendi
+  // kayıtlarını düşüren ele geçirilmiş bir panelyd için ikisi de geçerli döner.
   rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse);
 
   // ── Uygulamalar ────────────────────────────────────────────────────

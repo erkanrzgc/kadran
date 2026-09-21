@@ -112,7 +112,8 @@ func orDash(s string) string {
 //
 // Daemon'ın SQLite zinciri ile executor'ın dosya zinciri bilerek ayrı
 // tutulur: ele geçirilmiş bir panelyd kendi yaptığı ayrıcalıklı çağrıları
-// hiç kaydetmeyebilir, ama executor'ın günlüğüne YAZAMAZ (0640 root:panely).
+// hiç kaydetmeyebilir, ama executor'ın günlüğüne DOKUNAMAZ (root'un 0700
+// dizininde; K-102'ye kadar panelyd'nin dizinindeydi ve silinebiliyordu).
 // İkisini tek bir "geçerli" satırında birleştirmek, modelin tamamının
 // dayandığı ayrımı gizlerdi.
 func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
@@ -181,8 +182,9 @@ func (c *cli) printVerifyResult(target string, resp *panelyv1.VerifyAuditChainRe
 	}
 	if resp.GetExecutorStatus() == panelyv1.ChainStatus_CHAIN_STATUS_INVALID {
 		fmt.Fprintln(c.stderr,
-			"\nEXECUTOR ZİNCİRİ KIRIK. panelyd bu dosyaya yazamaz "+
-				"(0640 root:panely); bozulmuşsa root yetkisi kullanılmış demektir.")
+			"\nEXECUTOR ZİNCİRİ KIRIK. panelyd bu günlüğe dokunamaz "+
+				"(root'un 0700 dizininde); bozulmuşsa ya root yetkisi kullanıldı "+
+				"ya da dosya diskte bozuldu.")
 	}
 }
 

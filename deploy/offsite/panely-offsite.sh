@@ -126,30 +126,60 @@ uploaded=0
 skipped=0
 failed=0
 
-# Uzakta ZATEN olanları bir kez listele: her dosya için ayrı ağ turu
-# atmak, 24 yedekle 24 gereksiz istek demekti.
+# Uzakta ZATEN olanları bir kez, BOYUTLARIYLA listele: her dosya için
+# ayrı ağ turu atmak, 24 yedekle 24 gereksiz istek demekti.
 remote_list="$tmp/remote.txt"
-if ! rclone lsf "$OFFSITE_REMOTE" > "$remote_list" 2>"$tmp/lsf.err"; then
+if ! rclone lsf --format ps --separator '|' "$OFFSITE_REMOTE" \
+        > "$remote_list" 2>"$tmp/lsf.err"; then
     die "uzak hedef listelenemedi ($OFFSITE_REMOTE): $(head -2 "$tmp/lsf.err")"
 fi
-log "uzak hedefte $(wc -l < "$remote_list") dosya var"
+declare -A uzak_boyut=()
+while IFS='|' read -r ad boyut; do
+    [[ -n "$ad" ]] && uzak_boyut["$ad"]="$boyut"
+done < "$remote_list"
+log "uzak hedefte ${#uzak_boyut[@]} dosya var"
 
 shopt -s nullglob
 for snap in "$BACKUP_DIR"/panely-*.db; do
     base="$(basename "$snap")"
     enc="${base}.age"
 
-    if grep -qxF "$enc" "$remote_list"; then
-        skipped=$((skipped + 1))
-        continue
-    fi
-
     # Şifrele. Çıktı PrivateTmp içinde; düz metin asla kalıcı diske
     # yazılmıyor.
+    #
+    # Uzakta zaten olsa bile ÖNCE şifreleniyor: beklenen boyutu bilmenin
+    # tek güvenilir yolu bu. age çıktısının boyutu aynı girdi ve aynı
+    # alıcı türü için SABİT (ölçüldü: aynı yedek üç kez → 3 × 143.592
+    # bayt); içerik her seferinde farklı olduğu için yalnızca boyut
+    # karşılaştırılabilir.
     if ! age -r "$OFFSITE_RECIPIENT" -o "$tmp/$enc" "$snap" 2>"$tmp/age.err"; then
         echo "panely-offsite: şifrelenemedi $base: $(head -1 "$tmp/age.err")" >&2
         failed=$((failed + 1))
         continue
+    fi
+    want="$(stat -c %s "$tmp/$enc")"
+
+    # ── Uzakta ADI olan dosya DOĞRU sanılmaz ─────────────────────────
+    #
+    # Eski hâli yalnızca ada bakıyordu. Ölçüldü: uzaktaki 100 baytlık
+    # KESİK bir kopya "atlandı" sayıldı, koşu çıkış 0 ile bitti ve bozuk
+    # kopya kalıcı oldu. Yüklemenin kendi boyut denetimi o koşuyu doğru
+    # biçimde düşürürdü, ama BİR SONRAKİ koşu dosyayı "zaten var" diye
+    # geçiyordu. Artık boyut da tutmalı; tutmuyorsa yeniden yükleniyor.
+    #
+    # Sağlayıcı üzerine yazmayı reddederse (R2 bucket lock) yükleme düşer
+    # ve koşu BAŞARISIZ olur — bozuk kopya en azından sessiz kalmaz.
+    #
+    # ⚠ Sınır: AYNI boyutta bozulmuş bir kopya bu denetimden geçer.
+    # Şifreli içerik her seferinde farklı olduğu için karşılaştırılacak
+    # bir hash yok; bunu yakalayan tek yol geri yükleme tatbikatı.
+    if [[ -n "${uzak_boyut[$enc]+var}" ]]; then
+        if [[ "${uzak_boyut[$enc]}" == "$want" ]]; then
+            skipped=$((skipped + 1))
+            rm -f "$tmp/$enc"
+            continue
+        fi
+        echo "panely-offsite: UZAK KOPYA BOZUK $enc (uzak=${uzak_boyut[$enc]} beklenen=$want) — yeniden yükleniyor" >&2
     fi
 
     if ! rclone copyto "$tmp/$enc" "$OFFSITE_REMOTE/$enc" 2>"$tmp/cp.err"; then
@@ -164,7 +194,6 @@ for snap in "$BACKUP_DIR"/panely-*.db; do
     # `rclone copyto`nun sıfır dönmesi dosyanın karşıda DOĞRU boyutta
     # durduğunu kanıtlamaz. Kesilmiş bir yedek, olmayan bir yedekten
     # daha kötüdür: geri yükleme gününe kadar sağlıklı görünür.
-    want="$(stat -c %s "$tmp/$enc")"
     got="$(rclone size --json "$OFFSITE_REMOTE/$enc" 2>/dev/null |
            grep -oE '"bytes":[0-9]+' | cut -d: -f2)"
     if [[ "$got" != "$want" ]]; then

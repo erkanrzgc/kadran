@@ -5843,3 +5843,56 @@ Yükleme döngüsü uzaktaki dosyayı yalnızca ADIYLA atlıyor
 o koşu doğru biçimde başarısız oluyor; ama sonraki koşu dosyayı "zaten
 var" diye atlıyor ve yeşil bitiyor. Bozuk kopya kalıcı olur ve R2'de
 kilit onu yeniden yazmayı da engeller. Ayrı iş; önce ölçülecek.
+→ Ölçüldü ve düzeltildi, bkz. K-105.
+
+---
+
+## K-105 — Uzak yedek, uzaktaki kopyayı yalnızca adıyla doğru saymıyor
+
+**Tarih:** 21 Eylül 2026
+**Durum:** ölçüldü, düzeltildi, yeniden ölçüldü
+
+K-104'te koddan okunan boşluk önce ölçüldü. Sunucuda, geçici bir yerel
+rclone hedefiyle, gerçek yedekler yalnızca okunarak:
+
+```
+KONTROL  boş hedef                      → yüklendi=24, kurban 143.592 bayt
+DENEY    kurbanın 100 baytlık KESİK      → atlandı=1, çıkış 0,
+         kopyası önceden uzakta            kurban uzakta 100 bayt KALDI
+```
+
+Betik bozuk bir yedeği başarı olarak raporluyordu. K-098'in kendi
+kuralı — "kesilmiş bir yedek olmayandan kötüdür" — yükleme anında
+uygulanıyor ama bir sonraki koşuda ad kontrolüyle atlanıyordu.
+
+### Düzeltme
+
+Uzak liste artık boyutlarıyla alınıyor (`rclone lsf --format ps`).
+Her yedek önce şifreleniyor, çünkü beklenen boyutu bilmenin tek
+güvenilir yolu bu; sonra uzaktaki boyutla karşılaştırılıyor. Tutmazsa
+"UZAK KOPYA BOZUK" yazılıp yeniden yükleniyor.
+
+Bunun mümkün olduğu da ölçüldü: age çıktısının içeriği her seferinde
+farklı ama BOYUTU sabit (aynı yedek üç kez → 3 × 143.592 bayt).
+
+### Yeniden ölçüm — dört durum
+
+```
+A  boş hedef (kontrol)                  → yüklendi=24
+B  ikinci koşu, aynı hedef              → yüklendi=0 atlandı=24
+C  kesik kopya uzakta                   → BOZUK yakalandı, yeniden yüklendi,
+                                          kurban 143.592 bayt
+D  kesik kopya DEĞİŞTİRİLEMEZ           → yüklenemedi, başarısız=1, çıkış 1
+   (chattr +i — kilit benzetimi)
+```
+
+B, K-098'in sonsuz döngü dersinin kontrolü: düzeltme, sağlam kopyaları
+her koşuda yeniden yükleseydi aynı sınıf hata geri gelirdi. D, R2'deki
+kilit durumunun benzetimi: bozuk kopya yeniden yazılamıyorsa en azından
+sessiz kalmıyor.
+
+### Sınır
+
+AYNI boyutta bozulmuş bir kopya bu denetimden geçer. Şifreli içerik
+her seferinde farklı olduğu için karşılaştırılacak bir hash yok. Bunu
+yakalayan tek yol bir geri yükleme tatbikatı.

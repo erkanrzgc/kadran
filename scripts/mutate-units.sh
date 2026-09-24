@@ -31,7 +31,7 @@ restore() { for f in "${FILES[@]}"; do cp "$BAK/$(basename "$f")" "$f"; done; }
 trap 'restore; rm -rf "$BAK"' EXIT
 
 fail=0
-WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths'
+WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost'
 
 # mutate <ad> <dosya> <python-ifadesi>
 mutate() {
@@ -107,6 +107,17 @@ mutate "RCLONE_CONFIG tanımlanmıyor" deploy/systemd/panely-offsite.service \
 
 mutate "rclone yapılandırması daemon'un dizininde" deploy/systemd/panely-offsite.service \
     "s=s.replace('Environment=RCLONE_CONFIG=/etc/panely/rclone.conf','Environment=RCLONE_CONFIG=/var/lib/panely/.config/rclone/rclone.conf',1)"
+
+echo "== Uzak yedek DNS istisnası (K-107) =="
+
+mutate "DNS çözücüsü istisnası kaldırıldı" deploy/systemd/panely-offsite.service \
+    "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\n',1)"
+
+mutate "istisna tüm localhost'a genişletildi" deploy/systemd/panely-offsite.service \
+    "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\nIPAddressAllow=localhost\n',1)"
+
+mutate "istisna 127.0.0.0/8'e genişletildi" deploy/systemd/panely-offsite.service \
+    "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\nIPAddressAllow=127.0.0.53 127.0.0.0/8\n',1)"
 
 restore
 echo

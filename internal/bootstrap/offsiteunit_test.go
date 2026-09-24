@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -67,6 +68,47 @@ func TestOffsiteUploaderIsTheOnlyUnitWithNetwork(t *testing.T) {
 	}
 	if !strings.Contains(yukleyici, "RestrictAddressFamilies=") {
 		t.Error("yükleyicide RestrictAddressFamilies yok — adres ailesi sınırsız")
+	}
+}
+
+// TestOffsiteUploaderCanResolveNamesButNotReachLocalhost, yerel ağ
+// engelinin DNS çözücüsünü kapatmadığını — ve istisnanın çözücüden
+// geniş olmadığını — doğrular.
+//
+// ── Neden var (K-107) ────────────────────────────────────────────────
+//
+// Birim ilk gerçek ağ koşusunda düştü: `IPAddressDeny=localhost`,
+// systemd-resolved'ın 127.0.0.53'teki çözücüsünü de kapatıyordu ve
+// rclone R2'nin adını çözemedi. K-098'in sınaması yerel bir rclone
+// hedefiyle yapıldığı için ağ yolu hiç yürünmemişti.
+//
+// İki yön de kilitleniyor: istisna yoksa yedek hiç yüklenmez; istisna
+// `localhost` ya da `127.0.0.0/8` kadar genişse yükleyici host'taki
+// yerel servislere ulaşabilir — engelin tüm amacı buydu.
+func TestOffsiteUploaderCanResolveNamesButNotReachLocalhost(t *testing.T) {
+	var deny, allow []string
+	for _, satir := range strings.Split(unitOku(t, "panely-offsite.service"), "\n") {
+		if deger, ok := strings.CutPrefix(satir, "IPAddressDeny="); ok {
+			deny = append(deny, strings.Fields(deger)...)
+		}
+		if deger, ok := strings.CutPrefix(satir, "IPAddressAllow="); ok {
+			allow = append(allow, strings.Fields(deger)...)
+		}
+	}
+
+	if !slices.Contains(deny, "localhost") {
+		t.Fatalf("IPAddressDeny localhost'u engellemiyor (%q) — ölçüm geçersiz: "+
+			"korunan bir şey yok", deny)
+	}
+	if !slices.Contains(allow, "127.0.0.53") {
+		t.Errorf("IPAddressAllow 127.0.0.53'ü içermiyor (%q) — localhost engeli "+
+			"DNS çözücüsünü de kapatır, R2'nin adı çözülemez ve her yükleme düşer", allow)
+	}
+	for _, a := range allow {
+		if a != "127.0.0.53" {
+			t.Errorf("IPAddressAllow %q içeriyor — istisna yalnızca DNS çözücüsü "+
+				"olmalı; daha genişi yükleyiciyi host'un yerel servislerine açar", a)
+		}
 	}
 }
 

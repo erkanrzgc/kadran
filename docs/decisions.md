@@ -5198,6 +5198,12 @@ tutuyordu.
 **Tarih:** 18 Eylül 2026
 **Durum:** boru hattı canlıda uçtan uca kanıtlandı; hedef yapılandırması kullanıcıda
 
+> ⚠ **"Uçtan uca" fazla iddialıydı — bkz. K-107.** Sınama yerel bir
+> rclone hedefiyle yapıldı; birim AĞA hiç çıkmadı. İlk gerçek ağ
+> koşusunda birimin kendi `IPAddressDeny=localhost` kuralı DNS
+> çözücüsünü kapattığı için düştü. Şifreleme, çözme ve budama
+> mantığına dair ölçümler geçerli; ağ yolu değil.
+
 K-091 yerel yedeklemeyi getirdi ama kapsamı açıkça yereldi: disk
 giderse yedekler de giderdi. K-097 bunu kırmızı bir açık olarak
 kaydetti. Bu kayıt kapatıyor.
@@ -5955,3 +5961,91 @@ Bütün test dosyaları silindi; kovada yalnızca kilit testi dosyası var.
 
 rclone'u güncellemek sorunu başka yoldan çözebilirdi ama dışarıdan ikili
 indirmek ayrı bir karar; yapılandırma satırı yeterli ve belgelendi.
+
+---
+
+## K-107 — Uzak yedek ilk kez AĞA çıktı: birim kendi DNS'ini kapatıyordu
+
+**Tarih:** 24-25 Eylül 2026
+**Durum:** düzeltildi, gerçek birimle R2'ye yüklendi, kullanıcının
+makinesinde çözüldü; zamanlayıcı hâlâ KAPALI
+
+`offsite.conf` yazıldı (`OFFSITE_PRUNE=hayir`) ve ilk yükleme elle
+değil gerçek systemd birimiyle başlatıldı. Birim düştü:
+
+```
+lookup ….r2.cloudflarestorage.com on 127.0.0.53:53:
+write udp 127.0.0.1:…->127.0.0.53:53: write: operation not permitted
+```
+
+`IPAddressDeny=localhost` (yükleyici ele geçirilirse host'un yerel
+servislerini taramasın diye) systemd-resolved'ın 127.0.0.53'teki
+çözücüsünü de kapatıyordu. rclone Go'nun kendi çözücüsünü kullanıyor ve
+`/etc/resolv.conf`'taki adrese UDP ile gidiyor.
+
+K-098 bu birimi "uçtan uca kanıtlandı" diye kaydetmişti; sınaması yerel
+bir rclone hedefiyle yapıldığı için ağ yolu hiç yürünmemişti. K-098'e
+bant eklendi. Doğru olan tek şey: birim hatayı SESSİZ geçmedi, `failed`
+kaldı ve hiçbir şey yüklenmedi.
+
+### Düzeltme önce GEÇİCİ birimle ölçüldü
+
+Yüklü birime dokunmadan `systemd-run` ile aynı kısıtlar:
+
+```
+KONTROL  birimdeki kısıtlar aynen          → DNS düştü, çıkış 1
+DENEY    + IPAddressAllow=127.0.0.53       → R2 listelendi, çıkış 0
+YAN ETKİ izinle birlikte 127.0.0.1:22      → KAPALI
+KONTROL  kısıtsız süreçten 127.0.0.1:22    → AÇIK
+```
+
+Son iki satır istisnanın yalnızca çözücüyü açtığını gösteriyor; kısıtsız
+kontrol olmasa "KAPALI" sonucu, deneyin hiçbir şeye bağlanamayacak
+biçimde kurulmuş olmasından da gelebilirdi.
+
+(`systemd-run -p IPAddressDeny=localhost` bu sürümde "Failed to parse
+IP address prefix" veriyor; ölçümde sembolik adlar açık öneklere
+çevrildi. Birim dosyasında sembolik ad çalışıyor — `systemctl show`
+çözülmüş hâlini gösterdi.)
+
+### Kilitlendi
+
+`TestOffsiteUploaderCanResolveNamesButNotReachLocalhost` iki yönü de
+sınıyor: istisna yoksa ad çözülemez; istisna `localhost` ya da
+`127.0.0.0/8` kadar genişse engelin amacı kalmaz. `mutate-units.sh`'a
+üç mutasyon eklendi, 9/9 yakalandı.
+
+### Gerçek koşu
+
+```
+1. koşu  yüklendi=24 atlandı=0 başarısız=0   birim success
+         uzakta 24 × 143.592 bayt (+ K-106'nın 10 baytlık kilit testi)
+2. koşu  yüklendi=0  atlandı=24 başarısız=0  (K-105: churn yok)
+```
+
+### Geri dönüş yolu — kullanıcının makinesinde
+
+Bir yedek R2'den indirildi ve kullanıcının Windows makinesindeki özel
+anahtarla çözüldü:
+
+```
+DENEY    doğru anahtar  → çıkış 0, "SQLite format 3", integrity_check=ok
+                          md5 528aba4a… = sunucudaki orijinalin md5'i
+KONTROL  yeni üretilmiş yanlış anahtar → "no identity matched", çıkış 1,
+                          dosya oluşmadı
+```
+
+md5 eşitliği bayt bayt aynılık demek: şifreleme, yükleme, indirme ve
+çözme zinciri hiçbir şey kaybetmiyor. Çözülen kopya (uygulama sırlarını
+taşıyor) ölçümden hemen sonra silindi.
+
+⚠ İlk yanlış-anahtar ölçümü "çıkış 0" gösterdi: komut PowerShell'de bir
+boruya bağlanmıştı ve `$LASTEXITCODE` borunun son elemanından geldi.
+Dosyanın oluşmaması gerçek kanıttı; ölçüm borusuz tekrarlandı ve çıkış
+1 verdi. Eski bir ders yeniden: çıkış kodunu boruyla ölçme.
+
+### Kalan
+
+- Zamanlayıcı **KAPALI** — açmak kullanıcının kararı.
+- Arıza bildirimi hâlâ yok: birim düşerse `failed` kalır, kimse haber
+  almaz. Bu koşu bunun tam örneğiydi.

@@ -67,6 +67,23 @@ AmbientCapabilities=
 # engelleniyor: ele geçirilse bile konteyner ağını ya da host
 # servislerini tarayamasın.
 IPAddressDeny=localhost link-local multicast
+
+# ── Tek istisna: DNS çözücüsü (K-107) ────────────────────────────────
+#
+# `localhost` engeli systemd-resolved'ın taslak çözücüsünü (127.0.0.53)
+# de kapatıyor. rclone Go'nun kendi çözücüsünü kullanıyor ve
+# /etc/resolv.conf'taki 127.0.0.53'e UDP ile soruyor; engel altında:
+#
+#   lookup ….r2.cloudflarestorage.com on 127.0.0.53:53:
+#   write udp 127.0.0.1:…->127.0.0.53:53: write: operation not permitted
+#
+# Birim ilk GERÇEK ağ koşusunda bununla düştü. K-098'in sınaması yerel
+# bir rclone hedefiyle yapılmıştı; ağ yolu hiç yürünmemişti.
+#
+# İzin YALNIZCA 127.0.0.53: geçici birimle ölçüldü — bu izinle R2
+# listeleniyor, ama 127.0.0.1:22 hâlâ kapalı (kısıtsız süreçten açık:
+# kontrol grubu). IPAddressAllow, IPAddressDeny'den önce gelir.
+IPAddressAllow=127.0.0.53
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # Düz metin yedek PrivateTmp içinde üretiliyor ve süreç bitince yok

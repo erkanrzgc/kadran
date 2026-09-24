@@ -5896,3 +5896,62 @@ sessiz kalmıyor.
 AYNI boyutta bozulmuş bir kopya bu denetimden geçer. Şifreli içerik
 her seferinde farklı olduğu için karşılaştırılacak bir hash yok. Bunu
 yakalayan tek yol bir geri yükleme tatbikatı.
+
+---
+
+## K-106 — R2 kilidi ölçüldü; rclone'un yükleme sonrası HEAD'i R2'de 501
+
+**Tarih:** 24 Eylül 2026
+**Durum:** ölçüldü; `rclone.conf`'a `no_head = true` eklendi, belge güncellendi
+
+Kullanıcı R2'yi kurdu: `panely-yedek` kovası (Standard), bucket lock
+`panely-` 30 gün, yaşam döngüsü `panely-` 90 gün, token Object Read &
+Write yalnız bu kovaya. `/etc/panely/rclone.conf` 640 root:panely.
+
+### Kilit — K-104'ün açık bıraktığı soru
+
+Cloudflare belgesi kilidin token iznine ağır bastığını yazmıyordu.
+Aynı token, `panely` kullanıcısı, iki önek:
+
+```
+panely-kilit-testi-… (kilitli)   sil          → 409, dosya DURUYOR
+                                 üzerine yaz  → 409, boyut değişmedi
+kontrol-testi-…      (kilitsiz)  sil          → çıkış 0, SİLİNDİ
+```
+
+Kontrol grubu şart: yalnız 409 görülseydi "token'ın silme izni yok"
+diye de okunabilirdi. Kilitsiz dosyanın aynı token'la silinmesi reddin
+kilitten geldiğini kanıtlıyor. `panely-kilit-testi-…` 30 gün kovada
+kalıyor (10 bayt), sonra yaşam döngüsü siliyor.
+
+### Beklenmeyen bulgu: her yükleme "başarısız"
+
+İki test yüklemesi de `501 Not Implemented` ile çıkış 1 verdi — ama
+dosyalar kovadaydı. `--dump headers` ile istekler ayrıldı:
+
+```
+HEAD /…                  → 404   (var mı? yok — normal)
+PUT  /…                  → 200   (yazıldı)
+HEAD /…?versionId=…      → 501   (R2 desteklemiyor)
+```
+
+Kilitli kovada R2 PUT yanıtında `X-Amz-Version-Id` döndürüyor;
+sunucudaki rclone 1.60.1 ardından o sürümü HEAD ile soruyor.
+Düzeltilmeseydi betik her yüklemeyi `başarısız` sayar, birim her gece
+`failed` kalırdı — ve arıza hâlâ kimseye bildirilmiyor (K-098).
+
+`no_head = true` rclone'un yükleme sonrası HEAD'ini kapatıyor. Bu bir
+doğrulamayı kaldırmak değil: betik yüklemeden sonra boyutu kendisi,
+LİSTEleyerek ölçüyor (`rclone size --json`) ve o yol R2'de çalışıyor.
+Ölçüm, 143.592 baytlık bir dosyayla:
+
+```
+KONTROL  ayarsız              → çıkış 1
+DENEY    --s3-no-head          → çıkış 0, size=143.592 (yerel 143.592)
+         rclone.conf'ta no_head → bayraksız çıkış 0, size doğru
+```
+
+Bütün test dosyaları silindi; kovada yalnızca kilit testi dosyası var.
+
+rclone'u güncellemek sorunu başka yoldan çözebilirdi ama dışarıdan ikili
+indirmek ayrı bir karar; yapılandırma satırı yeterli ve belgelendi.

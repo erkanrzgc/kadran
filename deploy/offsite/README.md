@@ -111,11 +111,19 @@ her token SİLEBİLİR. Silmeyi durduran şey kovadaki **bucket lock**:
    endpoint = https://<hesap-kimliği>.r2.cloudflarestorage.com
    acl = private
    no_check_bucket = true
+   no_head = true
    ```
 
    `no_check_bucket = true` ŞART: nesne düzeyindeki token kova
    oluşturamaz ve rclone aksi hâlde "Access Denied" ile düşer
    (Cloudflare'in kendi belgesi).
+
+   `no_head = true` de ŞART (24 Eyl'de ölçüldü, K-106): bucket lock
+   açık kovada R2 her yüklemeye bir sürüm kimliği döndürüyor; rclone
+   1.60 yüklemeden sonra `HEAD ?versionId=…` atıyor ve R2 buna
+   `501 Not Implemented` veriyor. Dosya YAZILIYOR ama rclone çıkış 1
+   dönüyor ve betik her yüklemeyi başarısız sayardı. Yükleme sonrası
+   boyut doğrulamasını betik zaten kendisi yapıyor.
 6. `offsite.conf`'a `OFFSITE_PRUNE=hayir` yaz. Budama kilitli
    dosyaları silmeye çalışıp her koşuda hata basardı.
 

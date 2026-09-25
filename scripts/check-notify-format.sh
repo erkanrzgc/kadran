@@ -58,6 +58,52 @@ bekle "bilinmeyen durum düzeldi SAYILMAZ" \
     'time=x level=WARN msg=ALARM alarm=disk_low:host durum=yeni_bir_sey' \
     '❔ yeni_bir_sey — disk_low:host'
 
+echo "== Yapılandırma ayrıştırıcı =="
+
+# Canlıda iki kez oldu: yapıştırılan anahtarın SONUNDA boşluk kaldı ve
+# biçim denetimi reddetti. Kullanıcı sebebi göremiyordu.
+conf_dene() {
+    local ad="$1" icerik="$2" beklenen="$3" dosya sonuc
+    dosya="$(mktemp)"
+    printf '%b' "$icerik" > "$dosya"
+    sonuc="$( (PANELY_NOTIFY_CONF="$dosya"; unset CREDENTIALS_DIRECTORY
+               yapilandirma_oku && printf '%s|%s' "$TOKEN" "$CHAT_ID") 2>/dev/null)"
+    rm -f "$dosya"
+    if [[ "$sonuc" == "$beklenen" ]]; then
+        echo "  ✓ $ad"
+    else
+        echo "  ✗ $ad (beklenen $(printf '%q' "$beklenen"), çıkan $(printf '%q' "$sonuc"))"
+        fail=1
+    fi
+}
+
+conf_dene "düz" 'TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n' '123:abc|42'
+conf_dene "değerin sonunda boşluk" 'TELEGRAM_TOKEN=123:abc \nTELEGRAM_CHAT_ID=42 \n' '123:abc|42'
+conf_dene "eşittirin iki yanında boşluk" 'TELEGRAM_TOKEN = 123:abc\nTELEGRAM_CHAT_ID = -42\n' '123:abc|-42'
+conf_dene "Windows satır sonu" 'TELEGRAM_TOKEN=123:abc\r\nTELEGRAM_CHAT_ID=42\r\n' '123:abc|42'
+# Kontrol grubu: kırpma, bozuk anahtarı kabul edilir hâle getirmemeli.
+conf_dene "ortada boşluklu anahtar REDDEDİLİR" 'TELEGRAM_TOKEN=123:ab c\n' ''
+
+echo "== Günlük seviyesi önekleri =="
+
+# Birim LogLevelMax=notice taşıyor; düz satırlar susturuluyor (ölçüldü).
+# journal'a yazarken önek ŞART, terminalde OLMAMALI.
+onek_dene() {
+    local ad="$1" journal="$2" beklenen="$3" cikti
+    cikti="$(JOURNAL_STREAM="$journal" bash -c \
+        'source deploy/notify/panely-notify.sh; log x; (die y) 2>&1' 2>&1)"
+    if [[ "$cikti" == "$beklenen" ]]; then
+        echo "  ✓ $ad"
+    else
+        echo "  ✗ $ad (çıkan $(printf '%q' "$cikti"))"
+        fail=1
+    fi
+}
+onek_dene "journal altında notice/err önekli" "8:123" \
+    $'<5>panely-notify: x\n<3>panely-notify: HATA: y'
+onek_dene "terminalde öneksiz" "" \
+    $'panely-notify: x\npanely-notify: HATA: y'
+
 echo
 if (( fail )); then
     echo "BAŞARISIZ: biçimlendirici beklenen çıktıyı üretmiyor."

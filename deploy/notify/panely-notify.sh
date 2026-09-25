@@ -31,11 +31,35 @@
 #   sohbet-bul    bota yazan sohbetlerin kimliklerini listele (root)
 set -uo pipefail
 
-log() { echo "panely-notify: $*"; }
-die() { echo "panely-notify: HATA: $*" >&2; exit 1; }
+# ── Günlük seviyeleri ────────────────────────────────────────────────
+#
+# Birim `LogLevelMax=notice` taşıyor (dakikalık koşu journal'ı
+# doldurmasın diye). Bu sınır betiğin DÜZ çıktısını da susturuyor —
+# systemd onu info sayıyor. Ölçüldü: düz satır kayboldu, `<5>` (notice)
+# ve `<3>` (err) önekli satırlar kaldı. Önek olmasa bir gönderim
+# başarısız olduğunda SEBEBİ görünmezdi; yalnızca systemd'nin
+# "Failed with result" satırı kalırdı.
+#
+# Önek yalnızca journal'a yazarken ekleniyor ($JOURNAL_STREAM systemd
+# tarafından konuyor); elle koşarken terminalde "<5>" görünmesin.
+if [[ -n "${JOURNAL_STREAM:-}" ]]; then
+    ONEK_NOTICE="<5>"; ONEK_HATA="<3>"
+else
+    ONEK_NOTICE=""; ONEK_HATA=""
+fi
+log() { echo "${ONEK_NOTICE}panely-notify: $*"; }
+die() { echo "${ONEK_HATA}panely-notify: HATA: $*" >&2; exit 1; }
 
 TOKEN=""
 CHAT_ID=""
+
+# kirp <metin> — baştaki ve sondaki boşlukları (CR dahil) atar.
+kirp() {
+    local s="$1"
+    s="${s#"${s%%[![:space:]]*}"}"
+    s="${s%"${s##*[![:space:]]}"}"
+    printf '%s' "$s"
+}
 
 # ── Yapılandırma ─────────────────────────────────────────────────────
 #
@@ -56,7 +80,12 @@ yapilandirma_oku() {
 
     local anahtar deger
     while IFS='=' read -r anahtar deger; do
-        deger="${deger%$'\r'}"
+        # Baştaki/sondaki boşluk ve CR atılıyor. Yapıştırılan anahtarın
+        # sonunda boşluk kalması canlıda İKİ kez oldu (rclone.conf ve bu
+        # dosya); biçim denetimi haklı olarak reddediyordu ama kullanıcı
+        # sebebini göremiyordu.
+        anahtar="$(kirp "$anahtar")"
+        deger="$(kirp "$deger")"
         case "$anahtar" in
             TELEGRAM_TOKEN) TOKEN="$deger" ;;
             TELEGRAM_CHAT_ID) CHAT_ID="$deger" ;;
@@ -90,7 +119,7 @@ gonder() {
     if [[ "$kod" != 200 ]]; then
         # Telegram'ın hata gövdesi anahtarı İÇERMEZ; curl'ün hatası
         # da URL'yi basmaz (-sS). Yine de ilk satırla sınırlı.
-        echo "panely-notify: gönderilemedi (http=${kod:-yok}): $(head -c 200 "$TMP/yanit" 2>/dev/null) $(head -1 "$TMP/curl.err")" >&2
+        echo "${ONEK_HATA}panely-notify: gönderilemedi (http=${kod:-yok}): $(head -c 200 "$TMP/yanit" 2>/dev/null) $(head -1 "$TMP/curl.err")" >&2
         return 1
     fi
 }

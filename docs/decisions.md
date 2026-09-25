@@ -6169,3 +6169,36 @@ okuyor.
   eklenmedi.
 - `panely bootstrap` ne uzak yedeği ne göndericiyi kuruyor; ikisi de
   elle, belgedeki adımlarla.
+
+### Kurulumda çıkan iki kusur (25 Eyl)
+
+**1. Yapıştırılan anahtarın sonunda boşluk.** Kullanıcının dosyasında
+değer 47 karakterdi, son karakter boşluk (değer gösterilmeden, biçim
+maskelenerek ölçüldü). Biçim denetimi haklı olarak reddetti ama kullanıcı
+sebebi göremedi. Aynı şey `rclone.conf`'ta da olmuştu. Ayrıştırıcı artık
+baştaki/sondaki boşluğu ve CR'yi kırpıyor; ortadaki boşluk hâlâ
+reddediliyor (kontrol grubu). Test: 5 durum; kırpma kapatılınca 3'ü
+kırmızı.
+
+**2. `LogLevelMax=notice` betiğin kendi satırlarını da susturuyordu.**
+"İlk koşu" satırı journal'a düşmedi. Ölçüldü: düz satır kayboluyor,
+`<5>`/`<3>` önekli satırlar kalıyor. Önek olmasa bir gönderim
+başarısız olduğunda SEBEBİ görünmezdi. `log`/`die` artık journal'a
+yazarken (`$JOURNAL_STREAM`) önek ekliyor; terminalde eklemiyor. Test:
+iki durum; önek kapatılınca kırmızı.
+
+### Uçtan uca — gerçek alarm, gerçek Telegram
+
+Bot kuruldu (@erkanbahcebot), sohbet kimliği `sohbet-bul` ile bulundu,
+deneme mesajı gerçek birimle (`panely-notify-failure@deneme`) gitti ve
+kullanıcıya ulaştı. Zamanlayıcı açıldı. Tatbikat: yedek dizini `0500`,
+panelyd yeniden başlatıldı; sonra geri alındı.
+
+```
+ALARM durum=acildi backup_failed:panely.db   → gönderildi, ≤34 sn
+ALARM durum=kapandi                          → gönderildi
+site                                          → 163/163 yoklama 200
+panelyd otomatik yeniden başlatma             → 0
+göndericinin başarısız koşusu                 → 0
+son durum                                     → dizin 700, etkin alarm 0
+```

@@ -64,6 +64,7 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Pruning** | Removes old releases' containers, always keeping the rollback target |
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
 | **Alarm detection** | Four failure conditions (heal exhausted, backup failed, proxy not reconciled, low disk), edge-triggered and persisted so that a restart does not fire them again. Shown by `panely alarms` and in the journal |
+| **Alarm delivery (optional)** | A separate unit forwards alarms, and offsite-backup failures, to Telegram ([`deploy/notify`](deploy/notify/README.md)). The daemon still has no network access and cannot read the bot token. Measured: a real alarm reached Telegram within 34 s, its recovery too; failed sends are retried, not lost |
 | **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `panely audit verify` checks both |
 
 ---
@@ -322,13 +323,10 @@ rather than deleted. All of it is in [`docs/decisions.md`](docs/decisions.md).
 Tracked in the open rather than hidden. Each one is a real limitation today.
 
 - **Audit chains are not cross-checked** (see [Audit log](#audit-log)).
-- **Alarm delivery is new and not yet proven end to end.** A separate unit
-  ([`deploy/notify`](deploy/notify/README.md)) forwards panelyd's alarms and
-  offsite-backup failures to Telegram; the daemon still has no network access and
-  cannot read the bot token. Its sandbox, network path and failure trigger were
-  measured on the live server, but no real message has been delivered there yet.
-  If the delivery unit itself stops, nothing on a single host notices — that needs
-  an external heartbeat.
+- **Alarm delivery cannot report its own death.** If the Telegram sender itself
+  stops, nothing on a single host notices — that needs an external heartbeat. It
+  also covers only panelyd's alarms and the offsite backup unit, not crashes of the
+  core services.
 - **No secret store.** Environment variables are stored in the daemon's database and
   are visible to `docker inspect` on the host. Do not put secrets you cannot rotate in
   them.
@@ -352,7 +350,7 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 | **1** | Deployment loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | ✅ done, verified on a real server |
 | — | Operations added along the way: env vars, scaling, pruning, log caps | ✅ done |
 | 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes done |
-| 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection done, Telegram delivery built |
+| 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection and Telegram delivery done |
 | 4 | Webhook receiver, deploy-on-push, cron manager | ⏳ |
 | 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots done |
 | 6 | Multi-node: `panelyd --mode=agent`, mTLS gRPC | ⏳ |

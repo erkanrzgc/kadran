@@ -65,6 +65,7 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
 | **Alarm detection** | Four failure conditions (heal exhausted, backup failed, proxy not reconciled, low disk), edge-triggered and persisted so that a restart does not fire them again. Shown by `panely alarms` and in the journal |
 | **Alarm delivery (optional)** | A separate unit forwards alarms, and offsite-backup failures, to Telegram ([`deploy/notify`](deploy/notify/README.md)). The daemon still has no network access and cannot read the bot token. Measured: a real alarm reached Telegram within 34 s, its recovery too; failed sends are retried, not lost |
+| **Heartbeat (optional)** | A Cloudflare Worker on the free tier ([`deploy/nabiz`](deploy/nabiz/README.md)) tells you on Telegram when the alarm sender goes silent for 15 minutes, meaning the sender or the whole server is down. Measured: the alarm came 17 minutes after the last heartbeat, recovery on the next check, one message per change of state |
 | **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `panely audit verify` checks both |
 
 ---
@@ -323,10 +324,10 @@ rather than deleted. All of it is in [`docs/decisions.md`](docs/decisions.md).
 Tracked in the open rather than hidden. Each one is a real limitation today.
 
 - **Audit chains are not cross-checked** (see [Audit log](#audit-log)).
-- **Alarm delivery cannot report its own death.** If the Telegram sender itself
-  stops, nothing on a single host notices — that needs an external heartbeat. It
-  also covers only panelyd's alarms and the offsite backup unit, not crashes of the
-  core services.
+- **The last link is unwatched.** The heartbeat Worker reports a dead alarm sender
+  or server, but if the Worker itself stops (Cloudflare outage, account problem),
+  nobody is told. Alarm delivery also covers only panelyd's alarms and the offsite
+  backup unit, not crashes of the core services.
 - **No secret store.** Environment variables are stored in the daemon's database and
   are visible to `docker inspect` on the host. Do not put secrets you cannot rotate in
   them.

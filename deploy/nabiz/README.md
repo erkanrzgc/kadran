@@ -9,8 +9,8 @@ sunucu  panely-notify (dakikada bir)  ──POST /ping, ~5 dk'da bir──►  W
 Worker  5 dk'da bir kontrol: son nabız > 15 dk?  ──►  Telegram
 ```
 
-Ücretsiz katman: günde ~300 KV yazması (sınır 1000), 1 zamanlanmış tetikleyici
-(sınır 5).
+Ücretsiz katman: günde ~320 KV yazması (ölçüldü; sınır 1000), 1 zamanlanmış
+tetikleyici (sınır 5).
 
 ## Kurulum
 
@@ -65,6 +65,10 @@ edebildiğini kanıtlamaz.
 2. **Alarm:** `systemctl stop panely-notify.timer` → en geç ~20 dk içinde
    "🔴 NABIZ YOK" gelmeli.
 3. **Düzelme:** `systemctl start panely-notify.timer` → "✅ NABIZ GERİ GELDİ".
+
+Ölçülen (25 Eyl, K-109): son nabızdan 17 dk sonra 🔴, zamanlayıcı açıldıktan
+sonraki ilk turda ✅. Her durum değişiminde tek mesaj geldi, eşiğin altındaki
+turlar sustu.
 
 ## Bilinen sınırlar
 

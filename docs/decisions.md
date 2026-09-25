@@ -6211,8 +6211,8 @@ teyit etti.
 ## K-109 — Dış nabız: gönderici kendi ölümünü bildiremez, Worker bildirir
 
 **Tarih:** 25 Eylül 2026
-**Durum:** kod + testler hazır, sunucu tarafı kuruldu (nabız KAPALI —
-Worker henüz yüklenmedi, kullanıcının Cloudflare hesabı gerekiyor)
+**Durum:** CANLI — Worker yüklendi, zincir uçtan uca ve kontrol gruplu
+ölçüldü (aşağıda "Canlı ölçüm")
 
 K-108'in kapatmadığı satır: alarm göndericisi durursa ya da sunucu
 tamamen kapanırsa, bunu bildirecek bir şey sunucuda kalmıyor. Tek
@@ -6243,7 +6243,7 @@ KV        günde 1.000 yazma, 100.000 okuma
 
 Gönderici dakikada bir koşuyor; her koşuda nabız atsaydı günde 1.440
 yazma, sınırın üstü. Nabız 4 dakikadan taze bir nabız varsa atlanıyor:
-günde ~300 yazma.
+günde ~300 yazma (canlıda ~320 ölçüldü, aşağıda).
 
 ### Kurallar ve testler
 
@@ -6270,10 +6270,57 @@ bash'in `/tmp`'sini göremedi, mutasyon uygulanmadı ve "fail 2" bir
 yapıldı; tam ilgili test düştü. Bu projede tanıdık sınıf (K-096):
 mutasyonun uygulandığı ölçülmeden sonucu okunmamalı.
 
+### Canlı ölçüm (25 Eyl)
+
+Saatler UTC. Telegram mesajları kontrol turundan 0–1 dk sonra düştü
+(ekranda TR saati, UTC+3). Mesajları kullanıcı Telegram'da gördü;
+sunucu tarafı ssh ile, Worker tarafı KV'den okundu.
+
+Önce Worker'ın kapısı, dışarıdan:
+
+```
+GET  /                       404
+POST /ping, anahtarsız       401
+POST /ping, yanlış anahtar   401
+```
+
+Sonra zincir. Gönderici zamanlayıcısı elle durduruldu; geri açılması
+önceden `systemd-run --on-calendar` ile zamanlandı; aradaki sürede
+sunucuya elle müdahale edilmedi:
+
+```
+22:35     🟡 NABIZ HİÇ GELMEDİ   Worker yüklü, sunucu henüz nabız atmıyor
+22:40     (mesaj yok)            aynı durum, TEKRAR ETMEDİ
+22:43:42  ilk nabız              son-nabiz yazıldı (yalnızca HTTP 204'te yazılır)
+22:44:11  panely-notify.timer durduruldu
+22:45     ✅ NABIZ GERİ GELDİ
+22:50     (mesaj yok)            nabız 6 dk bayat, eşiğin altında
+22:55     (mesaj yok)            11 dk bayat, eşiğin altında
+23:00     🔴 NABIZ YOK           "17 dakikadır haber alınamıyor"
+23:05     (mesaj yok)            aynı durum, TEKRAR ETMEDİ
+23:07:23  zamanlayıcı kendiliğinden geri açıldı
+23:10     ✅ NABIZ GERİ GELDİ
+```
+
+- **Eşik karar veriyor, bayatlık tek başına değil:** 6 ve 11 dakikalık
+  turlar sustu, 17 dakikalık tur çaldı.
+- **Kenar tetikleme iki alarm durumunda da:** 🟡 (`hic`) ve 🔴 (`yok`)
+  birer kez geldi; sonraki turlar sustu.
+- **Gecikme:** son nabızdan alarma ~17 dk. Tasarım sınırı: eşik 15 dk +
+  kontrol aralığı en çok 5 dk.
+- **İki taraf aynı nabzı görüyor:** 23:11 nabzı KV'de `23:11:53.980`,
+  sunucudaki dosyada `23:11:54`.
+- **Kontrol grubu — gönderici çalışırken sessizlik:** 23:15, 23:20 ve
+  23:25 turlarında mesaj gelmedi. Uzun süreli sessizlik (bir gece)
+  henüz okunmadı.
+- **Nabız sıklığı:** 23:11:54 → 23:16:24 → 23:21:03, yani ~4,5 dk.
+  Günde ~320 KV yazması; sınır 1000.
+
+Canlıda ölçülMEYEN: Telegram'a ulaşılamadığında durumun yazılmaması —
+yalnızca birim testi ve mutasyonla (yukarıda).
+
 ### Kalan
 
-- Worker yüklenmedi — kullanıcının Cloudflare girişi gerekiyor
-  (`deploy/nabiz/README.md`). Doğrulama kontrol gruplu: gönderici
-  çalışırken bir tur sessizlik, zamanlayıcı durunca alarm, açılınca
-  düzelme.
 - Worker'ın kendisi durursa kimse haber almaz — zincirin son halkası.
+  Cloudflare kesintisi ya da hesap sorunu sessiz kalır.
+- Çekirdek servislerin çöküşü hâlâ bildirilmiyor; sıradaki iş.

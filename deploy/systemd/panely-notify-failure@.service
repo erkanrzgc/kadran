@@ -1,0 +1,56 @@
+[Unit]
+# Bir Panely biriminin BAŞARISIZ olduğunu Telegram'a bildirir (K-108).
+#
+# Kullanım, izlenen birimde:  OnFailure=panely-notify-failure@%n.service
+#
+# ── Neden ayrı bir yol ───────────────────────────────────────────────
+#
+# Bazı arızalar panelyd'de ALARM üretmiyor. En önemlisi uzak yedek:
+# ayrı bir birim, panelyd onu göremiyor. K-098'den beri her kayıt
+# "başarısız olursa kimse haber almaz" diyordu ve K-107'nin ilk gerçek
+# koşusu tam olarak böyle düştü.
+#
+# Bu birimin KENDİSİNE OnFailure verilmiyor: Telegram'a ulaşılamıyorsa
+# ikinci bir deneme de ulaşamaz. Başarısızlığı journal'da kalır.
+Description=Panely birim arızası bildirimi (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/panely/notify/panely-notify.sh hata %i
+
+# Kimlik, anahtar ve sertleştirme panely-notify.service ile AYNI;
+# gerekçeler orada.
+DynamicUser=yes
+SupplementaryGroups=systemd-journal
+LoadCredential=notify:/etc/panely/notify.conf
+
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+IPAddressDeny=localhost link-local multicast
+IPAddressAllow=127.0.0.53
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+TimeoutStartSec=2min

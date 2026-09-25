@@ -6049,3 +6049,123 @@ Dosyanın oluşmaması gerçek kanıttı; ölçüm borusuz tekrarlandı ve çık
 - Zamanlayıcı **KAPALI** — açmak kullanıcının kararı.
 - Arıza bildirimi hâlâ yok: birim düşerse `failed` kalır, kimse haber
   almaz. Bu koşu bunun tam örneğiydi.
+
+> Sonrası: zamanlayıcı kullanıcı onayıyla 24 Eyl'de açıldı; ilk
+> otomatik koşu 25 Eyl 00:20 UTC'de `yüklendi=3 atlandı=21
+> başarısız=0` ile bitti. Arıza bildirimi K-108'de bağlandı.
+
+---
+
+## K-108 — Alarm teslimatı: ayrı gönderici, journal'dan Telegram'a
+
+**Tarih:** 25 Eylül 2026
+**Durum:** kuruldu ve sandbox'ta ölçüldü; gerçek mesaj kullanıcının bot
+kurulumunu bekliyor, zamanlayıcı KAPALI
+
+K-092 alarm TESPİTİNİ getirdi, teslimatı kullanıcı kararına bıraktı:
+panelyd `IPAddressDeny=any` taşıyor. K-098 "ayrı gönderici süreç"
+desenini çalışır hâle getirdi. Bu kayıt onu alarmlara uyguluyor.
+
+### Gönderici NE OKUYOR — karar
+
+İki aday vardı:
+
+| | okunan | anahtar kime açık |
+|---|---|---|
+| veritabanı | `panely.db` (0600 panely) | gönderici `panely` olarak koşmak zorunda → **daemon anahtarı okur** |
+| **journal** | panelyd'nin `msg=ALARM` satırları | gönderici ayrı kullanıcı → daemon okuyamaz |
+
+Journal seçildi. Kenar tetikleme zaten panelyd'de yapılıyor; journal'a
+yalnızca GEÇİŞLER düşüyor, yani gönderici yeni bir karar vermiyor,
+taşıyor. `/var/log/journal` var — kalıcı; imleç yeniden başlatmadan
+sonra kaldığı yerden devam ediyor.
+
+⚠ **Bedel:** `systemd-journal` grubu BÜTÜN sistem journal'ını okur.
+Kabul edildi: sürecin dışarıyla tek teması Telegram API'si ve yanıtın
+yalnızca HTTP kodu okunuyor. Uzak yedek aynı dengeyi kurmuştu (sırlı
+yedekleri okuyan, ağ gören süreç).
+
+### Ölçülen varsayımlar (sunucuda, geçici birimlerle)
+
+```
+DynamicUser + systemd-journal   → 8 ALARM satırı okunuyor
+DynamicUser, grupsuz (kontrol)  → 0 — hata YOK, SESSİZCE boş
+LoadCredential                  → birim anahtarı alıyor
+panely kullanıcısı              → anahtar dosyasını OKUYAMIYOR
+```
+
+İkinci satır bir teste dönüştü: izinsiz journalctl hata vermiyor,
+gönderici "gönderilecek bir şey yok" diye mutlu çıkardı.
+
+```
+journalctl --cursor-file  imleci satırları BASTIĞI ANDA ilerletiyor
+```
+
+Bu yüzden imlecin geçici bir kopyası ilerletiliyor ve yalnızca gönderim
+başarılıysa kalıcı imlecin yerine konuyor (aynı dizinde, atomik).
+Telegram'a ulaşılamazsa olay kaybolmuyor, bir sonraki koşuda yeniden
+deneniyor. İlk koşu imleci "şimdi"ye koyuyor; geçmiş yağdırılmıyor.
+
+```
+dakikada bir koşu, sınırsız        → koşu başına 2 journal satırı
+LogLevelMax=notice, başarılı koşu  → 0
+LogLevelMax=notice, başarısız koşu → 2 (görünür kalıyor)
+LogLevelMax=warning, başarısız     → 1 (bir satır YUTULUYOR — reddedildi)
+```
+
+### Uzak yedek arızası: OnFailure
+
+Uzak yedeğin başarısızlığı panelyd'de ALARM üretmiyor. K-098'den beri
+her kayıt "arıza kimseye bildirilmiyor" diyordu. `panely-offsite.service`
+artık `OnFailure=panely-notify-failure@%n.service` taşıyor. Canlıda:
+
+```
+KONTROL  başarılı yedek koşusu            → bildirim birimi tetiklenmedi (0)
+DENEY    bilerek bozuk koşu (geçici       → bildirim birimi TETİKLENDİ
+         /run drop-in, sonra kaldırıldı)     (243/CREDENTIALS — anahtar
+                                             dosyası henüz yok, beklenen)
+```
+
+### Sandbox, sahte anahtarla
+
+Birimin kısıtlarıyla geçici bir süreçte, sahte bir anahtarla:
+
+```
+izle, ilk koşu   → "imleç şimdiye kondu", çıkış 0
+izle, ikinci     → sessiz, çıkış 0
+hata             → Telegram http=401 "Unauthorized", çıkış 1
+çıktıda anahtar  → 0 kez
+```
+
+401, DNS + ağ + TLS yolunun sandbox içinden Telegram'a ulaştığını
+kanıtlıyor; K-107'nin DNS dersi baştan uygulandığı için ilk denemede.
+Anahtar URL'de ama argv'de değil: `curl -K -` onu standart girdiden
+okuyor.
+
+İlk sandbox denemesi 203 (EXEC) ile düştü: betik `/tmp`'ye konmuştu ve
+`PrivateTmp` birime ayrı bir `/tmp` veriyor. Kurulum hatası, betik değil.
+
+### Kilitlenenler
+
+- `scripts/check-notify-format.sh` — biçimlendirici, 7 durum, CI'da.
+  Elle dört mutasyonla sınandı (tırnaklı ayrıştırma kapatıldı, kapanış
+  "uyarı" yapıldı, bilinmeyen durum "düzeldi" yapıldı, kaçışlı tırnak
+  çözülmedi); dördü de kırmızı.
+- `notifyunit_test.go` — anahtar daemon'a kapalı, journal grubu var,
+  DNS istisnası yalnızca çözücü, IPv4+IPv6 açık, OnFailure bağlı,
+  LogLevelMax=notice.
+- `mutate-units.sh` — 10 yeni mutasyon, toplam 19/19.
+
+### Kapatılmayan
+
+- **Gerçek mesaj henüz gönderilmedi** — kullanıcı botu kurunca
+  `panely-notify-failure@deneme.service` ile uçtan uca denenecek.
+- **Göndericinin kendisi düşerse** kimse haber almaz. Tek sunucuda bunu
+  yakalayacak bir şey yok; dışarıdan bir nabız gerekiyor (ör. Cloudflare
+  Worker). Ayrı karar.
+- **Çekirdek birimler (panelyd, executor, caddy) OnFailure taşımıyor.**
+  `Restart=on-failure` ile varsayılan `RestartMode=normal`'da her
+  yeniden başlatma OnFailure'ı tetikleyebilir; davranış ölçülmeden
+  eklenmedi.
+- `panely bootstrap` ne uzak yedeği ne göndericiyi kuruyor; ikisi de
+  elle, belgedeki adımlarla.

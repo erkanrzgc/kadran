@@ -1,0 +1,89 @@
+[Unit]
+# Panely alarm göndericisi — panelyd'nin ALARM satırlarını Telegram'a
+# iletir (K-108).
+#
+# ── Neden panelyd'nin İÇİNDE değil ───────────────────────────────────
+#
+# panelyd `IPAddressDeny=any` taşıyor; ele geçirilen bir kontrol
+# düzlemi dışarı veri sızdıramasın diye. Uzak yedekte (K-098) kurulan
+# desen: ağ yetkisi, işi tek şey olan ayrı bir birimde.
+Description=Panely alarm göndericisi (Telegram)
+Documentation=file:/usr/local/lib/panely/notify/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/panely/notify/panely-notify.sh izle
+
+# ── Kimlik: ne panely ne root ────────────────────────────────────────
+#
+# DynamicUser, her koşuda geçici bir kullanıcı üretir. panelyd'nin
+# kullanıcısı (`panely`) DEĞİL: aynı kullanıcı olsaydı ele geçirilen
+# daemon bu sürecin dosyalarına ve anahtarına ulaşırdı.
+DynamicUser=yes
+
+# journal'ı okumak için. Ölçüldü: grup varken panelyd'nin ALARM
+# satırları okunuyor (8), grup yokken okunmuyor (0).
+#
+# ⚠ Bedel: bu grup BÜTÜN sistem journal'ını okur, yalnızca panelyd'yi
+# değil. Kabul edildi, çünkü sürecin dışarıyla konuştuğu tek yer
+# Telegram API'si ve yanıtın yalnızca HTTP kodu okunuyor — ayrıştırma
+# yüzeyi yok denecek kadar küçük. Uzak yedek de aynı dengeyi kurdu:
+# sırlı yedekleri okuyan, ağ gören bir süreç.
+SupplementaryGroups=systemd-journal
+
+# ── Telegram anahtarı ────────────────────────────────────────────────
+#
+# systemd dosyayı ROOT olarak okuyup yalnızca bu birime verir
+# ($CREDENTIALS_DIRECTORY). Dosya 0600 root:root kalabilir; `panely`
+# okuyamaz (ölçüldü). Betik dosyayı source ETMİYOR, ayrıştırıyor.
+LoadCredential=notify:/etc/panely/notify.conf
+
+# "Nerede kalmıştım" imleci. DynamicUser ile /var/lib/private altında;
+# daemon'un dizininde DEĞİL (K-100'ün dersi: dizine yazan dosyayı siler).
+StateDirectory=panely-notify
+StateDirectoryMode=0700
+
+# ── Sertleştirme ─────────────────────────────────────────────────────
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# ── Ağ ───────────────────────────────────────────────────────────────
+#
+# Telegram'a çıkmak ZORUNDA; yerel ağa değil. DNS istisnası K-107'de
+# uzak yedeğin İLK gerçek koşusu düşünce öğrenildi: localhost engeli
+# systemd-resolved'ın 127.0.0.53'teki çözücüsünü de kapatıyor. Burada
+# baştan yazıldı. api.telegram.org hem IPv4 hem IPv6 çözülüyor
+# (ölçüldü), iki aile de açık.
+IPAddressDeny=localhost link-local multicast
+IPAddressAllow=127.0.0.53
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Zamanlayıcı dakikada bir koşturuyor. Başarılı koşunun "Starting /
+# Finished" satırları (info) journal'ı dakikada iki satırla doldururdu;
+# notice sınırı onları susturuyor. BAŞARISIZ koşu yine görünüyor —
+# ölçüldü: notice altında başarısız bir birim iki satır bıraktı.
+LogLevelMax=notice
+
+TimeoutStartSec=2min

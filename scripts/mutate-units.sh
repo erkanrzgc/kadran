@@ -24,6 +24,8 @@ FILES=(
     deploy/systemd/panely-exec.service
     deploy/systemd/panely-tmpfiles.conf
     deploy/systemd/panely-offsite.service
+    deploy/systemd/panely-notify.service
+    deploy/systemd/panely-notify-failure@.service
 )
 BAK=$(mktemp -d)
 for f in "${FILES[@]}"; do cp "$f" "$BAK/$(basename "$f")"; done
@@ -31,7 +33,7 @@ restore() { for f in "${FILES[@]}"; do cp "$BAK/$(basename "$f")" "$f"; done; }
 trap 'restore; rm -rf "$BAK"' EXIT
 
 fail=0
-WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost'
+WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified'
 
 # mutate <ad> <dosya> <python-ifadesi>
 mutate() {
@@ -118,6 +120,41 @@ mutate "istisna tüm localhost'a genişletildi" deploy/systemd/panely-offsite.se
 
 mutate "istisna 127.0.0.0/8'e genişletildi" deploy/systemd/panely-offsite.service \
     "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\nIPAddressAllow=127.0.0.53 127.0.0.0/8\n',1)"
+
+echo "== Alarm göndericisi (K-108) =="
+
+N=deploy/systemd/panely-notify.service
+NF=deploy/systemd/panely-notify-failure@.service
+
+mutate "gönderici panely kullanıcısıyla koşuyor" "$N" \
+    "s=s.replace('\nDynamicUser=yes\n','\nUser=panely\n',1)"
+
+mutate "hata birimi DynamicUser'ı kaybetti" "$NF" \
+    "s=s.replace('\nDynamicUser=yes\n','\n',1)"
+
+mutate "anahtar dosyası daemon'un dizininde" "$N" \
+    "s=s.replace('\nLoadCredential=notify:/etc/panely/notify.conf\n','\nLoadCredential=notify:/var/lib/panely/notify.conf\n',1)"
+
+mutate "journal grubu yok (alarmlar SESSİZCE görünmez)" "$N" \
+    "s=s.replace('\nSupplementaryGroups=systemd-journal\n','\n',1)"
+
+mutate "hata biriminde journal grubu yok" "$NF" \
+    "s=s.replace('\nSupplementaryGroups=systemd-journal\n','\n',1)"
+
+mutate "hata biriminde DNS istisnası yok" "$NF" \
+    "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\n',1)"
+
+mutate "gönderici IPv6'ya çıkamıyor" "$N" \
+    "s=s.replace('\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX\n','\nRestrictAddressFamilies=AF_INET AF_UNIX\n',1)"
+
+mutate "uzak yedek arızası bildirilmiyor" deploy/systemd/panely-offsite.service \
+    "s=s.replace('\nOnFailure=panely-notify-failure@%n.service\n','\n',1)"
+
+mutate "OnFailure olmayan bir birimi adlandırıyor" deploy/systemd/panely-offsite.service \
+    "s=s.replace('\nOnFailure=panely-notify-failure@%n.service\n','\nOnFailure=panely-notify-fail@%n.service\n',1)"
+
+mutate "gönderici journal'ı dolduruyor" "$N" \
+    "s=s.replace('\nLogLevelMax=notice\n','\n',1)"
 
 restore
 echo

@@ -73,6 +73,11 @@ jobs:
           done < <(git ls-files '*.sh')
           exit "$bozuk"
 
+      # Alarm göndericisinin biçimlendiricisi (K-108). Girdiler panelyd'nin
+      # journal'ına gerçekten düşen satırların biçiminde; ağa dokunmaz.
+      - name: Alarm mesajı biçimlendiricisi
+        run: bash scripts/check-notify-format.sh
+
       # # Sürüm sabiti neden hem action'ı hem linter'ı kapsıyor?
       #
       # action v6 YALNIZCA golangci-lint v1, v7+ YALNIZCA v2 destekliyor.

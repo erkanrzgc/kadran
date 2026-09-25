@@ -322,8 +322,13 @@ rather than deleted. All of it is in [`docs/decisions.md`](docs/decisions.md).
 Tracked in the open rather than hidden. Each one is a real limitation today.
 
 - **Audit chains are not cross-checked** (see [Audit log](#audit-log)).
-- **Alarms are not delivered anywhere.** Detection works; sending to Telegram or a
-  webhook is not built yet, because `panelyd` has no network access by design.
+- **Alarm delivery is new and not yet proven end to end.** A separate unit
+  ([`deploy/notify`](deploy/notify/README.md)) forwards panelyd's alarms and
+  offsite-backup failures to Telegram; the daemon still has no network access and
+  cannot read the bot token. Its sandbox, network path and failure trigger were
+  measured on the live server, but no real message has been delivered there yet.
+  If the delivery unit itself stops, nothing on a single host notices — that needs
+  an external heartbeat.
 - **No secret store.** Environment variables are stored in the daemon's database and
   are visible to `docker inspect` on the host. Do not put secrets you cannot rotate in
   them.
@@ -347,7 +352,7 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 | **1** | Deployment loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | ✅ done, verified on a real server |
 | — | Operations added along the way: env vars, scaling, pruning, log caps | ✅ done |
 | 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes done |
-| 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection done, delivery not yet |
+| 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection done, Telegram delivery built |
 | 4 | Webhook receiver, deploy-on-push, cron manager | ⏳ |
 | 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots done |
 | 6 | Multi-node: `panelyd --mode=agent`, mTLS gRPC | ⏳ |

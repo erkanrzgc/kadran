@@ -14,6 +14,11 @@ Documentation=file:/usr/local/lib/panely/offsite/README.md
 After=network-online.target
 Wants=network-online.target
 
+# Başarısız olursa Telegram'a bildir (K-108). K-098'den beri açık olan
+# "arıza kimseye bildirilmiyor" satırını kapatan şey bu. Uzak yedeğin
+# başarısızlığı panelyd'de ALARM üretmiyor; panelyd bu birimi göremiyor.
+OnFailure=panely-notify-failure@%n.service
+
 [Service]
 Type=oneshot
 User=panely

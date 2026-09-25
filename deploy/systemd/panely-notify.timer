@@ -1,0 +1,13 @@
+[Unit]
+Description=Panely alarm göndericisini dakikada bir koştur
+
+[Timer]
+# Alarm gecikmesi en fazla ~1 dakika. Kenar tetikleme panelyd'de,
+# bu yüzden sık koşmak mesaj çoğaltmaz: yeni geçiş yoksa gönderilecek
+# bir şey de yok.
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

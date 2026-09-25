@@ -6202,3 +6202,78 @@ panelyd otomatik yeniden başlatma             → 0
 göndericinin başarısız koşusu                 → 0
 son durum                                     → dizin 700, etkin alarm 0
 ```
+
+Kullanıcı iki mesajı (KRİTİK, DÜZELDİ) Telegram'da ekran görüntüsüyle
+teyit etti.
+
+---
+
+## K-109 — Dış nabız: gönderici kendi ölümünü bildiremez, Worker bildirir
+
+**Tarih:** 25 Eylül 2026
+**Durum:** kod + testler hazır, sunucu tarafı kuruldu (nabız KAPALI —
+Worker henüz yüklenmedi, kullanıcının Cloudflare hesabı gerekiyor)
+
+K-108'in kapatmadığı satır: alarm göndericisi durursa ya da sunucu
+tamamen kapanırsa, bunu bildirecek bir şey sunucuda kalmıyor. Tek
+sunucuda çözümü yok; kontrol dışarıda olmak zorunda.
+
+### Tasarım
+
+- **Nabzı gönderici atıyor**, ikinci bir ağ birimi değil. Gönderici zaten
+  dakikada bir koşuyor ve ağa çıkabiliyor. Nabız `izle` BAŞARIYLA
+  bittikten sonra atıldığı için "sunucu açık" değil "alarm göndericisi
+  çalışıyor" kanıtlanıyor — kapatılmak istenen boşluk tam olarak bu.
+  Bedeli bağlılık: Telegram'a ulaşılamazsa nabız da kesilir (belgede).
+- **Alarm YOKLUKTA çalıyor.** Worker'ın `/ping` yolu yalnızca zamanı
+  yazıyor; karar 5 dakikada bir koşan zamanlanmış kontrolde. Alarm ping
+  yolunda verilseydi ölü sunucu tam aranan durumda sessiz kalırdı.
+- **Eşik 15 dakika**, ölçülen aralıklardan: gönderici 60 sn, nabız ~5 dk
+  (seyreltilmiş), kontrol 5 dk. Daha dar bir eşik zamanlayıcı
+  oynamasında yanlış alarm üretir.
+- **Kenar tetikleme** Worker'da da: `var` / `yok` / `hic` durumları;
+  mesaj yalnızca geçişte.
+
+### Ücretsiz katman — belgeden okundu (25 Eyl)
+
+```
+Workers   günde 100.000 istek, hesap başına 5 zamanlanmış tetikleyici
+KV        günde 1.000 yazma, 100.000 okuma
+```
+
+Gönderici dakikada bir koşuyor; her koşuda nabız atsaydı günde 1.440
+yazma, sınırın üstü. Nabız 4 dakikadan taze bir nabız varsa atlanıyor:
+günde ~300 yazma.
+
+### Kurallar ve testler
+
+- Worker'ın kararı saf bir fonksiyon (`karar.js`), `node --test` ile
+  12 durum; Worker'ın kendisi sahte KV ve sahte fetch ile 8 durum. CI'da.
+- **Telegram'a ulaşılamazsa durum YAZILMIYOR** — yazılsaydı bir sonraki
+  kontrol "zaten alarmda" deyip susardı ve alarm hiç ulaşmazdı.
+- Ping anahtarı sabit zamanlı karşılaştırılıyor (iki tarafın SHA-256'sı
+  alınıp `timingSafeEqual`). `PING_TOKEN` tanımsızsa hiçbir ping kabul
+  edilmiyor (503).
+- KV'den bozuk bir damga gelirse (NaN) "taze" sayılmıyor: NaN ile her
+  karşılaştırma false döner ve alarm hiç çalmazdı.
+- Gönderici tarafında nabız ayarı yarımsa (yalnız URL ya da yalnız
+  anahtar, http, kısa anahtar) çalışma reddediliyor — 6 yeni test.
+
+Elle mutasyonlar: karar (sınır `>`→`>=`, kenar tetikleme kaldırma, NaN'ı
+taze sayma, ilk gözlemde mesaj) 4/4; Worker (gevşek anahtar
+karşılaştırması, PING_TOKEN'sız kabul, durumu hiç yazmama, durumu
+Telegram'dan ÖNCE yazma) 4/4.
+
+⚠ Dördüncü Worker mutasyonunun ilk ölçümü GEÇERSİZDİ: satır içi Python,
+bash'in `/tmp`'sini göremedi, mutasyon uygulanmadı ve "fail 2" bir
+önceki mutasyondan kalmıştı. Yeniden, dosya yerinde değiştirilerek
+yapıldı; tam ilgili test düştü. Bu projede tanıdık sınıf (K-096):
+mutasyonun uygulandığı ölçülmeden sonucu okunmamalı.
+
+### Kalan
+
+- Worker yüklenmedi — kullanıcının Cloudflare girişi gerekiyor
+  (`deploy/nabiz/README.md`). Doğrulama kontrol gruplu: gönderici
+  çalışırken bir tur sessizlik, zamanlayıcı durunca alarm, açılınca
+  düzelme.
+- Worker'ın kendisi durursa kimse haber almaz — zincirin son halkası.

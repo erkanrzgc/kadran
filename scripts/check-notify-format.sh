@@ -84,6 +84,20 @@ conf_dene "Windows satır sonu" 'TELEGRAM_TOKEN=123:abc\r\nTELEGRAM_CHAT_ID=42\r
 # Kontrol grubu: kırpma, bozuk anahtarı kabul edilir hâle getirmemeli.
 conf_dene "ortada boşluklu anahtar REDDEDİLİR" 'TELEGRAM_TOKEN=123:ab c\n' ''
 
+# Nabız (K-109): isteğe bağlı, ama yarım kurulum sessiz kalmamalı.
+N32=0123456789abcdef0123456789abcdef
+conf_dene "nabız yok → geçerli" 'TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\n' '123:abc|42'
+conf_dene "nabız tam → geçerli" \
+    "TELEGRAM_TOKEN=123:abc\nTELEGRAM_CHAT_ID=42\nHEARTBEAT_URL=https://n.example.workers.dev/ping\nHEARTBEAT_TOKEN=$N32\n" '123:abc|42'
+conf_dene "yalnız URL → REDDEDİLİR" \
+    'TELEGRAM_TOKEN=123:abc\nHEARTBEAT_URL=https://n.example.workers.dev/ping\n' ''
+conf_dene "yalnız anahtar → REDDEDİLİR" \
+    "TELEGRAM_TOKEN=123:abc\nHEARTBEAT_TOKEN=$N32\n" ''
+conf_dene "http (şifresiz) → REDDEDİLİR" \
+    "TELEGRAM_TOKEN=123:abc\nHEARTBEAT_URL=http://n.example.workers.dev/ping\nHEARTBEAT_TOKEN=$N32\n" ''
+conf_dene "kısa anahtar → REDDEDİLİR" \
+    'TELEGRAM_TOKEN=123:abc\nHEARTBEAT_URL=https://n.example.workers.dev/ping\nHEARTBEAT_TOKEN=abc\n' ''
+
 echo "== Günlük seviyesi önekleri =="
 
 # Birim LogLevelMax=notice taşıyor; düz satırlar susturuluyor (ölçüldü).

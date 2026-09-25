@@ -1,0 +1,25 @@
+// Panely dış nabız Worker'ı (K-109). Kurulum: README.md
+{
+  "name": "panely-nabiz",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+
+  // 5 dakikada bir kontrol. Ücretsiz planda hesap başına 5 zamanlanmış
+  // tetikleyici var; bu biri kullanıyor.
+  "triggers": { "crons": ["*/5 * * * *"] },
+
+  // `id` BİLEREK yok: `wrangler deploy` ad alanını kendisi oluşturup
+  // kimliği bu dosyaya geri yazar. O değişikliği depoya COMMIT ETME —
+  // kimlik hesaba özeldir, başkasının kurulumunu bozar.
+  "kv_namespaces": [{ "binding": "NABIZ" }],
+
+  "vars": {
+    // Bu kadar sessizlik = nabız yok. Sunucudaki gönderici dakikada bir
+    // koşuyor ve ~5 dakikada bir nabız atıyor; Worker 5 dakikada bir
+    // bakıyor. 15 dakika, iki kaçırılmış nabız + kontrol aralığı
+    // kadar pay bırakıyor. Daha dar bir eşik yanlış alarm üretir ve
+    // yanlış alarm veren bir kontrol kapatılmaya mahkûmdur.
+    "ESIK_DAKIKA": "15",
+    "SUNUCU": "panely-test"
+  }
+}

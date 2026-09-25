@@ -52,6 +52,8 @@ die() { echo "${ONEK_HATA}panely-notify: HATA: $*" >&2; exit 1; }
 
 TOKEN=""
 CHAT_ID=""
+NABIZ_URL=""
+NABIZ_ANAHTAR=""
 
 # kirp <metin> — baştaki ve sondaki boşlukları (CR dahil) atar.
 kirp() {
@@ -89,12 +91,24 @@ yapilandirma_oku() {
         case "$anahtar" in
             TELEGRAM_TOKEN) TOKEN="$deger" ;;
             TELEGRAM_CHAT_ID) CHAT_ID="$deger" ;;
+            HEARTBEAT_URL) NABIZ_URL="$deger" ;;
+            HEARTBEAT_TOKEN) NABIZ_ANAHTAR="$deger" ;;
         esac
     done < "$conf"
 
     # Biçim denetimi. Anahtar ASLA yazdırılmıyor — hata iletisinde bile.
     [[ "$TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] ||
         die "TELEGRAM_TOKEN eksik ya da biçimi bozuk (BotFather'ın verdiği 123456:ABC… biçimi)"
+
+    # Nabız isteğe bağlı, ama YARIM kurulmuşsa sessiz kalınmıyor: yalnızca
+    # biri tanımlıysa dış kontrol hiç nabız almaz ve kullanıcı bunun
+    # neden olduğunu göremezdi.
+    if [[ -n "$NABIZ_URL" || -n "$NABIZ_ANAHTAR" ]]; then
+        [[ "$NABIZ_URL" =~ ^https://[A-Za-z0-9.-]+/ping$ ]] ||
+            die "HEARTBEAT_URL https://…/ping biçiminde olmalı"
+        [[ "$NABIZ_ANAHTAR" =~ ^[A-Za-z0-9]{32,}$ ]] ||
+            die "HEARTBEAT_TOKEN en az 32 harf/rakam olmalı (openssl rand -hex 32)"
+    fi
 }
 
 # telegram <yöntem> [curl --data-urlencode argümanları…]
@@ -229,6 +243,39 @@ izle() {
     fi
 }
 
+# ── nabız ────────────────────────────────────────────────────────────
+#
+# Dış kontrol (deploy/nabiz, Cloudflare Worker, K-109) bu nabzı
+# bekliyor; 15 dakika gelmezse Telegram'a yazıyor. Nabız `izle`
+# BAŞARIYLA bittikten sonra atılıyor: böylece yalnızca "sunucu açık"
+# değil, "alarm göndericisi çalışıyor" da kanıtlanıyor.
+#
+# Seyreltme: gönderici dakikada bir koşuyor, ama Worker'ın KV'si günde
+# 1000 yazmaya izin veriyor. 4 dakikadan taze bir nabız varsa
+# atlanıyor — günde ~300 yazma.
+#
+# Nabız atılamazsa koşu BAŞARISIZ SAYILMIYOR: alarmlar gitti, imleç
+# ilerledi. Hata journal'a yazılıyor; kalıcıysa dış kontrol zaten
+# alarm verecek — o kontrol tam olarak bunun için var.
+nabiz_at() {
+    [[ -n "$NABIZ_URL" ]] || return 0
+    local isaret="${STATE_DIRECTORY:-/var/lib/panely-notify}/son-nabiz"
+    if [[ -n "$(find "$isaret" -mmin -4 2>/dev/null)" ]]; then
+        return 0
+    fi
+    local kod
+    # URL ve anahtar argv'ye yazılmıyor; ikisi de standart girdiden.
+    kod="$(printf 'url = "%s"\nheader = "Authorization: Bearer %s"\n' \
+                "$NABIZ_URL" "$NABIZ_ANAHTAR" |
+           curl -sS --max-time 15 -X POST -K - -o /dev/null -w '%{http_code}' \
+                2>"$TMP/nabiz.err")"
+    if [[ "$kod" == 204 ]]; then
+        : > "$isaret"
+    else
+        echo "${ONEK_HATA}panely-notify: nabız atılamadı (http=${kod:-yok}) $(head -1 "$TMP/nabiz.err")" >&2
+    fi
+}
+
 # ── hata <birim> ─────────────────────────────────────────────────────
 #
 # Bazı arızalar panelyd'de ALARM üretmiyor. En önemlisi uzak yedeğin
@@ -277,7 +324,7 @@ trap 'rm -rf "$TMP"' EXIT
 SUNUCU="$(hostname)"
 
 case "${1:-izle}" in
-    izle)       izle ;;
+    izle)       izle; nabiz_at ;;
     hata)       hata "${2:-}" ;;
     dene)       dene ;;
     sohbet-bul) sohbet_bul ;;

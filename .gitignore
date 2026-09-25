@@ -40,3 +40,8 @@ Thumbs.db
 
 # --- Electron derleme çıktısı ---
 desktop/out/
+
+# --- Cloudflare Worker (deploy/nabiz) ---
+# wrangler yerel durumu ve gizli degerleri; hesaba ozel.
+.wrangler/
+.dev.vars

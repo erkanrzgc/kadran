@@ -78,6 +78,12 @@ jobs:
       - name: Alarm mesajı biçimlendiricisi
         run: bash scripts/check-notify-format.sh
 
+      # Dış nabız Worker'ı (K-109): karar mantığı ve Worker, sahte KV ve
+      # sahte fetch ile. Bağımlılık yok, yalnızca node:test.
+      - name: Dış nabız Worker'ı
+        working-directory: deploy/nabiz
+        run: node --test karar.test.js worker.test.js
+
       # # Sürüm sabiti neden hem action'ı hem linter'ı kapsıyor?
       #
       # action v6 YALNIZCA golangci-lint v1, v7+ YALNIZCA v2 destekliyor.

@@ -85,6 +85,12 @@ jobs:
       - name: Hacim yedeği ve uzak yükleyici
         run: sudo bash scripts/check-offsite.sh
 
+      # Kurulum betiğinin yardımcıları set -euo pipefail altında GERÇEKTEN
+      # çalıştırılıyor (K-112): metin okuyan Go testleri, eksik dosyada
+      # kurulumu sessizce durduran bir boru hattını göremez.
+      - name: Kurulum betiği yardımcıları
+        run: bash scripts/check-install-sh.sh
+
       # Dış nabız Worker'ı (K-109): karar mantığı ve Worker, sahte KV ve
       # sahte fetch ile. Bağımlılık yok, yalnızca node:test.
       - name: Dış nabız Worker'ı

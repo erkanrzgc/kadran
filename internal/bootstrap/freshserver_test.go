@@ -99,6 +99,77 @@ func TestInstallScriptProvesDockerIsolationWasMeasured(t *testing.T) {
 	}
 }
 
+// servislerBolumu, kurulum betiğinin "Servisler" adımını döndürür.
+func servislerBolumu(t *testing.T) string {
+	t.Helper()
+	text := kurulumBetigi(t)
+	bas := strings.Index(text, `step "Servisler"`)
+	son := strings.Index(text, `step "Kurulum sonrası doğrulama"`)
+	if bas < 0 || son < 0 || son < bas {
+		t.Fatal("Servisler bölümü bulunamadı — ölçüm geçersiz")
+	}
+	return text[bas:son]
+}
+
+// TestInstallerRestartsTheControlPlane, yeniden kurulumun (yükseltme
+// yolu) panelyd ve panely-exec'i YENİ ikiliyle çalıştırdığını doğrular.
+//
+// Taze sunucu testinde ölçüldü: betik `systemctl enable --now`
+// kullanıyordu; bu, ÇALIŞAN birimi yeniden başlatmıyor. İkinci kurulumdan
+// sonra /proc/<pid>/exe → "/usr/local/lib/panely/panelyd (deleted)":
+// süreç diskten silinmiş ESKİ ikiliyi çalıştırıyordu ve kurulum
+// "tamamlandı" diyordu. Yükseltmede yeni kod hiç çalışmazdı.
+func TestInstallerRestartsTheControlPlane(t *testing.T) {
+	bolum := servislerBolumu(t)
+	for _, birim := range []string{"panely-exec.service", "panelyd.service"} {
+		if !strings.Contains(bolum, "systemctl restart "+birim) {
+			t.Errorf("%s yeniden başlatılmıyor — yükseltmede eski ikili çalışmaya devam eder", birim)
+		}
+		if strings.Contains(bolum, "systemctl enable --now "+birim) {
+			t.Errorf("%s hâlâ yalnızca `enable --now` ile başlatılıyor — çalışan birimi yeniden başlatmaz", birim)
+		}
+	}
+	if strings.Index(bolum, "systemctl restart panely-exec.service") > strings.Index(bolum, "systemctl restart panelyd.service") {
+		t.Error("panelyd executor'dan ÖNCE yeniden başlatılıyor — daemon açılışta executor'a bağlanıyor")
+	}
+}
+
+// TestInstallScriptVerifiesEveryRunningBinary, kurulum sonrası doğrulamanın
+// kontrol düzlemi için de çalışan imajı kurulan ikiliyle karşılaştırdığını
+// doğrular. Önceden yalnızca ters vekil için vardı (K-049, o kontrol
+// TestInstallScriptVerifiesTheRunningProxyImage'da); panelyd ve
+// executor'daki kusuru bu yüzden hiçbir kontrol görmedi.
+func TestInstallScriptVerifiesEveryRunningBinary(t *testing.T) {
+	text := kurulumBetigi(t)
+	for _, ikili := range []string{"panelyd", "panely-exec"} {
+		if !strings.Contains(text, "calisan_ikili_dogrula "+ikili) {
+			t.Errorf("çalışan %s'nin kurulan ikili olduğu doğrulanmıyor", ikili)
+		}
+	}
+}
+
+// TestInstallerLeavesAnUnchangedProxyRunning, ters vekilin yalnızca bir
+// şey DEĞİŞTİYSE yeniden başlatıldığını doğrular.
+//
+// Taze sunucu testinde ölçüldü: ikinci kurulumda (hiçbir şey
+// değişmemişken) Caddy koşulsuz yeniden başlatıldı ve site 0,5 sn
+// aralıklı 2514 isteğin 9'unda cevap vermedi (~4,5 sn). Ters vekil
+// trafiğin yolu; gereksiz yeniden başlatma kesinti demek.
+func TestInstallerLeavesAnUnchangedProxyRunning(t *testing.T) {
+	text := kurulumBetigi(t)
+	if !strings.Contains(text, "vekil_parmak_izi") {
+		t.Fatal("ters vekilin yapılandırma/birim parmak izi alınmıyor — değişiklik ayırt edilemez")
+	}
+	onceki := strings.Index(text, `vekil_once="$(vekil_parmak_izi)"`)
+	kurulum := strings.Index(text, `install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/panely/caddy.json`)
+	if onceki < 0 || kurulum < 0 || onceki > kurulum {
+		t.Error("parmak izi dosyalar kurulMADAN önce alınmıyor — önce/sonra karşılaştırması anlamsız")
+	}
+	if !strings.Contains(text, "ters vekil değişmedi") {
+		t.Error("değişmeyen ters vekili yeniden başlatmadan bırakan dal yok")
+	}
+}
+
 func kurulumBetigi(t *testing.T) string {
 	t.Helper()
 	b, err := installScript.ReadFile("install.sh")

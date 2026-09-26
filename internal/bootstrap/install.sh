@@ -28,6 +28,32 @@ say()  { printf '  %s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
 die()  { printf '\nHATA: %s\n' "$*" >&2; exit 1; }
 
+# calisan_ayni_mi <birim> <ikili> — birimin ÇALIŞAN imajı kurulan ikiliyle
+# içerikçe aynı mı. Kanıt /proc/<pid>/exe'den: `systemctl is-active` eski
+# sürecin ayakta olduğunu da "active" diye gösterir (K-049, K-112).
+calisan_ayni_mi() {
+    local pid calisan kurulan
+    pid="$(systemctl show -p MainPID --value "$1" 2>/dev/null || echo 0)"
+    [ "${pid:-0}" -gt 0 ] 2>/dev/null || return 1
+    calisan="$(md5sum "/proc/$pid/exe" 2>/dev/null | cut -d' ' -f1)"
+    kurulan="$(md5sum "$2" 2>/dev/null | cut -d' ' -f1)"
+    [ -n "$calisan" ] && [ "$calisan" = "$kurulan" ]
+}
+
+# vekil_parmak_izi — ters vekilin yapılandırma ve birim dosyalarının özeti.
+# Yeniden kurulumda bunlar değişmediyse (ve ikili aynıysa) ters vekil
+# yeniden başlatılmıyor: o trafiğin yolu (K-112).
+#
+# İlk kurulumda bu dosyalar YOK ve cat 1 döner; betik `set -euo pipefail`
+# ile koştuğu için korumasız bir `x="$(vekil_parmak_izi)"` taze kurulumu
+# sessizce durdururdu. `|| true` bu yüzden.
+vekil_parmak_izi() {
+    { cat /etc/panely/caddy.json /etc/tmpfiles.d/panely-caddy.conf \
+          /etc/systemd/system/panely-caddy.service \
+          /etc/systemd/system/panely-caddy-admin.socket 2>/dev/null || true; } |
+        md5sum | cut -d' ' -f1
+}
+
 # ── Ön koşullar ──────────────────────────────────────────────────────
 
 step "Ön koşullar"
@@ -283,6 +309,8 @@ say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^
 
 # ── Yapılandırma ve birimler ────────────────────────────────────────
 
+vekil_once="$(vekil_parmak_izi)"
+
 install -d -m 0755 -o root -g root /etc/panely
 install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/panely/caddy.json
 
@@ -317,11 +345,22 @@ done
 # atlandı ve ancak reboot testinde ortaya çıktı; ikisi de yapılıyor ve
 # ikisi de aşağıda DOĞRULANIYOR.
 systemctl enable panely-caddy-admin.socket
-systemctl stop panely-caddy.service 2>/dev/null || true
-systemctl restart panely-caddy-admin.socket
-
 systemctl enable panely-caddy.service
-systemctl restart panely-caddy.service
+
+# Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
+# Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
+# başlattı: site 2514 isteğin 9'unda cevap vermedi (~4,5 sn). İkili,
+# yapılandırma ya da birim değiştiyse (yükseltme) yeniden başlatma şart.
+if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
+        && systemctl is-active --quiet panely-caddy-admin.socket \
+        && systemctl is-active --quiet panely-caddy.service \
+        && calisan_ayni_mi panely-caddy.service "$LIB_DIR/panely-caddy"; then
+    say "ters vekil değişmedi — yeniden başlatılmadı, trafik kesilmedi"
+else
+    systemctl stop panely-caddy.service 2>/dev/null || true
+    systemctl restart panely-caddy-admin.socket
+    systemctl restart panely-caddy.service
+fi
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
 
@@ -430,8 +469,17 @@ say "zorlanmış komut ve ExposeAuthInfo yapılandırıldı"
 
 step "Servisler"
 
-systemctl enable --now panely-exec.service
-systemctl enable --now panelyd.service
+systemctl enable panely-exec.service panelyd.service
+
+# Yeniden kurulum aynı zamanda YÜKSELTME yolu. `enable --now` ÇALIŞAN
+# birimi yeniden başlatmıyor: taze sunucu testinde (K-112) ikinci
+# kurulumdan sonra /proc/<pid>/exe → "…/panelyd (deleted)" — süreç
+# diskten silinmiş ESKİ ikiliyi çalıştırıyordu ve kurulum "tamamlandı"
+# diyordu. Kontrol düzlemi her kurulumda yeniden başlatılıyor; uygulama
+# trafiği etkilenmez (ters vekil ve konteynerler ayrı). Executor ÖNCE:
+# daemon açılışta ona bağlanıyor.
+systemctl restart panely-exec.service
+systemctl restart panelyd.service
 
 # Soketlerin belirmesi için kısa bir pencere.
 for _ in $(seq 1 50); do
@@ -547,6 +595,20 @@ for unit in panely-caddy-admin.socket panely-caddy.service; do
         check_fail "$unit ETKİN DEĞİL ($state) — reboot sonrası geri gelmez"
     fi
 done
+
+# 6b. Kontrol düzleminin çalışan imajı da kurulan ikili olmalı (K-112).
+#     Önceden yalnızca ters vekil için ölçülüyordu; panelyd ve executor
+#     yeniden kurulumda silinmiş eski ikiliyle çalışmaya devam ediyordu
+#     ve hiçbir kontrol bunu görmedi.
+calisan_ikili_dogrula() {
+    if calisan_ayni_mi "$1.service" "$LIB_DIR/$1"; then
+        check_ok "çalışan $1 kurulan binary ($(md5sum "$LIB_DIR/$1" | cut -c1-12))"
+    else
+        check_fail "çalışan $1 kurulan binary DEĞİL — eski süreç ayakta ya da hiç çalışmıyor"
+    fi
+}
+calisan_ikili_dogrula panelyd
+calisan_ikili_dogrula panely-exec
 
 # 7. Çalışan İMAJ, kurduğumuz binary olmalı (K-049).
 #

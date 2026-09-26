@@ -6825,7 +6825,10 @@ kendi doğrulamasından geliyor. Alarmı kimin açtığı artık önemli değil;
 "canlı farklıyken kapatma" testi de eski kodda düştü — izleyici KENDİ
 alarmını canlı birebir değilken de kapatıyordu. Mutasyon 16/16, her
 mutantın derlendiği ölçüldü; "saf kural" (yalnız atlanan) ve "eski
-kural" (yalnız onarınca) mutant olarak duruyor ve yakalanıyor.
+kural" (yalnız onarınca) mutant olarak duruyor ve yakalanıyor. İlk
+turlar elle koşulan bir betikteydi — koruma sayılmaz; 16 mutasyon
+`scripts/mutate-proxywatch.sh`'a taşındı ve CI'da koşuyor (derleme
+kapısı ve "replace uygulanmalı" kontrolüyle, K-096).
 
 `ce53413` ile yeniden ölçüldü (reboot, UTC):
 

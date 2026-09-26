@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"sort"
 	"time"
 )
@@ -233,6 +234,30 @@ func MissingHosts(want, live *Config) []string {
 	}
 	sort.Strings(missing)
 	return missing
+}
+
+// LiveUpstreams, live'da host'a giden upstream'lerden GEÇERLİ olanları
+// döndürür.
+//
+// Onarım (deploy.Reconciler.Repair) atlanan, yani o an sağlıksız olan bir
+// uygulamanın canlı rotasını korumak için kullanıyor. Canlı yapılandırma
+// güvenilir kaynak değil — admin soketine başkası da yazabilir (K-054) —
+// bu yüzden her adres NewUpstream'den yeniden geçiyor: soket yolu, ad ya
+// da belirsiz adres taşınamaz.
+func LiveUpstreams(live *Config, host string) []Upstream {
+	var out []Upstream
+	for _, dial := range routesByHost(live)[host] {
+		ap, err := netip.ParseAddrPort(dial)
+		if err != nil {
+			continue
+		}
+		u, err := NewUpstream(ap.Addr().String(), uint32(ap.Port()))
+		if err != nil {
+			continue
+		}
+		out = append(out, u)
+	}
+	return out
 }
 
 func routesByHost(cfg *Config) map[string][]string {

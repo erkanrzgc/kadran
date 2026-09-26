@@ -61,3 +61,36 @@ func TestMissingHosts(t *testing.T) {
 		})
 	}
 }
+
+// TestLiveUpstreams, onarım sırasında ATLANAN bir uygulamanın canlı
+// upstream'lerinin taşınabilmesini — ve yalnızca GEÇERLİ olanların
+// taşınmasını — sınar.
+//
+// Canlı yapılandırma güvenilir kaynak değil: admin soketine panelyd'den
+// başka biri de yazabilir (K-054). Taşınan her adres NewUpstream'den
+// yeniden geçiyor; soket yolu, ad ya da belirsiz adres geçemez.
+func TestLiveUpstreams(t *testing.T) {
+	canli := &Config{Apps: &Apps{HTTP: &HTTPApp{Servers: map[string]*HTTPServer{"s": {
+		Routes: []Route{
+			{Match: []Match{{Host: []string{"shop.example.com"}}},
+				Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "172.19.0.4:3000"}}}}},
+			{Match: []Match{{Host: []string{"kotu.example.com"}}},
+				Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{
+					{Dial: "unix//run/docker.sock"}, {Dial: "localhost:80"}, {Dial: "0.0.0.0:80"}, {Dial: "172.19.0.9:0"},
+				}}}},
+		},
+	}}}}}
+
+	if got := LiveUpstreams(canli, "shop.example.com"); !slices.Equal(got, []Upstream{{Dial: "172.19.0.4:3000"}}) {
+		t.Errorf("geçerli upstream taşınmadı: %v", got)
+	}
+	if got := LiveUpstreams(canli, "kotu.example.com"); len(got) != 0 {
+		t.Errorf("geçersiz upstream taşındı: %v", got)
+	}
+	if got := LiveUpstreams(canli, "yok.example.com"); got != nil {
+		t.Errorf("olmayan alan adı için upstream döndü: %v", got)
+	}
+	if got := LiveUpstreams(nil, "shop.example.com"); got != nil {
+		t.Errorf("nil yapılandırmada upstream döndü: %v", got)
+	}
+}

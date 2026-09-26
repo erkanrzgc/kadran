@@ -37,7 +37,8 @@ func TestRepairReloadsWhenProxyLostItsRoutes(t *testing.T) {
 	deps, reps := ikiUygulama()
 	proxy := &fakeProxy{live: &proxydrv.Config{}}
 
-	eksik, err := mustReconciler(t, deps, reps, proxy).Repair(context.Background())
+	sonuc, err := mustReconciler(t, deps, reps, proxy).Repair(context.Background())
+	eksik := sonuc.Missing
 	if err != nil {
 		t.Fatalf("onarılamadı: %v", err)
 	}
@@ -64,7 +65,8 @@ func TestRepairLeavesACompleteProxyAlone(t *testing.T) {
 	}
 	proxy.live, proxy.calls = proxy.loaded, 0
 
-	eksik, err := rc.Repair(context.Background())
+	sonuc, err := rc.Repair(context.Background())
+	eksik := sonuc.Missing
 	if err != nil || len(eksik) != 0 || proxy.calls != 0 {
 		t.Errorf("sağlam vekil yeniden yüklendi: eksik=%v err=%v Load=%d", eksik, err, proxy.calls)
 	}
@@ -90,6 +92,77 @@ func TestRepairKeepsASkippedAppsRoute(t *testing.T) {
 	}
 	if proxy.calls != 0 {
 		t.Error("atlanan uygulamanın canlı rotası silindi — iyileştirme davranışı değişti")
+	}
+}
+
+// canliShop, yalnızca shop'un rotasını taşıyan canlı yapılandırma.
+func canliShop(t *testing.T, dial string) *proxydrv.Config {
+	t.Helper()
+	cfg, err := proxydrv.BuildConfig(proxydrv.BuildOptions{
+		Admin: testAdmin(),
+		Routes: []proxydrv.AppRoute{{AppID: "shop", Domain: "shop.example.com",
+			Upstreams: []proxydrv.Upstream{{Dial: dial}}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+// TestRepairCarriesASkippedAppsLiveRoute: ONARIM yüklemesi de atlanan
+// (sağlıksız) uygulamanın canlı rotasını silmemeli.
+//
+// Güvenlik incelemesi buldu: ilk hâli, eksik bir alan adı yüzünden
+// yükleme yaparken yalnızca beklenen rotaları gönderiyordu; o an atlanan
+// "shop"un hâlâ canlı olan rotası bu yüklemeyle SİLİNİYORDU. "İyileştirme
+// davranışı değişmez" iddiası yalnızca hiçbir şey eksik değilken
+// doğruydu.
+func TestRepairCarriesASkippedAppsLiveRoute(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil // shop sağlıksız: atlanacak
+	proxy := &fakeProxy{live: canliShop(t, "172.19.0.4:3000")}
+
+	sonuc, err := mustReconciler(t, deps, reps, proxy).Repair(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(sonuc.Missing, []string{"blog.example.com"}) {
+		t.Errorf("eksik = %v", sonuc.Missing)
+	}
+	if _, ok := sonuc.Skipped["shop"]; !ok {
+		t.Errorf("atlanan uygulama bildirilmedi: %v", sonuc.Skipped)
+	}
+	h := hosts(t, proxy.loaded)
+	if !slices.Equal(h["shop.example.com"], []string{"172.19.0.4:3000"}) {
+		t.Errorf("atlanan uygulamanın canlı rotası yüklemede korunmadı: %v", h)
+	}
+	if len(h["blog.example.com"]) == 0 {
+		t.Errorf("eksik rota yüklenmedi: %v", h)
+	}
+}
+
+// TestRepairDropsAForgedLiveUpstream: korunan rota canlıdan geliyor ve
+// canlıya başkası yazmış olabilir (K-054). Geçersiz bir adres TAŞINMAZ.
+func TestRepairDropsAForgedLiveUpstream(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{live: canliShop(t, "172.19.0.4:3000")}
+	// Doğrudan canlıya sahte bir adres koy (BuildConfig bunu reddederdi).
+	for _, srv := range proxy.live.Apps.HTTP.Servers {
+		for i := range srv.Routes {
+			for j := range srv.Routes[i].Handle {
+				for k := range srv.Routes[i].Handle[j].Upstreams {
+					srv.Routes[i].Handle[j].Upstreams[k].Dial = "unix//run/docker.sock"
+				}
+			}
+		}
+	}
+
+	if _, err := mustReconciler(t, deps, reps, proxy).Repair(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if h := hosts(t, proxy.loaded); len(h["shop.example.com"]) != 0 {
+		t.Errorf("sahte upstream taşındı: %v", h)
 	}
 }
 

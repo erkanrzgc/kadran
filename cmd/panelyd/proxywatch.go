@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/erkanrzgc/panely/internal/alarm"
+	"github.com/erkanrzgc/panely/internal/deploy"
 	"github.com/erkanrzgc/panely/internal/store"
 )
 
@@ -39,7 +40,7 @@ const proxyWatchAlarmAfter = 3
 const proxyAlarmID = alarm.KindProxyUnreconciled + ":host"
 
 type proxyRepairer interface {
-	Repair(ctx context.Context) ([]string, error)
+	Repair(ctx context.Context) (deploy.RepairResult, error)
 }
 
 type alarmRaiser interface {
@@ -57,13 +58,16 @@ type proxyWatcher struct {
 // tick, bir denetim turu.
 //
 // Alarmı yalnızca KENDİ açtıysa ya da rotaları gerçekten GERİ YÜKLEDİYSE
-// kapatıyor. Açılış alarmı "rotalanamayan uygulama var" da diyebilir: her
-// şeyi yerinde gören bir tur, hâlâ atlanan bir uygulamayı görmez ve onu
-// körlemesine kapatmak gizlemek olurdu.
+// kapatıyor — ve o an rotalanamayan (atlanan) uygulama YOKSA. Açılış
+// alarmı "rotalanamayan uygulama var" da diyebilir; onarım başarılı olsa
+// bile o uygulama hâlâ atlanıyorsa alarmı kapatmak onu gizlemek olurdu
+// (güvenlik incelemesi buldu: ilk hâli onarımdan sonra koşulsuz
+// kapatıyordu).
 func (w *proxyWatcher) tick(ctx context.Context) {
 	c, cancel := context.WithTimeout(ctx, startupReconcileTimeout)
-	missing, err := w.rp.Repair(c)
+	sonuc, err := w.rp.Repair(c)
 	cancel()
+	missing := sonuc.Missing
 
 	if err != nil {
 		w.failures++
@@ -87,7 +91,7 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 	if len(missing) > 0 {
 		slog.Warn("ters vekil rotalarını kaybetmişti — yeniden yüklendi", "eksik", missing)
 	}
-	if w.raised || len(missing) > 0 {
+	if (w.raised || len(missing) > 0) && len(sonuc.Skipped) == 0 {
 		w.am.Clear(ctx, proxyAlarmID)
 		w.raised = false
 	}

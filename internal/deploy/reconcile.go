@@ -109,23 +109,36 @@ func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
-	cfg, res, err := rc.desired(ctx)
+	p, err := rc.plan(ctx)
 	if err != nil {
-		return res, err
+		return p.res, err
+	}
+	cfg, err := rc.build(p.routes)
+	if err != nil {
+		return p.res, err
 	}
 
 	// Load, yüklemekle kalmıyor GERİ DE OKUYOR: "200 aldım", canlı
 	// yapılandırmanın benimki olduğunu kanıtlamaz (K-054).
 	if err := rc.proxy.Load(ctx, cfg); err != nil {
-		return res, fmt.Errorf("deploy: vekil yapılandırması yüklenemedi: %w", err)
+		return p.res, fmt.Errorf("deploy: vekil yapılandırması yüklenemedi: %w", err)
 	}
 
-	sort.Strings(res.Routed)
-	return res, nil
+	sort.Strings(p.res.Routed)
+	return p.res, nil
 }
 
-// Repair, ters vekil beklenen bir alan adını KAYBETMİŞSE uzlaştırır ve
-// eksik alan adlarını döndürür; her şey yerindeyse hiçbir şey yüklemez.
+// RepairResult, bir onarım turunun sonucudur.
+type RepairResult struct {
+	// Missing, canlıda HİÇ rotası olmadığı için geri yüklenen alan adları.
+	Missing []string
+	// Skipped, o an rotalanamayan (sağlıksız) uygulamalar ve sebepleri.
+	// Doluysa izleyici "her şey yolunda" diyemez.
+	Skipped map[string]string
+}
+
+// Repair, ters vekil beklenen bir alan adını KAYBETMİŞSE uzlaştırır; her
+// şey yerindeyse hiçbir şey yüklemez.
 //
 // K-055'in ikinci yarısı: ters vekil `--resume` kullanmıyor, yani yeniden
 // başlayınca rotasız açılıyor. "Açılışta uzlaştır" yapılmıştı, "ters
@@ -133,42 +146,69 @@ func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 // testinde (K-112) yalnızca Caddy yeniden başlatıldı ve site 40
 // saniyenin 40'ında da kapalı kaldı; panelyd hiçbir şey fark etmedi.
 //
-// Tetik proxydrv.MissingHosts: yalnızca EKSİK alan adı. Atlanan
-// (sağlıksız) bir uygulamanın canlı rotası silinmiyor; iyileştirme
-// davranışı aynı kalıyor.
-func (rc *Reconciler) Repair(ctx context.Context) ([]string, error) {
+// ── İyileştirme davranışı DEĞİŞMİYOR ────────────────────────────────
+//
+// Tetik proxydrv.MissingHosts: yalnızca EKSİK alan adı. Uzlaştırma
+// sağlıksız bir uygulamayı atlıyor ve canlıdaki rotası iyileştirme bitene
+// kadar duruyor. Onarım yüklemesi de o rotayı SİLMİYOR: atlanan
+// uygulamanın canlı upstream'leri yüklemeye taşınıyor. İlk hâli yalnızca
+// beklenen rotaları gönderip o rotayı siliyordu; güvenlik incelemesi
+// buldu. Canlıya başkası da yazmış olabileceği için (K-054) taşınan her
+// adres proxydrv.LiveUpstreams'de yeniden doğrulanıyor.
+func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 	rc.mu.Lock()
 	defer rc.mu.Unlock()
 
-	cfg, _, err := rc.desired(ctx)
+	p, err := rc.plan(ctx)
 	if err != nil {
-		return nil, err
+		return RepairResult{}, err
+	}
+	out := RepairResult{Skipped: p.res.Skipped}
+	cfg, err := rc.build(p.routes)
+	if err != nil {
+		return out, err
 	}
 	live, err := rc.proxy.Current(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("deploy: canlı vekil yapılandırması okunamadı: %w", err)
+		return out, fmt.Errorf("deploy: canlı vekil yapılandırması okunamadı: %w", err)
 	}
-	missing := proxydrv.MissingHosts(cfg, live)
-	if len(missing) == 0 {
-		return nil, nil
+	out.Missing = proxydrv.MissingHosts(cfg, live)
+	if len(out.Missing) == 0 {
+		return out, nil
+	}
+
+	routes := p.routes
+	for appID, domain := range p.skippedDomains {
+		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
+			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
+		}
+	}
+	if cfg, err = rc.build(routes); err != nil {
+		return out, err
 	}
 	if err := rc.proxy.Load(ctx, cfg); err != nil {
-		return missing, fmt.Errorf("deploy: kaybolan rotalar yüklenemedi: %w", err)
+		return out, fmt.Errorf("deploy: kaybolan rotalar yüklenemedi: %w", err)
 	}
-	return missing, nil
+	return out, nil
 }
 
-// desired, SQLite'taki durumdan beklenen yapılandırmayı kurar. Çağıran
-// rc.mu'yu tutmalı.
-func (rc *Reconciler) desired(ctx context.Context) (*proxydrv.Config, Result, error) {
-	res := Result{Skipped: map[string]string{}}
+// plan, SQLite'taki durumdan rotaları ve atlanan uygulamaları çıkarır.
+type plan struct {
+	routes         []proxydrv.AppRoute
+	skippedDomains map[string]string // uygulama → alan adı (atlananlar)
+	res            Result
+}
+
+// plan'ı kurar. Çağıran rc.mu'yu tutmalı.
+func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
+	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}}}
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
 	if err != nil {
-		return nil, res, fmt.Errorf("deploy: aktif dağıtımlar okunamadı: %w", err)
+		return p, fmt.Errorf("deploy: aktif dağıtımlar okunamadı: %w", err)
 	}
 
-	routes := make([]proxydrv.AppRoute, 0, len(deps))
+	p.routes = make([]proxydrv.AppRoute, 0, len(deps))
 	for _, d := range deps {
 		if d.Domain == "" {
 			// Alan adı olmayan uygulama geçerli: yalnızca iç ağdan
@@ -179,25 +219,30 @@ func (rc *Reconciler) desired(ctx context.Context) (*proxydrv.Config, Result, er
 
 		ups, why := rc.upstreamsFor(ctx, d)
 		if why != "" {
-			res.Skipped[d.AppID] = why
+			p.res.Skipped[d.AppID] = why
+			p.skippedDomains[d.AppID] = d.Domain
 			continue
 		}
-		routes = append(routes, proxydrv.AppRoute{
+		p.routes = append(p.routes, proxydrv.AppRoute{
 			AppID:     d.AppID,
 			Domain:    d.Domain,
 			Upstreams: ups,
 		})
-		res.Routed = append(res.Routed, d.AppID)
+		p.res.Routed = append(p.res.Routed, d.AppID)
 	}
+	return p, nil
+}
 
+// build, rotalardan yüklenecek yapılandırmayı kurar.
+func (rc *Reconciler) build(routes []proxydrv.AppRoute) (*proxydrv.Config, error) {
 	cfg, err := proxydrv.BuildConfig(proxydrv.BuildOptions{
 		Admin:  rc.admin,
 		Routes: routes,
 	})
 	if err != nil {
-		return nil, res, fmt.Errorf("deploy: vekil yapılandırması üretilemedi: %w", err)
+		return nil, fmt.Errorf("deploy: vekil yapılandırması üretilemedi: %w", err)
 	}
-	return cfg, res, nil
+	return cfg, nil
 }
 
 // upstreamsFor, tek bir dağıtımın arka uç adreslerini KURAR.

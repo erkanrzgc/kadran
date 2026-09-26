@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/erkanrzgc/panely/internal/deploy"
 	"github.com/erkanrzgc/panely/internal/store"
 )
 
@@ -15,14 +16,15 @@ type sahteOnarici struct {
 }
 
 type onarimSonucu struct {
-	eksik []string
-	err   error
+	eksik   []string
+	atlanan map[string]string
+	err     error
 }
 
-func (s *sahteOnarici) Repair(context.Context) ([]string, error) {
+func (s *sahteOnarici) Repair(context.Context) (deploy.RepairResult, error) {
 	r := s.sonuclar[s.i]
 	s.i++
-	return r.eksik, r.err
+	return deploy.RepairResult{Missing: r.eksik, Skipped: r.atlanan}, r.err
 }
 
 type sahteAlarm struct {
@@ -90,5 +92,22 @@ func TestProxyWatcherClearsAfterARealRepair(t *testing.T) {
 func TestProxyWatcherLeavesStartupAlarmAlone(t *testing.T) {
 	if am := izleyiciKos(t, onarimSonucu{}, onarimSonucu{}); len(am.kapanan) != 0 {
 		t.Errorf("izleyici kendisinin olmayan alarmı kapattı: %v", am.kapanan)
+	}
+}
+
+// TestProxyWatcherKeepsAlarmWhileAppsAreSkipped: rotaları geri yükleyen
+// bir onarım bile, o an rotalanamayan bir uygulama varken alarmı
+// KAPATMAZ. Güvenlik incelemesi buldu: ilk hâli onarımdan sonra
+// koşulsuz kapatıyordu ve açılıştaki "rotalanamayan uygulama var"
+// alarmını gizleyebiliyordu.
+func TestProxyWatcherKeepsAlarmWhileAppsAreSkipped(t *testing.T) {
+	atlanan := map[string]string{"shop": "ayakta replika yok"}
+	am := izleyiciKos(t, onarimSonucu{eksik: []string{"blog.example.com"}, atlanan: atlanan})
+	if len(am.kapanan) != 0 {
+		t.Errorf("atlanan uygulama varken alarm kapandı: %v", am.kapanan)
+	}
+	am = izleyiciKos(t, hata, hata, hata, onarimSonucu{atlanan: atlanan})
+	if len(am.kapanan) != 0 {
+		t.Errorf("kendi alarmı, atlanan uygulama varken kapandı: %v", am.kapanan)
 	}
 }

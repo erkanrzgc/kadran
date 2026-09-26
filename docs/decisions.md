@@ -6323,4 +6323,113 @@ yalnızca birim testi ve mutasyonla (yukarıda).
 
 - Worker'ın kendisi durursa kimse haber almaz — zincirin son halkası.
   Cloudflare kesintisi ya da hesap sorunu sessiz kalır.
-- Çekirdek servislerin çöküşü hâlâ bildirilmiyor; sıradaki iş.
+- Çekirdek servislerin çöküşü hâlâ bildirilmiyor; sıradaki iş (→ K-110).
+
+## K-110 — Çekirdek servis çöküşü: OnFailure değil, journal olayı + cgroup
+
+**Tarih:** 26 Eylül 2026
+**Durum:** kod + testler hazır; canlı doğrulama bekliyor
+
+panelyd kendi ölümünü bildiremez. panely-exec ve panely-caddy'nin
+çöküşünü de kimse bildirmiyordu (K-108 yalnızca panelyd'nin alarmlarını
+ve uzak yedeği kapsıyordu).
+
+### Ölçüm önce: OnFailure= ne yapıyor? (systemd 255, `RestartMode=normal`)
+
+Geçici birimler `/run/systemd/system` altında, çekirdek birimlerle aynı
+yeniden başlatma ayarıyla (`Restart=on-failure`, `RestartSec=2s`,
+varsayılan başlatma sınırı 10 sn'de 5). Çekirdek servislere dokunulmadı.
+
+⚠ İlk koşu GEÇERSİZDİ: `/run` `noexec` bağlı, test betikleri hiç
+çalışmadı (203/EXEC) ve her durum "çökme döngüsü" ölçtü. Başlangıç
+satırı bunu gösteriyordu ama betik bakmıyordu. Betikler `/bin/sh` ile
+çağrıldı ve "başlangıç `running` değilse dur" kapısı eklendi.
+
+```
+durum                        OnFailure   sonra
+exit 2 (panik benzeri)       1 kez       systemd geri getirdi
+SIGKILL (OOM benzeri)        1 kez       systemd geri getirdi
+systemctl restart (kontrol)  0           —
+systemctl stop (kontrol)     0           —
+exit 0                       0           ÖLÜ KALDI — sessiz ölüm
+çökme döngüsü, 40 sn         18 kez      döngü SÜRÜYOR (NRestarts=17)
+OnFailure hedefi yok         —           birim yine normal yeniden başladı
+```
+
+- **Başlatma sınırı hiç dolmuyor.** Her yeniden başlatma ~2,25 sn;
+  10 sn'lik pencereye 5 başlatma sığmıyor. Döngü sonsuz. Gerçek hayatta
+  da oldu: journal'da panelyd 4 Ağustos 17:57–18:04 arasında **155 kez**
+  `core-dump` ile çökmüş (ilk kurulumdaki seccomp SIGSYS). OnFailure'a
+  bağlansaydı 2 sn'de bir Telegram mesajı giderdi.
+- **`exit 0` sessiz.** `Restart=on-failure` yeniden başlatmıyor,
+  OnFailure tetiklenmiyor.
+
+İkisi de OnFailure'ı eledi.
+
+### `systemctl show` de olmuyor
+
+Göndericinin dakikalık turundan birimin durumunu okumak istendi:
+`Transport endpoint is not connected`. Sertleştirme satırları tek tek
+denendi — hepsi başarısız, **yalnızca `DynamicUser=yes` bile**.
+`User=nobody` ile okunuyor. dbus 1.14.10; dbus.service journal'ına ret
+satırı düşmüyor. **Sebep kesinleşmedi.** Göndericinin kimlik modelini
+(K-108) değiştirip ona bir veri yolu istemcisi vermek yerine başka yol
+seçildi.
+
+### Tasarım: yeni yetki yok
+
+- **Çöküş: systemd'nin "Failed with result" olayı**
+  (`MESSAGE_ID=d9b373ed55a64feb8242e02dbe79a49c`, `UNIT_RESULT` alanı).
+  Sandbox'lı göndericinin kopyasından, bilinen pencerelerle ölçüldü:
+  exit 2 → 1, SIGKILL → 1, restart → 0, stop → 0, exit 0 → 0,
+  döngü → 18. Birebir.
+- **Çalışıyor mu: birimin cgroup'unda süreç var mı.** Sandbox'tan
+  okunuyor, root'un gördüğüyle aynı.
+- **Kenar tetikleme**, dört durum: `saglam`, `coktu`, `dongu`,
+  `calismiyor`. Döngü iki mesaj üretiyor (🟠 ÇÖKTÜ, 🔴 ÇÖKME DÖNGÜSÜ),
+  sürdükçe sessiz, bitince ✅. "Çalışmıyor" için iki tur şart:
+  yükseltmedeki kısa yeniden başlatma alarm vermesin.
+- **En az bir kez teslim**, `izle` ile aynı desen: imleç ve durum ancak
+  gönderim başarılıysa ilerliyor.
+
+Ölçümle bulunan iki tuzak:
+
+- **Süzülmüş sorgu imleç YAZMIYOR.** `MESSAGE_ID` ile süzülen sorgu hiç
+  eşleşme bulamazsa `--cursor-file` boş kalıyor (ölçüldü). Çöküş geçmişi
+  olmayan bir sunucuda her koşu "ilk koşu" olurdu ve ilk çöküş, imleç
+  "şimdi"ye konurken yutulurdu. İmleç birimlerin bütün akışında
+  tutuluyor, olay sonra süzülüyor.
+- **Sahte olay yazılabiliyor.** Sıradan bir süreç `UNIT=` ve
+  `MESSAGE_ID=` alanlarını kendisi yazabiliyor (`logger --journald` ile
+  ölçüldü). `-u panely-caddy` onu göstermiyor, ama sorgu panelyd'nin
+  akışını da okuduğu için ele geçirilen panelyd caddy adına sahte
+  çöküş yollayabilirdi. Yalnızca `_PID=1` kabul ediliyor; o alanı
+  journald koyuyor.
+
+Mesaj yalnızca systemd'nin alanlarını taşıyor. Servisin kendi çıktısı,
+ör. bir panik mesajı, Telegram'a gitmiyor; içinde veri olabilir.
+
+### Testler
+
+`scripts/check-notify-format.sh` (CI): karar 13, ayıklayıcı 5 (satırlar
+canlıdan birebir: gerçek, sahte, başka olay, servisin kendi satırı),
+mesaj 6, sahte ortamda uçtan uca tur 8 (ilk koşu geçmişi göndermez,
+gönderim başarısızsa durum ilerlemez).
+
+Elle mutasyonlar 9/9 yakalandı. Her mutantın tam bir kez uygulandığı ve
+`bash -n`'den geçtiği ölçüldü (K-096): iki tur kuralı → bir tur, döngüde
+tekrar mesaj, `_PID=1` şartı yok, `MESSAGE_ID` şartı yok, gönderim hatası
+yutuldu, ilk koşuda geçmiş okundu, cgroup hep dolu, çöküp kalkmayanın
+sayacı başlamadı, düzelme mesajı yok.
+
+Testin kendisinde bir boşluk bulundu: "henüz sessiz" testi mesaj dosyası
+hiç yokken de geçiyordu. Sıkılaştırıldı.
+
+### Kapsam dışı — açıkça
+
+- **Askıda kalma.** Birimlerde `WatchdogSec` yok. Kilitlenen bir
+  panelyd'nin süreci yaşıyor, cgroup'u dolu; "çalışıyor" görünür.
+- Gecikme ~1 dakika (gönderici zamanlayıcısı).
+- Başlatma sınırının hiç dolmaması çekirdek birimlerin bir özelliği.
+  Değiştirmek (ör. `StartLimitIntervalSec`) ayrı karar; bu kayıt
+  değiştirmiyor, yalnızca bildiriyor.

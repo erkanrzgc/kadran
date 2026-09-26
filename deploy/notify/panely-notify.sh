@@ -13,8 +13,12 @@
 #
 # panelyd'nin journal'ındaki `msg=ALARM` satırlarını. Kenar tetikleme
 # (tekilleştirme, kalıcı durum) panelyd'de ve veritabanında yapılıyor;
-# journal'a yalnızca GEÇİŞLER düşüyor. Bu betik yeni bir karar vermiyor,
-# yalnızca taşıyor.
+# journal'a yalnızca GEÇİŞLER düşüyor. Bu betik o alarmlar için yeni bir
+# karar vermiyor, yalnızca taşıyor.
+#
+# Bir de panelyd'nin kendisi, panely-exec ve panely-caddy çöktü mü,
+# çalışıyor mu — panelyd kendi ölümünü bildiremez (K-110, `servisler`).
+# Bunun kararı burada, kalıcı durumu bu birimin durum dizininde.
 #
 # ── Telegram anahtarı panelyd'den SAKLI ──────────────────────────────
 #
@@ -25,7 +29,8 @@
 # yazabilir (zaten yazabiliyordu) ama sizin adınıza mesaj ATAMAZ.
 #
 # Kipler:
-#   izle          yeni ALARM satırlarını gönder (zamanlayıcı bunu koşar)
+#   izle          yeni ALARM satırlarını ve çekirdek servis durumunu
+#                 gönder (zamanlayıcı bunu koşar)
 #   hata <birim>  bir birimin başarısız olduğunu bildir (OnFailure=)
 #   dene          deneme mesajı gönder
 #   sohbet-bul    bota yazan sohbetlerin kimliklerini listele (root)
@@ -246,9 +251,9 @@ izle() {
 # ── nabız ────────────────────────────────────────────────────────────
 #
 # Dış kontrol (deploy/nabiz, Cloudflare Worker, K-109) bu nabzı
-# bekliyor; 15 dakika gelmezse Telegram'a yazıyor. Nabız `izle`
-# BAŞARIYLA bittikten sonra atılıyor: böylece yalnızca "sunucu açık"
-# değil, "alarm göndericisi çalışıyor" da kanıtlanıyor.
+# bekliyor; 15 dakika gelmezse Telegram'a yazıyor. Nabız `izle` ve
+# `servisler` BAŞARIYLA bittikten sonra atılıyor: böylece yalnızca
+# "sunucu açık" değil, "alarm göndericisi çalışıyor" da kanıtlanıyor.
 #
 # Seyreltme: gönderici dakikada bir koşuyor, ama Worker'ın KV'si günde
 # 1000 yazmaya izin veriyor. 4 dakikadan taze bir nabız varsa
@@ -274,6 +279,165 @@ nabiz_at() {
     else
         echo "${ONEK_HATA}panely-notify: nabız atılamadı (http=${kod:-yok}) $(head -1 "$TMP/nabiz.err")" >&2
     fi
+}
+
+# ── servisler: çekirdek birimler çöktü mü, çalışıyor mu (K-110) ──────
+#
+# Neden OnFailure= DEĞİL (ölçüldü, 26 Eyl, systemd 255):
+#   - Çöküş döngüsünde OnFailure her çöküşte tetikleniyor: 40 sn'de 18.
+#     RestartSec=2s ile başlatma sınırı (10 sn'de 5) HİÇ dolmuyor; döngü
+#     sonsuz, 2 sn'de bir mesaj giderdi. 4 Ağustos'ta panelyd gerçekten
+#     6,5 dakikada 155 kez çöktü.
+#   - `exit 0` ile ölen servis OnFailure'ı tetiklemiyor ve yeniden de
+#     başlamıyor: sessiz ölüm.
+# Neden `systemctl show` DEĞİL: DynamicUser ile sistem veri yoluna
+# bağlanılamıyor ("Transport endpoint is not connected"); User=nobody
+# ile bağlanılıyor (ölçüldü). Sebep kesinleşmedi.
+#
+# Bu yüzden iki kaynak, ikisi de yeni yetki istemiyor:
+#   - ÇÖKÜŞ: systemd'nin kendi "Failed with result" olayı journal'da.
+#     Ölçüldü: her çöküşte BİR kez; restart, stop ve exit 0'da HİÇ.
+#   - ÇALIŞIYOR MU: birimin cgroup'unda süreç var mı. Sandbox'tan
+#     okunuyor, root'un gördüğüyle aynı (ölçüldü).
+#
+# Kapsam: çöküş ve ölüm. ASKIDA KALMA değil — birimlerde WatchdogSec yok,
+# kilitlenen bir panelyd'nin süreci durur ve cgroup'u dolu kalır.
+CEKIRDEK_BIRIMLER=(panelyd.service panely-exec.service panely-caddy.service)
+OLAY_BASARISIZ=d9b373ed55a64feb8242e02dbe79a49c
+CGROUP_KOK=/sys/fs/cgroup/system.slice
+
+# servis_karar <eski_durum> <eski_asagi> <cokus> <calisiyor 0|1>
+#   → "<eylem> <yeni_durum> <yeni_asagi>"
+#
+# Kenar tetikleme: mesaj yalnızca durum DEĞİŞİNCE. Bir kez kapalı
+# görülmek yetmiyor (yükseltmedeki kısa yeniden başlatma); iki tur şart.
+# Çöküşte beklenmiyor: çöküş olayı bakım işleminde hiç üretilmiyor.
+servis_karar() {
+    local durum="$1" asagi="$2" cokus="$3" calisiyor="$4"
+    [[ "$durum" =~ ^(saglam|coktu|dongu|calismiyor)$ ]] || durum=saglam
+    [[ "$asagi" =~ ^[0-9]+$ ]] || asagi=0
+    [[ "$cokus" =~ ^[0-9]+$ ]] || cokus=0
+
+    if (( cokus > 0 )); then
+        local yeni_asagi=$(( calisiyor ? 0 : 1 ))
+        case "$durum" in
+            coktu) echo "dongu dongu $yeni_asagi" ;;
+            dongu) echo "yok dongu $yeni_asagi" ;;
+            *)     echo "coktu coktu $yeni_asagi" ;;
+        esac
+    elif (( calisiyor )); then
+        case "$durum" in
+            coktu|dongu) echo "duzeldi saglam 0" ;;
+            calismiyor)  echo "geri_geldi saglam 0" ;;
+            *)           echo "yok saglam 0" ;;
+        esac
+    else
+        asagi=$(( asagi >= 2 ? 2 : asagi + 1 ))
+        if (( asagi >= 2 )) && [[ "$durum" != calismiyor ]]; then
+            echo "calismiyor calismiyor 2"
+        else
+            echo "yok $durum $asagi"
+        fi
+    fi
+}
+
+# servis_olay_ayikla — journalctl -o json satırlarından "<birim> <sonuç>".
+#
+# Yalnızca _PID=1: sıradan bir süreç UNIT= ve MESSAGE_ID= alanlarını
+# kendisi yazabiliyor (ölçüldü); _PID'i journald koyuyor. Aksi hâlde
+# ele geçirilen panelyd, caddy adına sahte çöküş yollayabilirdi.
+servis_olay_ayikla() {
+    local satir birim sonuc
+    while IFS= read -r satir; do
+        [[ "$satir" == *"\"MESSAGE_ID\":\"$OLAY_BASARISIZ\""* ]] || continue
+        [[ "$satir" == *'"_PID":"1"'* ]] || continue
+        [[ "$satir" =~ \"UNIT\":\"([A-Za-z0-9@._:-]+)\" ]] || continue
+        birim="${BASH_REMATCH[1]}"
+        sonuc="?"
+        [[ "$satir" =~ \"UNIT_RESULT\":\"([a-z-]+)\" ]] && sonuc="${BASH_REMATCH[1]}"
+        printf '%s %s\n' "$birim" "$sonuc"
+    done
+}
+
+# servis_satiri <eylem> <birim> <cokus> <sonuç> <calisiyor>
+#
+# Yalnızca systemd'nin alanları: servisin kendi çıktısı (bir panik
+# mesajı, içinde veri olabilir) Telegram'a GİTMİYOR.
+servis_satiri() {
+    local eylem="$1" birim="$2" cokus="$3" sonuc="$4" calisiyor="$5" hal
+    case "$eylem" in
+        coktu)
+            if (( calisiyor )); then hal="systemd yeniden başlattı"; else hal="şu an ÇALIŞMIYOR"; fi
+            printf '🟠 ÇÖKTÜ — %s: %d kez (%s), %s\n' "$birim" "$cokus" "$sonuc" "$hal" ;;
+        dongu)
+            printf '🔴 ÇÖKME DÖNGÜSÜ — %s: son kontrolden beri %d kez daha (%s)\n' "$birim" "$cokus" "$sonuc" ;;
+        calismiyor) printf '🔴 ÇALIŞMIYOR — %s\n' "$birim" ;;
+        duzeldi)    printf '✅ TOPARLANDI — %s: son kontrolden beri çökmedi\n' "$birim" ;;
+        geri_geldi) printf '✅ YENİDEN ÇALIŞIYOR — %s\n' "$birim" ;;
+    esac
+}
+
+calisiyor_mu() {
+    local pid
+    { read -r pid < "$CGROUP_KOK/$1/cgroup.procs"; } 2>/dev/null && [[ -n "$pid" ]]
+}
+
+# servis_olaylari_oku <kalıcı imleç> <geçici imleç> — olayları "$TMP/servis-olaylar"a.
+#
+# İmleç birimlerin BÜTÜN akışında tutuluyor, olay sonra süzülüyor.
+# Ölçüldü: MESSAGE_ID ile süzülen sorgu hiç eşleşme bulamazsa imleci
+# YAZMIYOR. Çöküş geçmişi olmayan bir sunucuda her koşu "ilk koşu"
+# olurdu ve ilk çöküş, imleç "şimdi"ye konurken yutulurdu.
+servis_olaylari_oku() {
+    local imlec="$1" gecici="$2" b birimler=()
+    for b in "${CEKIRDEK_BIRIMLER[@]}"; do birimler+=(-u "$b"); done
+    if [[ -s "$imlec" ]]; then
+        cp "$imlec" "$gecici"
+        journalctl "${birimler[@]}" --no-pager -o json \
+            --output-fields=MESSAGE_ID,UNIT,UNIT_RESULT,_PID \
+            --cursor-file="$gecici" > "$TMP/servis-json" ||
+            die "journal okunamadı (servis olayları)"
+    else
+        # İlk koşu: GEÇMİŞİ gönderme. Test sunucusunun journal'ında
+        # kurulum gününden kalma 155 çöküş var; hepsi bir mesajda giderdi.
+        journalctl "${birimler[@]}" --no-pager -o json -n 0 \
+            --cursor-file="$gecici" > /dev/null ||
+            die "journal okunamadı (servis olayları)"
+        : > "$TMP/servis-json"
+    fi
+    servis_olay_ayikla < "$TMP/servis-json" > "$TMP/servis-olaylar"
+}
+
+# EN AZ BİR KEZ teslim, `izle` ile aynı desen: imleç de durum da ancak
+# gönderim başarılıysa ilerliyor.
+servisler() {
+    local durum_dizini="${STATE_DIRECTORY:-/var/lib/panely-notify}"
+    local imlec="$durum_dizini/servis-imlec" durum_dosyasi="$durum_dizini/servisler"
+    [[ -d "$CGROUP_KOK" ]] || die "cgroup v2 bekleniyordu, $CGROUP_KOK yok"
+    servis_olaylari_oku "$imlec" "$TMP/servis-imlec"
+
+    local b eski cokus sonuc calisiyor eylem yeni_durum yeni_asagi
+    : > "$TMP/servis-mesaj"; : > "$TMP/servis-durum"
+    for b in "${CEKIRDEK_BIRIMLER[@]}"; do
+        eski="$(awk -v b="$b" '$1 == b { print $2, $3 }' "$durum_dosyasi" 2>/dev/null)"
+        cokus="$(awk -v b="$b" '$1 == b { n++ } END { print n + 0 }' "$TMP/servis-olaylar")"
+        sonuc="$(awk -v b="$b" '$1 == b { s = $2 } END { print s }' "$TMP/servis-olaylar")"
+        calisiyor=0; calisiyor_mu "$b" && calisiyor=1
+        # shellcheck disable=SC2086
+        read -r eylem yeni_durum yeni_asagi < <(servis_karar ${eski:-saglam 0} "$cokus" "$calisiyor")
+        printf '%s %s %s\n' "$b" "$yeni_durum" "$yeni_asagi" >> "$TMP/servis-durum"
+        [[ "$eylem" == yok ]] ||
+            servis_satiri "$eylem" "$b" "$cokus" "$sonuc" "$calisiyor" >> "$TMP/servis-mesaj"
+    done
+
+    if [[ -s "$TMP/servis-mesaj" ]]; then
+        { printf '🖥 %s\n' "$SUNUCU"; cat "$TMP/servis-mesaj"; } > "$TMP/servis-gonder"
+        gonder "$TMP/servis-gonder" ||
+            die "servis durumu gönderilemedi — bir sonraki koşuda tekrar denenecek"
+        log "servis durumu gönderildi ($(wc -l < "$TMP/servis-mesaj") satır)"
+    fi
+    imlec_koy "$TMP/servis-imlec" "$imlec"
+    imlec_koy "$TMP/servis-durum" "$durum_dosyasi"
 }
 
 # ── hata <birim> ─────────────────────────────────────────────────────
@@ -324,7 +488,7 @@ trap 'rm -rf "$TMP"' EXIT
 SUNUCU="$(hostname)"
 
 case "${1:-izle}" in
-    izle)       izle; nabiz_at ;;
+    izle)       izle; servisler; nabiz_at ;;
     hata)       hata "${2:-}" ;;
     dene)       dene ;;
     sohbet-bul) sohbet_bul ;;

@@ -2,7 +2,9 @@
 
 panelyd alarmları tespit ediyor ama dışarı gönderemiyor: `IPAddressDeny=any`
 taşıyor, kasıtlı. Bu birim alarmları panelyd'nin journal'ından okuyup
-Telegram'a iletir. Ayrıntı ve ölçümler: `docs/decisions.md`, K-108.
+Telegram'a iletir. Çekirdek servisler (panelyd, panely-exec, panely-caddy)
+çökerse ya da durursa onu da bildirir. Ayrıntı ve ölçümler:
+`docs/decisions.md`, K-108 ve K-110.
 
 ## Ne gönderilir
 
@@ -12,9 +14,17 @@ Telegram'a iletir. Ayrıntı ve ölçümler: `docs/decisions.md`, K-108.
 | 🔴 KÖTÜLEŞTİ | `durum=tirmandi` |
 | ✅ DÜZELDİ | `durum=kapandi` |
 | 🔴 BİRİM BAŞARISIZ | `OnFailure=` — şu an `panely-offsite.service` |
+| 🟠 ÇÖKTÜ | çekirdek servis çöktü (systemd'nin "Failed with result" olayı) |
+| 🔴 ÇÖKME DÖNGÜSÜ | bir sonraki kontrolde de çökmüş; döngü sürdükçe yeni mesaj YOK |
+| 🔴 ÇALIŞMIYOR | iki kontrol üst üste süreci yok (`exit 0`, `stop`, vazgeçildi) |
+| ✅ TOPARLANDI / YENİDEN ÇALIŞIYOR | çöküş ya da duruş bitti |
 
 Gecikme en fazla ~1 dakika. Gönderim başarısız olursa olay KAYBOLMAZ;
 bir sonraki koşuda yeniden denenir.
+
+Servis mesajları yalnızca systemd'nin alanlarını taşır (sonuç: `signal`,
+`exit-code`, `oom-kill`…). Servisin kendi çıktısı, ör. bir panik mesajı,
+Telegram'a gönderilmez.
 
 ## Güvenlik modeli
 
@@ -74,8 +84,11 @@ sudo systemctl enable --now panely-notify.timer
 
 ## Bilinen sınırlar
 
-- **Göndericinin kendisi düşerse** kimse haber almaz — tek sunucuda bunu
-  yakalayacak bir şey yok. Başarısızlığı journal'da kalır
-  (`journalctl -u panely-notify`). Gerçek çözüm dışarıdan bir nabız
-  kontrolü; ayrı bir karar.
+- **Göndericinin kendisi düşerse** sunucuda bunu yakalayacak bir şey yok.
+  Dış nabız kontrolü ([`deploy/nabiz`](../nabiz/README.md), K-109) 15
+  dakika nabız alamazsa haber verir.
+- **Askıda kalma yakalanmaz.** Çekirdek birimlerde `WatchdogSec` yok;
+  kilitlenen bir panelyd'nin süreci durur ama yaşar, "çalışıyor" görünür.
+- Bakım için bir çekirdek servisi iki dakikadan uzun durdurmak da
+  "🔴 ÇALIŞMIYOR" mesajı üretir. Bu doğru: servis gerçekten çalışmıyor.
 - Bu kurulum `panely bootstrap` tarafından yapılmıyor (uzak yedek gibi).

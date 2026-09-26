@@ -53,6 +53,8 @@ PrivateDevices=yes
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
+# cgroup ağacı salt okunur. Çekirdek servis denetimi (K-110) orayı
+# yalnızca OKUYOR: süreç var mı. Ölçüldü: bu kısıtla okunuyor.
 ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes

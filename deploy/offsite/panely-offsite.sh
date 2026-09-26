@@ -3,6 +3,8 @@
 # Panely UZAK yedek yükleyicisi.
 #
 # Yerel anlık görüntüleri şifreler ve bir rclone hedefine kopyalar.
+# Hacim arşivlerini (K-111, panely-volume-backup.sh) zaten şifreli
+# oldukları için OLDUĞU GİBİ kopyalar.
 #
 # ── Bu betik neden AYRI bir süreç ────────────────────────────────────
 #
@@ -42,6 +44,7 @@ set -uo pipefail
 
 CONF="${PANELY_OFFSITE_CONF:-/etc/panely/offsite.conf}"
 BACKUP_DIR="${PANELY_BACKUP_DIR:-/var/lib/panely/backups}"
+VOLUME_BACKUP_DIR="${PANELY_VOLUME_BACKUP_DIR:-/var/lib/panely-volume-backup}"
 
 log()  { echo "panely-offsite: $*"; }
 die()  { echo "panely-offsite: HATA: $*" >&2; exit 1; }
@@ -125,6 +128,7 @@ trap 'rm -rf "$tmp"' EXIT
 uploaded=0
 skipped=0
 failed=0
+snapshots=0
 
 # Uzakta ZATEN olanları bir kez, BOYUTLARIYLA listele: her dosya için
 # ayrı ağ turu atmak, 24 yedekle 24 gereksiz istek demekti.
@@ -139,8 +143,59 @@ while IFS='|' read -r ad boyut; do
 done < "$remote_list"
 log "uzak hedefte ${#uzak_boyut[@]} dosya var"
 
+# yukle_dogrula <yerel şifreli dosya> <uzak ad>
+#
+# ── Uzakta ADI olan dosya DOĞRU sanılmaz ─────────────────────────────
+#
+# Eski hâli yalnızca ada bakıyordu. Ölçüldü: uzaktaki 100 baytlık KESİK
+# bir kopya "atlandı" sayıldı, koşu çıkış 0 ile bitti ve bozuk kopya
+# kalıcı oldu. Yüklemenin kendi boyut denetimi o koşuyu doğru biçimde
+# düşürürdü, ama BİR SONRAKİ koşu dosyayı "zaten var" diye geçiyordu.
+# Artık boyut da tutmalı; tutmuyorsa yeniden yükleniyor.
+#
+# Sağlayıcı üzerine yazmayı reddederse (R2 bucket lock) yükleme düşer
+# ve koşu BAŞARISIZ olur — bozuk kopya en azından sessiz kalmaz.
+#
+# ⚠ Sınır: AYNI boyutta bozulmuş bir kopya bu denetimden geçer.
+# Şifreli içerik her seferinde farklı olduğu için karşılaştırılacak
+# bir hash yok; bunu yakalayan tek yol geri yükleme tatbikatı.
+yukle_dogrula() {
+    local yerel="$1" enc="$2" want got
+    want="$(stat -c %s "$yerel")"
+    if [[ -n "${uzak_boyut[$enc]+var}" ]]; then
+        if [[ "${uzak_boyut[$enc]}" == "$want" ]]; then
+            skipped=$((skipped + 1))
+            return 0
+        fi
+        echo "panely-offsite: UZAK KOPYA BOZUK $enc (uzak=${uzak_boyut[$enc]} beklenen=$want) — yeniden yükleniyor" >&2
+    fi
+
+    if ! rclone copyto "$yerel" "$OFFSITE_REMOTE/$enc" 2>"$tmp/cp.err"; then
+        echo "panely-offsite: yüklenemedi $enc: $(head -1 "$tmp/cp.err")" >&2
+        failed=$((failed + 1))
+        return 1
+    fi
+
+    # ── YÜKLENDİ demek YERİNE ULAŞTI'yı ÖLÇ ──────────────────────────
+    #
+    # `rclone copyto`nun sıfır dönmesi dosyanın karşıda DOĞRU boyutta
+    # durduğunu kanıtlamaz. Kesilmiş bir yedek, olmayan bir yedekten
+    # daha kötüdür: geri yükleme gününe kadar sağlıklı görünür.
+    got="$(rclone size --json "$OFFSITE_REMOTE/$enc" 2>/dev/null |
+           grep -oE '"bytes":[0-9]+' | cut -d: -f2)"
+    if [[ "$got" != "$want" ]]; then
+        echo "panely-offsite: BOYUT UYUŞMUYOR $enc (yerel=$want uzak=${got:-yok})" >&2
+        failed=$((failed + 1))
+        return 1
+    fi
+
+    uploaded=$((uploaded + 1))
+    log "yüklendi $enc ($want bayt, doğrulandı)"
+}
+
 shopt -s nullglob
 for snap in "$BACKUP_DIR"/panely-*.db; do
+    snapshots=$((snapshots + 1))
     base="$(basename "$snap")"
     enc="${base}.age"
 
@@ -157,56 +212,26 @@ for snap in "$BACKUP_DIR"/panely-*.db; do
         failed=$((failed + 1))
         continue
     fi
-    want="$(stat -c %s "$tmp/$enc")"
-
-    # ── Uzakta ADI olan dosya DOĞRU sanılmaz ─────────────────────────
-    #
-    # Eski hâli yalnızca ada bakıyordu. Ölçüldü: uzaktaki 100 baytlık
-    # KESİK bir kopya "atlandı" sayıldı, koşu çıkış 0 ile bitti ve bozuk
-    # kopya kalıcı oldu. Yüklemenin kendi boyut denetimi o koşuyu doğru
-    # biçimde düşürürdü, ama BİR SONRAKİ koşu dosyayı "zaten var" diye
-    # geçiyordu. Artık boyut da tutmalı; tutmuyorsa yeniden yükleniyor.
-    #
-    # Sağlayıcı üzerine yazmayı reddederse (R2 bucket lock) yükleme düşer
-    # ve koşu BAŞARISIZ olur — bozuk kopya en azından sessiz kalmaz.
-    #
-    # ⚠ Sınır: AYNI boyutta bozulmuş bir kopya bu denetimden geçer.
-    # Şifreli içerik her seferinde farklı olduğu için karşılaştırılacak
-    # bir hash yok; bunu yakalayan tek yol geri yükleme tatbikatı.
-    if [[ -n "${uzak_boyut[$enc]+var}" ]]; then
-        if [[ "${uzak_boyut[$enc]}" == "$want" ]]; then
-            skipped=$((skipped + 1))
-            rm -f "$tmp/$enc"
-            continue
-        fi
-        echo "panely-offsite: UZAK KOPYA BOZUK $enc (uzak=${uzak_boyut[$enc]} beklenen=$want) — yeniden yükleniyor" >&2
-    fi
-
-    if ! rclone copyto "$tmp/$enc" "$OFFSITE_REMOTE/$enc" 2>"$tmp/cp.err"; then
-        echo "panely-offsite: yüklenemedi $enc: $(head -1 "$tmp/cp.err")" >&2
-        failed=$((failed + 1))
-        rm -f "$tmp/$enc"
-        continue
-    fi
-
-    # ── YÜKLENDİ demek YERİNE ULAŞTI'yı ÖLÇ ──────────────────────────
-    #
-    # `rclone copyto`nun sıfır dönmesi dosyanın karşıda DOĞRU boyutta
-    # durduğunu kanıtlamaz. Kesilmiş bir yedek, olmayan bir yedekten
-    # daha kötüdür: geri yükleme gününe kadar sağlıklı görünür.
-    got="$(rclone size --json "$OFFSITE_REMOTE/$enc" 2>/dev/null |
-           grep -oE '"bytes":[0-9]+' | cut -d: -f2)"
-    if [[ "$got" != "$want" ]]; then
-        echo "panely-offsite: BOYUT UYUŞMUYOR $enc (yerel=$want uzak=${got:-yok})" >&2
-        failed=$((failed + 1))
-        rm -f "$tmp/$enc"
-        continue
-    fi
-
+    yukle_dogrula "$tmp/$enc" "$enc"
     rm -f "$tmp/$enc"
-    uploaded=$((uploaded + 1))
-    log "yüklendi $enc ($want bayt, doğrulandı)"
 done
+
+# ── Hacim arşivleri (K-111) ──────────────────────────────────────────
+#
+# panely-volume-backup.sh onları AYNI alıcıyla zaten şifreledi; burada
+# yeniden şifrelenmiyor, olduğu gibi yükleniyor. Boyut karşılaştırması
+# da yerel ŞİFRELİ dosyanın boyutuyla. Arşivleyici isteğe bağlı: kurulu
+# değilse dizin yok.
+#
+# Gizli adlar (.yaziliyor-…) desene uymuyor: arşivleyici yarım dosyayı
+# o adla yazıyor, bitince yerine koyuyor.
+if [[ -d "$VOLUME_BACKUP_DIR" ]]; then
+    for arsiv in "$VOLUME_BACKUP_DIR"/panely-hacim-*.tar.zst.age; do
+        yukle_dogrula "$arsiv" "$(basename "$arsiv")"
+    done
+else
+    log "hacim arşivi dizini yok ($VOLUME_BACKUP_DIR) — hacim yedeği kurulu değil"
+fi
 
 # ── Uzak budama ──────────────────────────────────────────────────────
 #
@@ -233,20 +258,35 @@ done
 # Kök sebep: budama, bir sonraki koşunun yeniden yükleyeceği dosyaları
 # siliyordu. Yerelde duran bir yedeği uzaktan silmek zaten anlamsız —
 # uzak kopyanın işi, yerel kopya GİTTİKTEN sonra başlıyor.
+#
+# Veritabanı yedekleri ve hacim arşivleri AYRI budanıyor; hacim arşivleri
+# ayrıca UYGULAMA BAŞINA. OFFSITE_KEEP her gruba ayrı uygulanıyor.
+#
+# ── Ad sırası zaman sırası DEĞİLDİR ─────────────────────────────────
+#
+# Budama "en eskiden" siler ve en eskiyi ADA göre sıralayarak bulur. Bu
+# yalnızca aynı önekli adlarda doğru: "panely-hacim-aa-2026…" ile
+# "panely-hacim-zz-2019…" karşılaştırılırken önce UYGULAMA adı
+# karşılaştırılır. Tüm hacim arşivleri tek grupta budansaydı, en eskiler
+# yerine alfabede önce gelen uygulamanın arşivleri silinirdi. İlk hâli
+# böyleydi; elle mutasyon testi buldu (K-111). Yerel ayar da sıralamayı
+# değiştiriyordu (tire yok sayılıyor) — LC_ALL=C.
+#
+# uzak_buda <grup> <uzak ad deseni> <uzak adı yerel yola çeviren fonksiyon>
 uzak_buda() {
+    local sinif="$1" desen="$2" yerel_yol="$3" r drop i keep_floor target_extra
+    local remote_all=() prunable=()
     mapfile -t remote_all < <(rclone lsf "$OFFSITE_REMOTE" 2>/dev/null |
-                              grep -E '^panely-.*\.db\.age$' | sort)
+                              grep -E "$desen" | LC_ALL=C sort)
 
-    prunable=()
     for r in "${remote_all[@]}"; do
-        # "panely-....db.age" → "panely-....db"
-        [[ -e "$BACKUP_DIR/${r%.age}" ]] && continue
+        [[ -e "$("$yerel_yol" "$r")" ]] && continue
         prunable+=("$r")
     done
 
     keep_floor=$(( ${#remote_all[@]} - ${#prunable[@]} ))
     if (( OFFSITE_KEEP < keep_floor )); then
-        log "UYARI: OFFSITE_KEEP=$OFFSITE_KEEP ama yerelde $keep_floor yedek duruyor;" \
+        log "UYARI: OFFSITE_KEEP=$OFFSITE_KEEP ama yerelde $keep_floor $sinif duruyor;" \
             "onlar silinmiyor (silinseler bir sonraki koşu yeniden yüklerdi)."
     fi
 
@@ -255,16 +295,30 @@ uzak_buda() {
 
     if (( ${#prunable[@]} > target_extra )); then
         drop=$(( ${#prunable[@]} - target_extra ))
-        log "uzakta ${#remote_all[@]} yedek var — yerelde olmayan $drop tanesi siliniyor"
+        log "uzakta ${#remote_all[@]} $sinif var — yerelde olmayan $drop tanesi siliniyor"
         for ((i = 0; i < drop; i++)); do
             rclone deletefile "$OFFSITE_REMOTE/${prunable[i]}" 2>/dev/null ||
                 echo "panely-offsite: silinemedi ${prunable[i]}" >&2
         done
     fi
 }
+db_yerel()    { printf '%s/%s' "$BACKUP_DIR" "${1%.age}"; }   # "panely-….db.age" → yerel "panely-….db"
+hacim_yerel() { printf '%s/%s' "$VOLUME_BACKUP_DIR" "$1"; }   # arşiv yerelde de şifreli, aynı ad
+
+# Uzakta arşivi olan uygulamalar. Adın kuralı internal/api/appvalidate.go
+# ile aynı; desene girerken güvenli (yalnızca harf, rakam, tire).
+hacim_uygulamalari() {
+    rclone lsf "$OFFSITE_REMOTE" 2>/dev/null |
+        sed -nE 's/^panely-hacim-([a-z][a-z0-9-]{0,31})-[0-9]{8}T[0-9]{6}Z\.tar\.zst\.age$/\1/p' |
+        LC_ALL=C sort -u
+}
 
 if [[ "$OFFSITE_PRUNE" == evet ]]; then
-    uzak_buda
+    uzak_buda "veritabanı yedeği" '^panely-.*\.db\.age$' db_yerel
+    while read -r uyg; do
+        uzak_buda "hacim arşivi ($uyg)" \
+            "^panely-hacim-$uyg-[0-9]{8}T[0-9]{6}Z\\.tar\\.zst\\.age\$" hacim_yerel
+    done < <(hacim_uygulamalari)
 else
     log "uzak budama KAPALI (OFFSITE_PRUNE=hayir) — eskiyenleri sağlayıcının yaşam döngüsü kuralı siler"
 fi
@@ -278,7 +332,8 @@ log "özet: yüklendi=$uploaded atlandı=$skipped başarısız=$failed"
 # görünmezdi.
 (( failed == 0 )) || exit 1
 
-# Hiç yedek yoksa bu da bir arızadır: yerel yedekleme çalışmıyor demektir.
-if (( uploaded == 0 && skipped == 0 )); then
+# Hiç veritabanı yedeği yoksa bu da bir arızadır: yerel yedekleme
+# çalışmıyor demektir. Hacim arşivleri bunu örtmemeli.
+if (( snapshots == 0 )); then
     die "yüklenecek yedek BULUNAMADI — yerel yedekleme çalışıyor mu?"
 fi

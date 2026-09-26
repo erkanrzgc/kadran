@@ -1,0 +1,68 @@
+[Unit]
+# Panely hacim arşivleyicisi — uygulamaların kalıcı disk verisini
+# şifreli arşive çevirir; uzağa panely-offsite taşır (K-111).
+#
+# ── Yetki modeli: her şeyi OKUR, hiçbir yere ULAŞAMAZ ────────────────
+#
+# Uygulama verisini okumak için CAP_DAC_READ_SEARCH taşıyor. Karşılığında:
+# ağı yok, hiçbir soket açamıyor, yalnızca kendi çıktı dizinine yazıyor
+# ve dışarı yalnızca age ile şifrelenmiş metin veriyor. Hepsi sunucuda
+# kontrol gruplu ölçüldü (K-111).
+Description=Panely hacim arşivleyicisi
+Documentation=file:/usr/local/lib/panely/offsite/README.md
+OnFailure=panely-notify-failure@%n.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/panely/offsite/panely-volume-backup.sh
+
+# ── Kimlik: root, ama yalnızca TEK yetkiyle ──────────────────────────
+#
+# Çıktı dizini root'un (panely silemesin, üzerine yazamasın — K-100);
+# grubu panely (yükleyici okuyabilsin). Group=panely ile yeni dosyalar
+# o grupla doğuyor, UMask=0027 ile 0640. Ölçüldü: panely okuyor,
+# silemiyor, üzerine yazamıyor, yanına dosya koyamıyor.
+#
+# Bütün yetkilerden yalnızca CAP_DAC_READ_SEARCH kalıyor: izin bitlerini
+# atlayıp OKUR, yazamaz. Ölçüldü: yetkiyle pfprobe/veri (101:101 0750)
+# okunuyor, yetkisiz reddediliyor.
+Group=panely
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+UMask=0027
+StateDirectory=panely-volume-backup
+StateDirectoryMode=0750
+
+# ── Ağ ve soket: HİÇ ─────────────────────────────────────────────────
+#
+# root uid'i Docker soketinin SAHİBİ: izin bitleri onu durdurmuyor.
+# Ölçüldü: kısıtsız birim soketten Docker'a bağlandı. Adres ailesi
+# yasağıyla bağlanamadı. Docker'a ulaşan bir süreç host'un tamamıdır.
+RestrictAddressFamilies=none
+PrivateNetwork=yes
+IPAddressDeny=any
+
+# ── Sertleştirme ─────────────────────────────────────────────────────
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# Arşiv süresi hacmin boyuna bağlı; takılan bir koşu sonsuza kadar
+# kalmasın.
+TimeoutStartSec=2h

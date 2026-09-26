@@ -26,6 +26,8 @@ FILES=(
     deploy/systemd/panely-offsite.service
     deploy/systemd/panely-notify.service
     deploy/systemd/panely-notify-failure@.service
+    deploy/systemd/panely-volume-backup.service
+    deploy/systemd/panely-volume-backup.timer
 )
 BAK=$(mktemp -d)
 for f in "${FILES[@]}"; do cp "$f" "$BAK/$(basename "$f")"; done
@@ -33,7 +35,7 @@ restore() { for f in "${FILES[@]}"; do cp "$BAK/$(basename "$f")" "$f"; done; }
 trap 'restore; rm -rf "$BAK"' EXIT
 
 fail=0
-WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified'
+WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive'
 
 # mutate <ad> <dosya> <python-ifadesi>
 mutate() {
@@ -155,6 +157,37 @@ mutate "OnFailure olmayan bir birimi adlandırıyor" deploy/systemd/panely-offsi
 
 mutate "gönderici journal'ı dolduruyor" "$N" \
     "s=s.replace('\nLogLevelMax=notice\n','\n',1)"
+
+echo "== Hacim arşivleyicisi (K-111) =="
+
+H=deploy/systemd/panely-volume-backup.service
+
+mutate "arşivleyici YAZMA yetkisi de aldı" "$H" \
+    "s=s.replace('\nCapabilityBoundingSet=CAP_DAC_READ_SEARCH\n','\nCapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE\n',1)"
+
+mutate "arşivleyici Docker soketine bağlanabilir" "$H" \
+    "s=s.replace('\nRestrictAddressFamilies=none\n','\n',1)"
+
+mutate "arşivleyici ağa çıkabilir" "$H" \
+    "s=s.replace('\nPrivateNetwork=yes\n','\n',1)"
+
+mutate "arşivleyici panely kullanıcısıyla (daemon arşivi silebilir)" "$H" \
+    "s=s.replace('\nGroup=panely\n','\nUser=panely\nGroup=panely\n',1)"
+
+mutate "arşivler daemon'un dizininde" "$H" \
+    "s=s.replace('\nStateDirectory=panely-volume-backup\n','\nStateDirectory=panely/volume-backup\n',1)"
+
+mutate "arşivleyici başka yere de yazabilir" "$H" \
+    "s=s.replace('\nProtectSystem=strict\n','\nProtectSystem=strict\nReadWritePaths=/var/lib/panely\n',1)"
+
+mutate "arşivlere panely grubu yazabilir" "$H" \
+    "s=s.replace('\nUMask=0027\n','\nUMask=0007\n',1)"
+
+mutate "hacim yedeği arızası bildirilmiyor" "$H" \
+    "s=s.replace('\nOnFailure=panely-notify-failure@%n.service\n','\n',1)"
+
+mutate "zamanlayıcı kaçan koşuyu atlıyor" deploy/systemd/panely-volume-backup.timer \
+    "s=s.replace('\nPersistent=true\n','\nPersistent=false\n',1)"
 
 restore
 echo

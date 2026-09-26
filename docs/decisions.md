@@ -6465,3 +6465,121 @@ keser).
 - Başlatma sınırının hiç dolmaması çekirdek birimlerin bir özelliği.
   Değiştirmek (ör. `StartLimitIntervalSec`) ayrı karar; bu kayıt
   değiştirmiyor, yalnızca bildiriyor.
+
+## K-111 — Hacim yedeği: her şeyi okuyan, hiçbir yere ulaşamayan birim
+
+**Tarih:** 26 Eylül 2026
+**Durum:** kod + testler hazır; canlı kurulum ve geri yükleme tatbikatı
+bekliyor
+
+K-091 hacim verisini ölçerek kapsam dışı bırakmıştı: panelyd
+`/var/lib/panely/volumes/<uyg>` (root:root 0750) dizinine traverse bile
+edemiyor. İki yol yazılmıştı, ikisi de bir şey götürüyordu: executor'a
+yeni RPC (ayrıcalıklı bütçe 2498/2500) ya da dizinleri `panely` grubuna
+açmak ("panelyd uygulama verisini okuyamaz" güvencesi).
+
+### Üçüncü yol: ayrı bir arşivleyici birim
+
+Uzak yedeğin (K-098) ve alarm göndericisinin (K-108) deseni: yetki, işi
+tek şey olan ayrı bir birimde. Bu birim **her şeyi okuyabiliyor** ama:
+
+- ağı yok, hiçbir soket açamıyor
+- yalnızca kendi çıktı dizinine yazıyor
+- dışarı **yalnızca şifreli metin** veriyor: `age` açık anahtarla, özel
+  anahtar sunucuda yok
+
+panelyd çıktıyı okuyabilir ama içindeki veriyi okuyamaz. Executor
+bütçesi 0 satır; güvence yerinde.
+
+### Ölçüm önce (sunucuda, kontrol gruplu)
+
+```
+okuma       CAP_DAC_READ_SEARCH ile pfprobe/veri (101:101 0750) okundu
+            KONTROL: yetkisiz → "Permission denied"
+Docker      RestrictAddressFamilies=none ile sokete bağlanamadı (curl 7)
+            KONTROL: kısıtsız birim BAĞLANDI — root uid soketin sahibi
+ağ          PrivateNetwork ile 1.1.1.1'e ulaşılamadı
+sembolik    -h olmadan: bağ olarak, 0 bayt içerik
+bağ         KONTROL -h ile: /etc/shadow'un 933 baytı arşive girdi
+çıktı       640 root:panely, age başlığı; panely OKUYOR, silemiyor,
+            üzerine yazamıyor, yanına dosya koyamıyor
+alıcı       /etc/panely root:root 0755, offsite.conf root:panely 0640;
+anahtarı    panely içine dosya koyamıyor, dosyaya yazamıyor
+            KONTROL: panely dosyayı okuyabiliyor (ölçüm panely olarak koştu)
+```
+
+Docker satırı tasarımın en önemli bulgusu: yetkileri kırpılmış root
+bile Docker soketinin SAHİBİ olduğu için ona bağlanabiliyor, ve Docker'a
+ulaşan süreç host'un tamamı. `PrivateNetwork` Unix soketlerini
+kapatmıyor; adres ailesi yasağı şart.
+
+Ölçümün kendisinde iki geçersiz koşu vardı: `systemd-run -p` adres
+ailesi yasağını kabul etmedi (birim dosyasıyla yeniden ölçüldü);
+"panely silebilir: EVET" satırı dosya HİÇ oluşmadığı için sahteydi
+(`rm -f` yine başarı döndü). `-h` kontrolü de ilk hâlinde 0 çıkmıştı:
+tar akışında içerik satır başına düşmüyor, `^root:` araması boş
+kalıyordu. Üçü de düzeltilip yeniden ölçüldü.
+
+### Taşıyıcı duvar: alıcı anahtarı
+
+Alıcıyı değiştirebilen biri kendi anahtarını koyar ve her şeyi okuyan
+bu birim bütün uygulama verisini ona şifreler; panelyd çıktıyı
+okuyabildiği için güvence biterdi. Bu yüzden:
+
+- `offsite.conf` ve köke kadar her üst dizin root'un olmalı, grup ve
+  diğerleri yazamamalı (K-100); değilse çalışma reddediliyor
+- dosya `source` EDİLMİYOR, ayrıştırılıyor: her şeyi okuyan süreçte
+  `source`, oraya yazılan komutu o yetkiyle çalıştırmak olurdu
+- alıcı `^age1[a-z0-9]{58}$` değilse reddediliyor
+
+### Tutarlılık: anlık görüntü DEĞİL
+
+Uygulama durdurulmuyor: durdurmak Docker yetkisi ister, bu da birimi
+root'a eşdeğer yapar. cgroup dondurma, bir hata anında konteyneri donmuş
+bırakma riski taşıyor. Sonuç: veritabanı taşıyan hacimlerde geri
+yüklenen kopya tutarsız olabilir. README veritabanı dökümünü hacme
+almayı söylüyor. tar'ın 1 çıkışı ("dosya okunurken değişti") uyarı
+olarak yazılıyor, arşiv tutuluyor.
+
+### Yükleyici
+
+Hacim arşivleri zaten şifreli; yeniden şifrelenmiyor, boyut
+karşılaştırması yerel şifreli dosyanın boyutuyla (K-105). Veritabanı
+yedeği hiç yoksa koşu yine düşüyor: hacim arşivi bunu örtmemeli.
+
+**Mutasyon testi gerçek bir hata buldu:** ilk hâlinde uzak budama
+bütün hacim arşivlerini TEK grupta, ADA göre sıralıyordu. Ad sırası
+zaman sırası değil: `panely-hacim-aa-2026…` ile `panely-hacim-zz-2019…`
+arasında önce uygulama adı karşılaştırılıyor. En eskiler yerine alfabede
+önce gelen uygulamanın arşivleri silinirdi. Yerel ayar da sıralamayı
+değiştiriyordu (tire yok sayılıyor). Budama artık uygulama başına ve
+`LC_ALL=C` ile; eski hâl mutasyon olarak da duruyor ve yakalanıyor.
+
+Hata iki kaçan mutasyonun arkasındaydı; ikisi de önce TEST zayıflığıydı
+(K-080'in birinci sebebi): (1) yerel arşiv sayısı saklama sınırına
+eşitti, "yereldekini silme" ile "en yeniyi tut" ayırt edilemiyordu; (2)
+testteki `rm panely-hacim-web-*` deseni `web-2`'nin arşivini de siliyor,
+test amaçladığı durumu kurmuyordu — arşivleyicide kapatılan önek
+tuzağına kendi testimde düşmüşüm.
+
+### Testler
+
+- `scripts/check-offsite.sh` (CI, root ile): 34 durum. rclone ve age
+  sahte, tar ve zstd gerçek. Sahiplik denetimlerine test için kaçış
+  kapısı AÇILMADI; test root olarak koşuyor.
+- Elle mutasyonlar 16/16 (arşivleyici 10, yükleyici 6), her mutantın
+  uygulandığı ve `bash -n`'den geçtiği ölçüldü (K-096).
+- `internal/bootstrap/volumebackupunit_test.go` + `mutate-units.sh`'ye
+  9 mutasyon (toplam 28): tek yetki, adres ailesi yasağı, ağ, root
+  sahipliği, çıktı dizini daemon'un dizininde değil, ReadWritePaths yok,
+  umask, OnFailure, Persistent.
+
+### Kapsam dışı — açıkça
+
+- Anlık görüntü değil (yukarıda).
+- `--one-file-system`: hacmin içine bağlanmış başka bir dosya sistemi
+  arşive girmez.
+- Tam arşiv, artımlı değil; maliyeti README'de hesaplı.
+- Silinmiş bir uygulamanın hacim dizini duruyorsa o da arşivleniyor
+  (`app delete` veriye dokunmuyor); dizini silinmiş uygulamanın eski
+  arşivleri yerelde budanmıyor — o verinin son kopyası onlar.

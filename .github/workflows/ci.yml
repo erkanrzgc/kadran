@@ -78,6 +78,13 @@ jobs:
       - name: Alarm mesajı biçimlendiricisi
         run: bash scripts/check-notify-format.sh
 
+      # Hacim arşivleyicisi ve uzak yükleyici (K-111). rclone ve age sahte,
+      # tar ve zstd gerçek. ROOT ile: iki betik de yapılandırmanın ve üst
+      # dizinlerinin root'a ait olmasını şart koşuyor; testi geçsin diye o
+      # denetime kaçış kapısı açılmadı.
+      - name: Hacim yedeği ve uzak yükleyici
+        run: sudo bash scripts/check-offsite.sh
+
       # Dış nabız Worker'ı (K-109): karar mantığı ve Worker, sahte KV ve
       # sahte fetch ile. Bağımlılık yok, yalnızca node:test.
       - name: Dış nabız Worker'ı

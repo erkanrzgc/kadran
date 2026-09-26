@@ -153,5 +153,6 @@ func printVolumeScopeWarning(c *cli, excluded bool) {
 	fmt.Fprintln(c.stderr,
 		"UYARI: yedek yalnızca kontrol düzlemi veritabanını kapsıyor "+
 			"(uygulama tanımları, ortam değişkenleri, denetim zinciri). "+
-			"Uygulamaların kalıcı disk verisi KAPSAM DIŞI.")
+			"Uygulamaların kalıcı disk verisi KAPSAM DIŞI; onun için "+
+			"hacim yedeği ayrıca kurulmalı (deploy/offsite/README.md, K-111).")
 }

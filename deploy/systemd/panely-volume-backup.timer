@@ -1,0 +1,18 @@
+[Unit]
+Description=Panely hacim arşivleyicisini günlük çalıştırır
+Documentation=file:/usr/local/lib/panely/offsite/README.md
+
+[Timer]
+# ── Neden 23:30 ──────────────────────────────────────────────────────
+#
+# Uzak yükleyici gece yarısı koşuyor (panely-offsite.timer, daily +
+# en çok 30 dk gecikme). Arşiv ondan ÖNCE hazır olmalı ki aynı gece
+# uzağa gitsin; yoksa her arşiv bir gün geç çıkardı.
+OnCalendar=*-*-* 23:30:00
+RandomizedDelaySec=10min
+
+# Makine kapalıyken kaçan koşu, açılışta telafi edilir.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

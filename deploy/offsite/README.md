@@ -189,10 +189,70 @@ ssh root@sunucu 'systemctl stop panelyd && \
 `--restore` çalışmadan önce mevcut veritabanının güvenlik kopyasını
 alır ve geri yüklenen dosyanın bütünlüğünü doğrular (K-091).
 
-> ⚠ **Hacim verisi kapsam dışı.** Bu yedekler yalnızca kontrol
-> düzlemi veritabanını taşıyor: uygulama tanımları, sürümler, denetim
-> zinciri. Konteynerlerin kalıcı diskleri (`/var/lib/panely/volumes`)
-> DAHİL DEĞİL — panelyd o dizinleri okuyamıyor (ölçüldü, K-091).
+> ⚠ **Bu yedekler hacim verisini taşımıyor.** Yalnızca kontrol
+> düzlemi veritabanı: uygulama tanımları, sürümler, denetim zinciri.
+> Konteynerlerin kalıcı diskleri (`/var/lib/panely/volumes`) için
+> aşağıdaki **hacim yedeği** ayrıca kurulmalı.
+
+## Hacim yedeği — uygulama verisi (K-111)
+
+panelyd uygulamaların kalıcı disklerini okuyamıyor ve bu bir güvence
+(K-091). Hacim verisini ayrı bir birim arşivliyor:
+
+| | |
+|---|---|
+| okur | bütün hacimleri — tek yetki: `CAP_DAC_READ_SEARCH` |
+| ulaşır | hiçbir yere — ağ yok, soket yok (Docker soketi dahil) |
+| yazar | yalnızca `/var/lib/panely-volume-backup` |
+| verir | `age` ile şifreli arşiv, uzak yedekle aynı açık anahtar |
+
+panelyd arşivleri okuyabilir ama içlerini çözemez; silemez, üzerine
+yazamaz. Yükleyici arşivleri olduğu gibi (yeniden şifrelemeden) uzağa
+taşır. Hepsi sunucuda kontrol gruplu ölçüldü.
+
+### ⚠ Anlık görüntü DEĞİL
+
+Uygulama durdurulmuyor; dosyalar uygulama çalışırken tek tek okunur.
+Veritabanı taşıyan bir uygulamada dosyalar farklı anlardan gelebilir ve
+geri yüklenen kopya **bozuk** olabilir. Veritabanını hacme bir
+**döküm** olarak da al — döküm dosyası tutarlıdır:
+
+```bash
+pg_dump -U app app > /data/dump.sql            # PostgreSQL
+sqlite3 /data/app.db ".backup /data/yedek.db"  # SQLite
+```
+
+### Kurulum
+
+Uzak yedek (yukarısı) kurulu olmalı: alıcı anahtar `offsite.conf`'tan
+okunur.
+
+```bash
+sudo install -m 0755 deploy/offsite/panely-volume-backup.sh /usr/local/lib/panely/offsite/
+sudo install -m 0644 deploy/systemd/panely-volume-backup.service \
+                     deploy/systemd/panely-volume-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now panely-volume-backup.timer
+sudo systemctl start panely-volume-backup.service   # ilk koşuyu hemen yap
+journalctl -u panely-volume-backup -n 20 --no-pager
+```
+
+`offsite.conf` ve üst dizinleri root'a ait olmalı, grup ve diğerleri
+yazamamalı; değilse birim çalışmayı reddeder. Alıcıyı değiştirebilen
+biri, bütün uygulama verisini kendi anahtarına şifreletirdi.
+
+Birim her gece 23:30'da koşar, yükleyici gece yarısı alır. Yerelde
+uygulama başına `OFFSITE_VOLUME_KEEP` (varsayılan 3) arşiv tutulur.
+Uzak budama (`OFFSITE_PRUNE=evet`) hacim arşivlerini **uygulama başına**
+`OFFSITE_KEEP` kadar tutar.
+
+### Maliyet
+
+Her gece her uygulamanın TAM arşivi alınır, artımlı değil. R2 kilidi
+(30 gün) ve yaşam döngüsü (90 gün) ile her arşiv uzakta ~90 gün durur:
+günde X MB → uzakta ~90 × X MB. R2'nin ücretsiz katmanı 10 GB; bütün
+uygulamaların arşivi toplam günde ~110 MB'ı geçerse ücretli katmana
+girersin.
 
 ## Doğrulama
 
@@ -208,6 +268,6 @@ systemctl status panely-offsite.service
 systemctl list-timers panely-offsite.timer
 ```
 
-⚠ **Arıza şu an hiçbir yere BİLDİRİLMİYOR.** Birim `failed` kalır ama
-kimse haber almaz — alarm teslimatı hâlâ açık bir karar (K-092).
-Şimdilik bu komutlara elle bakmak gerekiyor.
+Arıza Telegram'a bildirilir: birim `OnFailure=` ile alarm göndericisini
+çağırıyor (K-108, [`deploy/notify`](../notify/README.md)). Gönderici
+kurulu değilse birim yine `failed` kalır ama kimse haber almaz.

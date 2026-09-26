@@ -180,6 +180,7 @@ func runRestore(dbPath, socketPath, snapshotPath string) error {
 	fmt.Fprintln(os.Stderr,
 		"UYARI: yalnızca kontrol düzlemi veritabanı geri yüklendi. "+
 			"Uygulamaların kalıcı disk verisi (/var/lib/panely/volumes) "+
-			"bu yedeğin KAPSAMINDA DEĞİL.")
+			"bu yedeğin KAPSAMINDA DEĞİL; onu hacim yedeğinden ayrıca geri "+
+			"yükleyin (deploy/offsite/README.md, K-111).")
 	return nil
 }

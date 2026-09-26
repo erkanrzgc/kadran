@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/erkanrzgc/panely/internal/execclient"
 	"github.com/erkanrzgc/panely/internal/proxydrv"
@@ -43,6 +44,7 @@ type Replicas interface {
 // Proxy, üretilen yapılandırmayı yükler ve GERİ OKUR.
 type Proxy interface {
 	Load(ctx context.Context, cfg *proxydrv.Config) error
+	Current(ctx context.Context) (*proxydrv.Config, error)
 }
 
 // Reconciler, durumu ters vekile yansıtır.
@@ -51,6 +53,15 @@ type Reconciler struct {
 	replicas    Replicas
 	proxy       Proxy
 	admin       proxydrv.Admin
+
+	// mu, her yüklemeyi (durumu OKUMA + YÜKLEME) tek sıraya koyar.
+	//
+	// Vekil izleyicisi (Repair) ile bir dağıtımın uzlaştırması aynı anda
+	// koşabiliyor. Kilit olmadan izleyici yapılandırmayı SetActiveRelease'ten
+	// ÖNCEKİ durumdan kurup dağıtımın yüklemesinden SONRA yükleyebilirdi:
+	// trafik, boşaltılmakta olan sürüme geri dönerdi. Kilitle her yükleme,
+	// kendinden önceki yüklemelerden sonra okunmuş durumu taşıyor.
+	mu sync.Mutex
 }
 
 // New, uzlaştırıcıyı kurar.
@@ -95,11 +106,66 @@ type Result struct {
 // Atlananlar sessizce yutulmuyor: Result'ta adlarıyla ve sebepleriyle
 // dönüyorlar ve çağıran bunu günlüğe yazıyor.
 func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	cfg, res, err := rc.desired(ctx)
+	if err != nil {
+		return res, err
+	}
+
+	// Load, yüklemekle kalmıyor GERİ DE OKUYOR: "200 aldım", canlı
+	// yapılandırmanın benimki olduğunu kanıtlamaz (K-054).
+	if err := rc.proxy.Load(ctx, cfg); err != nil {
+		return res, fmt.Errorf("deploy: vekil yapılandırması yüklenemedi: %w", err)
+	}
+
+	sort.Strings(res.Routed)
+	return res, nil
+}
+
+// Repair, ters vekil beklenen bir alan adını KAYBETMİŞSE uzlaştırır ve
+// eksik alan adlarını döndürür; her şey yerindeyse hiçbir şey yüklemez.
+//
+// K-055'in ikinci yarısı: ters vekil `--resume` kullanmıyor, yani yeniden
+// başlayınca rotasız açılıyor. "Açılışta uzlaştır" yapılmıştı, "ters
+// vekil yeniden başladığında uzlaştır" HİÇ yapılmamıştı. Taze sunucu
+// testinde (K-112) yalnızca Caddy yeniden başlatıldı ve site 40
+// saniyenin 40'ında da kapalı kaldı; panelyd hiçbir şey fark etmedi.
+//
+// Tetik proxydrv.MissingHosts: yalnızca EKSİK alan adı. Atlanan
+// (sağlıksız) bir uygulamanın canlı rotası silinmiyor; iyileştirme
+// davranışı aynı kalıyor.
+func (rc *Reconciler) Repair(ctx context.Context) ([]string, error) {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
+
+	cfg, _, err := rc.desired(ctx)
+	if err != nil {
+		return nil, err
+	}
+	live, err := rc.proxy.Current(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("deploy: canlı vekil yapılandırması okunamadı: %w", err)
+	}
+	missing := proxydrv.MissingHosts(cfg, live)
+	if len(missing) == 0 {
+		return nil, nil
+	}
+	if err := rc.proxy.Load(ctx, cfg); err != nil {
+		return missing, fmt.Errorf("deploy: kaybolan rotalar yüklenemedi: %w", err)
+	}
+	return missing, nil
+}
+
+// desired, SQLite'taki durumdan beklenen yapılandırmayı kurar. Çağıran
+// rc.mu'yu tutmalı.
+func (rc *Reconciler) desired(ctx context.Context) (*proxydrv.Config, Result, error) {
 	res := Result{Skipped: map[string]string{}}
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
 	if err != nil {
-		return res, fmt.Errorf("deploy: aktif dağıtımlar okunamadı: %w", err)
+		return nil, res, fmt.Errorf("deploy: aktif dağıtımlar okunamadı: %w", err)
 	}
 
 	routes := make([]proxydrv.AppRoute, 0, len(deps))
@@ -129,17 +195,9 @@ func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 		Routes: routes,
 	})
 	if err != nil {
-		return res, fmt.Errorf("deploy: vekil yapılandırması üretilemedi: %w", err)
+		return nil, res, fmt.Errorf("deploy: vekil yapılandırması üretilemedi: %w", err)
 	}
-
-	// Load, yüklemekle kalmıyor GERİ DE OKUYOR: "200 aldım", canlı
-	// yapılandırmanın benimki olduğunu kanıtlamaz (K-054).
-	if err := rc.proxy.Load(ctx, cfg); err != nil {
-		return res, fmt.Errorf("deploy: vekil yapılandırması yüklenemedi: %w", err)
-	}
-
-	sort.Strings(res.Routed)
-	return res, nil
+	return cfg, res, nil
 }
 
 // upstreamsFor, tek bir dağıtımın arka uç adreslerini KURAR.

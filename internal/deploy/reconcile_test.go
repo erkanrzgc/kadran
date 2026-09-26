@@ -37,6 +37,16 @@ func (f fakeReplicas) ListReplicas(_ context.Context, appID string) ([]execclien
 type fakeProxy struct {
 	loaded *proxydrv.Config
 	calls  int
+	// live, Current'ın döndürdüğü canlı yapılandırma (Repair testleri).
+	live       *proxydrv.Config
+	currentErr error
+}
+
+func (f *fakeProxy) Current(context.Context) (*proxydrv.Config, error) {
+	if f.currentErr != nil {
+		return nil, f.currentErr
+	}
+	return f.live, nil
 }
 
 func (f *fakeProxy) Load(_ context.Context, cfg *proxydrv.Config) error {

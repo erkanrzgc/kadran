@@ -213,6 +213,28 @@ func verifyApplied(want, live *Config) error {
 }
 
 // routesByHost, yapılandırmadan "alan adı → upstream adresleri" çıkarır.
+// MissingHosts, want'ın yönlendirdiği ama live'da HİÇ rotası olmayan
+// alan adlarını sıralı döndürür.
+//
+// Vekil izleyicisinin tetikleyicisi (K-055'in ikinci yarısı, K-112):
+// Caddy yeniden başlayınca rotasız açılıyor ve panelyd bunu görmezse
+// siteler kapalı kalıyor. Bilerek TEK YÖNLÜ: fazla rotalar ve upstream
+// farkları burada görünmez. Uzlaştırma sağlıksız bir uygulamayı atlıyor
+// ve canlıdaki eski rotası iyileştirme bitene kadar duruyor; iki yönlü
+// bir tetik (verifyApplied gibi) o rotayı silip gözetmenin davranışını
+// değiştirirdi.
+func MissingHosts(want, live *Config) []string {
+	liveRoutes := routesByHost(live)
+	var missing []string
+	for host := range routesByHost(want) {
+		if _, ok := liveRoutes[host]; !ok {
+			missing = append(missing, host)
+		}
+	}
+	sort.Strings(missing)
+	return missing
+}
+
 func routesByHost(cfg *Config) map[string][]string {
 	out := map[string][]string{}
 	if cfg == nil || cfg.Apps == nil || cfg.Apps.HTTP == nil {

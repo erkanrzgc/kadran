@@ -152,9 +152,10 @@ func TestInstallScriptVerifiesEveryRunningBinary(t *testing.T) {
 // şey DEĞİŞTİYSE yeniden başlatıldığını doğrular.
 //
 // Taze sunucu testinde ölçüldü: ikinci kurulumda (hiçbir şey
-// değişmemişken) Caddy koşulsuz yeniden başlatıldı ve site 0,5 sn
-// aralıklı 2514 isteğin 9'unda cevap vermedi (~4,5 sn). Ters vekil
-// trafiğin yolu; gereksiz yeniden başlatma kesinti demek.
+// değişmemişken) Caddy koşulsuz yeniden başlatıldı, rotasız açıldı ve
+// site panelyd yeniden başlayana kadar KAPALI kaldı. Rotaları geri
+// getirmek panelyd'nin işi (K-055); ama ters vekil trafiğin yolu ve
+// gereksiz yeniden başlatma yine de kesinti demek.
 func TestInstallerLeavesAnUnchangedProxyRunning(t *testing.T) {
 	text := kurulumBetigi(t)
 	if !strings.Contains(text, "vekil_parmak_izi") {

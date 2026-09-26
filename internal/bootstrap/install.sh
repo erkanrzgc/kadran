@@ -50,7 +50,8 @@ calisan_ayni_mi() {
 vekil_parmak_izi() {
     { cat /etc/panely/caddy.json /etc/tmpfiles.d/panely-caddy.conf \
           /etc/systemd/system/panely-caddy.service \
-          /etc/systemd/system/panely-caddy-admin.socket 2>/dev/null || true; } |
+          /etc/systemd/system/panely-caddy-admin.socket \
+          /etc/systemd/system/panely-caddy.service.d/*.conf 2>/dev/null || true; } |
         md5sum | cut -d' ' -f1
 }
 
@@ -349,8 +350,11 @@ systemctl enable panely-caddy.service
 
 # Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
 # Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
-# başlattı: site 2514 isteğin 9'unda cevap vermedi (~4,5 sn). İkili,
-# yapılandırma ya da birim değiştiyse (yükseltme) yeniden başlatma şart.
+# başlattı ve Caddy rotasız açıldı; site panelyd yeniden başlayana kadar
+# KAPALI kaldı (bir sonraki kurulumda panelyd yeniden başlayınca döndü).
+# Rotaları geri getirmek panelyd'nin işi (K-055, vekil izleyicisi); ama
+# gereksiz yeniden başlatma yine de kesinti demek. İkili, yapılandırma
+# ya da birim değiştiyse (yükseltme) yeniden başlatma şart.
 if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
         && systemctl is-active --quiet panely-caddy-admin.socket \
         && systemctl is-active --quiet panely-caddy.service \

@@ -255,6 +255,10 @@ func run() error {
 	// bir slog.Error satırıydı.
 	recordProxyAlarm(shutdown, alarms, proxyProblem)
 
+	// K-055'in ikinci yarısı: ters vekil yeniden başlayınca rotasız açılıyor.
+	// İzleyici kaybolan rotaları geri yüklüyor (bkz. proxywatch.go, K-112).
+	go watchProxy(shutdown, &proxyWatcher{rp: reconciler, am: alarms}, proxyWatchInterval)
+
 	go watchDisk(shutdown, exec, alarms, *diskEvery)
 
 	// Zamanlı yedekleme. Gözetmenle aynı kapanış bağlamını paylaşıyor:

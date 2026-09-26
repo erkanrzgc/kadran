@@ -186,14 +186,13 @@ const defaultDiskInterval = 5 * time.Minute
 // kadar tek izi bir `slog.Error` satırı ve sdnotify STATUS metniydi —
 // yani operatör bakmayı akıl etmedikçe görünmezdi.
 //
-// ⚠ Yalnızca AÇILIŞTA ölçülüyor. Uzlaştırma açılışta koşuyor, dolayısıyla
-// alarm da orada açılıp kapanıyor; sonraki bir bozulmayı bu koşul
-// görmez. Kapsamı dar tutmak, olmayan bir sürekli denetimi varmış gibi
-// göstermekten iyidir.
+// Bu fonksiyon AÇILIŞ uzlaştırmasının sonucunu yazıyor. Sonraki bir
+// bozulmayı (ör. Caddy'nin yeniden başlayıp rotasız açılması) vekil
+// izleyicisi görüyor ve aynı alarmı kullanıyor (proxywatch.go, K-112).
 func recordProxyAlarm(
 	ctx context.Context, am *alarm.Manager, problem string,
 ) {
-	id := alarm.KindProxyUnreconciled + ":host"
+	id := proxyAlarmID
 	if problem == "" {
 		am.Clear(ctx, id)
 		return

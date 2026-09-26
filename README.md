@@ -76,7 +76,8 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 ### Requirements
 
 - **Server:** a fresh Linux host with systemd, OpenSSH and Docker Engine, reachable
-  as root over SSH **once**. Tested on Ubuntu 24.04, x86_64. arm64 binaries are
+  as root over SSH **once**. On Ubuntu, Docker from the distribution is enough:
+  `apt-get install -y docker.io`. The installer stops early if Docker is missing. Tested on Ubuntu 24.04, x86_64. arm64 binaries are
   built, and CI runs the tests on real ARM hardware, but no server install on
   arm64 has been done yet.
 - **Workstation:** Go 1.25+, an OpenSSH client, and a key pair
@@ -111,6 +112,10 @@ your public key for the `panely-client` user **bound to a forced command**, and
 checks its own work, for example by confirming that the daemon's user cannot reach
 Docker. It is idempotent and safe to run again. After this, you never need root for
 day-to-day work.
+
+The installer bundle is about 75 MiB. On a slow uplink the upload takes a while
+(measured: ~14 minutes at ~95 KB/s). The time limit is 30 minutes; raise it with
+`-timeout 60m` if needed.
 
 The installer was verified on fresh Ubuntu 24.04 servers in early August 2026. It
 has not been re-measured on a fresh server since; the live server has been updated

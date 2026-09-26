@@ -222,7 +222,10 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	binaryDir := fs.String("binaries", defaultBinaryDir(), "linux binary'lerinin bulunduğu dizin")
 	repoRoot := fs.String("repo", ".", "systemd birimlerinin okunacağı depo kökü")
 	clientKey := fs.String("client-key", defaultClientKey(), "sunucuya yetkilendirilecek AÇIK anahtar")
-	timeout := fs.Duration("timeout", 10*time.Minute, "toplam süre sınırı")
+	// 30 dakika: kurulum paketi ~75 MiB ve taze sunucu testinde (K-112)
+	// ~95 KB/sn'lik bir ev hattında yüklemesi ~14 dakika sürdü. 10
+	// dakikalık eski sınır kurulumu yükleme bitmeden kesiyordu.
+	timeout := fs.Duration("timeout", 30*time.Minute, "toplam süre sınırı")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}

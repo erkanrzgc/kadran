@@ -19,6 +19,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -288,9 +289,25 @@ bash "$d/install.sh" "$d"`
 	cmd.Stderr = opts.Stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("bootstrap: kurulum başarısız: %w", err)
+		return kurulumHatasi(ctx, err, len(archive))
 	}
 	return nil
+}
+
+// kurulumHatasi, uzak kurulumun hatasını kullanıcının anlayacağı hâle
+// getirir.
+//
+// Süre sınırı dolduğunda ssh öldürülür ve Windows'ta öldürülen süreç
+// yalnızca "exit status 1" döndürür. Taze sunucu testinde (K-112) ~95
+// KB/sn'lik bir yükleme hattında 75 MiB'lık paket 10 dakikalık sınırı
+// aştı ve kullanıcıya sebep söylenmedi. Sebep bağlamda duruyor.
+func kurulumHatasi(ctx context.Context, err error, paketBoyutu int) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return fmt.Errorf("bootstrap: süre sınırı aşıldı — kurulum paketi %s, "+
+			"yavaş bir bağlantıda yüklemesi uzun sürebilir; -timeout ile daha "+
+			"uzun süre verin (ör. -timeout 60m): %w", humanSize(paketBoyutu), ctx.Err())
+	}
+	return fmt.Errorf("bootstrap: kurulum başarısız: %w", err)
 }
 
 func sshArgs(opts Options, remoteCommand string) []string {

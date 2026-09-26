@@ -39,6 +39,14 @@ command -v sshd >/dev/null || command -v /usr/sbin/sshd >/dev/null \
 
 SSHD_BIN="$(command -v sshd || echo /usr/sbin/sshd)"
 
+# Docker README'de ön koşul. Taze sunucu testinde (K-112) betik ona hiç
+# bakmıyordu: Docker'sız bir sunucuda kullanıcılar ve birimler kuruluyor,
+# hata ancak sonda, sebebi belirsiz bir kontrolle görünebilirdi.
+command -v docker >/dev/null \
+    || die "Docker Engine bulunamadı — önce kurun (Ubuntu: apt-get install -y docker.io)"
+docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
+    || die "Docker kurulu ama daemon cevap vermiyor — systemctl status docker"
+
 # nologin yolu dağıtıma göre değişiyor.
 NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
@@ -461,8 +469,14 @@ else
     check_fail "panelyd '$daemon_user' olarak çalışıyor, 'panely' bekleniyordu"
 fi
 
-# 2. panelyd Docker'a ERİŞEMEMELİ.
-if setpriv --reuid panely --regid panely --clear-groups docker ps >/dev/null 2>&1; then
+# 2. panelyd Docker'a ERİŞEMEMELİ — ama önce ölçümün ölçebildiği
+#    kanıtlanıyor. `setpriv … docker ps` Docker HİÇ yokken de başarısız
+#    oluyor (komut bulunamadı) ve bu kontrol "erişemiyor" diye GEÇİYORDU
+#    (taze sunucu testi, K-112). Root ulaşamıyorsa panely'nin ulaşamaması
+#    hiçbir şey kanıtlamaz.
+if ! docker ps >/dev/null 2>&1; then
+    check_fail "root da Docker'a ulaşamıyor — ayrıcalık ayrımı ÖLÇÜLEMEDİ"
+elif setpriv --reuid panely --regid panely --clear-groups docker ps >/dev/null 2>&1; then
     check_fail "panely kullanıcısı Docker'a erişebiliyor — ayrıcalık ayrımı ÇÖKMÜŞ"
 else
     check_ok "panely kullanıcısı Docker'a erişemiyor"

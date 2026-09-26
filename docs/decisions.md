@@ -6630,9 +6630,9 @@ hacimsiz. README bunu açıkça yazıyor. Döküm tavsiyesi de canlıda
 ## K-112 — Taze sunucu: v0.1 öncesi kurulum testi ve bulduğu hatalar
 
 **Tarih:** 26–27 Eylül 2026
-**Durum:** DÜZELTİLDİ — boş bir sunucuda ölçüldü (çapraz commit
-yükseltmesi ve reboot ölçülüyor); canlı sunucuya henüz kurulmadı
-(kullanıcı onayı bekliyor, aşağıda "Canlıdaki açık")
+**Durum:** DÜZELTİLDİ — hepsi boş bir sunucuda ölçüldü (reboot dahil);
+canlı sunucuya henüz kurulmadı (kullanıcı onayı bekliyor, aşağıda
+"Canlıdaki açık")
 
 README "kurulum bir kez doğrulandı, o günden beri yeniden ölçülmedi"
 diyordu. v0.1 etiketinden önce bu cümle ya ölçümle değişecekti ya da
@@ -6784,6 +6784,80 @@ Yan bulgu: benim çalışma kopyamda dört dosya CRLF'ydi (`.gitattributes`
 "çalışma kopyasında da LF" diyor; kopya o dosyadan eski). `git status`
 bunu göstermiyor. LF'ye çekildi.
 
+### 7. Reboot'tan sonra "TRAFİK AKMIYOR" alarmı HİÇ kapanmıyordu
+
+Reboot testinin görünen sonucu temizdi: dört birim geri geldi, sıfır
+yeniden başlatma döngüsü, çalışan ikililer kurulanlarla aynı, site 200,
+`panely status` çıkış 0. Ama `panely alarms` kritik bir alarm
+gösteriyordu:
+
+```
+22:29:46  konteyner hazır değil (restart politikası "no": onu Docker
+          değil gözetmen başlatıyor) → açılış uzlaştırması "web"i atladı →
+          proxy_unreconciled KRİTİK "açılışta ters vekil
+          uzlaştırılamadı, TRAFİK AKMIYOR"
+22:29:57  gözetmen iyileştirdi, rota yüklendi, site 200
+22:49:48  KONTROL: alarm hâlâ AÇIK (20 dk 6 sn), site bu sürede 200
+```
+
+Alarmı yalnızca iki taraf kapatabiliyordu: bir sonraki açılış ve vekil
+izleyicisi. İzleyici de yalnızca alarmı KENDİ açtıysa ya da kendisi
+ONARDIYSA kapatıyordu (güvenlik incelemesinden sonraki hâli, 5.
+bulgu). Gözetmen rotayı yükleyince izleyicinin onaracak bir şeyi
+kalmıyordu ve alarm bir sonraki panelyd yeniden başlatmasına kadar açık
+kalıyordu. Telegram teslimatı açıkken (K-108) her reboot "trafik
+akmıyor" gönderir, "düzeldi" hiç göndermezdi. Açılış alarmı K-092'den
+beri var; hata izleyiciden önce de vardı.
+
+İlk aklıma gelen kural ("eksik rota yok, atlanan uygulama yok →
+kapat") YANLIŞTI: açılış alarmı canlıda panelyd'nin GÖNDERMEDİĞİ bir
+rota yüzünden de açılıyor (Load'un geri okuması, K-054). O hâlde hiçbir
+şey eksik değil ve hiçbir uygulama atlanmıyor; o kural, güvenlikle
+ilgili bir alarmı on saniye içinde sessizce kapatırdı.
+
+`ce53413`: kapatma koşulu "atlanan yok VE canlı İKİ YÖNLÜ birebir".
+`proxydrv.Matches` Load'un geri okumasıyla aynı kontrol;
+`RepairResult.Exact` eksik yokken ondan, yükleme yapıldıysa Load'un
+kendi doğrulamasından geliyor. Alarmı kimin açtığı artık önemli değil;
+`Clear` etkin alarm yoksa sessiz.
+
+Önce kırmızı: yeni reboot testi eski kodda "kapanan: []" ile düştü;
+"canlı farklıyken kapatma" testi de eski kodda düştü — izleyici KENDİ
+alarmını canlı birebir değilken de kapatıyordu. Mutasyon 16/16, her
+mutantın derlendiği ölçüldü; "saf kural" (yalnız atlanan) ve "eski
+kural" (yalnız onarınca) mutant olarak duruyor ve yakalanıyor.
+
+`ce53413` ile yeniden ölçüldü (reboot, UTC):
+
+```
+23:11:05  çekirdek açılışı (journal'ın ilk satırı)
+23:11:14  docker ve panelyd başladı; konteyner hazır değil →
+          alarm AÇILDI (kritik)
+23:11:20  gözetmen konteyneri başlattı
+23:11:23  iyileştirme uygulandı, rota yüklendi; ilk 200 (23:11:23,9)
+23:11:24  izleyici: atlanan yok, canlı birebir → alarm KAPANDI
+          açılış probu (sunucunun içinden, 0,5 sn'de bir): ilk 200'den
+          SONRA 0 hata
+```
+
+Her reboot'ta gerçek bir kesinti var: çekirdek açılışından ilk 200'e
+~19 sn, panelyd açıldıktan ~10 sn sonra. Telegram açıkken her reboot
+bir kritik alarm ve ~10 sn sonra "düzeldi" gönderir; ikisi de doğru.
+
+Bu ölçümün ilk hâli GEÇERSİZDİ. Yükleme bağlantı kopmasıyla düştü
+(`exit status 255`), betik bunu fark etmedi ve reboot'u ESKİ kodla
+yaptı. Alarm okuması da `panely alarms` hata verdiğinde "yok" diyordu
+(K-051 sınıfı). İkinci hâl:
+- kurulan ikiliyi md5 ile doğruluyor,
+- asıl kanıt olarak sunucu journal'ını kullanıyor (`durum=acildi` /
+  `kapandi`),
+- kesintiyi sunucunun İÇİNDEN ölçüyor (geçici birim, ölçümden sonra
+  kaldırıldı).
+
+`panely alarms` açık alarm varken bilerek 1 döndüğü için CLI okuması
+tek başına kanıt değil. Geçersiz koşu kendiliğinden bir kontrol grubu
+verdi: eski kodla yapılan ikinci reboot'ta da alarm kapanmadı (31 dk).
+
 ### Ölçümler (test sunucusu, UTC)
 
 ```
@@ -6804,11 +6878,18 @@ f3912bd  yükseltme probu 94 ✓ / 2 ✗ (~1 sn)
 4a4fccb  caddy ikilisi 80bbadba0284 → 79cb60d9382a (DEĞİŞTİ, beklenen):
          bir kez yeniden başladı, prob 1971 ✓ / 2 ✗ (~1 sn)
          taze klonun caddy'si = çalışma kopyamınki = 79cb60d9382a
+b0730fa  yalnız belge: caddy md5 AYNI, "ters vekil değişmedi", caddy
+         PID aynı, NRestarts 0, prob 1151 / 1151 ✓; panelyd yeni ikili
+         reboot: 4 birim geri, 0 döngü, ikililer doğru, site 200,
+         status 0 — ama alarm açık kaldı (7. bulgu)
+ce53413  caddy md5 AYNI (üçüncü commit): "değişmedi", PID aynı, prob
+         789 / 789 ✓; kurulan panelyd md5 ile doğrulandı
+         reboot: alarm 10 sn açık kaldı ve kapandı; ilk 200 çekirdek
+         açılışından ~19 sn sonra, sonrasında 0 hata
 ```
 
-Çapraz commit yükseltmesi (Caddy'ye dokunmayan bir commit'le: caddy
-PID'i aynı kalmalı, prob 0 hata) ve reboot: ÖLÇÜLÜYOR, sonuçları bir
-sonraki commit'te.
+Test sunucusu ölçümlerden sonra silindi; faturalanan bir şey kalmadığı
+`hcloud server list` ve `hcloud primary-ip list` ile doğrulandı.
 
 Kesinti üst sınırı: izleyici aralığı (10 sn) + Caddy'nin yeniden
 başlama süresi (`RestartSec=5s`, yalnızca çökmede). Ölçülenler bunun
@@ -6818,7 +6899,10 @@ içinde.
 
 - **Canlıdaki açık:** canlı sunucu izleyicisiz sürümü çalıştırıyor. Bir
   Caddy çökmesi orada hâlâ siteleri panelyd yeniden başlayana kadar
-  kapalı bırakır. Kurulum kullanıcı onayıyla yapılacak.
+  kapalı bırakır. 7. bulgunun alarmı da orada büyük olasılıkla var:
+  açılış alarmının kodu aynı ve Telegram teslimatı açık — bir reboot
+  "trafik akmıyor" gönderir, "düzeldi" göndermez. Canlıda ölçülmedi.
+  Kurulum kullanıcı onayıyla yapılacak.
 - `ExecReload` bozuk: `systemctl reload panely-caddy` →
   `dial fd: unknown network fd` (admin adresi socket activation'ın
   `fd/3`'ü; Caddy CLI onu çeviremiyor). Zararsız: ne kurulum ne panelyd

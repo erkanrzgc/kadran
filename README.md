@@ -57,9 +57,9 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Git → container deploys** | Builds a commit's `Dockerfile` from a public repository. Only `github.com` is accepted by default; builds can be further restricted to a per-repository allowlist |
 | **Blue-green releases with a health gate** | Traffic moves only after the new release answers its HTTP health check |
 | **Rollback** | Back to the previous release without rebuilding. Measured: ~18 s end to end, 55 of 55 probes returned `200` during the switch |
-| **Automatic HTTPS** | Let's Encrypt certificates via a custom Caddy build that contains no file server. Config reloads are atomic |
+| **Automatic HTTPS** | Let's Encrypt certificates via a custom Caddy build that contains no file server. Config reloads are atomic. If the proxy restarts or crashes, the daemon notices within 10 s and restores the routes (measured: sites back after 3 s on a restart, 7 s on a crash; without the watcher they stayed down) |
 | **Live logs** | `panely logs -f <app>`; container logs are capped at 3 × 10 MiB |
-| **Health supervisor** | Restarts failed releases with backoff, and keeps running when no client is connected |
+| **Health supervisor** | Restarts failed releases with backoff, and keeps running when no client is connected. After a reboot it starts the apps again (measured: sites answer ~19 s after the kernel boots) |
 | **Scaling, env vars, volumes** | `app update -replicas/-env/-volume`. Volumes are mounted `nodev,nosuid` |
 | **Pruning** | Removes old releases' containers, always keeping the rollback target |
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
@@ -118,9 +118,13 @@ matters. Measured from the same home line on the same day: one run finished the
 upload in under a minute, another had sent only 28 MB after five minutes. The time
 limit is 30 minutes; raise it with `-timeout 60m` if needed.
 
-The installer was verified on fresh Ubuntu 24.04 servers in early August 2026. It
-has not been re-measured on a fresh server since; the live server has been updated
-in place.
+The installer was re-measured on a fresh Ubuntu 24.04 server (Hetzner cx23, x86_64)
+on 26–27 September 2026: fresh install, upgrades across commits, a same-build
+reinstall, reverse-proxy restart and crash recovery, and a reboot. That run found and
+fixed real problems, among them upgrades that left the old binaries running and a
+reverse-proxy restart that kept every site down until the daemon restarted
+([K-112](docs/decisions.md)). A fresh ARM server was not bootstrapped in that run;
+arm64 builds and tests run on real ARM hardware in CI.
 
 Optional hardening: restrict builds to specific repositories with the executor's
 `--allow-repo owner/name,…` flag (see the comment at the top of
@@ -362,11 +366,11 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 | **1** | Deployment loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | ✅ done, verified on a real server |
 | — | Operations added along the way: env vars, scaling, pruning, log caps | ✅ done |
 | 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes done |
-| 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection and Telegram delivery done |
+| 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection, Telegram delivery, core-service crash notices and an external heartbeat done |
 | 4 | Webhook receiver, deploy-on-push, cron manager | ⏳ |
-| 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots done |
+| 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots and volume backups done |
 | 6 | Multi-node: `panelyd --mode=agent`, mTLS gRPC | ⏳ |
-| 7 | Octópus integration (local security LLM) | ⏳ |
+| 7 | Octópus integration (local security LLM) | ⏸ on hold (running cost) |
 
 Deliberately **not** planned: a web panel. The management interface stays behind
 SSH, so there is no browser-facing attack surface and no session cookie to steal.

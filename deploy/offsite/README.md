@@ -246,6 +246,30 @@ uygulama başına `OFFSITE_VOLUME_KEEP` (varsayılan 3) arşiv tutulur.
 Uzak budama (`OFFSITE_PRUNE=evet`) hacim arşivlerini **uygulama başına**
 `OFFSITE_KEEP` kadar tutar.
 
+### Geri yükleme
+
+```bash
+# 1. İndir ve KENDİ makinende çöz (özel anahtar burada)
+rclone copy panely-offsite:panely-yedek/panely-hacim-web-20260926T233000Z.tar.zst.age .
+age -d -i panely-yedek-anahtari.txt -o web.tar.zst panely-hacim-web-20260926T233000Z.tar.zst.age
+
+# 2. Sunucuya taşı, mevcut hacmi kenara al, arşivi aç
+scp web.tar.zst root@sunucu:/root/
+ssh root@sunucu
+cd /var/lib/panely/volumes
+mv web .web-eski        # noktalı ad: arşivleyici onu atlar
+zstd -dq < /root/web.tar.zst | tar -x --numeric-owner -f - -C /var/lib/panely/volumes
+# Doğruladıktan sonra: rm -rf .web-eski /root/web.tar.zst
+```
+
+`--numeric-owner` ŞART: konteynerin kullanıcısı (ör. uid 101) bu
+makinede başka birinin adına denk gelebilir; sayı korunmalı.
+
+Bu yol canlıda uçtan uca ölçüldü (K-111): arşiv R2'den indi, bilgisayarda
+çözüldü, sunucuda açıldı; tür, kip, sahip, boyut ve sha256 özgünle aynı.
+⚠ Tatbikattaki hacim çalışan bir konteynere bağlı DEĞİLDİ. Hacmi
+kullanan bir konteyner varsa önce onu durdur; bu adım ölçülmedi.
+
 ### Maliyet
 
 Her gece her uygulamanın TAM arşivi alınır, artımlı değil. R2 kilidi

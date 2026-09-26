@@ -6469,8 +6469,8 @@ keser).
 ## K-111 — Hacim yedeği: her şeyi okuyan, hiçbir yere ulaşamayan birim
 
 **Tarih:** 26 Eylül 2026
-**Durum:** kod + testler hazır; canlı kurulum ve geri yükleme tatbikatı
-bekliyor
+**Durum:** CANLI — kuruldu, zamanlayıcı açık; R2'den uçtan uca geri
+yükleme tatbikatı geçti (aşağıda "Canlı ölçüm")
 
 K-091 hacim verisini ölçerek kapsam dışı bırakmıştı: panelyd
 `/var/lib/panely/volumes/<uyg>` (root:root 0750) dizinine traverse bile
@@ -6573,6 +6573,49 @@ tuzağına kendi testimde düşmüşüm.
   9 mutasyon (toplam 28): tek yetki, adres ailesi yasağı, ağ, root
   sahipliği, çıktı dizini daemon'un dizininde değil, ReadWritePaths yok,
   umask, OnFailure, Persistent.
+
+### Canlı ölçüm (26 Eyl, UTC)
+
+Kullanıcının kararı: uygulama DURDURULMAZ, README veritabanı dökümü
+ister (yukarıdaki "Tutarlılık").
+
+Kurulumdan önce canlıdaki yükleyici önceki commit'le md5 olarak
+birebir aynıydı; eskisi `/root/panely-offsite.sh.yedek-20260926T160027Z`.
+Dört dosyanın md5'i depoyla aynı; `systemd-analyze verify` temiz.
+
+```
+16:00:13  özgün hâl kaydedildi: pfprobe/veri/test.txt 101:101 0644,
+          24 bayt, sha256 f6e27e69…; e2etest/data boş
+16:00:39  arşivleyici (gerçek birim): 2 arşiv (303 + 356 bayt), çıkış 0
+          dizin 750 root:panely, dosyalar 640 root:panely
+          panely OKUYOR (yalnızca age başlığı görünüyor), SİLEMİYOR
+          ("Permission denied")
+~16:01    yükleyici (gerçek R2): yüklendi=17 (15 veritabanı + 2 hacim)
+          atlandı=9 başarısız=0; hacim arşivleri yerel boyutlarıyla
+          doğrulandı — yeniden şifrelenmedi
+          zamanlayıcı açıldı: arşiv 23:30, yükleyici 00:06 — sıra doğru
+```
+
+Geri yükleme tatbikatı, **R2'deki kopyadan**:
+
+```
+1. test.txt bozuldu (41 bayt, sha256 4b394086…)
+2. arşiv R2'den indirildi → yerel arşivle BAYT BAYT aynı (356 bayt)
+3. kullanıcı kendi bilgisayarında `age -d` ile çözdü (özel anahtar
+   sunucuya hiç gelmedi); 156 bayt, zstd imzası doğru
+4. boş dizine --numeric-owner ile açıldı: tür, kip, sahip, boyut
+   özgünle AYNI; sha256 f6e27e69… AYNI
+   KONTROL: canlıdaki bozuk dosya 4b394086… — ölçüm farkı görebiliyor
+5. canlı yola geri yüklendi: volumes kökünden bütün ağaç (e2etest ve
+   kök dizinin izinleri dahil) özgün kayıtla diff'siz
+```
+
+Tatbikatın açık metin kopyaları hem bilgisayardan hem sunucudan silindi.
+
+Canlıda ölçülMEYEN: hacmi kullanan ÇALIŞAN bir konteynerle geri yükleme.
+Tatbikattaki hacim yalnızca durmuş `pfprobe_r6`'ya bağlıydı; çalışan r7
+hacimsiz. README bunu açıkça yazıyor. Döküm tavsiyesi de canlıda
+ölçülmedi: gerçek bir veritabanı hacmi olan uygulama yok.
 
 ### Kapsam dışı — açıkça
 

@@ -63,6 +63,7 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Scaling, env vars, volumes** | `app update -replicas/-env/-volume`. Volumes are mounted `nodev,nosuid` |
 | **Pruning** | Removes old releases' containers, always keeping the rollback target |
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
+| **Volume backups (optional)** | A separate unit archives app volumes nightly and encrypts them before anything leaves it. It can read every volume but has no network and no sockets, so the daemon still cannot read app data. Measured: an archive restored from R2, decrypted on another machine, matched the original file for file (owner, mode, checksum) |
 | **Alarm detection** | Four failure conditions (heal exhausted, backup failed, proxy not reconciled, low disk), edge-triggered and persisted so that a restart does not fire them again. Shown by `panely alarms` and in the journal |
 | **Alarm delivery (optional)** | A separate unit forwards alarms, offsite-backup failures, and crashes or stops of the core services (panelyd, panely-exec, panely-caddy) to Telegram ([`deploy/notify`](deploy/notify/README.md)). The daemon still has no network access and cannot read the bot token. Measured: a real alarm reached Telegram within 34 s, its recovery too; a killed panelyd was reported in 69 s and its recovery a minute later, while the site answered 937 of 937 requests; failed sends are retried, not lost |
 | **Heartbeat (optional)** | A Cloudflare Worker on the free tier ([`deploy/nabiz`](deploy/nabiz/README.md)) tells you on Telegram when the alarm sender goes silent for 15 minutes, meaning the sender or the whole server is down. Measured: the alarm came 17 minutes after the last heartbeat, recovery on the next check, one message per change of state |
@@ -332,7 +333,10 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 - **No secret store.** Environment variables are stored in the daemon's database and
   are visible to `docker inspect` on the host. Do not put secrets you cannot rotate in
   them.
-- **App volume data is not included in backups** — only Panely's own database is.
+- **Volume backups are not snapshots.** The optional volume archiver reads files while
+  the app keeps running, so a database's files can come from different moments. Dump
+  the database into the volume (`pg_dump`, `sqlite3 .backup`); the dump is consistent.
+  Archives are full copies every night, not incremental.
 - **The desktop app is read-only.** It shows version, status and the audit log. All
   management is done with the CLI.
 - **CLI messages are in Turkish.** Commands and flags are English words; the output

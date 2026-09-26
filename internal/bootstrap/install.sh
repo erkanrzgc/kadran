@@ -354,7 +354,9 @@ systemctl enable panely-caddy.service
 # KAPALI kaldı (bir sonraki kurulumda panelyd yeniden başlayınca döndü).
 # Rotaları geri getirmek panelyd'nin işi (K-055, vekil izleyicisi); ama
 # gereksiz yeniden başlatma yine de kesinti demek. İkili, yapılandırma
-# ya da birim değiştiyse (yükseltme) yeniden başlatma şart.
+# ya da birim değiştiyse yeniden başlatma şart. İkili commit'ten BAĞIMSIZ
+# derleniyor (scripts/build-caddy.sh, -buildvcs=false); öyle olmasaydı
+# Caddy'ye dokunmayan her yükseltme de onu "değişmiş" sayardı (ölçüldü).
 if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
         && systemctl is-active --quiet panely-caddy-admin.socket \
         && systemctl is-active --quiet panely-caddy.service \

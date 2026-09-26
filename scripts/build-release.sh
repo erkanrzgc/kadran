@@ -48,8 +48,10 @@ for arch in "${ARCHES[@]}"; do
     # ⚠ Bu binary bir GÜVENLİK SINIRI taşıyor: dosya servis eden modüller
     # kasten dışarıda (K-050). Kurulum betiği onu hostta ARAR ve
     # bulamazsa durur; burada üretilmezse bootstrap yarıda kalır.
-    ( cd build/caddy && GOOS=linux GOARCH="$arch" CGO_ENABLED=0 \
-        go build -trimpath -ldflags "-s -w" -o "../../$out/panely-caddy" . )
+    #
+    # Commit'ten BAĞIMSIZ derleniyor (-buildvcs=false, K-112): aksi hâlde
+    # her yükseltme ters vekili "değişmiş" sayıp yeniden başlatırdı.
+    bash scripts/build-caddy.sh "$arch" "$REPO_ROOT/$out/panely-caddy"
     printf '    %s\n' "$out/panely-caddy"
 done
 

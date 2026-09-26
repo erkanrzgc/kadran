@@ -193,13 +193,31 @@ jobs:
       # CI'da koşması, o sınırın hâlâ derlenebilir olduğunu garanti eder;
       # sınırın hâlâ ETKİLİ olduğu ise sunucuda ölçülüyor.
       - name: Ters vekili derle (ayrı modül)
-        working-directory: build/caddy
-        env:
-          GOOS: linux
-          GOARCH: ${{ matrix.arch }}
         run: |
-          go build -trimpath -ldflags "-s -w" -o "../../dist/panely-caddy" .
-          ls -la ../../dist/panely-caddy
+          bash scripts/build-caddy.sh "${{ matrix.arch }}" "$PWD/dist/panely-caddy"
+          ls -la dist/panely-caddy
+
+      # Kurulum betiği ters vekili yalnızca ikili değişince yeniden
+      # başlatıyor. İkiliye commit gömülürse Caddy'ye dokunmayan her
+      # yükseltme de trafiği keser (K-112, ölçüldü). Pozitif kontrol:
+      # derleme bilgisi okunamazsa "vcs yok" hiçbir şey kanıtlamaz.
+      - name: Ters vekil ikilisi commit'ten bağımsız mı
+        run: |
+          info="$(go version -m dist/panely-caddy)"
+          if ! grep -q 'github.com/erkanrzgc/panely/build/caddy' <<<"$info"; then
+            echo "ölçüm geçersiz: panely-caddy'nin derleme bilgisi okunamadı"; exit 1
+          fi
+          if grep -q 'vcs\.revision' <<<"$info"; then
+            echo "panely-caddy commit bilgisi taşıyor: her yükseltme ters vekili yeniden başlatır (K-112)"
+            exit 1
+          fi
+          # Build ID kaynak baytlarının özeti: satır sonu ya da yorum farkı
+          # bile ikiliyi değiştirir. Boş olmalı (scripts/build-caddy.sh).
+          bid="$(go tool buildid dist/panely-caddy)"
+          if [ -n "$bid" ]; then
+            echo "panely-caddy build ID taşıyor ($bid): ikili kaynak baytlarına bağlı (K-112)"
+            exit 1
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

@@ -6626,3 +6626,207 @@ hacimsiz. README bunu açıkça yazıyor. Döküm tavsiyesi de canlıda
 - Silinmiş bir uygulamanın hacim dizini duruyorsa o da arşivleniyor
   (`app delete` veriye dokunmuyor); dizini silinmiş uygulamanın eski
   arşivleri yerelde budanmıyor — o verinin son kopyası onlar.
+
+## K-112 — Taze sunucu: v0.1 öncesi kurulum testi ve bulduğu hatalar
+
+**Tarih:** 26–27 Eylül 2026
+**Durum:** DÜZELTİLDİ — boş bir sunucuda ölçüldü (çapraz commit
+yükseltmesi ve reboot ölçülüyor); canlı sunucuya henüz kurulmadı
+(kullanıcı onayı bekliyor, aşağıda "Canlıdaki açık")
+
+README "kurulum bir kez doğrulandı, o günden beri yeniden ölçülmedi"
+diyordu. v0.1 etiketinden önce bu cümle ya ölçümle değişecekti ya da
+etiket beklemeyecekti. Boş bir Hetzner sunucusu açıldı (cx23, hel1,
+Ubuntu 24.04, Docker yok) ve kurulum, yükseltme, ters vekil kesintisi
+ve yeniden başlatma baştan ölçüldü. Testlerin hiçbiri aşağıdakileri
+göremiyordu; hepsi gerçek bir kurulumu KOŞARAK bulundu.
+
+### 1. Zaman aşımı "exit status 1" diyordu
+
+İlk deneme 10 dakikalık varsayılan sınıra takıldı ve kullanıcıya
+yalnızca `kurulum başarısız: exit status 1` dedi — neyin, neden bittiği
+yok. `090577e`: sınır dolunca mesaj bunu söylüyor ve `-timeout`
+bayrağını öneriyor; varsayılan 30 dakika.
+
+Süre nereye gidiyor: ilk tam kurulum 22 dakika sürdü (18:22:46 →
+18:44:53 UTC). Sunucu günlüğünde SSH oturumu 18:22:50'de açılıyor, ilk
+`systemctl` 18:44:46'da; arada kurulumdan tek satır yok. systemd
+adımından önceki adımlar saniyeler sürüyor (sonraki yükseltmeler TOPLAM
+50 sn), yani süre 75,4 MiB'lik paketin yüklenmesinde. Aynı paket
+17:58'de 47 saniyede yüklenmişti: darboğaz ev bağlantısının değişken
+yükleme hızı. Bu bir çıkarım — yükleme hızı ayrıca ölçülmedi.
+
+`cde0463` kendi hatamı düzeltti: bir yorumda "~14 dk ölçüldü" yazmıştım,
+oysa o sayı kısmi bir yüklemeden yapılmış bir TAHMİNDİ. Aynı commit
+tar'ın saat uyarısını (`time stamp … in the future`) `-m` ile kapattı.
+
+### 2. Docker yokken "Docker'a erişemiyor" kontrolü GEÇİYORDU
+
+install.sh Docker'ın varlığına bakmıyordu. Kurulum sonrası
+"panely kullanıcısı Docker'a erişemiyor ✓" kontrolü Docker HİÇ YOKKEN
+de geçiyordu — erişilecek bir şey yoktu. K-051'in sınıfı: cevapsızlığı
+"güvenli" okumak.
+
+`090577e`: ön koşul olarak `command -v docker` ve `docker version`;
+negatif kontrolden önce pozitif kontrol (root `docker ps` çalışmalı,
+yoksa ölçüm geçersiz). Kontrol grubu: Docker'sız sunucuda kurulum
+"Docker Engine bulunamadı — önce kurun (Ubuntu: apt-get install -y
+docker.io)" diyerek durdu. Sonra docker.io 29.1.3 kuruldu.
+
+### 3. Yeniden kurulum ESKİ ikiliyi çalışır bırakıyordu
+
+`systemctl enable --now` çalışan bir birimi yeniden başlatmıyor. İkinci
+kurulumdan sonra panelyd ve panely-exec'in `/proc/<pid>/exe`'si
+"(deleted)" gösteriyordu: yeni dosyalar diskteydi, bellekte eski kod
+koşuyordu. Yani bir yükseltme yeni kodu HİÇ çalıştırmıyordu ve kurulum
+"tamamlandı" diyordu.
+
+`1e23bec`: kontrol düzlemi her kurulumda yeniden başlatılıyor (önce
+executor, sonra panelyd); "çalışan ikili kurulan ikili mi" kontrolü
+ters vekilden panelyd ve executor'a genişletildi (md5, `/proc/pid/exe`).
+
+Kendi taslağımda bir `set -e` tuzağı vardı: parmak izi işlevi ilk
+kurulumda henüz olmayan dosyaları `cat` ediyordu; `x="$(…)"` içindeki
+başarısız boru hattı betiği sessizce durdururdu. Yeni
+`scripts/check-install-sh.sh` (CI) yardımcıları `set -euo pipefail`
+altında koşturuyor ve bunu yakaladı; mutasyonla ölçüldü.
+
+### 4. Ters vekil yeniden başlayınca siteler KAPALI kalıyordu
+
+İkinci kurulumun probu 2505 × 200 ve 9 × 000 verdi. Önce bunu "4,5
+saniyelik kesinti" diye yazdım — YANLIŞTI. Kurulum Caddy'yi koşulsuz
+yeniden başlatmıştı; Caddy `--resume` olmadan rotasız açılıyor (K-055,
+bilinçli) ve site panelyd yeniden başlayana kadar kapalı kaldı. Kesintiyi
+bitiren, üçüncü kurulumun panelyd'yi yeniden başlatmasıydı; 4,5 saniye
+belirsiz süreli bir kesintinin görebildiğim başıydı.
+
+Kontrol grubu: yalnızca `systemctl restart panely-caddy` → site 40
+saniyenin 40'ında kapalı, panelyd tek satır yazmadı. Kök sebep K-055'in
+doğurduğu yükümlülük: "panelyd açılışta VE ters vekil yeniden
+başladığında uzlaştırır." İlk yarı yapılmıştı, ikinci yarı HİÇ.
+Canlıda da aynı: bir Caddy çökmesi, systemd onu geri getirse bile, bütün
+siteleri kapalı bırakırdı — ve K-110'un bildirimi "yeniden başlatıldı"
+diyerek rahatlatırdı.
+
+`f3912bd`: panelyd içinde vekil izleyicisi. 10 saniyede bir canlı
+yapılandırmayı okuyor; beklenen bir alan adı canlıda HİÇ yoksa
+(`proxydrv.MissingHosts`, bilerek tek yönlü) uzlaştırıyor. Üst üste üç
+başarısız denetim kritik alarm. Onarım ve uzlaştırma aynı kilidi
+tutuyor: aksi hâlde bir dağıtımla yarışan onarım eski yapılandırmayı
+yükleyebilirdi (test bunu kilitsiz hâlde yakalıyor).
+
+Reddedilenler: `--resume` (K-055'i tersine çevirir, gerçeğin kaynağı
+SQLite olmaktan çıkar); birimler arası `PartOf` (Caddy'nin bir çökme
+döngüsü panelyd'yi de döndürürdü).
+
+`1e23bec` ayrıca ters vekili yalnızca ikili, yapılandırma ya da birim
+dosyası DEĞİŞİNCE yeniden başlatıyor — ama bkz. 6.
+
+### 5. Güvenlik incelemesi: onarım iki şeyi bozuyordu
+
+Otomatik güvenlik incelemesi `f3912bd`'de iki haklı bulgu çıkardı:
+
+- Onarım yüklemesi yalnızca beklenen rotaları gönderiyordu. O an
+  sağlıksız olduğu için uzlaştırmanın ATLADIĞI bir uygulamanın canlı
+  rotası siliniyordu; uzlaştırma o rotayı bilerek bırakıyor, onarım
+  bırakmıyordu.
+- İzleyici bir onarımdan sonra alarmı koşulsuz kapatıyordu; açılıştaki
+  "rotalanamayan uygulama var" alarmını gizleyebiliyordu.
+
+`6e46d15`: `Repair` artık `RepairResult{Missing, Skipped}` döndürüyor.
+Atlanan uygulamanın canlı upstream'leri yüklemeye taşınıyor; canlıya
+başkası da yazabileceği için (K-054) her adres `NewUpstream`'den yeniden
+geçiyor (`proxydrv.LiveUpstreams`). İzleyici yalnızca atlanan yoksa
+kapatıyor. Mutasyon 11/11; M10 ilk turda `netip` importu kullanılmaz
+kaldığı için DERLENMEDİ (ölçüm geçersiz, K-096), import korunarak
+yeniden koşuldu ve iki testle yakalandı.
+
+Canlıda ölçülMEYEN: "atlanan uygulamanın rotası korunuyor" yolu. Caddy
+yeniden başlayınca canlıda hiç rota kalmıyor, taşınacak bir şey yok; bu
+yol yalnızca KISMİ bir rota kaybında çalışıyor ve onu sunucuda üretmenin
+temiz bir yolu yok. Birim testleriyle korunuyor.
+
+### 6. Ters vekil HER yükseltmede yeniden başlıyordu
+
+`6e46d15` yükseltmesinin çıktısında "ters vekil değişmedi" satırı yoktu,
+oysa Caddy'nin kodu değişmemişti. Sunucudaki md5'ler dört yükseltmede
+dört ayrı değerdi (492d5bfd17dc → 66b676f99a40 → 331253957e3a →
+80bbadba0284). Sebep: Go ikiliye deponun commit'ini gömüyor
+(`vcs.revision`); `build/caddy` bu depoda durduğu için her commit farklı
+bir ikili üretiyordu. "Yalnızca değişince yeniden başlat" kuralı
+yükseltmelerde HİÇ işlemiyordu; her yükseltme trafiği ~1 sn kesiyordu
+(probta 2 hata).
+
+"Aynı ikiliyle yeniden kur" ölçümü bunu GÖREMEZDİ: aynı dosyalar tanım
+gereği aynı md5. Yalnızca iki farklı commit'ten derleyip karşılaştırmak
+gösterdi:
+
+```
+                   bayraksız       -buildvcs=false   + -buildid=
+f3912bd            331253957e3a    eede5585b145
+6e46d15            80bbadba0284    eede5585b145      79cb60d9382a
+CRLF'li kopya      —               farklı            79cb60d9382a
+```
+
+İkinci sınıf: Go'nun build ID'si kaynak BAYTLARININ özeti. CRLF'li bir
+Windows çalışma kopyasından derlenen aynı kod farklı ikili veriyordu
+(`main.go`'da yalnızca satır sonları farklı). Yalnızca yorum değişikliği
+de aynı sınıf. Boş build ID ile ikisi aynı.
+
+`4a4fccb`: `scripts/build-caddy.sh` — `build-release.sh` ve CI aynı
+komutu kullanıyor. CI ikilide `vcs.revision` ya da build ID görürse
+düşüyor; derleme bilgisi okunamazsa "ölçüm geçersiz" (pozitif kontrol).
+CI adımının METNİ ci.yml'den çıkarılıp yerelde koşuldu: gerçek betik
+geçti; bayraklardan birini silen iki mutant, dosya yok ve başka bir Go
+ikilisi durumlarının dördü de düştü.
+
+Yan bulgu: benim çalışma kopyamda dört dosya CRLF'ydi (`.gitattributes`
+"çalışma kopyasında da LF" diyor; kopya o dosyadan eski). `git status`
+bunu göstermiyor. LF'ye çekildi.
+
+### Ölçümler (test sunucusu, UTC)
+
+```
+cde0463  taze kurulum: 15/15 kontrol ✓, `panely status` çıkış 0,
+         `audit verify` iki zincir GEÇERLİ; web uygulaması
+         (crccheck/docker-hello-world) r1 18 sn'de canlı:
+         https 200 "Hello World", http 308, tanımsız alan adı 000
+f3912bd  yükseltme probu 94 ✓ / 2 ✗ (~1 sn)
+         yalnızca caddy restart → 4 sn kapalı, sonra döndü
+         caddy SIGKILL → 8 sn kapalı, sonra döndü
+         KONTROL (izleyicisiz): 40 / 40 sn kapalı
+6e46d15  yükseltme probu 2 ✗ (~1 sn) — sebebi 6. bulgu
+         caddy restart → 3 sn; SIGKILL → 7 sn (NRestarts=1)
+         izleyici: "ters vekil rotalarını kaybetmişti — yeniden
+         yüklendi eksik=[hello.localhost]"
+         aynı ikiliyle yeniden kurulum: "ters vekil değişmedi", caddy
+         PID aynı, prob 120 / 120 ✓; panelyd ve executor yeni PID
+4a4fccb  caddy ikilisi 80bbadba0284 → 79cb60d9382a (DEĞİŞTİ, beklenen):
+         bir kez yeniden başladı, prob 1971 ✓ / 2 ✗ (~1 sn)
+         taze klonun caddy'si = çalışma kopyamınki = 79cb60d9382a
+```
+
+Çapraz commit yükseltmesi (Caddy'ye dokunmayan bir commit'le: caddy
+PID'i aynı kalmalı, prob 0 hata) ve reboot: ÖLÇÜLÜYOR, sonuçları bir
+sonraki commit'te.
+
+Kesinti üst sınırı: izleyici aralığı (10 sn) + Caddy'nin yeniden
+başlama süresi (`RestartSec=5s`, yalnızca çökmede). Ölçülenler bunun
+içinde.
+
+### Açık kalanlar
+
+- **Canlıdaki açık:** canlı sunucu izleyicisiz sürümü çalıştırıyor. Bir
+  Caddy çökmesi orada hâlâ siteleri panelyd yeniden başlayana kadar
+  kapalı bırakır. Kurulum kullanıcı onayıyla yapılacak.
+- `ExecReload` bozuk: `systemctl reload panely-caddy` →
+  `dial fd: unknown network fd` (admin adresi socket activation'ın
+  `fd/3`'ü; Caddy CLI onu çeviremiyor). Zararsız: ne kurulum ne panelyd
+  reload kullanıyor. Kaldırılması ayrı iş.
+- UX: `app show`'daki DURUM derlemenin durumunu gösteriyor, hangi
+  sürümün CANLI olduğunu işaretlemiyor.
+- Ölçülmeyenler: ARM'de taze kurulum (arm64 CI'da gerçek donanımda
+  test ediliyor, bootstrap edilmedi); gerçek alan adıyla Let's Encrypt
+  (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058); canlının
+  sürümünden yükseltme; yerel `buf` 1.50.0 ile CI'ın sabitlediği 1.47.2
+  aynı kodu mu üretiyor (taze klon derlemesi yerel buf'la yapıldı).

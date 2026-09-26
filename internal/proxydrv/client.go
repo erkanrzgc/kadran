@@ -236,6 +236,16 @@ func MissingHosts(want, live *Config) []string {
 	return missing
 }
 
+// Matches, live'ın want'la İKİ YÖNLÜ aynı olduğunu doğrular: Load'un
+// geri okumasıyla aynı kontrol (verifyApplied, K-054).
+//
+// Vekil izleyicisi bir alarmı kapatmadan önce bunu soruyor (K-112).
+// MissingHosts'un tek yönlülüğü tetik için doğru, "her şey yolunda" demek
+// için YETMEZ: canlıda gönderilmemiş bir rota varken de eksik yoktur.
+func Matches(want, live *Config) error {
+	return verifyApplied(want, live)
+}
+
 // LiveUpstreams, live'da host'a giden upstream'lerden GEÇERLİ olanları
 // döndürür.
 //

@@ -189,6 +189,9 @@ const defaultDiskInterval = 5 * time.Minute
 // Bu fonksiyon AÇILIŞ uzlaştırmasının sonucunu yazıyor. Sonraki bir
 // bozulmayı (ör. Caddy'nin yeniden başlayıp rotasız açılması) vekil
 // izleyicisi görüyor ve aynı alarmı kullanıyor (proxywatch.go, K-112).
+// Alarmı KAPATAN da çoğunlukla izleyici: açılışta atlanan bir uygulamayı
+// gözetmen iyileştirip rotaladığında, alarmı açan bu fonksiyon bir
+// sonraki açılışa kadar bir daha koşmuyor.
 func recordProxyAlarm(
 	ctx context.Context, am *alarm.Manager, problem string,
 ) {

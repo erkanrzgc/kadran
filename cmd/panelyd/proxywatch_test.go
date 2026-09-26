@@ -18,13 +18,14 @@ type sahteOnarici struct {
 type onarimSonucu struct {
 	eksik   []string
 	atlanan map[string]string
+	tam     bool // canlı, beklenenle İKİ YÖNLÜ birebir
 	err     error
 }
 
 func (s *sahteOnarici) Repair(context.Context) (deploy.RepairResult, error) {
 	r := s.sonuclar[s.i]
 	s.i++
-	return deploy.RepairResult{Missing: r.eksik, Skipped: r.atlanan}, r.err
+	return deploy.RepairResult{Missing: r.eksik, Skipped: r.atlanan, Exact: r.tam}, r.err
 }
 
 type sahteAlarm struct {
@@ -68,45 +69,61 @@ func TestProxyWatcherAlarmsOnlyAfterRepeatedFailures(t *testing.T) {
 }
 
 // TestProxyWatcherClearsWhatItRaised: kendi açtığı alarmı, vekil yeniden
-// cevap verince kapatır.
+// cevap verip canlı birebir olunca kapatır.
 func TestProxyWatcherClearsWhatItRaised(t *testing.T) {
-	am := izleyiciKos(t, hata, hata, hata, onarimSonucu{})
+	am := izleyiciKos(t, hata, hata, hata, onarimSonucu{tam: true})
 	if len(am.kapanan) != 1 || am.kapanan[0] != proxyAlarmID {
 		t.Errorf("düzelince alarm kapanmadı: %v", am.kapanan)
 	}
 }
 
-// TestProxyWatcherClearsAfterARealRepair: rotaları GERİ YÜKLEDİYSE trafik
-// akıyor demektir; açılışta kalmış "trafik akmıyor" alarmı kapanır.
+// TestProxyWatcherClearsAfterARealRepair: rotaları GERİ YÜKLEDİYSE (Load
+// iki yönlü doğruladı) trafik akıyor; açılış alarmı kapanır.
 func TestProxyWatcherClearsAfterARealRepair(t *testing.T) {
-	am := izleyiciKos(t, onarimSonucu{eksik: []string{"blog.example.com"}})
+	am := izleyiciKos(t, onarimSonucu{eksik: []string{"blog.example.com"}, tam: true})
 	if len(am.kapanan) != 1 {
 		t.Errorf("onarımdan sonra alarm kapanmadı: %v", am.kapanan)
 	}
 }
 
-// TestProxyWatcherLeavesStartupAlarmAlone: hiçbir şey onarmadığı ve kendisi
-// alarm açmadığı bir turda alarma DOKUNMAZ. Açılış alarmı "rotalanamayan
-// uygulama var" da diyebilir; izleyici her şeyi yerinde görse bile o
-// uygulama hâlâ atlanıyor olabilir — körlemesine kapatmak onu gizlerdi.
-func TestProxyWatcherLeavesStartupAlarmAlone(t *testing.T) {
-	if am := izleyiciKos(t, onarimSonucu{}, onarimSonucu{}); len(am.kapanan) != 0 {
-		t.Errorf("izleyici kendisinin olmayan alarmı kapattı: %v", am.kapanan)
+// TestProxyWatcherClearsTheStartupAlarmOnceTheAppIsRouted: taze sunucuda
+// reboot'tan sonra ölçülen hâl (K-112). Açılışta konteyner hazır
+// değildi, uygulama atlandı, alarm açıldı; gözetmen 11 sn sonra
+// iyileştirip rotayı yükledi. İzleyici hiçbir şey onarmadı — ve alarm
+// dakikalarca AÇIK kaldı. Artık: atlanan kalmadı ve canlı birebir →
+// kapanır.
+func TestProxyWatcherClearsTheStartupAlarmOnceTheAppIsRouted(t *testing.T) {
+	atlanan := map[string]string{"web": "aktif sürümün ayakta replikası yok"}
+	am := izleyiciKos(t, onarimSonucu{atlanan: atlanan}, onarimSonucu{tam: true})
+	if len(am.kapanan) != 1 || am.kapanan[0] != proxyAlarmID {
+		t.Errorf("uygulama rotalandıktan sonra açılış alarmı kapanmadı: %v", am.kapanan)
 	}
 }
 
-// TestProxyWatcherKeepsAlarmWhileAppsAreSkipped: rotaları geri yükleyen
-// bir onarım bile, o an rotalanamayan bir uygulama varken alarmı
-// KAPATMAZ. Güvenlik incelemesi buldu: ilk hâli onarımdan sonra
-// koşulsuz kapatıyordu ve açılıştaki "rotalanamayan uygulama var"
-// alarmını gizleyebiliyordu.
+// TestProxyWatcherKeepsAlarmWhenLiveDiffers: eksik yok, atlanan yok ama
+// canlı birebir DEĞİL — admin soketine başkası yazmış olabilir (K-054).
+// Açılış alarmı tam da bunu diyor olabilir; "eksik yok, atlanan yok"
+// diye kapatmak onu sessizce gizlerdi.
+func TestProxyWatcherKeepsAlarmWhenLiveDiffers(t *testing.T) {
+	if am := izleyiciKos(t, onarimSonucu{}, onarimSonucu{}); len(am.kapanan) != 0 {
+		t.Errorf("canlı birebir değilken alarm kapandı: %v", am.kapanan)
+	}
+	if am := izleyiciKos(t, hata, hata, hata, onarimSonucu{}); len(am.kapanan) != 0 {
+		t.Errorf("kendi alarmı, canlı birebir değilken kapandı: %v", am.kapanan)
+	}
+}
+
+// TestProxyWatcherKeepsAlarmWhileAppsAreSkipped: canlı birebir olsa bile,
+// o an rotalanamayan bir uygulama varken alarm KAPANMAZ. Güvenlik
+// incelemesi buldu: ilk hâli onarımdan sonra koşulsuz kapatıyordu ve
+// açılıştaki "rotalanamayan uygulama var" alarmını gizleyebiliyordu.
 func TestProxyWatcherKeepsAlarmWhileAppsAreSkipped(t *testing.T) {
 	atlanan := map[string]string{"shop": "ayakta replika yok"}
-	am := izleyiciKos(t, onarimSonucu{eksik: []string{"blog.example.com"}, atlanan: atlanan})
+	am := izleyiciKos(t, onarimSonucu{eksik: []string{"blog.example.com"}, atlanan: atlanan, tam: true})
 	if len(am.kapanan) != 0 {
 		t.Errorf("atlanan uygulama varken alarm kapandı: %v", am.kapanan)
 	}
-	am = izleyiciKos(t, hata, hata, hata, onarimSonucu{atlanan: atlanan})
+	am = izleyiciKos(t, hata, hata, hata, onarimSonucu{atlanan: atlanan, tam: true})
 	if len(am.kapanan) != 0 {
 		t.Errorf("kendi alarmı, atlanan uygulama varken kapandı: %v", am.kapanan)
 	}

@@ -135,6 +135,10 @@ type RepairResult struct {
 	// Skipped, o an rotalanamayan (sağlıksız) uygulamalar ve sebepleri.
 	// Doluysa izleyici "her şey yolunda" diyemez.
 	Skipped map[string]string
+	// Exact, canlı yapılandırmanın beklenenle İKİ YÖNLÜ birebir aynı
+	// olduğu doğrulandıysa true: ne eksik rota, ne gönderilmemiş rota,
+	// ne farklı upstream (K-054).
+	Exact bool
 }
 
 // Repair, ters vekil beklenen bir alan adını KAYBETMİŞSE uzlaştırır; her
@@ -174,6 +178,9 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 	}
 	out.Missing = proxydrv.MissingHosts(cfg, live)
 	if len(out.Missing) == 0 {
+		// Yükleme yok; canlı İKİ YÖNLÜ birebir mi? İzleyici alarmı
+		// yalnızca öyleyse kapatır (K-112).
+		out.Exact = proxydrv.Matches(cfg, live) == nil
 		return out, nil
 	}
 
@@ -189,6 +196,8 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 	if err := rc.proxy.Load(ctx, cfg); err != nil {
 		return out, fmt.Errorf("deploy: kaybolan rotalar yüklenemedi: %w", err)
 	}
+	// Load geri okuyarak İKİ YÖNLÜ doğruladı (K-054).
+	out.Exact = true
 	return out, nil
 }
 

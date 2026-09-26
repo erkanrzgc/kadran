@@ -51,6 +51,87 @@ func TestRepairReloadsWhenProxyLostItsRoutes(t *testing.T) {
 	if h := hosts(t, proxy.loaded); len(h) != 2 {
 		t.Errorf("yüklenen yapılandırma iki uygulamayı taşımıyor: %v", h)
 	}
+	// Load iki yönlü geri okuyarak doğruluyor (K-054): yüklendiyse birebir.
+	if !sonuc.Exact {
+		t.Error("başarılı yüklemeden sonra canlı 'birebir' sayılmadı")
+	}
+}
+
+// ── Birebir eşleşme: izleyici alarmı ne zaman kapatabilir ────────────
+//
+// Taze sunucuda reboot'tan sonra ölçüldü (K-112): konteyner kapalı
+// açıldı, açılış uzlaştırması uygulamayı atlayıp kritik alarm açtı,
+// gözetmen 11 sn sonra iyileştirip rotayı yükledi — alarm dakikalarca
+// AÇIK kaldı, çünkü onu kapatabilecek tek taraf izleyiciydi ve izleyici
+// "ben onarmadım" diye dokunmuyordu.
+//
+// Ama açılış alarmı canlıda panelyd'nin GÖNDERMEDİĞİ bir rota yüzünden
+// de açılıyor (Load'un geri okuması, K-054). O hâlde hiçbir şey eksik
+// değil ve hiçbir uygulama atlanmıyor; "eksik yok, atlanan yok" diye
+// kapatmak güvenlikle ilgili bir alarmı sessizce kapatırdı. Kapatma
+// koşulu bu yüzden İKİ YÖNLÜ birebir eşleşme.
+
+func rota(app, domain, dial string) proxydrv.AppRoute {
+	return proxydrv.AppRoute{AppID: app, Domain: domain,
+		Upstreams: []proxydrv.Upstream{{Dial: dial}}}
+}
+
+func canli(t *testing.T, rotalar ...proxydrv.AppRoute) *proxydrv.Config {
+	t.Helper()
+	cfg, err := proxydrv.BuildConfig(proxydrv.BuildOptions{Admin: testAdmin(), Routes: rotalar})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg
+}
+
+// repairOn, canlısı verilen vekil üzerinde bir onarım turu koşar ve
+// durumun gerçekten "eksik yok, atlanan yok" olduğunu da doğrular —
+// aksi hâlde test, saf kuralın kapatacağı durumu kurmamış olurdu.
+func repairOn(t *testing.T, live *proxydrv.Config) (RepairResult, *fakeProxy) {
+	t.Helper()
+	deps, reps := ikiUygulama()
+	proxy := &fakeProxy{live: live}
+	sonuc, err := mustReconciler(t, deps, reps, proxy).Repair(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sonuc.Missing) != 0 || len(sonuc.Skipped) != 0 {
+		t.Fatalf("kurulum yanlış: eksik=%v atlanan=%v", sonuc.Missing, sonuc.Skipped)
+	}
+	return sonuc, proxy
+}
+
+func TestRepairReportsAnExactMatch(t *testing.T) {
+	sonuc, _ := repairOn(t, canli(t,
+		rota("blog", "blog.example.com", "172.18.0.5:8080"),
+		rota("shop", "shop.example.com", "172.19.0.4:3000")))
+	if !sonuc.Exact {
+		t.Error("canlı beklenenle birebir aynıyken 'birebir' sayılmadı")
+	}
+}
+
+// TestRepairReportsAForeignRoute: admin soketine başkası yazmış.
+func TestRepairReportsAForeignRoute(t *testing.T) {
+	sonuc, proxy := repairOn(t, canli(t,
+		rota("blog", "blog.example.com", "172.18.0.5:8080"),
+		rota("shop", "shop.example.com", "172.19.0.4:3000"),
+		rota("yabanci", "evil.example.com", "10.0.0.9:80")))
+	if sonuc.Exact {
+		t.Error("canlıda gönderilmeyen bir rota varken 'birebir' sayıldı")
+	}
+	if proxy.calls != 0 {
+		t.Error("tetik tek yönlü olmalı: fazla rota yüklemeye yol açtı")
+	}
+}
+
+func TestRepairReportsADifferentUpstream(t *testing.T) {
+	sonuc, _ := repairOn(t, canli(t,
+		rota("blog", "blog.example.com", "172.18.0.99:8080"),
+		rota("shop", "shop.example.com", "172.19.0.4:3000")))
+	if sonuc.Exact {
+		t.Error("upstream farklıyken 'birebir' sayıldı")
+	}
 }
 
 // TestRepairLeavesACompleteProxyAlone: her şey yerindeyse HİÇ yüklenmez.

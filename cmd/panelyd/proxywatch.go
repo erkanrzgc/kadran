@@ -52,17 +52,27 @@ type proxyWatcher struct {
 	rp       proxyRepairer
 	am       alarmRaiser
 	failures int
-	raised   bool
 }
 
 // tick, bir denetim turu.
 //
-// Alarmı yalnızca KENDİ açtıysa ya da rotaları gerçekten GERİ YÜKLEDİYSE
-// kapatıyor — ve o an rotalanamayan (atlanan) uygulama YOKSA. Açılış
-// alarmı "rotalanamayan uygulama var" da diyebilir; onarım başarılı olsa
-// bile o uygulama hâlâ atlanıyorsa alarmı kapatmak onu gizlemek olurdu
-// (güvenlik incelemesi buldu: ilk hâli onarımdan sonra koşulsuz
-// kapatıyordu).
+// ── Alarm ne zaman kapanır ──────────────────────────────────────────
+//
+// Alarmın dediği şey ("trafik akmıyor") artık doğru DEĞİLSE: rotalanamayan
+// (atlanan) uygulama yok VE canlı yapılandırma beklenenle İKİ YÖNLÜ
+// birebir. Alarmı kimin açtığı önemli değil; Clear etkin alarm yoksa
+// sessiz (alarm.Manager), her turda çağrılabilir.
+//
+// İki önceki hâl de yanlıştı:
+//   - Onarımdan sonra koşulsuz kapatmak, açılıştaki "rotalanamayan
+//     uygulama var" alarmını gizliyordu (güvenlik incelemesi).
+//   - Yalnızca KENDİ açtığını ya da kendi onardığını kapatmak, reboot'tan
+//     sonra alarmı SONSUZA DEK açık bıraktı: gözetmen uygulamayı
+//     iyileştirip rotayı yüklüyor, izleyici "ben onarmadım" diye
+//     dokunmuyordu (taze sunucuda ölçüldü, K-112).
+//
+// "Eksik yok, atlanan yok" YETMEZ: açılış alarmı canlıda gönderilmemiş
+// bir rota yüzünden de açılıyor (K-054) ve o hâlde eksik rota yoktur.
 func (w *proxyWatcher) tick(ctx context.Context) {
 	c, cancel := context.WithTimeout(ctx, startupReconcileTimeout)
 	sonuc, err := w.rp.Repair(c)
@@ -82,7 +92,6 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 				Detail: fmt.Sprintf("ters vekil %d denetimdir üst üste uzlaştırılamıyor, "+
 					"TRAFİK AKMIYOR OLABİLİR: %v", w.failures, err),
 			})
-			w.raised = true
 		}
 		return
 	}
@@ -91,9 +100,8 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 	if len(missing) > 0 {
 		slog.Warn("ters vekil rotalarını kaybetmişti — yeniden yüklendi", "eksik", missing)
 	}
-	if (w.raised || len(missing) > 0) && len(sonuc.Skipped) == 0 {
+	if sonuc.Exact && len(sonuc.Skipped) == 0 {
 		w.am.Clear(ctx, proxyAlarmID)
-		w.raised = false
 	}
 }
 

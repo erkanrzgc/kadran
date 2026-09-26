@@ -15,8 +15,8 @@ import (
 // TestInstallerTimeoutSaysSo, süre sınırı dolduğunda hatanın bunu
 // SÖYLEDİĞİNİ doğrular.
 //
-// Ölçüldü: 75 MiB'lık kurulum paketi ~95 KB/sn'lik bir yükleme hattında
-// ~14 dakika sürüyor; varsayılan sınır 10 dakikaydı. Süre dolunca ssh
+// Ölçüldü: bir koşuda 75 MiB'lık paketin yalnızca 28 MB'ı 5 dakikada
+// gitti ve 10 dakikalık varsayılan sınır doldu. Süre dolunca ssh
 // öldürüldü ve Windows'ta öldürülen süreç "exit status 1" döndürdüğü için
 // kullanıcıya kalan tek satır "kurulum başarısız: exit status 1" oldu —
 // sebep hiçbir yerde yoktu.

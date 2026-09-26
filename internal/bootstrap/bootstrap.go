@@ -269,11 +269,15 @@ func normalizeLineEndings(content []byte) []byte {
 // Uzak kabuk komutu bilerek küçük: geçici dizin aç, tar'ı çöz, betiği
 // çalıştır, dizini temizle. Betiğin kendisi paketin içinde olduğu için
 // buradaki tek satır güncellenmek zorunda kalmıyor.
+//
+// `tar -m`: dosya zamanları uygulanmıyor. İş istasyonunun saati sunucudan
+// biraz ilerideyse tar "time stamp … in the future" uyarısı basıyordu
+// (taze sunucu testi, K-112); geçici kurulum dosyaları için zaman önemsiz.
 func runInstaller(ctx context.Context, opts Options, archive []byte) error {
 	const remote = `set -e
 d="$(mktemp -d /tmp/panely-bootstrap.XXXXXX)"
 trap 'rm -rf "$d"' EXIT
-tar -x -C "$d"
+tar -x -m -C "$d"
 bash "$d/install.sh" "$d"`
 
 	// G204 bastırılıyor. Bastırılan şey tam olarak şu: gosec, argv'nin
@@ -298,9 +302,9 @@ bash "$d/install.sh" "$d"`
 // getirir.
 //
 // Süre sınırı dolduğunda ssh öldürülür ve Windows'ta öldürülen süreç
-// yalnızca "exit status 1" döndürür. Taze sunucu testinde (K-112) ~95
-// KB/sn'lik bir yükleme hattında 75 MiB'lık paket 10 dakikalık sınırı
-// aştı ve kullanıcıya sebep söylenmedi. Sebep bağlamda duruyor.
+// yalnızca "exit status 1" döndürür. Taze sunucu testinde (K-112) yavaş
+// bir koşuda 75 MiB'lık paket 10 dakikalık sınırı aştı ve kullanıcıya
+// sebep söylenmedi. Sebep bağlamda duruyor.
 func kurulumHatasi(ctx context.Context, err error, paketBoyutu int) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		return fmt.Errorf("bootstrap: süre sınırı aşıldı — kurulum paketi %s, "+

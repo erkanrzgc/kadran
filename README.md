@@ -113,9 +113,10 @@ checks its own work, for example by confirming that the daemon's user cannot rea
 Docker. It is idempotent and safe to run again. After this, you never need root for
 day-to-day work.
 
-The installer bundle is about 75 MiB. On a slow uplink the upload takes a while
-(measured: ~14 minutes at ~95 KB/s). The time limit is 30 minutes; raise it with
-`-timeout 60m` if needed.
+The installer bundle is about 75 MiB, so the upload speed of your connection
+matters. Measured from the same home line on the same day: one run finished the
+upload in under a minute, another had sent only 28 MB after five minutes. The time
+limit is 30 minutes; raise it with `-timeout 60m` if needed.
 
 The installer was verified on fresh Ubuntu 24.04 servers in early August 2026. It
 has not been re-measured on a fresh server since; the live server has been updated

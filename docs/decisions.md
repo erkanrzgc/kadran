@@ -6311,8 +6311,9 @@ sunucuya elle müdahale edilmedi:
 - **İki taraf aynı nabzı görüyor:** 23:11 nabzı KV'de `23:11:53.980`,
   sunucudaki dosyada `23:11:54`.
 - **Kontrol grubu — gönderici çalışırken sessizlik:** 23:15, 23:20 ve
-  23:25 turlarında mesaj gelmedi. Uzun süreli sessizlik (bir gece)
-  henüz okunmadı.
+  23:25 turlarında mesaj gelmedi. Bir gece boyunca da (23:10 → ertesi
+  gün 10:56, ~140 tur) tek mesaj gelmedi: kullanıcının Telegram ekranı,
+  sunucuda 0 başarısız nabız ve 0 başarısız koşu, KV'de `durum=var`.
 - **Nabız sıklığı:** 23:11:54 → 23:16:24 → 23:21:03, yani ~4,5 dk.
   Günde ~320 KV yazması; sınır 1000.
 
@@ -6328,7 +6329,8 @@ yalnızca birim testi ve mutasyonla (yukarıda).
 ## K-110 — Çekirdek servis çöküşü: OnFailure değil, journal olayı + cgroup
 
 **Tarih:** 26 Eylül 2026
-**Durum:** kod + testler hazır; canlı doğrulama bekliyor
+**Durum:** CANLI — kuruldu, gerçek bir çöküşle uçtan uca ölçüldü
+(aşağıda "Canlı ölçüm")
 
 panelyd kendi ölümünü bildiremez. panely-exec ve panely-caddy'nin
 çöküşünü de kimse bildirmiyordu (K-108 yalnızca panelyd'nin alarmlarını
@@ -6424,6 +6426,36 @@ sayacı başlamadı, düzelme mesajı yok.
 
 Testin kendisinde bir boşluk bulundu: "henüz sessiz" testi mesaj dosyası
 hiç yokken de geçiyordu. Sıkılaştırıldı.
+
+### Canlı ölçüm (26 Eyl, UTC)
+
+Kurulumdan önce canlıdaki betik ve birim, önceki commit'le md5 olarak
+birebir aynıydı; eski hâlleri `/root/*.yedek-20260926T105947Z`.
+
+```
+10:59:48  kuruldu (md5 depoyla aynı)
+11:01:53  ilk koşular: servis imleci + durum dosyası, üç birim "saglam",
+          mesaj YOK (ilk koşu geçmişi göndermez), başarısız koşu 0
+11:03:05  systemctl kill -s SIGKILL panelyd
+          → PID 408441 → 545407, NRestarts=1, 4 sn içinde active
+          → journal: "Failed with result 'signal'"
+11:04:14  🟠 gönderildi (69 sn sonra), durum panelyd=coktu
+11:05:24  ✅ gönderildi, durum panelyd=saglam
+```
+
+- Site, öldürme dahil 200 saniye boyunca **937/937 200**. Trafik
+  caddy'den geçiyor; panelyd'nin ölümü uygulamaları etkilemiyor.
+- Gönderici 11:03'ten sonra 0 başarısız koşu.
+- Telegram (kullanıcının ekranı, TR saati): 14:04 "🟠 ÇÖKTÜ —
+  panelyd.service: 1 kez (signal), systemd yeniden başlattı", 14:05
+  "✅ TOPARLANDI — panelyd.service: son kontrolden beri çökmedi". Arada
+  ve öncesinde (02:11'den beri) başka mesaj yok.
+- `systemctl kill` "auxiliary processes" için `Invalid argument` uyarısı
+  verdi; ana süreç yine öldü (PID değişti, NRestarts arttı).
+
+Canlıda ölçülMEYEN: döngü, "çalışmıyor" (iki tur) ve sahte olay yolları —
+yalnızca testler ve mutasyonla. caddy'ye bilerek dokunulmadı (trafik
+keser).
 
 ### Kapsam dışı — açıkça
 

@@ -6630,9 +6630,9 @@ hacimsiz. README bunu açıkça yazıyor. Döküm tavsiyesi de canlıda
 ## K-112 — Taze sunucu: v0.1 öncesi kurulum testi ve bulduğu hatalar
 
 **Tarih:** 26–27 Eylül 2026
-**Durum:** DÜZELTİLDİ — hepsi boş bir sunucuda ölçüldü (reboot dahil);
-canlı sunucuya henüz kurulmadı (kullanıcı onayı bekliyor, aşağıda
-"Canlıdaki açık")
+**Durum:** CANLI — hepsi boş bir sunucuda ölçüldü (reboot dahil); canlı
+sunucu 27 Eylül'de kullanıcı onayıyla v0.1.0'a yükseltildi (aşağıda
+"Canlıya kurulum")
 
 README "kurulum bir kez doğrulandı, o günden beri yeniden ölçülmedi"
 diyordu. v0.1 etiketinden önce bu cümle ya ölçümle değişecekti ya da
@@ -6898,14 +6898,42 @@ Kesinti üst sınırı: izleyici aralığı (10 sn) + Caddy'nin yeniden
 başlama süresi (`RestartSec=5s`, yalnızca çökmede). Ölçülenler bunun
 içinde.
 
+### Canlıya kurulum (27 Eylül, UTC, kullanıcı onayıyla)
+
+Önce: canlıda `e093541`'den kalma ikililer çalışıyordu. O sürümle
+v0.1.0 arasında veritabanı göçü yok. Kurulumun üzerine yazdığı sekiz
+yapılandırma dosyası, SSH drop-in'i ve panely-client anahtarı v0.1.0
+ile BİREBİR aynıydı; karşılaştırmanın farkı görebildiği bir kontrol
+grubuyla ölçüldü. Yani değişen yalnızca ikililerdi. Elle eklenen
+`--allow-repo` drop-in'ine ve yedek, bildirim, hacim yedeği
+birimlerine kurulum dokunmuyor.
+
+```
+09:14:21  ikililer yedeklendi: /root/panely-lib.yedek-20260927T091421Z
+          (md5'ler çalışanlarla aynı)
+09:14:29  bootstrap — yükleme İKİ KEZ koptu (28 sn ve 12 dk sonra),
+          üçüncü deneme 09:27:39'da bitti
+          prob (sunucunun içinden, 3 site × 0,5 sn, 1368 tur):
+          üç sitede de 3 hata, 09:27:36,5 → 37,6 (~1,1 sn) — beklenen
+          tek caddy yeniden başlatması (canlıdaki caddy commit gömülü
+          derlenmişti, 6. bulgu)
+09:27:37  "ters vekil uzlaştırıldı" rotalanan=[pfprobe portfolio web]
+sonra     üç ikili yeni (md5 = derlenen = kurulan = çalışan),
+          NRestarts=0; offsite/notify/hacim yedeği zamanlayıcıları
+          active+enabled; `panely status` 0; etkin alarm yok
+```
+
+Canlıda ölçülMEYEN: reboot (7. bulgu) ve Caddy çökmesi (4. bulgu).
+İkisi de taze sunucuda aynı ikililerle ölçüldü; canlıyı bunun için
+yeniden başlatmak ya da Caddy'yi öldürmek kullanıcının kararı.
+
+Kurulum sonrası `systemctl --failed` 23 geçici `run-u*.service`
+gösteriyor. Hepsi 26 Eylül 10:32 UTC'den, K-110 ölçümümün artığı
+(DynamicUser dbus'a bağlanamıyor). Kurulumla ilgisi yok.
+`cloud-init-hotplugd` 16 Eylül'den beri başarısız, o da ilgisiz.
+
 ### Açık kalanlar
 
-- **Canlıdaki açık:** canlı sunucu izleyicisiz sürümü çalıştırıyor. Bir
-  Caddy çökmesi orada hâlâ siteleri panelyd yeniden başlayana kadar
-  kapalı bırakır. 7. bulgunun alarmı da orada büyük olasılıkla var:
-  açılış alarmının kodu aynı ve Telegram teslimatı açık — bir reboot
-  "trafik akmıyor" gönderir, "düzeldi" göndermez. Canlıda ölçülmedi.
-  Kurulum kullanıcı onayıyla yapılacak.
 - `ExecReload` bozuk: `systemctl reload panely-caddy` →
   `dial fd: unknown network fd` (admin adresi socket activation'ın
   `fd/3`'ü; Caddy CLI onu çeviremiyor). Zararsız: ne kurulum ne panelyd
@@ -6914,6 +6942,6 @@ içinde.
   sürümün CANLI olduğunu işaretlemiyor.
 - Ölçülmeyenler: ARM'de taze kurulum (arm64 CI'da gerçek donanımda
   test ediliyor, bootstrap edilmedi); gerçek alan adıyla Let's Encrypt
-  (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058); canlının
-  sürümünden yükseltme; yerel `buf` 1.50.0 ile CI'ın sabitlediği 1.47.2
+  (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058); yerel
+  `buf` 1.50.0 ile CI'ın sabitlediği 1.47.2
   aynı kodu mu üretiyor (taze klon derlemesi yerel buf'la yapıldı).

@@ -6929,7 +6929,9 @@ yeniden başlatmak ya da Caddy'yi öldürmek kullanıcının kararı.
 
 Kurulum sonrası `systemctl --failed` 23 geçici `run-u*.service`
 gösteriyor. Hepsi 26 Eylül 10:32 UTC'den, K-110 ölçümümün artığı
-(DynamicUser dbus'a bağlanamıyor). Kurulumla ilgisi yok.
+(DynamicUser dbus'a bağlanamıyor). Kurulumla ilgisi yok. Kullanıcı
+onayıyla `reset-failed` ile temizlendi; önce 23'ünün de bu artık
+olduğu doğrulandı.
 `cloud-init-hotplugd` 16 Eylül'den beri başarısız, o da ilgisiz.
 
 ### Açık kalanlar

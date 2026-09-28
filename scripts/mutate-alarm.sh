@@ -182,6 +182,17 @@ echo "== Kimlik eşleşmesi =="
 # koruduğu bilinmezdi: iddia ettiği sapmayı hiçbir test üretmiyor.
 mutate "yükseltme kimliği kapatmadan ayrıştı" "$WATCH" ./cmd/panelyd/     "s=s.replace('		ID:       diskAlarmID,','		ID:       diskAlarmID + \"-v2\",',1)"
 
+# Açılışın "trafik akmıyor" alarmını vekil izleyicisi kapatıyor (K-112,
+# 7. bulgu); bu ancak ikisi AYNI kimliği kullanırsa mümkün. Ayrışırsa
+# reboot'tan sonra alarm yine sonsuza dek açık kalır. İzleyicinin kendi
+# testleri sahte bir yöneticiyle bunu göremez; bu mutant gerçek
+# yönetici + gerçek depo testini ölçüyor.
+mutate "açılış alarmı kimliği izleyicininkinden ayrıştı" "$WATCH" ./cmd/panelyd/ \
+    "s=s.replace('\tid := proxyAlarmID\n','\tid := proxyAlarmID + \"-acilis\"\n',1)"
+
+mutate "temiz açılış kalan alarmı kapatmıyor" "$WATCH" ./cmd/panelyd/ \
+    "s=s.replace('\t\tam.Clear(ctx, id)\n\t\treturn\n','\t\treturn\n',1)"
+
 restore
 if [[ $fail -ne 0 ]]; then
     echo

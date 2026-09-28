@@ -7136,3 +7136,23 @@ betikteki örnek elle değiştirilince Go testi düşüyor. Yani bağ iki
 yönlü. "Alan sırası" mutantı bilerek katı: betik alanları adla okuyor,
 sıra değişse teslimat bozulmaz. Mutant teslimatı değil, örneklerin
 "canlıdan birebir" kalmasını ölçüyor.
+
+### 3. Açılış alarmı ↔ vekil izleyicisi: aynı kimlik
+
+K-112'nin reboot düzeltmesi (7. bulgu) tek bir varsayıma dayanıyor:
+açılışın açtığı "trafik akmıyor" alarmını vekil izleyicisi
+kapatabiliyor, çünkü ikisi AYNI kimliği kullanıyor. `recordProxyAlarm`
+%0 kapsamdaydı. İzleyicinin kendi testleri sahte bir yöneticiyle
+yalnızca "Clear çağrıldı mı" diye bakıyor, kimliğin açılışınkiyle aynı
+olup olmadığını göremiyordu.
+
+`cmd/panelyd/startupalarm_test.go`: gerçek `alarm.Manager` ve gerçek
+depoyla şu zincir sınanıyor: açılış alarmı açıldı → izleyici birebir ve
+atlanansız gördü → alarm KAPANDI, bildirim sırası açıldı → kapandı.
+Temiz bir açılışın önceki alarmı kapattığı da sınanıyor.
+
+`mutate-alarm.sh`'a iki mutant eklendi, ikisi de yakalanıyor.
+KONTROL: yeni test dosyası kenara alınınca "açılış alarmı kimliği
+ayrıştı" mutantı bütün mevcut testlerden YEŞİL geçti. Boşluk
+gerçekti: reboot düzeltmesi bir kimlik değişikliğiyle sessizce geri
+kırılabilirdi.

@@ -6939,7 +6939,21 @@ olduğu doğrulandı.
 - `ExecReload` bozuk: `systemctl reload panely-caddy` →
   `dial fd: unknown network fd` (admin adresi socket activation'ın
   `fd/3`'ü; Caddy CLI onu çeviremiyor). Zararsız: ne kurulum ne panelyd
-  reload kullanıyor. Kaldırılması ayrı iş.
+  reload kullanıyor.
+  **28 Eylül, koddan okundu: "düzeltilmemeli", KALDIRILMALI.**
+  - Reload `/etc/panely/caddy.json`'ı yüklüyor. Bu taban yapılandırmada
+    hiç HTTP sunucusu ve rota yok (`deploy/caddy/config.json`: 0 sunucu,
+    0 rota).
+  - Yani `--address` eklenip "çalıştırılan" bir ExecReload, `systemctl
+    reload panely-caddy` ile BÜTÜN siteleri kapatırdı; izleyici ~10 sn
+    içinde geri getirirdi. Rotaların tek kaynağı panelyd (K-055).
+  - Bugünkü bozuk hâl kazara koruyucu.
+  - Doğru çözüm satırı silmek; `systemctl` o zaman "reload
+    uygulanamaz" der. Ama bu birim dosyasını değiştirir: ters vekilin
+    parmak izi değişir ve bir sonraki yükseltme caddy'yi BİR KEZ
+    yeniden başlatır (~1 sn, 6. bulgu).
+  - Sunucusuz ölçülemediği için sunucuya dokunan bir sonraki işe
+    bırakıldı.
 - ✅ 28 Eylül'de kapandı — UX: `app show`'daki DURUM derlemenin durumunu
   gösteriyordu, hangi sürümün CANLI olduğunu işaretlemiyordu.
   `GetAppResponse.active_release_id` eklendi (`internal/pb` bütçe

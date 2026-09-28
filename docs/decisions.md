@@ -7190,6 +7190,26 @@ Eşleme saf bir fonksiyona ayrıldı (`archFromUname`, davranış aynı).
 reddi de var: `TestRejectsOptionLikeHost` o kontrolü koruyordu ama hiçbir
 mutasyon bunu ölçmemişti.
 
+### 6. İstemci: protokol uyumu ve argüman enjeksiyonu
+
+`CheckProtocol` her CLI bağlantısında çağrılıyor ama %0 kapsamdaydı.
+Uçtan uca test yalnızca "sürümler aynı" yolunu çalıştırıyordu.
+Uyumsuz sözleşmeyle konuşmak sessizce yanlış davranmak demek: yeni bir
+alanı eski sunucu boş bırakır ve CLI onu "yok" diye basar. Tam bugünkü
+`active_release_id` gibi.
+
+`protocol_test.go` şunları sınıyor:
+- bir üst ve bir alt protokol reddediliyor, hata iki sürümü de söylüyor;
+- aynı protokol kabul ediliyor ve istemci kendi sürümünü gönderiyor.
+
+Sahte istemci yalnızca `Ping`'i uyguluyor; başka bir RPC çağrılırsa
+test panikle düşer.
+
+`scripts/mutate-client.sh` 4/4. `internal/client`'ı hedefleyen İLK
+mutasyon betiği bu. İstemci tarafındaki `-` ile başlayan kullanıcı ve
+sunucu adı reddi de burada; testleri vardı, hiçbir mutasyon onları
+ölçmemişti.
+
 ## K-115 — Askıda kalma tespiti (watchdog): tasarım taslağı
 
 **Tarih:** 28 Eylül 2026
@@ -7256,3 +7276,6 @@ Riskler:
    gelir. Bedel: yanlış pozitif, yani gereksiz yeniden başlatma riski.
 2. Canlılık tanımı: yalnızca süreç (dar ama dürüst adlandırılırsa kabul
    edilebilir) mi, yoksa döngü damgaları + veritabanı mı?
+3. CI yalnızca `main`'e push'ta ve PR'da tetikleniyor. `systemd-run`
+   olabilirlik deneyi ya bir PR ister (herkese açık) ya da doğrudan
+   `main`'e bir deney adımı. Hangisi?

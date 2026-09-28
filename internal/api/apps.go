@@ -68,7 +68,22 @@ func (s *Server) GetApp(
 	for _, r := range releases {
 		out = append(out, releaseToProto(r))
 	}
-	return &panelyv1.GetAppResponse{App: appToProto(app), Releases: out}, nil
+
+	// Canlı sürüm ayrıca okunuyor: sürümün durumu derlemenin durumu,
+	// trafiğin nereye gittiği değil (K-112). Aktif dağıtım yoksa bu bir
+	// hata DEĞİL — hiç dağıtılmamış uygulama geçerli bir durum.
+	active := ""
+	d, err := s.store.ActiveDeployment(ctx, app.ID)
+	switch {
+	case err == nil:
+		active = d.ReleaseID
+	case !errors.Is(err, store.ErrNoDeployment):
+		return nil, status.Errorf(codes.Internal, "canlı sürüm okunamadı: %v", err)
+	}
+
+	return &panelyv1.GetAppResponse{
+		App: appToProto(app), Releases: out, ActiveReleaseId: active,
+	}, nil
 }
 
 // ── Dönüşümler ───────────────────────────────────────────────────────

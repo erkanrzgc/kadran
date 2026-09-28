@@ -661,6 +661,15 @@ message GetAppRequest {
 message GetAppResponse {
   App app = 1;
   repeated Release releases = 2;
+  // Trafiğin ŞU AN gittiği sürüm; boşsa aktif dağıtım yok.
+  //
+  // Sürümün `status` alanı DERLEMENİN durumudur, canlı olup olmadığını
+  // söylemez: geri almadan sonra r3 "derlendi" iken trafik r1'e gider.
+  // `app show` bunu ayırt edemiyordu (K-112, taze sunucu testi).
+  //
+  // `releases` listesinde BULUNMAYABİLİR: liste release_limit ile
+  // kesiliyor, canlı sürüm daha eski olabilir.
+  string active_release_id = 3;
 }
 
 message DeployRequest {

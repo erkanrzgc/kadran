@@ -3,6 +3,13 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+- `panely app show` marks which release is live. The old status column showed the
+  build status only; after a rollback the top "built" release does not get the
+  traffic. A separate line names the live release even when it is older than the
+  listed ones (K-112).
+
 ## v0.1.0 — 2026-09-27
 
 First tagged release. A single-node, security-first deployment panel: one server,

@@ -127,6 +127,20 @@ contains "executor zinciri doğrulanamadı" "DOĞRULANAMADI" "$out"
 lacks "erişilemeyen zincir kurcalama olarak raporlanmadı" "GEÇERSİZ" "$out"
 
 echo
+echo "==> panely app show — canlı sürüm (K-112)"
+# Dağıtım Docker istiyor, burada yok; ama canlı sürüm alanının GERÇEK
+# panelyd'den tel üzerinden gelip basıldığı, dağıtılmamış bir uygulamada
+# da sınanabiliyor: "yok" demeli, boş satır ya da hata değil.
+out="$("$BIN/panely" app create -repo github.com/panely-e2e/blog e2eblog "unix://$SOCK" 2>&1)"; code=$?
+check "app create çıkış kodu" 0 "$code"
+out="$("$BIN/panely" app show e2eblog "unix://$SOCK" 2>&1)"; code=$?
+check "app show çıkış kodu" 0 "$code"
+contains "canlı sürüm satırı" "Canlı    : yok" "$out"
+out="$("$BIN/panely" app show --json e2eblog "unix://$SOCK" 2>&1)"; code=$?
+check "app show --json çıkış kodu" 0 "$code"
+contains "JSON'da canlı sürüm alanı" '"active_release_id"' "$out"
+
+echo
 echo "==> panely sidecar (stdio JSON-RPC)"
 out="$(printf '%s\n%s\n' \
     '{"jsonrpc":"2.0","id":1,"method":"version"}' \

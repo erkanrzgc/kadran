@@ -6940,8 +6940,20 @@ olduğu doğrulandı.
   `dial fd: unknown network fd` (admin adresi socket activation'ın
   `fd/3`'ü; Caddy CLI onu çeviremiyor). Zararsız: ne kurulum ne panelyd
   reload kullanıyor. Kaldırılması ayrı iş.
-- UX: `app show`'daki DURUM derlemenin durumunu gösteriyor, hangi
-  sürümün CANLI olduğunu işaretlemiyor.
+- ✅ 28 Eylül'de kapandı — UX: `app show`'daki DURUM derlemenin durumunu
+  gösteriyordu, hangi sürümün CANLI olduğunu işaretlemiyordu.
+  `GetAppResponse.active_release_id` eklendi (`internal/pb` bütçe
+  dışında: 0 satır, 2498/2500 aynı). CLI'da sütun adı "DERLEME" oldu,
+  yanına "TRAFİK" geldi. Ayrıca bir "Canlı" satırı var; geri almadan
+  sonra kesilmiş listenin DIŞINDA kalan canlı sürümü de söylüyor.
+  - Önce kırmızı: sunucu testi eski kodda boş alanla düştü, üç CLI
+    testi de düştü.
+  - `scripts/mutate-appshow.sh` 7/7 (CI'da). En pahalısı "ilk satır
+    canlı işaretleniyor": yanlış satırı canlı göstermek, işaretin hiç
+    olmamasından kötü.
+  - Uçtan uca CI: gerçek panelyd'de `app create` + `app show`. Canlı
+    sürüm "yok" diyor, JSON'da da alan var. Dağıtımlı durum CI'da
+    ölçülmedi, çünkü Docker orada yok.
 - Ölçülmeyenler: ARM'de taze kurulum (arm64 CI'da gerçek donanımda
   test ediliyor, bootstrap edilmedi); gerçek alan adıyla Let's Encrypt
   (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058).

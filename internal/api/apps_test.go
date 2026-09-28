@@ -197,6 +197,52 @@ func TestGetAppReturnsReleasesNewestFirst(t *testing.T) {
 	}
 }
 
+// TestGetAppReportsTheLiveRelease: `app show`'un DURUM sütunu derlemenin
+// durumunu gösteriyordu, hangi sürümün CANLI olduğunu değil (K-112).
+// Geri almadan sonra r3 "derlendi" iken trafik r1'e gider — ve r1,
+// kesilmiş listede hiç görünmeyebilir.
+func TestGetAppReportsTheLiveRelease(t *testing.T) {
+	ctx := context.Background()
+	srv, db := newDeployServer(t, &fakeExec{})
+	mustCreateApp(t, srv, testSpec())
+
+	resp, err := srv.GetApp(ctx, &panelyv1.GetAppRequest{AppId: "blog"})
+	if err != nil {
+		t.Fatalf("dağıtımsız uygulama hata verdi: %v", err)
+	}
+	if got := resp.GetActiveReleaseId(); got != "" {
+		t.Errorf("hiç dağıtılmamış uygulamada canlı sürüm %q", got)
+	}
+
+	for range 3 {
+		st := newDeployStream(ctx)
+		if err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
+			t.Fatalf("dağıtım başarısız: %v", err)
+		}
+	}
+	if err := db.SetActiveRelease(ctx, "blog", "r3"); err != nil {
+		t.Fatal(err)
+	}
+	if resp, _ = srv.GetApp(ctx, &panelyv1.GetAppRequest{AppId: "blog"}); resp.GetActiveReleaseId() != "r3" {
+		t.Errorf("canlı sürüm %q, beklenen r3", resp.GetActiveReleaseId())
+	}
+
+	// Geri alma: canlı sürüm, kesilmiş listenin DIŞINDA.
+	if err := db.SetActiveRelease(ctx, "blog", "r1"); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = srv.GetApp(ctx, &panelyv1.GetAppRequest{AppId: "blog", ReleaseLimit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.GetReleases()) != 1 || resp.GetReleases()[0].GetReleaseId() != "r3" {
+		t.Fatalf("kurulum yanlış: liste %v", resp.GetReleases())
+	}
+	if got := resp.GetActiveReleaseId(); got != "r1" {
+		t.Errorf("listede olmayan canlı sürüm bildirilmedi: %q, beklenen r1", got)
+	}
+}
+
 func TestGetAppReportsMissingAsNotFound(t *testing.T) {
 	srv, _ := newDeployServer(t, &fakeExec{})
 	_, err := srv.GetApp(context.Background(), &panelyv1.GetAppRequest{AppId: "yok"})

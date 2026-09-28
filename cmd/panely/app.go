@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
@@ -262,7 +263,21 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 			len(env))
 	}
 
+	// Hangi sürümün CANLI olduğu ayrı satırda: tablodaki durum derlemenin
+	// durumu, trafiğin nereye gittiği değil (K-112). Geri almadan sonra
+	// canlı sürüm kesilmiş listenin dışında kalabilir; o zaman bu satır
+	// onu gösteren TEK yer.
 	releases := resp.GetReleases()
+	active := resp.GetActiveReleaseId()
+	switch {
+	case active == "":
+		fmt.Fprintf(c.stdout, "  Canlı    : yok — trafik bu uygulamaya yönlendirilmiyor\n")
+	case !slices.ContainsFunc(releases, func(r *panelyv1.Release) bool { return r.GetReleaseId() == active }):
+		fmt.Fprintf(c.stdout, "  Canlı    : %s (aşağıdaki listede yok — `--releases` ile artırın)\n", active)
+	default:
+		fmt.Fprintf(c.stdout, "  Canlı    : %s\n", active)
+	}
+
 	if len(releases) == 0 {
 		fmt.Fprintf(c.stdout, "\nHenüz sürüm yok. `panely deploy %s` ile derleyin.\n", s.GetAppId())
 		return
@@ -270,15 +285,19 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 
 	fmt.Fprintln(c.stdout, "\nSürümler:")
 	tw := tabwriter.NewWriter(c.stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "  SÜRÜM\tCOMMIT\tDURUM\tİMAJ\tBAŞLANGIÇ")
+	fmt.Fprintln(tw, "  SÜRÜM\tCOMMIT\tDERLEME\tTRAFİK\tİMAJ\tBAŞLANGIÇ")
 	for _, r := range releases {
 		started := "-"
 		if ts := r.GetStartedAt(); ts != nil {
 			started = ts.AsTime().Local().Format("2006-01-02 15:04:05")
 		}
-		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\n",
+		traffic := "-"
+		if r.GetReleaseId() == active {
+			traffic = "canlı"
+		}
+		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\n",
 			r.GetReleaseId(), shortSHA(r.GetCommitSha()),
-			releaseStatusLabel(r.GetStatus()), shortImage(r.GetImageId()), started)
+			releaseStatusLabel(r.GetStatus()), traffic, shortImage(r.GetImageId()), started)
 	}
 	_ = tw.Flush()
 

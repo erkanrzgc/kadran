@@ -6944,6 +6944,11 @@ olduğu doğrulandı.
   sürümün CANLI olduğunu işaretlemiyor.
 - Ölçülmeyenler: ARM'de taze kurulum (arm64 CI'da gerçek donanımda
   test ediliyor, bootstrap edilmedi); gerçek alan adıyla Let's Encrypt
-  (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058); yerel
-  `buf` 1.50.0 ile CI'ın sabitlediği 1.47.2
-  aynı kodu mu üretiyor (taze klon derlemesi yerel buf'la yapıldı).
+  (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058).
+- ✅ 28 Eylül'de ölçüldü, artık açık değil: yerel `buf` 1.50.0 ile CI'ın
+  sabitlediği 1.47.2 AYNI kodu üretiyor. Taze klon derlemeleri yerel
+  buf'la yapılmıştı. Eklentiler iki tarafta da aynı sürümde
+  (protoc-gen-go 1.36.4, protoc-gen-go-grpc 1.5.1). Aynı commit'ten iki
+  ağaca üretildi: `internal/pb`'de 5 dosya, 0 satır fark. KONTROL:
+  `exec.proto`'da tek bir yorum değiştirildi, 9 satır fark çıktı;
+  karşılaştırma farkı görebiliyor.

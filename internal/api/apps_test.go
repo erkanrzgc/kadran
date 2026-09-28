@@ -213,6 +213,11 @@ func TestGetAppReportsTheLiveRelease(t *testing.T) {
 	if got := resp.GetActiveReleaseId(); got != "" {
 		t.Errorf("hiç dağıtılmamış uygulamada canlı sürüm %q", got)
 	}
+	// Boş olsa da GÖNDERİLMELİ: yokluğu CLI "eski sunucu, bilinmiyor" diye
+	// okuyor (api.proto'daki `optional` notu).
+	if resp.ActiveReleaseId == nil {
+		t.Error("canlı sürüm alanı hiç gönderilmedi — CLI bu sunucuyu eski sürüm sanar")
+	}
 
 	for range 3 {
 		st := newDeployStream(ctx)

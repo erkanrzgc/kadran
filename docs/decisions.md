@@ -6968,6 +6968,21 @@ olduğu doğrulandı.
   - Uçtan uca CI: gerçek panelyd'de `app create` + `app show`. Canlı
     sürüm "yok" diyor, JSON'da da alan var. Dağıtımlı durum CI'da
     ölçülmedi, çünkü Docker orada yok.
+  - **İlk hâli yanlıştı (aynı gün, `93f139b`):** alan düz `string`'di.
+    - Alan eklemek protokol sürümünü artırmıyor, yani yeni CLI eski
+      (v0.1.0) sunucuyla konuşabiliyor. Eski sunucu alanı göndermiyor ve
+      CLI bunu "boş" okuyup her canlı uygulama için "yok — trafik
+      yönlendirilmiyor" diyordu: trafik akarken akmıyor demek.
+    - Danışman incelemesi yakaladı. CI göremezdi, çünkü orada CLI ile
+      sunucu aynı commit'ten.
+    - Düzeltme: alan `optional`. Yokluğu "bilinmiyor — sunucu bu bilgiyi
+      göndermiyor" olarak basılıyor ve TRAFİK hücresi `?`. Yeni sunucu
+      alanı dağıtım yokken de BOŞ olarak gönderiyor.
+    - Önce kırmızı: eski sunucu testi eski kodda "yok" ve "-" ile düştü.
+      `mutate-appshow.sh` artık 9/9.
+    - Canlıya karşı ölçülMEDİ (o gün canlıya dokunulmadı). Protobuf'un
+      kuralıyla eski sunucu alan 3'ü telde hiç göndermez; CLI'da alan
+      `nil` olur, birim testi tam bu durumu sınıyor.
 - Ölçülmeyenler: ARM'de taze kurulum (arm64 CI'da gerçek donanımda
   test ediliyor, bootstrap edilmedi); gerçek alan adıyla Let's Encrypt
   (taze sunucu `.localhost` kullandı; canlıda ölçülü, K-058).
@@ -7194,9 +7209,16 @@ mutasyon bunu ölçmemişti.
 
 `CheckProtocol` her CLI bağlantısında çağrılıyor ama %0 kapsamdaydı.
 Uçtan uca test yalnızca "sürümler aynı" yolunu çalıştırıyordu.
-Uyumsuz sözleşmeyle konuşmak sessizce yanlış davranmak demek: yeni bir
-alanı eski sunucu boş bırakır ve CLI onu "yok" diye basar. Tam bugünkü
-`active_release_id` gibi.
+Uyumsuz sözleşmeyle konuşmak sessizce yanlış davranmak demek.
+
+⚠ Ama bu kontrol EKLENEN alanları kapsamıyor. Alan eklemek protokol
+sürümünü artırmıyor (`internal/version`: "alan eklemek uyumludur"). Yeni
+bir CLI eski bir sunucuyla konuşabilir; eski sunucu yeni alanı göndermez
+ve proto3'te düz bir alanda bu "boş" ile aynıdır. Bugünkü
+`active_release_id` tam olarak buna düştü (aşağıda, K-112'nin `app show`
+maddesi). Danışman incelemesi yakaladı; CI göremezdi, çünkü orada CLI
+ile sunucu hep aynı commit'ten. Kural: EKLENEN ve yokluğu anlam taşıyan
+bir alan `optional` olmalı.
 
 `protocol_test.go` şunları sınıyor:
 - bir üst ve bir alt protokol reddediliyor, hata iki sürümü de söylüyor;

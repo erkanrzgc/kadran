@@ -87,13 +87,13 @@ echo "== CLI: işaret =="
 
 # EN PAHALI: yanlış satır.
 mutate "ilk satır canlı işaretleniyor" "$CLI" ./cmd/panely/ \
-    "s=s.replace('\t\tif r.GetReleaseId() == active {','\t\tif r == releases[0] {',1)"
+    "s=s.replace('\t\tcase r.GetReleaseId() == active:','\t\tcase r == releases[0]:',1)"
 
 mutate "her satır canlı işaretleniyor" "$CLI" ./cmd/panely/ \
-    "s=s.replace('\t\tif r.GetReleaseId() == active {','\t\tif true {',1)"
+    "s=s.replace('\t\tcase r.GetReleaseId() == active:','\t\tcase true:',1)"
 
 mutate "hiçbir satır işaretlenmiyor" "$CLI" ./cmd/panely/ \
-    "s=s.replace('\t\tif r.GetReleaseId() == active {','\t\tif false {',1)"
+    "s=s.replace('\t\tcase r.GetReleaseId() == active:','\t\tcase false:',1)"
 
 # Geri almadan sonra canlı sürüm kesilmiş listenin dışında kalabilir;
 # o zaman bu satır onu gösteren TEK yer.
@@ -102,6 +102,17 @@ mutate "listenin dışındaki canlı sürüm söylenmiyor" "$CLI" ./cmd/panely/ 
 
 mutate "canlı sürüm yokken susuyor" "$CLI" ./cmd/panely/ \
     "s=s.replace('\tcase active == \"\":','\tcase false:',1)"
+
+echo "== Eski sunucu: alanın yokluğu (danışman incelemesi) =="
+
+# Alan eklemek protokol sürümünü artırmıyor; yeni CLI eski sunucuyla
+# konuşabilir. Yokluğu "boş" okumak, trafik akarken "yönlendirilmiyor"
+# demek.
+mutate "eski sunucu 'canlı sürüm yok' sayılıyor" "$CLI" ./cmd/panely/ \
+    "s=s.replace('\tknown := resp.ActiveReleaseId != nil\n','\tknown := true\n',1)"
+
+mutate "sunucu alanı boşken göndermiyor" "$API" ./internal/api/ \
+    "s=s.replace('ActiveReleaseId: &active,','ActiveReleaseId: func() *string { _ = active; return nil }(),',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

@@ -8,7 +8,8 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 - `panely app show` marks which release is live. The old status column showed the
   build status only; after a rollback the top "built" release does not get the
   traffic. A separate line names the live release even when it is older than the
-  listed ones (K-112).
+  listed ones. Against an older server that does not report the live release,
+  it says "unknown" instead of claiming nothing is live (K-112).
 
 ## v0.1.0 — 2026-09-27
 

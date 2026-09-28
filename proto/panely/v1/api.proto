@@ -669,7 +669,16 @@ message GetAppResponse {
   //
   // `releases` listesinde BULUNMAYABİLİR: liste release_limit ile
   // kesiliyor, canlı sürüm daha eski olabilir.
-  string active_release_id = 3;
+  //
+  // `optional` ŞART: alan eklemek protokol sürümünü artırmıyor
+  // (internal/version), yani yeni bir CLI eski bir sunucuyla konuşabilir.
+  // Eski sunucu bu alanı hiç göndermez. proto3'te düz bir string'de
+  // "gönderilmedi" ile "boş" AYNI; CLI eski sunucuya bağlanınca her canlı
+  // uygulama için "canlı sürüm yok — trafik yönlendirilmiyor" derdi.
+  // Trafik akarken akmıyor demek. Varlık bilgisiyle:
+  //   alan YOK    → sunucu bilmiyor (eski sürüm), CLI "bilinmiyor" der;
+  //   alan boş    → aktif dağıtım yok.
+  optional string active_release_id = 3;
 }
 
 message DeployRequest {

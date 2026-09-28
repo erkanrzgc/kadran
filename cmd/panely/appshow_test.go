@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 )
 
@@ -11,7 +13,7 @@ import (
 // hangi sürümün CANLI olduğunu değil. Geri almadan sonra en üstteki
 // "derlendi" satırı trafiği almıyor olabilir.
 
-func showResp(active string, ids ...string) *panelyv1.GetAppResponse {
+func showResp(active *string, ids ...string) *panelyv1.GetAppResponse {
 	rels := make([]*panelyv1.Release, 0, len(ids))
 	for _, id := range ids {
 		rels = append(rels, &panelyv1.Release{
@@ -42,7 +44,7 @@ func rowOf(t *testing.T, out, id string) string {
 
 func TestPrintAppMarksTheLiveRelease(t *testing.T) {
 	c, out, _ := newTestCLI("")
-	c.printApp(showResp("r2", "r3", "r2", "r1"))
+	c.printApp(showResp(proto.String("r2"), "r3", "r2", "r1"))
 	s := out.String()
 
 	if !strings.Contains(s, "DERLEME") || !strings.Contains(s, "TRAFİK") {
@@ -65,7 +67,7 @@ func TestPrintAppMarksTheLiveRelease(t *testing.T) {
 // sürüm, --releases ile kesilmiş listenin dışında kalabilir.
 func TestPrintAppShowsALiveReleaseOutsideTheList(t *testing.T) {
 	c, out, _ := newTestCLI("")
-	c.printApp(showResp("r1", "r3"))
+	c.printApp(showResp(proto.String("r1"), "r3"))
 	s := out.String()
 
 	if !strings.Contains(s, "Canlı    : r1") || !strings.Contains(s, "listede yok") {
@@ -78,7 +80,7 @@ func TestPrintAppShowsALiveReleaseOutsideTheList(t *testing.T) {
 
 func TestPrintAppSaysWhenNothingIsLive(t *testing.T) {
 	c, out, _ := newTestCLI("")
-	c.printApp(showResp("", "r1"))
+	c.printApp(showResp(proto.String(""), "r1"))
 	s := out.String()
 
 	if !strings.Contains(s, "Canlı    : yok") {
@@ -86,5 +88,29 @@ func TestPrintAppSaysWhenNothingIsLive(t *testing.T) {
 	}
 	if strings.Contains(rowOf(t, s, "r1"), "canlı") {
 		t.Errorf("canlı sürüm yokken r1 işaretlendi:\n%s", s)
+	}
+}
+
+// TestPrintAppDoesNotClaimNothingIsLiveOnAnOldServer: alan eklemek
+// protokol sürümünü artırmıyor (internal/version), yani yeni CLI eski
+// (v0.1.0) sunucuyla konuşabilir ve o sunucu canlı sürümü HİÇ göndermez.
+// İlk hâli bunu "boş" okuyup her canlı uygulama için "yok — trafik
+// yönlendirilmiyor" diyordu: trafik akarken akmıyor demek. CI bunu
+// göremezdi, orada CLI ile sunucu hep aynı commit'ten.
+func TestPrintAppDoesNotClaimNothingIsLiveOnAnOldServer(t *testing.T) {
+	c, out, _ := newTestCLI("")
+	c.printApp(showResp(nil, "r2", "r1"))
+	s := out.String()
+
+	if strings.Contains(s, "Canlı    : yok") {
+		t.Errorf("eski sunucuda 'canlı sürüm yok' dendi — bilinmeyen yok sayıldı:\n%s", s)
+	}
+	if !strings.Contains(s, "Canlı    : bilinmiyor") {
+		t.Errorf("eski sunucu durumu söylenmedi:\n%s", s)
+	}
+	for _, id := range []string{"r2", "r1"} {
+		if f := strings.Fields(rowOf(t, s, id)); len(f) < 4 || f[3] != "?" {
+			t.Errorf("%s satırının TRAFİK hücresi '?' değil: %q", id, rowOf(t, s, id))
+		}
 	}
 }

@@ -267,9 +267,16 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 	// durumu, trafiğin nereye gittiği değil (K-112). Geri almadan sonra
 	// canlı sürüm kesilmiş listenin dışında kalabilir; o zaman bu satır
 	// onu gösteren TEK yer.
+	//
+	// Alanın YOKLUĞU ayrı bir durum: eski bir sunucu bu bilgiyi hiç
+	// göndermez (alan eklemek protokol sürümünü artırmıyor). Onu "boş"
+	// okumak, trafik akarken "yönlendirilmiyor" demek olurdu.
 	releases := resp.GetReleases()
+	known := resp.ActiveReleaseId != nil
 	active := resp.GetActiveReleaseId()
 	switch {
+	case !known:
+		fmt.Fprintf(c.stdout, "  Canlı    : bilinmiyor — sunucu bu bilgiyi göndermiyor (eski sürüm; sunucuyu güncelleyin)\n")
 	case active == "":
 		fmt.Fprintf(c.stdout, "  Canlı    : yok — trafik bu uygulamaya yönlendirilmiyor\n")
 	case !slices.ContainsFunc(releases, func(r *panelyv1.Release) bool { return r.GetReleaseId() == active }):
@@ -292,7 +299,10 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 			started = ts.AsTime().Local().Format("2006-01-02 15:04:05")
 		}
 		traffic := "-"
-		if r.GetReleaseId() == active {
+		switch {
+		case !known:
+			traffic = "?"
+		case r.GetReleaseId() == active:
 			traffic = "canlı"
 		}
 		fmt.Fprintf(tw, "  %s\t%s\t%s\t%s\t%s\t%s\n",

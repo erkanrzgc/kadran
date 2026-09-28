@@ -81,8 +81,10 @@ func (s *Server) GetApp(
 		return nil, status.Errorf(codes.Internal, "canlı sürüm okunamadı: %v", err)
 	}
 
+	// Alan HER ZAMAN gönderiliyor, boş olsa da: yokluğu "sunucu bu bilgiyi
+	// bilmiyor (eski sürüm)" demek ve CLI onu ayrı basıyor (api.proto).
 	return &panelyv1.GetAppResponse{
-		App: appToProto(app), Releases: out, ActiveReleaseId: active,
+		App: appToProto(app), Releases: out, ActiveReleaseId: &active,
 	}, nil
 }
 

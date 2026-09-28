@@ -6964,3 +6964,106 @@ olduğu doğrulandı.
   ağaca üretildi: `internal/pb`'de 5 dosya, 0 satır fark. KONTROL:
   `exec.proto`'da tek bir yorum değiştirildi, 9 satır fark çıktı;
   karşılaştırma farkı görebiliyor.
+
+## K-113 — İkinci sunucu (GCP): kurulumun önündeki engeller ve ölçüm planı
+
+**Tarih:** 28 Eylül 2026
+**Durum:** TASLAK — kod YOK, hiçbiri sunucuda ölçülmedi; üç karar
+kullanıcıda (aşağıda "Kararlar")
+
+Kullanıcı Hetzner'daki sunucuya ek olarak bir GCP sanal makinesini de
+Panely ile yönetmek istiyor. Bunun için Faz 6 (çok düğüm) GEREKMİYOR:
+- iki bağımsız Panely kurulumu tek istemciden yönetilir,
+- CLI her komutta hedef alıyor,
+- masaüstü uygulaması sunucu profillerini saklıyor.
+
+Engeller kurulum tarafında.
+
+### Ölçülen (salt okuma, `gcloud`, 28 Eylül)
+
+Hesapta hiçbir şey değiştirilmedi: API açılmadı, anahtar eklenmedi,
+güvenlik duvarına dokunulmadı.
+
+```
+makine       e2-micro (2 paylaşımlı vCPU, 1 GB RAM), x86_64
+disk         10 GB
+işletim      Debian 13 (trixie) — Panely yalnızca Ubuntu 24.04'te ölçüldü
+güvenlik     gelen: yalnızca 22, 3389, icmp — 80/443 KAPALI
+duvarı
+SSH          metadata'da yalnızca tarayıcı SSH'sinin GEÇİCİ anahtarları,
+anahtarları  süreleri dolmuş; iş istasyonunun anahtarı YOK
+```
+
+### Engeller
+
+**1. Kurulum root ister.** `panely bootstrap root@…`; `install.sh` ilk
+satırda `id -u` = 0 şartını koyuyor. GCP'de root'a doğrudan SSH anahtarı
+yok. İki yol var:
+
+- (a) Kullanıcı konsoldan BİR KEZ root'a açık anahtarını koyar. Bu
+  Panely'nin bugünkü modeli; Hetzner'da böyle. Kod değişmez.
+- (b) Sudo kipi: `panely bootstrap -sudo kullanıcı@sunucu`, uzak komut
+  `sudo -n …` ile çalışır. Root'a SSH hiç açılmaz; bu daha iyi. Karşılığında
+  sudo yetkili bir kullanıcı hesabı kalır.
+
+Sudo kipinin riskleri (kod yazılırsa her biri test ve mutantla
+korunmalı):
+- **SSH argüman enjeksiyonu sınıfı.** Kabuksuz exec bu sınıfı
+  kapatmıyor. Hedefin `-` ile başlayamaması bugün `ParseTarget`'ta.
+  `sudo` satırı SABİT olmalı; içine kullanıcı girdisi girmemeli.
+- **`sudo -n`, `NOPASSWD` yoksa parola istemeden düşmeli** ve bunu açıkça
+  söylemeli. Parola ALINMAZ; sırrı görmeme ilkesi korunur.
+- **Sudo ortamı temizler.** Koddan okundu: bugünkü uzak komut hazırlama
+  dizinini ortam değişkeniyle değil ARGÜMANLA taşıyor
+  (`bash "$d/install.sh" "$d"`, `bootstrap.go`). Uzak betiğin tamamı
+  `sudo -n` altında koşarsa bu yol bozulmaz; `sudo -E` GEREKMEZ ve
+  kullanılmamalı. Sunucuda ölçülmedi.
+
+Hangi yol seçilecek, kullanıcının kararı: güvenlik modelini değiştiriyor.
+
+**2. 80/443 kapalı.** Bulut güvenlik duvarı kuralı gerekiyor; bu
+kullanıcının hesabında bir değişiklik. `install.sh` bunu sunucunun
+içinden göremez. Kurulumun sonunda "tamamlandı" demesi siteye
+dışarıdan ulaşılabildiğini kanıtlamaz. Dışarıdan bir yoklama istemcide
+yapılabilir, ama "ulaşılamıyor" üç sebepten gelebilir: güvenlik duvarı,
+DNS ya da henüz dağıtılmamış bir uygulama. Kurulum aşamasında bunları
+ayırt eden bir ölçüm yok.
+
+**3. Debian 13 hiç ölçülmedi.** Okumayla bilinenler (hiçbiri ölçülmedi):
+- **Docker:** Debian'da `docker.io` paketi var. Kurulum mesajı "Ubuntu"
+  diyor ama ön koşul kontrolü dağıtımdan bağımsız.
+- **systemd 257** (Ubuntu 24.04'te 255). K-110'un ölçtüğü RestartMode ve
+  journal davranışları 255'te ölçüldü.
+- **sshd:** betik `ssh` ve `sshd` servis adlarının ikisini de deniyor.
+  `sshd_config.d` ya da `Include` satırı yoksa açık bir hatayla duruyor.
+- **GCP konuk ajanı** `authorized_keys`'i metadata'dan yönetiyor. Asıl
+  soru panely-client'ın zorlanmış komut satırına dokunup dokunmadığı.
+  Ajan yalnızca metadata'daki kullanıcılara yazıyor olmalı; ölçülmeli.
+  Yanlışsa istemcinin forced-command sınırı sessizce kaybolur.
+
+**4. Kaynak.** Panely'nin kendi daemonları canlıda ~30 MB (panelyd 13,
+executor 7, caddy 10). Docker, konteynerler ve özellikle imaj derlemesi
+1 GB RAM ile 10 GB diskte ÖLÇÜLMEDİ. Canlıda disk 8,5 GB, bunun 4 GB'ı
+swap. Kırılmanın en olası yeri derleme.
+
+### Ölçüm planı (kullanıcı onayından sonra)
+
+- **Yer:** GCP makinesinin kendisi ya da önce Hetzner'da Debian 13 bir
+  test sunucusu (saatlik ücretli, K-112 gibi).
+- **Adımlar:** Docker kur → (root anahtarı ya da sudo kipi) → bootstrap
+  → 15/15 kontrol, `status`, `audit verify` → basit bir uygulama dağıt
+  (derleme süresi ve bellek zirvesi) → reboot (K-112 yöntemi, sunucu
+  içi prob) → metadata'ya anahtar ekleyip konuk ajanın panely-client'a
+  dokunup dokunmadığını izle.
+- **Kabul:** K-112'nin ölçütleri, artı 1 GB'de derlemenin bellek
+  yetersizliğinden (OOM) ölmemesi.
+
+README ve CHANGELOG ölçülene kadar "GCP" ya da "Debian destekleniyor"
+DEMEZ.
+
+### Kararlar (kullanıcıda)
+
+1. Root'a bir kez anahtar mı, sudo kipi mi?
+2. Güvenlik duvarında 80/443 açılsın mı?
+3. Debian 13 ölçümü nerede: GCP makinesinin kendisinde mi, önce ücretli
+   bir test sunucusunda mı?

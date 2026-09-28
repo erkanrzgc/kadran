@@ -7156,3 +7156,19 @@ KONTROL: yeni test dosyası kenara alınınca "açılış alarmı kimliği
 ayrıştı" mutantı bütün mevcut testlerden YEŞİL geçti. Boşluk
 gerçekti: reboot düzeltmesi bir kimlik değişikliğiyle sessizce geri
 kırılabilirdi.
+
+### 4. Zamanlı yedek alarmı: kimlik iki yerde elle yazılmıştı
+
+`takeBackup` %0 kapsamdaydı ve "yedek alınamıyor" alarmının kimliğini
+açarken ve kapatırken İKİ AYRI yerde elle kuruyordu
+(`alarm.KindBackupFailed + ":panely.db"`). Biri değişse alarm hiç
+kapanmazdı.
+- Test: gerçek depo. Bellek veritabanının yedeği alınamıyor; bu gerçek
+  bir `Snapshot` hatası. Başarısız yedek kritik alarm açıyor, başarılı
+  yedek aynı alarmı kapatıyor, sıra açıldı → kapandı. KONTROL: yalnızca
+  kapatma kimliği değiştirilince test düştü.
+- Yapısal düzeltme: tek sabit `backupAlarmID`. Disk ve vekil
+  alarmlarındaki desen bu. Ayrışma artık derleme düzeyinde imkânsız; o
+  yüzden onun mutantı yok.
+- `mutate-alarm.sh`: "başarılı yedek alarmı kapatmıyor" ve "başarısız
+  yedek alarm açmıyor" — ikisi de yakalanıyor.

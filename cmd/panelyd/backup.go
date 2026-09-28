@@ -23,6 +23,11 @@ import (
 // veriyor.
 const defaultBackupInterval = time.Hour
 
+// backupAlarmID, zamanlı yedek alarmının kimliği. Açan ve kapatan AYNI
+// sabiti kullanıyor: ilk hâlinde kimlik iki yerde elle yazılmıştı ve biri
+// değişse "yedek alınamıyor" alarmı hiç kapanmazdı (K-114).
+const backupAlarmID = alarm.KindBackupFailed + ":panely.db"
+
 // runBackupScheduler, düzenli aralıklarla yedek alır ve bağlam iptal
 // edilene kadar çalışır.
 //
@@ -100,7 +105,7 @@ func takeBackup(ctx context.Context, db *store.Store, am *alarm.Manager) {
 		// kaybolması demek ve fark edilmesi en geç olan arıza türü —
 		// ancak geri yüklemeye ihtiyaç duyulduğu gün anlaşılır.
 		am.Raise(ctx, store.Alarm{
-			ID:       alarm.KindBackupFailed + ":panely.db",
+			ID:       backupAlarmID,
 			Kind:     alarm.KindBackupFailed,
 			Target:   "panely.db",
 			Severity: store.SeverityCritical,
@@ -114,7 +119,7 @@ func takeBackup(ctx context.Context, db *store.Store, am *alarm.Manager) {
 	}
 	// Başarılı yedek, varsa alarmı kapatır. Kenar tetiklemeli: alarm
 	// yoksa sessiz.
-	am.Clear(ctx, alarm.KindBackupFailed+":panely.db")
+	am.Clear(ctx, backupAlarmID)
 	// Alanlar TEK TEK yazılıyor. İlk hâli struct'ı olduğu gibi
 	// veriyordu ve journal'da `dosya="{Path:... Bytes:... Taken:...}"`
 	// diye tek bir kalabalık alan çıkıyordu — gerçek sunucuda görüldü.

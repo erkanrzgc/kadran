@@ -64,6 +64,39 @@ func TestStartupAlarmIsClosedByTheProxyWatcher(t *testing.T) {
 	}
 }
 
+// TestBackupFailureRaisesAndSuccessClearsTheSameAlarm: yedek alarmını
+// açan ve kapatan AYNI kimlik olmalı; ayrışırsa "yedek alınamıyor"
+// alarmı hiç kapanmaz (K-114). Gerçek yönetici, gerçek depo.
+func TestBackupFailureRaisesAndSuccessClearsTheSameAlarm(t *testing.T) {
+	ctx := context.Background()
+	am, alarmDB, kayit := gercekAlarmlar(t)
+
+	// Bellek veritabanının yedeği alınamıyor: gerçek bir Snapshot hatası.
+	bellek, err := store.Open(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = bellek.Close() })
+	takeBackup(ctx, bellek, am)
+	acik := etkinAlarmlar(t, alarmDB)
+	if len(acik) != 1 || acik[0].Kind != alarm.KindBackupFailed || acik[0].Severity != store.SeverityCritical {
+		t.Fatalf("başarısız yedek kritik alarm açmadı: %+v", acik)
+	}
+
+	dosya, err := store.Open(ctx, filepath.Join(t.TempDir(), "panely.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dosya.Close() })
+	takeBackup(ctx, dosya, am)
+	if kalan := etkinAlarmlar(t, alarmDB); len(kalan) != 0 {
+		t.Fatalf("başarılı yedek alarmı kapatmadı — kimlikler ayrışmış olabilir: %+v", kalan)
+	}
+	if len(kayit.olaylar) != 2 || kayit.olaylar[1].State != alarm.Closed {
+		t.Errorf("bildirim sırası açıldı → kapandı değil: %+v", kayit.olaylar)
+	}
+}
+
 // TestStartupAlarmClearsOnACleanStartup: temiz bir açılış önceki
 // açılıştan kalan alarmı kapatır.
 func TestStartupAlarmClearsOnACleanStartup(t *testing.T) {

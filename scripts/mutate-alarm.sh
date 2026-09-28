@@ -23,14 +23,15 @@ ALARM=internal/alarm/alarm.go
 STORE=internal/store/alarms.go
 SUP=internal/health/supervisor.go
 WATCH=cmd/panelyd/alarmwatch.go
+BACKUP=cmd/panelyd/backup.go
 
 BAK_ALARM=$(mktemp); BAK_STORE=$(mktemp)
-BAK_SUP=$(mktemp); BAK_WATCH=$(mktemp)
+BAK_SUP=$(mktemp); BAK_WATCH=$(mktemp); BAK_BACKUP=$(mktemp)
 cp "$ALARM" "$BAK_ALARM"; cp "$STORE" "$BAK_STORE"
-cp "$SUP" "$BAK_SUP"; cp "$WATCH" "$BAK_WATCH"
+cp "$SUP" "$BAK_SUP"; cp "$WATCH" "$BAK_WATCH"; cp "$BACKUP" "$BAK_BACKUP"
 restore() {
     cp "$BAK_ALARM" "$ALARM"; cp "$BAK_STORE" "$STORE"
-    cp "$BAK_SUP" "$SUP"; cp "$BAK_WATCH" "$WATCH"
+    cp "$BAK_SUP" "$SUP"; cp "$BAK_WATCH" "$WATCH"; cp "$BAK_BACKUP" "$BACKUP"
 }
 trap restore EXIT
 
@@ -192,6 +193,17 @@ mutate "açılış alarmı kimliği izleyicininkinden ayrıştı" "$WATCH" ./cmd
 
 mutate "temiz açılış kalan alarmı kapatmıyor" "$WATCH" ./cmd/panelyd/ \
     "s=s.replace('\t\tam.Clear(ctx, id)\n\t\treturn\n','\t\treturn\n',1)"
+
+echo "== Zamanlı yedek alarmı =="
+
+# Kimlik artık tek sabit (backupAlarmID): açan ile kapatanın ayrışması
+# derleme düzeyinde imkânsız, o yüzden onun mutantı yok. Geriye davranış
+# kalıyor.
+mutate "başarılı yedek alarmı kapatmıyor" "$BACKUP" ./cmd/panelyd/ \
+    "s=s.replace('\tam.Clear(ctx, backupAlarmID)\n','',1)"
+
+mutate "başarısız yedek alarm açmıyor" "$BACKUP" ./cmd/panelyd/ \
+    "s=s.replace('\t\tam.Raise(ctx, store.Alarm{\n\t\t\tID:       backupAlarmID,','\t\t_ = am\n\t\t_ = (store.Alarm{\n\t\t\tID:       backupAlarmID,',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

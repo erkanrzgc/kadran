@@ -7081,3 +7081,58 @@ DEMEZ.
 2. Güvenlik duvarında 80/443 açılsın mı?
 3. Debian 13 ölçümü nerede: GCP makinesinin kendisinde mi, önce ücretli
    bir test sunucusunda mı?
+
+## K-114 — İki test boşluğu: admin istemcisi ve alarm satırı sözleşmesi
+
+**Tarih:** 28 Eylül 2026
+**Durum:** KAPANDI — testler ve mutasyonlar CI'da
+
+Kapsam ölçüldü (`go test -cover`). Güvenlik sınırı taşıyan iki yer test
+edilmiyordu. İkisi de gerçek sunucuda doğrulanmıştı ama bir sonraki
+değişiklikte kırılsalar hiçbir test düşmezdi.
+
+### 1. Ters vekil admin istemcisi (%0 → testli)
+
+`Load`/`Current`/`do` yalnızca canlıda sınanmıştı (K-054). Unix soketi
+üzerinde sahte bir admin sunucusuyla şunlar sınanıyor:
+- `Load` önce `POST /load` yapıyor, sonra GERİ OKUYOR; Host `localhost`.
+- Canlıda gönderilmeyen bir rota ya da farklı bir upstream reddediliyor.
+- Caddy'nin hata mesajı ayıklanıyor (ham JSON değil).
+- Boş ve `null` yanıt boş yapılandırma sayılıyor.
+
+"Farklı upstream" testi ilk hâlinde YANLIŞ sebeple geçiyordu: bağlantı
+hatası da "hata" sayılıyordu. Artık hatanın kendisi doğrulanıyor.
+
+Windows'ta unix soketine `Listen` başarılı ama `Dial` "An invalid
+argument was supplied" veriyor. Kısa ad, uzun ad ve `os.TempDir` ile üç
+ayrı yolda ölçüldü. İlk tahminim yol uzunluğuydu ve YANLIŞTI; teste o
+gerekçeyle yazdığım yorum düzeltildi. Admin istemcisi yalnızca Linux'ta
+koşuyor. Testler Windows'ta atlanıyor; Linux'ta atlanmaları yasak
+(`Fatal`).
+
+`scripts/mutate-proxyadmin.sh`: 6/6, CI'ın Linux işinde. Yerelde her
+mutantın uygulandığı ve DERLENDİĞİ ölçüldü. Mutantlar Linux'ta
+yakalandığına göre testler orada gerçekten koşuyor.
+
+### 2. Alarm satırı ↔ Telegram göndericisi
+
+`panely-notify.sh`, panelyd'nin `msg=ALARM` satırlarını ayrıştırıyor
+(K-108). Biçim iki yerde yazılı ve aralarında bağ yoktu:
+- Go tarafında `alarm.LogSink`, hiç test edilmiyordu (%0).
+- `check-notify-format.sh`'taki örnekler canlıdan elle kopyalanmıştı.
+
+`LogSink`'in biçimi değişse betiğin testleri yine geçer ve teslimat
+SESSİZCE dururdu.
+
+`internal/alarm/logsink_test.go` ikisini bağlıyor. `LogSink`'in satırı,
+panelyd'nin işleyicisinin aynısıyla üretiliyor (`TextHandler`, Info) ve
+betikteki örneklerde BAYT BAYT bulunmalı. İlk ölçüm: 6 durumun altısı da
+aynıydı; sözleşme bugün sağlam, artık korunuyor. Seviye de sınanıyor:
+yalnızca kritik açılış ve tırmanma ERROR, kapanış hiçbir zaman ERROR
+değil.
+
+`scripts/mutate-notifycontract.sh` 5/5. Son mutant kontrol grubu:
+betikteki örnek elle değiştirilince Go testi düşüyor. Yani bağ iki
+yönlü. "Alan sırası" mutantı bilerek katı: betik alanları adla okuyor,
+sıra değişse teslimat bozulmaz. Mutant teslimatı değil, örneklerin
+"canlıdan birebir" kalmasını ölçüyor.

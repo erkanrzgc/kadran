@@ -28,6 +28,11 @@ bekle() {
     fi
 }
 
+# ⚠ Aşağıdaki ALARM satırları internal/alarm/logsink_test.go'ya BAĞLI:
+# o test LogSink'in ürettiği satırın burada bayt bayt bulunmasını şart
+# koşuyor. Biri değişirse (Go tarafı ya da buradaki örnek) o test düşer —
+# aksi hâlde LogSink'in biçimi değişince bu testler yine geçer ve Telegram
+# teslimatı sessizce dururdu.
 echo "== Alarm biçimlendirici =="
 
 bekle "kritik açılış, tırnaklı ayrıntı" \

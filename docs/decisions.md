@@ -7189,3 +7189,70 @@ Eşleme saf bir fonksiyona ayrıldı (`archFromUname`, davranış aynı).
 `scripts/mutate-bootstrapssh.sh` 7/7. İçinde `-` ile başlayan hedefin
 reddi de var: `TestRejectsOptionLikeHost` o kontrolü koruyordu ama hiçbir
 mutasyon bunu ölçmemişti.
+
+## K-115 — Askıda kalma tespiti (watchdog): tasarım taslağı
+
+**Tarih:** 28 Eylül 2026
+**Durum:** TASLAK — kod YOK; tasarım kararı kullanıcıda
+
+README'nin bilinen boşluğu: "Askıda kalma tespit edilmiyor. Birimler
+`WatchdogSec` kullanmıyor; kilitlenmiş bir panelyd canlı görünür."
+Çöküş ve durma bildiriliyor (K-110), askıda kalma bildirilmiyor.
+
+### Yanlış çözüm: sayaç goroutine'i
+
+systemd'nin watchdog'u, süreç `WatchdogSec` içinde `WATCHDOG=1`
+göndermezse onu öldürüp yeniden başlatıyor. En kolay uygulama, ayrı
+bir goroutine'de sabit aralıkla ping atmak. Bu yalnızca SÜRECİN TAMAMI
+donduğunda (SIGSTOP, D durumu) ping'i keser. Kilitlenmiş bir döngü ya
+da takılmış bir kilit varken sayaç ping atmaya devam eder. Bununla
+"askıda kalma tespit ediliyor" demek, K-079 sınıfı bir iddia olurdu:
+kod sahip olmadığı bir özelliği anlatır.
+
+### panelyd'de ne takılabilir (koddan okundu)
+
+- Dört arka plan döngüsü: sağlık gözetmeni, vekil izleyicisi, disk
+  izleyicisi, yedek zamanlayıcısı. Bir de gRPC sunucusu.
+- İki kilit:
+  - uzlaştırıcı (`deploy.Reconciler.mu`): Caddy admin çağrısı süresince
+    tutuluyor, çağrının 15 sn sınırı var;
+  - denetim zincirine ekleme (`store.appendMu`).
+- SQLite: tek bağlantı havuzu. Tükenmiş bir havuz bütün RPC'leri bekletir.
+
+### Seçenek: "canlılık = her döngü son N turda ilerledi"
+
+- Her döngü her turda kendi zaman damgasını günceller.
+- Watchdog ping'i yalnızca şu ikisi sağlanırsa atılır:
+  - her döngünün damgası kendi aralığının k katından (ör. 3) taze;
+  - bir veritabanı yoklaması (`PingContext`, kısa sınır) başarılı.
+- Uzlaştırıcı kilidi dolaylı yoldan kapsanır: izleyici o kilidi her
+  turda alıyor; kilit takılırsa izleyicinin damgası eskir.
+
+Riskler:
+- **Yanlış pozitif:** uzun ama meşru bir iş bir döngüyü bekletirse
+  panelyd gereksiz yeniden başlar. Trafik etkilenmez; Caddy bağımsız ve
+  rotaları panelyd açılışta geri yükler. Ama dağıtım yarıda kalabilir.
+  Eşiklerin gerçek sürelerden ölçülerek seçilmesi gerekiyor.
+- **Yeniden başlatma döngüsü:** kalıcı bir takılma (ör. bozuk disk)
+  sürekli yeniden başlatır. K-110'un bildirimi bunu "döngü" olarak
+  zaten görüyor.
+
+### Ölçüm planı
+
+- **CI** (GitHub'ın Ubuntu makinelerinde systemd PID 1): panelyd'yi
+  `systemd-run -p Type=notify -p WatchdogSec=…` ile koştur. Her mod
+  için pozitif kontrol var:
+  - SIGSTOP → systemd "watchdog timeout" ile öldürüp yeniden başlatıyor
+    mu;
+  - test amaçlı bir döngüyü durdur → ping kesiliyor mu;
+  - KONTROL: normal koşuda N dakika boyunca SIFIR yeniden başlatma.
+- **Sunucu:** canlıda gerçek döngü sürelerinin dağılımı (eşik seçimi
+  için); ardından aynı SIGSTOP testi.
+- CI'da `systemd-run`'ın çalıştığı henüz DENENMEDİ; ilk adım bu.
+
+### Kararlar (kullanıcıda)
+
+1. Watchdog eklensin mi? Kazanç: kilitlenmiş panelyd kendiliğinden geri
+   gelir. Bedel: yanlış pozitif, yani gereksiz yeniden başlatma riski.
+2. Canlılık tanımı: yalnızca süreç (dar ama dürüst adlandırılırsa kabul
+   edilebilir) mi, yoksa döngü damgaları + veritabanı mı?

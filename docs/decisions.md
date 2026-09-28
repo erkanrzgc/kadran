@@ -7172,3 +7172,20 @@ kapanmazdı.
   yüzden onun mutantı yok.
 - `mutate-alarm.sh`: "başarılı yedek alarmı kapatmıyor" ve "başarısız
   yedek alarm açmıyor" — ikisi de yakalanıyor.
+
+### 5. Kurulumun ssh çağrısı
+
+`sshArgs` ve mimari eşlemesi %0 kapsamdaydı. İkisi de güvenlik ya da
+doğruluk taşıyor:
+- `BatchMode=yes`: kurulum hiçbir zaman parola SORMAZ. "Parola veya özel
+  anahtar istenmez" iddiası buna dayanıyor.
+- Sıra: hedef bütün seçeneklerden sonra, uzak komuttan hemen önce.
+- Mimari: tanınmayan her şey HATA. Yanlış mimariye binary göndermek
+  "exec format error" ile, sebebi gözden kaçan bir kurulumdur.
+
+Eşleme saf bir fonksiyona ayrıldı (`archFromUname`, davranış aynı).
+`sshargs_test.go` dört test içeriyor.
+
+`scripts/mutate-bootstrapssh.sh` 7/7. İçinde `-` ile başlayan hedefin
+reddi de var: `TestRejectsOptionLikeHost` o kontrolü koruyordu ama hiçbir
+mutasyon bunu ölçmemişti.

@@ -148,7 +148,13 @@ func detectArch(ctx context.Context, opts Options) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("bootstrap: sunucuya bağlanılamadı: %w", err)
 	}
+	return archFromUname(out)
+}
 
+// archFromUname, `uname -m` çıktısını paket mimarisine çevirir.
+// Tanınmayan her şey HATA: yanlış mimariye binary göndermek "exec format
+// error" ile, sebebi gözden kaçan bir kurulumdur.
+func archFromUname(out string) (string, error) {
 	switch machine := strings.TrimSpace(out); machine {
 	case "x86_64", "amd64":
 		return "amd64", nil

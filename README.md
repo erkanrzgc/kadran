@@ -60,6 +60,7 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Automatic HTTPS** | Let's Encrypt certificates via a custom Caddy build that contains no file server. Config reloads are atomic. If the proxy restarts or crashes, the daemon notices within 10 s and restores the routes (measured: sites back after 3 s on a restart, 7 s on a crash; without the watcher they stayed down) |
 | **Live logs** | `panely logs -f <app>`; container logs are capped at 3 × 10 MiB |
 | **Health supervisor** | Restarts failed releases with backoff, and keeps running when no client is connected. After a reboot it starts the apps again (measured: sites answer ~19 s after the kernel boots) |
+| **Hang detection** | If panelyd's background loops stop making progress or its database pool runs dry, it stops pinging systemd's watchdog (`WatchdogSec=60s`). systemd then restarts it, and a goroutine dump lands in the journal. Measured under real systemd in CI: a frozen daemon was killed and brought back, and a normal run caused no restarts (K-115) |
 | **Scaling, env vars, volumes** | `app update -replicas/-env/-volume`. Volumes are mounted `nodev,nosuid` |
 | **Pruning** | Removes old releases' containers, always keeping the rollback target |
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
@@ -338,8 +339,11 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 - **The last link is unwatched.** The heartbeat Worker reports a dead alarm sender
   or server, but if the Worker itself stops (Cloudflare outage, account problem),
   nobody is told.
-- **Hangs are not detected.** Core-service crashes and stops are reported, but the
-  units set no `WatchdogSec`, so a deadlocked panelyd still looks alive.
+- **Hang detection covers what is watched.** panelyd pings systemd's watchdog only
+  while its four background loops make progress and its database pool can hand out
+  a connection. An RPC handler stuck on something no loop or probe touches still
+  goes unnoticed. The thresholds (15 minutes, 3 hours for backups) are derived from
+  the code's timeouts, not yet measured in production (K-115).
 - **No secret store.** Environment variables are stored in the daemon's database and
   are visible to `docker inspect` on the host. Do not put secrets you cannot rotate in
   them.

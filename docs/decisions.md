@@ -7245,8 +7245,8 @@ sunucu adı reddi de burada; testleri vardı, hiçbir mutasyon onları
 
 ## K-115 — Askıda kalma tespiti (watchdog): tasarım taslağı
 
-**Tarih:** 28 Eylül 2026
-**Durum:** TASLAK — kod YOK; tasarım kararı kullanıcıda
+**Tarih:** 28 Eylül 2026 (taslak), 30 Eylül 2026 (uygulama)
+**Durum:** UYGULANDI — kararlar ve ölçümler en altta ("30 Eylül")
 
 README'nin bilinen boşluğu: "Askıda kalma tespit edilmiyor. Birimler
 `WatchdogSec` kullanmıyor; kilitlenmiş bir panelyd canlı görünür."
@@ -7312,3 +7312,121 @@ Riskler:
 3. CI yalnızca `main`'e push'ta ve PR'da tetikleniyor. `systemd-run`
    olabilirlik deneyi ya bir PR ister (herkese açık) ya da doğrudan
    `main`'e bir deney adımı. Hangisi?
+
+### 30 Eylül: kararlar
+
+1. Eklensin: EVET. 2. Canlılık: döngü damgaları + veritabanı.
+3. Ne PR ne `main`: CI `workflow_dispatch` da taşıyor. Deney ayrı bir
+   dalda (`watchdog-k115`) elle tetiklendi. Concurrency grubu ref'e bağlı,
+   yani `main`'in koşularını iptal etmiyor.
+
+### Uygulama
+
+- `internal/liveness`:
+  - `Registry`/`Beat`: her döngünün son ilerleme anı.
+  - `Watchdog.Check`: bayat damga ya da düşen yoklama varsa ping yok.
+  - `Interval`: systemd sözleşmesi. `WATCHDOG_USEC`'in yarısı alınıyor.
+    `WATCHDOG_PID` başka bir süreçse watchdog kapalı sayılıyor.
+- İzlenen döngüler: gözetmen, vekil izleyicisi, disk, yedek. Aralığı 0
+  olan döngü kaydedilmiyor; kaydedilseydi hiç ilerlemez ve panelyd
+  durmadan yeniden başlardı.
+- `panelyd.service`: `WatchdogSec=60s`. Ping 30 sn'de bir, yoklama
+  sınırı 10 sn. Tek bir düşen yoklama yalnızca bir pingi atlatıyor;
+  öldürme için art arda iki başarısızlık gerekiyor.
+- `WatchdogSignal` kasten varsayılanda bırakıldı (SIGABRT), çünkü Go bu
+  sinyalde yığın dökümü basıyor. SIGKILL takılmanın nerede olduğunu yok
+  ederdi.
+
+### Taslaktan sapmalar (danışman incelemesi)
+
+- **Damga ilerleme demek, tur sonu değil.** Gözetmen iyileştirmeyi
+  turun içinde, uygulama uygulama yapıyor. Birkaç sağlıksız uygulamalı
+  bir tur, uygulama sayısıyla büyüyen bir süre alır. Damga tur başında
+  ve her ziyaretten sonra tazeleniyor (`health.Options.Progress`).
+  Tur başı şart: uygulamasız sunucuda ziyaret yok.
+- **Ayrıcalıklı yüzey:**
+  - `sdnotify`'a `Watchdog()` eklemek bir sayılan satır demekti (2499);
+    executor bu fonksiyonu hiç çağırmıyor.
+  - Onun yerine `send` → `Send` yapıldı. Kod satırı değişmedi, ölçüldü:
+    2498/2500 (ham satır 4438 → 4444, yalnız yorum).
+- **Yoklamanın dayandığı varsayım test ediliyor.** `PingContext`
+  tükenmiş havuzu ancak havuz TEK bağlantılıysa görür, çünkü boş bir
+  bağlantı bekliyor. `TestPingDetectsAnExhaustedPool` bunu gerçek
+  veritabanında sınıyor:
+  - pozitif kontrol: boş havuzda yoklama geçiyor;
+  - açık bir işlem varken düşüyor;
+  - işlem geri alınınca yine geçiyor.
+  - "havuz iki bağlantılı" mutantı yakalandı.
+
+### Eşikler: TÜRETİLDİ, ölçülmedi
+
+`max(3 × aralık, 15 dk)`: gözetmen, vekil izleyicisi ve disk için
+15 dk, yedek için 3 sa. Koddaki sınırlar:
+- executor'a konteyner çağrısı 60 sn'ye kadar (`containerTimeout`);
+- iyileştirme kapısı 15 sn;
+- vekil turu 30 sn, önce uzlaştırıcı kilidini bekliyor.
+
+Gerçek bir kilitlenme sonsuz sürdüğü için büyük eşik yalnızca tespiti
+geciktirir; küçük eşik meşru yükte panelyd'yi boş yere yeniden
+başlatırdı. Gerçek süreler için watchdog saatte bir, her döngünün en
+uzun ilerleme aralığını günlüğe yazıyor. Canlıda o dağılım okunmadan
+eşik küçültülmemeli.
+
+### Mutasyon
+
+- `scripts/mutate-watchdog.sh` 22/22. Açılıştaki ve ticker'daki `Mark`
+  ayrı mutantlar. İlk test taslağında açılış mutantı YEŞİL kalacaktı:
+  5 ms'lik ticker ilk turu da tazeliyordu. Bir saatlik aralıkla ayrı bir
+  açılış testi eklendi.
+- `scripts/mutate-units.sh` +4 (WatchdogSec yok ya da kısa,
+  `Restart=no`, `WatchdogSignal=SIGKILL`): 4/4.
+- Birim testi önce kırmızıydı: eski birimde `WatchdogSec` yoktu.
+
+### Neyi GÖRMEZ
+
+Hiçbir döngünün ve yoklamanın dokunmadığı bir şeye kilitlenmiş tek bir
+RPC işleyicisi. gRPC her isteği ayrı goroutine'de koşturuyor ve geri
+kalan her şey ilerlemeye devam ediyor. README bunu böyle adlandırıyor.
+
+### Birim ile ikili BİRLİKTE gider
+
+`WatchdogSec` taşıyan birim altında ping atmayan eski bir panelyd her
+60 sn'de öldürülür. Yalnızca ikiliyi geri almak bir yeniden başlatma
+döngüsüdür. `panely bootstrap` ikisini birlikte kuruyor.
+
+### Bilinen sınır: `main`'deki bağlama
+
+`Beat.Mark` nil alıcıda sessiz. main bir döngüye damga vermeyi unutursa
+derleyici görmez ve birim testi de görmez. Açılışta
+`izlenen_donguler=…` satırı basılıyor ve CI deneyi bu satırı
+doğruluyor.
+
+### Gerçek systemd'de ölçüldü (CI, `scripts/e2e-watchdog.sh`)
+
+GitHub'ın Ubuntu makinesinde systemd PID 1. Birim üretimdekiyle aynı
+watchdog ayarlarını taşıyor. `WatchdogSec` 10 sn: ölçülen sayı değil,
+mekanizma. Koşu 36639350499:
+
+- **Başlangıç:** READY geldi. `izlenen_donguler=gözetmen,vekil-izleyici,disk,yedek`
+  (main'in bağlaması doğrulandı). `ping_araligi=5s`, yani
+  `WATCHDOG_USEC`'in yarısı.
+- **1. Kontrol:** 60 sn normal koşu, `NRestarts=0`. Tek başına bir şey
+  kanıtlamaz; 2. ölçümle birlikte anlamlı.
+- **2. SIGSTOP (pozitif kontrol):** donan süreç öldürüldü ve geri geldi
+  (`NRestarts=1`, PID 4516 → 4586). Watchdog kurulu, yani 1'deki sıfır
+  pinglerin GELDİĞİ demek. systemd'nin gerçek olay satırı K-110'un
+  ayıklayıcısından `watchdog` sonucuyla geçti. Biçimlendiricideki
+  fikstür ise türetilmiş bir satır.
+- **3. SIGABRT:** journal'a 22 goroutine'lik döküm düştü:
+  `main.watchProxy`, `main.runBackupScheduler`,
+  `liveness.(*Watchdog).Run`. Varsayılan `GOTRACEBACK` yetiyor.
+  `WatchdogSignal`'ı varsayılanda bırakmanın gerekçesi artık ölçülmüş.
+- **4. `systemctl stop`:** `Result=success`, durdurma watchdog sayılmadı.
+
+ÖLÇÜLMEDİ:
+- canlıda gerçek döngü süreleri (saatlik rapor bunun için);
+- canlıda watchdog'un bir yükseltme ve reboot'tan sağ çıkması. İkisi de
+  bir sonraki canlı yükseltmeyle birlikte ölçülecek.
+- Kilitlenen bir DÖNGÜNÜN gerçek ikilide tespiti ölçülmedi: test kancası
+  eklemeden dışarıdan tetiklenemiyor. Birim testleriyle ve gerçek döngü
+  fonksiyonlarıyla sınanıyor (mutasyon 22/22).

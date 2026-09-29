@@ -5,6 +5,16 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+- Hang detection. panelyd pings systemd's watchdog (`WatchdogSec=60s`) only while
+  its background loops (health supervisor, proxy watcher, disk check, backups) make
+  progress and its database pool can hand out a connection. A plain ping goroutine
+  would keep pinging through a deadlock. Measured under real systemd in CI:
+  - a normal run caused no restarts;
+  - a frozen daemon was killed and restarted;
+  - SIGABRT left a goroutine dump showing the loops in the journal;
+  - a clean stop was not counted as a watchdog failure.
+  The unit and the binary must be upgraded together (K-115).
+
 - `panely app show` marks which release is live. The old status column showed the
   build status only; after a rollback the top "built" release does not get the
   traffic. A separate line names the live release even when it is older than the

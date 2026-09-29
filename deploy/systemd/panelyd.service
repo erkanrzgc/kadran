@@ -25,6 +25,21 @@ ExecStart=/usr/local/lib/panely/panelyd \
 Restart=on-failure
 RestartSec=2s
 
+# ── Askıda kalma tespiti (K-115) ────────────────────────────────────
+#
+# panelyd WatchdogSec'in yarısında bir WATCHDOG=1 gönderiyor, ama YALNIZCA
+# her arka plan döngüsü eşiği içinde ilerlemişse ve veritabanı havuzu bir
+# bağlantı verebiliyorsa (internal/liveness). Ping kesilirse systemd
+# SIGABRT gönderiyor; Go yığın dökümünü journal'a basıp çıkıyor ve
+# Restart=on-failure panelyd'yi geri getiriyor. WatchdogSignal KASTEN
+# değiştirilmiyor: SIGKILL o dökümü, yani takılmanın NEREDE olduğunu
+# yok ederdi.
+#
+# ⚠ Birim ve ikili BİRLİKTE gider: ping atmayan eski bir panelyd bu birim
+# altında her 60 sn'de öldürülür. Yalnızca ikiliyi geri almak bir yeniden
+# başlatma döngüsüdür.
+WatchdogSec=60s
+
 # YETKİSİZ. Bu satır ürünün tamamının dayandığı iddiadır.
 # `sudo -u panely docker ps` BAŞARISIZ OLMAK ZORUNDADIR.
 User=panely

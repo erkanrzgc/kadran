@@ -182,6 +182,13 @@ ayikla_dene "servisin kendi satırı sayılmaz"     "$KENDI"   ""
 ayikla_dene "karışık akış" "$KENDI"$'\n'"$GERCEK"$'\n'"$SAHTE"$'\n'"$BASLADI"$'\n'"$GERCEK" \
     $'panely-olcum-coken.service signal\npanely-olcum-coken.service signal'
 
+# K-115: watchdog'un öldürdüğü panelyd. TÜRETİLMİŞ satır (gerçek çöküş
+# satırında UNIT ve UNIT_RESULT değiştirildi); systemd'nin gerçek
+# watchdog satırı CI'daki systemd deneyinde aynı ayıklayıcıdan geçiyor.
+WATCHDOG="${GERCEK/\"UNIT_RESULT\":\"signal\"/\"UNIT_RESULT\":\"watchdog\"}"
+WATCHDOG="${WATCHDOG/panely-olcum-coken.service/panelyd.service}"
+ayikla_dene "watchdog öldürmesi (K-115)"         "$WATCHDOG" "panelyd.service watchdog"
+
 echo "== Servis mesaj satırı (K-110) =="
 
 satir_dene() {
@@ -198,6 +205,8 @@ satir_dene "çöktü, geri geldi" '🟠 ÇÖKTÜ — panelyd.service: 1 kez (sig
     coktu panelyd.service 1 signal 1
 satir_dene "çöktü, kalkmadı" '🟠 ÇÖKTÜ — panelyd.service: 2 kez (exit-code), şu an ÇALIŞMIYOR' \
     coktu panelyd.service 2 exit-code 0
+satir_dene "watchdog öldürdü (K-115)" '🟠 ÇÖKTÜ — panelyd.service: 1 kez (watchdog), systemd yeniden başlattı' \
+    coktu panelyd.service 1 watchdog 1
 satir_dene "döngü" '🔴 ÇÖKME DÖNGÜSÜ — panely-exec.service: son kontrolden beri 26 kez daha (exit-code)' \
     dongu panely-exec.service 26 exit-code 1
 satir_dene "çalışmıyor" '🔴 ÇALIŞMIYOR — panely-caddy.service' calismiyor panely-caddy.service 0 "" 0

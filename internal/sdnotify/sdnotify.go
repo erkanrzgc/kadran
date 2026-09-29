@@ -21,16 +21,22 @@ import (
 var ErrNoSocket = errors.New("sdnotify: NOTIFY_SOCKET tanımlı değil")
 
 // Ready, systemd'ye servisin hazır olduğunu bildirir.
-func Ready() error { return send("READY=1") }
+func Ready() error { return Send("READY=1") }
 
 // Stopping, systemd'ye kapanışın başladığını bildirir.
-func Stopping() error { return send("STOPPING=1") }
+func Stopping() error { return Send("STOPPING=1") }
 
 // Status, systemd'ye insan tarafından okunabilir bir durum metni bildirir.
 // `systemctl status panelyd` çıktısında görünür.
-func Status(text string) error { return send("STATUS=" + text) }
+func Status(text string) error { return Send("STATUS=" + text) }
 
-func send(payload string) error {
+// Send, systemd'ye ham bir bildirim satırı gönderir.
+//
+// Dışa açık, çünkü panelyd'nin watchdog'u WATCHDOG=1 gönderiyor
+// (internal/liveness, K-115). Onun için ayrı bir `Watchdog()` yazmak,
+// executor'ın hiç çağırmadığı bir fonksiyonu ayrıcalıklı yüzeye eklerdi;
+// bu paket panely-exec'in bağımlılığı ve bütçe 2498/2500.
+func Send(payload string) error {
 	addr := os.Getenv("NOTIFY_SOCKET")
 	if addr == "" {
 		return ErrNoSocket

@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // # Bu dosya neden var?
@@ -437,6 +438,37 @@ func TestReverseProxyHasNoReload(t *testing.T) {
 	}
 	if got := directive(unit, "ExecReload"); len(got) != 0 {
 		t.Errorf("ExecReload= var: %v — taban yapılandırma rotasız, reload siteleri kapatır", got)
+	}
+}
+
+// TestDaemonHasAWatchdog, panelyd biriminin watchdog'u AÇTIĞINI ve bir
+// watchdog öldürmesinin panelyd'yi geri getirdiğini doğrular (K-115).
+//
+// Kod (internal/liveness) ancak WATCHDOG_USEC tanımlıysa ping atıyor; bu
+// satır olmadan bütün tespit sessizce kapalıdır.
+func TestDaemonHasAWatchdog(t *testing.T) {
+	unit := readUnit(t, "panelyd.service")
+
+	got := directive(unit, "WatchdogSec")
+	if len(got) != 1 {
+		t.Fatalf("WatchdogSec= %v — askıda kalma tespiti kapalı", got)
+	}
+	sure, err := time.ParseDuration(got[0])
+	if err != nil || sure < 30*time.Second {
+		t.Errorf("WatchdogSec=%s — ping aralığı bunun yarısı; 30 sn'nin altı "+
+			"tek bir yavaş veritabanı yoklamasında panelyd'yi öldürür", got[0])
+	}
+
+	// Watchdog öldürmesi bir başarısızlık; yalnızca on-failure/always onu
+	// geri getirir.
+	if r := directive(unit, "Restart"); len(r) != 1 || (r[0] != "on-failure" && r[0] != "always") {
+		t.Errorf("Restart= %v — watchdog'un öldürdüğü panelyd geri gelmez", r)
+	}
+
+	// SIGKILL, Go'nun SIGABRT'de bastığı yığın dökümünü, yani takılmanın
+	// nerede olduğunu yok ederdi.
+	if s := directive(unit, "WatchdogSignal"); len(s) != 0 {
+		t.Errorf("WatchdogSignal= %v — varsayılan SIGABRT kalmalı", s)
 	}
 }
 

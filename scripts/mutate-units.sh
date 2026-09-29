@@ -29,6 +29,7 @@ FILES=(
     deploy/systemd/panely-volume-backup.service
     deploy/systemd/panely-volume-backup.timer
     deploy/systemd/panely-caddy.service
+    deploy/systemd/panelyd.service
 )
 BAK=$(mktemp -d)
 for f in "${FILES[@]}"; do cp "$f" "$BAK/$(basename "$f")"; done
@@ -36,7 +37,7 @@ restore() { for f in "${FILES[@]}"; do cp "$BAK/$(basename "$f")" "$f"; done; }
 trap 'restore; rm -rf "$BAK"' EXIT
 
 fail=0
-WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive|TestReverseProxyHasNoReload'
+WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive|TestReverseProxyHasNoReload|TestDaemonHasAWatchdog'
 
 # mutate <ad> <dosya> <python-ifadesi>
 mutate() {
@@ -196,6 +197,22 @@ C=deploy/systemd/panely-caddy.service
 
 mutate "ExecReload geri eklendi" "$C" \
     "s=s.replace('\nExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json\n','\nExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json\nExecReload=/usr/local/lib/panely/panely-caddy reload --config /etc/panely/caddy.json --force\n',1)"
+
+echo "== Daemon watchdog'u (K-115) =="
+
+P=deploy/systemd/panelyd.service
+
+mutate "WatchdogSec yok (tespit sessizce kapalı)" "$P" \
+    "s=s.replace('\nWatchdogSec=60s\n','\n',1)"
+
+mutate "WatchdogSec çok kısa" "$P" \
+    "s=s.replace('\nWatchdogSec=60s\n','\nWatchdogSec=10s\n',1)"
+
+mutate "watchdog öldürmesi geri getirilmiyor" "$P" \
+    "s=s.replace('\nRestart=on-failure\n','\nRestart=no\n',1)"
+
+mutate "yığın dökümü SIGKILL ile yok ediliyor" "$P" \
+    "s=s.replace('\nWatchdogSec=60s\n','\nWatchdogSec=60s\nWatchdogSignal=SIGKILL\n',1)"
 
 restore
 echo

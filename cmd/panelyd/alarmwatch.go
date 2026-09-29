@@ -8,6 +8,7 @@ import (
 
 	"github.com/erkanrzgc/panely/internal/alarm"
 	"github.com/erkanrzgc/panely/internal/execclient"
+	"github.com/erkanrzgc/panely/internal/liveness"
 	"github.com/erkanrzgc/panely/internal/store"
 )
 
@@ -44,7 +45,7 @@ const diskAlarmID = alarm.KindDiskLow + ":host"
 // dolar, saniyeler içinde değil.
 func watchDisk(
 	ctx context.Context, exec *execclient.Client, am *alarm.Manager,
-	every time.Duration,
+	every time.Duration, beat *liveness.Beat,
 ) {
 	if every <= 0 {
 		slog.Warn("disk alarmı KAPALI", "sebep", "--disk-check-interval 0")
@@ -52,6 +53,7 @@ func watchDisk(
 	}
 
 	checkDisk(ctx, exec, am)
+	beat.Mark()
 
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -61,6 +63,7 @@ func watchDisk(
 			return
 		case <-ticker.C:
 			checkDisk(ctx, exec, am)
+			beat.Mark()
 		}
 	}
 }

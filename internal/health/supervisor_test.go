@@ -570,3 +570,36 @@ func TestHealthyAppClearsAlarmEvenWithoutPriorFailure(t *testing.T) {
 		t.Errorf("sağlıklı uygulama alarm açtı: %v", h.alarms.raised)
 	}
 }
+
+// TestProgressIsReportedPerVisit, watchdog'un baktığı ilerleme damgasının
+// TUR BAŞINDA ve HER ZİYARETTEN SONRA tazelendiğini doğrular (K-115).
+//
+// Tur başı: uygulamasız bir sunucuda gözetmen hiçbir şey ziyaret etmez;
+// damga yalnızca ziyaretlerde tazelenseydi boş sunucu "takılmış" görünür
+// ve watchdog panelyd'yi boş yere yeniden başlatırdı.
+//
+// Ziyaret başı: iyileştirme turun içinde uygulama uygulama koşuyor; tek
+// bir tur sonu damgası uygulama sayısıyla büyüyen meşru bir turu
+// takılma sanırdı.
+func TestProgressIsReportedPerVisit(t *testing.T) {
+	var n int
+	opts := DefaultOptions
+	opts.Progress = func() { n++ }
+
+	bos := newHarnessWith(t, &fakeHealer{healthy: true}, opts)
+	bos.store.deps = nil
+	bos.cycles(1)
+	if n != 1 {
+		t.Fatalf("uygulamasız turda ilerleme %d kez bildirildi, beklenen 1", n)
+	}
+
+	n = 0
+	iki := newHarnessWith(t, &fakeHealer{healthy: true}, opts)
+	iki.store.deps = append(iki.store.deps, store.Deployment{
+		AppID: "blog", ReleaseID: "r1", Domain: "blog.test", ContainerPort: 8080,
+	})
+	iki.cycles(1)
+	if n != 3 {
+		t.Fatalf("iki uygulamalı turda ilerleme %d kez bildirildi, beklenen 3 (tur başı + 2 ziyaret)", n)
+	}
+}

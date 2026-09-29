@@ -28,6 +28,7 @@ import (
 	"github.com/erkanrzgc/panely/internal/execclient"
 	"github.com/erkanrzgc/panely/internal/grpcserve"
 	"github.com/erkanrzgc/panely/internal/health"
+	"github.com/erkanrzgc/panely/internal/liveness"
 	"github.com/erkanrzgc/panely/internal/logutil"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/proxydrv"
@@ -243,8 +244,14 @@ func run() error {
 	// Tespit o kararı beklemek zorunda değil.
 	alarms := alarm.New(db, alarm.LogSink{})
 
+	// Her döngü BAŞLAMADAN kaydediliyor: damga kayıt anında taze başlıyor
+	// ve watchdog ilk turundan itibaren hepsini görüyor (K-115).
+	beats := liveness.NewRegistry(time.Now)
+
+	supOpts := health.DefaultOptions
+	supOpts.Progress = registerLoop(beats, "gözetmen", supOpts.Interval).Mark
 	supervisor, err := health.New(
-		rollout, db, db, alarms, health.SystemClock(), health.DefaultOptions)
+		rollout, db, db, alarms, health.SystemClock(), supOpts)
 	if err != nil {
 		return err
 	}
@@ -257,13 +264,17 @@ func run() error {
 
 	// K-055'in ikinci yarısı: ters vekil yeniden başlayınca rotasız açılıyor.
 	// İzleyici kaybolan rotaları geri yüklüyor (bkz. proxywatch.go, K-112).
-	go watchProxy(shutdown, &proxyWatcher{rp: reconciler, am: alarms}, proxyWatchInterval)
+	go watchProxy(shutdown, &proxyWatcher{rp: reconciler, am: alarms}, proxyWatchInterval,
+		registerLoop(beats, "vekil-izleyici", proxyWatchInterval))
 
-	go watchDisk(shutdown, exec, alarms, *diskEvery)
+	go watchDisk(shutdown, exec, alarms, *diskEvery, registerLoop(beats, "disk", *diskEvery))
 
 	// Zamanlı yedekleme. Gözetmenle aynı kapanış bağlamını paylaşıyor:
 	// tek iptal kaynağı, tanımlı kapanış.
-	go runBackupScheduler(shutdown, db, alarms, *backupEvery)
+	go runBackupScheduler(shutdown, db, alarms, *backupEvery,
+		registerLoop(beats, "yedek", *backupEvery))
+
+	startWatchdog(shutdown, beats, db.DB())
 
 	slog.Info("daemon hazır",
 		"surum", version.Version,

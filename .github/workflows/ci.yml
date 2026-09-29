@@ -248,6 +248,15 @@ jobs:
       - name: E2E CLI kontrolleri
         run: bash scripts/e2e-cli-runner.sh bin/linux
 
+      # ── Askıda kalma tespiti GERÇEK systemd altında (K-115) ─────────
+      #
+      # Birim testleri pingin NE ZAMAN atıldığını sınıyor; systemd'nin
+      # WATCHDOG_USEC'i gerçekten verdiğini, pingleri aldığını ve ping
+      # kesilince öldürüp geri getirdiğini ancak gerçek PID 1 gösterir.
+      # Runner'da systemd PID 1. Kontrol grupları betiğin başında.
+      - name: Watchdog (gerçek systemd)
+        run: sudo bash scripts/e2e-watchdog.sh "$PWD/bin/linux"
+
       # ── Docker sürücüsü GERÇEK daemon'a karşı ──────────────────────
       #
       # Birim testleri SAHTE bir daemon'a konuşuyor ve sahte daemon,

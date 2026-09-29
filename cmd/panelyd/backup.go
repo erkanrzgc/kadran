@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/erkanrzgc/panely/internal/alarm"
+	"github.com/erkanrzgc/panely/internal/liveness"
 	"github.com/erkanrzgc/panely/internal/store"
 )
 
@@ -45,7 +46,7 @@ const backupAlarmID = alarm.KindBackupFailed + ":panely.db"
 // taşımazdı.
 func runBackupScheduler(
 	ctx context.Context, db *store.Store, am *alarm.Manager,
-	every time.Duration,
+	every time.Duration, beat *liveness.Beat,
 ) {
 	if every <= 0 {
 		slog.Warn("zamanlı yedekleme KAPALI",
@@ -58,6 +59,7 @@ func runBackupScheduler(
 	// fark ederdi. Ayrıca kurulumun doğruluğunu hemen görünür kılıyor —
 	// dizin izni yanlışsa bir saat sonra değil, şimdi öğreniyoruz.
 	takeBackup(ctx, db, am)
+	beat.Mark()
 
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
@@ -67,6 +69,7 @@ func runBackupScheduler(
 			return
 		case <-ticker.C:
 			takeBackup(ctx, db, am)
+			beat.Mark()
 		}
 	}
 }

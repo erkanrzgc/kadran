@@ -8,6 +8,7 @@ import (
 
 	"github.com/erkanrzgc/panely/internal/alarm"
 	"github.com/erkanrzgc/panely/internal/deploy"
+	"github.com/erkanrzgc/panely/internal/liveness"
 	"github.com/erkanrzgc/panely/internal/store"
 )
 
@@ -105,8 +106,9 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 	}
 }
 
-// watchProxy, izleyiciyi kapanışa kadar koşturur.
-func watchProxy(ctx context.Context, w *proxyWatcher, every time.Duration) {
+// watchProxy, izleyiciyi kapanışa kadar koşturur. Her turdan sonra
+// watchdog'un damgasını tazeler (K-115).
+func watchProxy(ctx context.Context, w *proxyWatcher, every time.Duration, beat *liveness.Beat) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
@@ -115,6 +117,7 @@ func watchProxy(ctx context.Context, w *proxyWatcher, every time.Duration) {
 			return
 		case <-t.C:
 			w.tick(ctx)
+			beat.Mark()
 		}
 	}
 }

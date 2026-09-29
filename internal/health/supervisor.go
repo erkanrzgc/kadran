@@ -123,6 +123,15 @@ type Options struct {
 	// HealsBeforeAlarm, alarm açılmadan önce kaç iyileştirmenin ARDIŞIK
 	// başarısız olması gerektiği.
 	HealsBeforeAlarm int
+	// Progress, gözetmen ilerledikçe çağrılır: her turun başında ve her
+	// uygulama ziyaretinden sonra (nil olabilir). panelyd'nin watchdog'u
+	// buna bakıyor (K-115).
+	//
+	// Tur sonunda DEĞİL ziyaret başına: iyileştirme turun içinde, uygulama
+	// uygulama koşuyor. Birkaç sağlıksız uygulamalı bir tur, uygulama
+	// sayısıyla büyüyen bir süre alır; tur sonu damgası meşru bir yükü
+	// "takılma" sanırdı.
+	Progress func()
 }
 
 // DefaultOptions, Faz 1 ölçütü #3'ün bütçesine göre seçildi.
@@ -229,6 +238,10 @@ func (s *Supervisor) Run(ctx context.Context) error {
 // Hiçbir hata döndürmüyor — tek bir uygulamanın sorunu diğerlerinin
 // gözetimini durdurmamalı; hatalar günlüğe ve denetim zincirine gidiyor.
 func (s *Supervisor) Cycle(ctx context.Context) {
+	// Uygulamasız bir sunucuda da damga tazelenmeli: boş gözetmen
+	// takılmış değildir.
+	s.progress()
+
 	deps, err := s.store.ActiveDeployments(ctx)
 	if err != nil {
 		slog.Warn("gözetim: aktif dağıtımlar okunamadı", "hata", err)
@@ -239,6 +252,7 @@ func (s *Supervisor) Cycle(ctx context.Context) {
 	for _, d := range deps {
 		live[d.AppID] = struct{}{}
 		s.visit(ctx, d)
+		s.progress()
 	}
 
 	// Artık aktif olmayan uygulamaların durumu bırakılıyor: silinen ya da
@@ -248,6 +262,12 @@ func (s *Supervisor) Cycle(ctx context.Context) {
 		if _, ok := live[id]; !ok {
 			delete(s.state, id)
 		}
+	}
+}
+
+func (s *Supervisor) progress() {
+	if s.opts.Progress != nil {
+		s.opts.Progress()
 	}
 }
 

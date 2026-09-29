@@ -7430,3 +7430,79 @@ mekanizma. Koşu 36639350499:
 - Kilitlenen bir DÖNGÜNÜN gerçek ikilide tespiti ölçülmedi: test kancası
   eklemeden dışarıdan tetiklenemiyor. Birim testleriyle ve gerçek döngü
   fonksiyonlarıyla sınanıyor (mutasyon 22/22).
+
+## K-116 — Git geçmişi yeniden yazıldı: yazar kimliği ve Claude satırı
+
+**Tarih:** 30 Eylül 2026
+**Durum:** UYGULANDI (kullanıcı kararı)
+
+### Sebep (ölçüldü)
+
+- GitHub'ın "Contributors" kenar çubuğunda yalnızca `claude` görünüyordu.
+- 162 commit'in yazarı `erkanrzgc@gmail.com` idi ve bu adres
+  kullanıcının GitHub hesabına bağlı değil. Contributors API bu
+  commit'leri "anonim" sayıyordu (161 katkı).
+- 87 commit'te `Co-Authored-By: Claude <noreply@anthropic.com>` satırı
+  vardı. Kenar çubuğu ortak yazarları da sayıyor.
+
+### Yapılan
+
+- `git filter-repo` 2.47.0:
+  - `--mailmap`: yazar, committer ve tagger → `erkanrizgic2004@gmail.com`.
+    Kullanıcı gizli noreply adresi yerine bunu seçti.
+  - `--replace-message`: Claude satırı ve önündeki boş satırlar silindi.
+- **İçerik DEĞİŞMEDİ, ölçüldü:** 163 eski/yeni commit çiftinin 163'ünde
+  de dosya ağacı birebir aynı. `v0.1.0`'ın ağacı da aynı.
+- Mesajlarda "claude", "anthropic" ve "co-authored" sayısı 87'den 0'a
+  indi. Satır sayısı 4585 → 4411, yani 87 × 2.
+- Mesajlardaki kısa SHA atıflarını filter-repo yenilerine çevirdi.
+  Örneğin `c75302f`'in mesajı artık `ec6daa4`'ü anıyor.
+- Önceki geçmiş yerelde bir `git bundle` yedeğinde duruyor.
+- Bundan sonra commit'lerde ortak yazar satırı yok.
+
+### Belgelerdeki eski SHA'lar KASTEN değiştirilmedi
+
+- **Bazıları ölçümün kendisi.** `scripts/build-caddy.sh`'taki tablo "şu
+  commit'te bayraksız md5 şuydu" diyor. Gömülü revizyon SHA'nın kendisi
+  olduğu için aynı ağaç, yeni SHA'yla derlenince farklı md5 verir. Metni
+  yeni SHA'ya çevirmek, ölçmediğimiz bir şeyi ölçmüş gibi yazmak olurdu.
+- **`cmd/panely/deploy_test.go`:** `measuredMainSHA`, `git ls-remote`'un
+  ölçülmüş ham çıktısının parçası.
+- **Eski kayıtlar tarihli;** geriye dönük düzeltilmiyor. Karşılıklar
+  aşağıdaki tabloda.
+- Değişen tek yer, hata şablonundaki örnek SHA: o bir ölçüm değil, örnek.
+
+### Sonuçlar
+
+- `main` ve `v0.1.0` etiketi force-push edildi. `watchdog-k115` dalı
+  `main`'e alındıktan sonra silindi.
+- Depoyu fork'layan bir kişinin kopyası eski geçmişle kalıyor.
+- Canlıdaki v0.1.0 ikilileri `version.Commit` olarak `e5a464d`
+  gösteriyor; karşılığı `94d79bc`. Bir sonraki yükseltmede düzelir.
+- CI koşu geçmişi eski SHA'ları anıyor.
+
+### Eski → yeni
+
+| Tarih | Eski | Yeni | Konu |
+|---|---|---|---|
+| 2026-08-05 | `f2e3040` | `bc1983f` | fix: ssh alt süreci el sıkışmadan hemen sonra ölüyordu |
+| 2026-08-07 | `e60b4d2` | `a456b27` | fix: akış uçları 60 saniyede ölüyordu — istemci zaman aşımı gövdeyi de kapsıyor |
+| 2026-09-02 | `c33b58d` | `2362373` | fix: canli uygulama reddi InvalidArgument degil FailedPrecondition |
+| 2026-09-17 | `6f0ce16` | `55cb11f` | docs: K-092 - alarm CANLI SUNUCUDA dogrulandi, kenar tetikleme olculdu |
+| 2026-09-17 | `6f0f82d` | `acced98` | feat: alarm TESPITI - kenar tetiklemeli, dort kosul (K-092) |
+| 2026-09-17 | `9ed3640` | `05b2eda` | test: hic kosmamis alarm yollari olculdu; K-092'de OLCULMEMIS iddia bulundu (K-095) |
+| 2026-09-21 | `e093541` | `e097136` | fix: api.sock reddi artik gunluge yaziliyor - kimlikle birlikte |
+| 2026-09-26 | `090577e` | `3ac573a` | fix: bootstrap - zaman asimi soyleniyor, Docker basta araniyor (K-112) |
+| 2026-09-26 | `1e23bec` | `72564ac` | fix: bootstrap - yeniden kurulum eski ikiliyi calisir birakiyordu (K-112) |
+| 2026-09-26 | `4a4fccb` | `35d40a7` | fix: ters vekil ikilisi commit'ten bagimsiz - yukseltme trafigi kesmiyor (K-112) |
+| 2026-09-26 | `6e46d15` | `2e80be4` | fix: vekil onarimi atlanan uygulamanin rotasini silmiyor, alarmi gizlemiyor (K-112) |
+| 2026-09-26 | `cde0463` | `99d5226` | fix: bootstrap - yukleme suresi iddiasi duzeltildi, tar saat uyarisi (K-112) |
+| 2026-09-26 | `f3912bd` | `c039c94` | fix: ters vekil yeniden baslayinca siteler kapali kaliyordu - vekil izleyicisi (K-112) |
+| 2026-09-27 | `b0730fa` | `c175786` | docs: K-112 taze sunucu testi - bulgular ve olcumler |
+| 2026-09-27 | `ce53413` | `fe17707` | fix: reboot sonrasi "trafik akmiyor" alarmi hic kapanmiyordu (K-112) |
+| 2026-09-27 | `e5a464d` | `94d79bc` | test: vekil izleyicisi mutasyonlari CI'da (K-112) — `v0.1.0` |
+| 2026-09-28 | `507ab67` | `c75302f` | fix: app show eski sunucuda "canli surum yok" demiyor (K-112, K-114) |
+| 2026-09-28 | `93f139b` | `ec6daa4` | feat: app show canli surumu gosteriyor (K-112) |
+| 2026-09-30 | `c27db52` | `03d8b35` | fix: ters vekil biriminden ExecReload kaldirildi (K-112) |
+| 2026-09-30 | `3f19a29` | `6d86542` | feat: askida kalma tespiti - dongu damgalari + veritabani yoklamasi (K-115) |
+| 2026-09-30 | `63ca0e7` | `62098a4` | docs: K-115 uygulandi, gercek systemd olcumleri; README/CHANGELOG |

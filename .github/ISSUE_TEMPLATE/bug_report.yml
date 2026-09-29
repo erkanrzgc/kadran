@@ -29,7 +29,7 @@ body:
     id: version
     attributes:
       label: Version or commit SHA
-      placeholder: "f2e3040, or output of `panely version`"
+      placeholder: "bc1983f, or output of `panely version`"
     validations:
       required: true
 

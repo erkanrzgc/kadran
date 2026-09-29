@@ -28,6 +28,7 @@ FILES=(
     deploy/systemd/panely-notify-failure@.service
     deploy/systemd/panely-volume-backup.service
     deploy/systemd/panely-volume-backup.timer
+    deploy/systemd/panely-caddy.service
 )
 BAK=$(mktemp -d)
 for f in "${FILES[@]}"; do cp "$f" "$BAK/$(basename "$f")"; done
@@ -35,7 +36,7 @@ restore() { for f in "${FILES[@]}"; do cp "$BAK/$(basename "$f")" "$f"; done; }
 trap 'restore; rm -rf "$BAK"' EXIT
 
 fail=0
-WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive'
+WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive|TestReverseProxyHasNoReload'
 
 # mutate <ad> <dosya> <python-ifadesi>
 mutate() {
@@ -188,6 +189,13 @@ mutate "hacim yedeği arızası bildirilmiyor" "$H" \
 
 mutate "zamanlayıcı kaçan koşuyu atlıyor" deploy/systemd/panely-volume-backup.timer \
     "s=s.replace('\nPersistent=true\n','\nPersistent=false\n',1)"
+
+echo "== Ters vekilde reload yok (K-112) =="
+
+C=deploy/systemd/panely-caddy.service
+
+mutate "ExecReload geri eklendi" "$C" \
+    "s=s.replace('\nExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json\n','\nExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json\nExecReload=/usr/local/lib/panely/panely-caddy reload --config /etc/panely/caddy.json --force\n',1)"
 
 restore
 echo

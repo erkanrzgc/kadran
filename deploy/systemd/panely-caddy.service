@@ -50,7 +50,14 @@ User=panely-caddy
 Group=panely-caddy
 
 ExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json
-ExecReload=/usr/local/lib/panely/panely-caddy reload --config /etc/panely/caddy.json --force
+
+# ExecReload KASTEN yok (K-112). Reload /etc/panely/caddy.json'ı yüklerdi;
+# o dosyada hiç rota yok (aşağıdaki `--resume` bölümüne bakın). Çalışan bir
+# reload `systemctl reload panely-caddy` ile BÜTÜN siteleri kapatırdı ve
+# izleyici onları ancak ~10 sn sonra geri getirirdi. Rotaları yalnızca
+# panelyd yükler (K-055). Eski satır zaten hiç çalışmadı: admin adresi
+# socket activation'ın fd/3'ü ve Caddy CLI onu çeviremiyor
+# ("dial fd: unknown network fd", taze test sunucusunda ölçüldü).
 
 Restart=on-failure
 RestartSec=5s

@@ -421,6 +421,25 @@ func TestAdminSocketCarriesGroupOwnershipNotMembership(t *testing.T) {
 	}
 }
 
+// TestReverseProxyHasNoReload, ters vekil biriminde ExecReload
+// OLMADIĞINI doğrular (K-112).
+//
+// Reload /etc/panely/caddy.json'ı yüklerdi ve o taban yapılandırmada hiç
+// rota yok. Çalışan bir ExecReload, `systemctl reload panely-caddy` ile
+// BÜTÜN siteleri kapatırdı; rotaların tek kaynağı panelyd (K-055).
+func TestReverseProxyHasNoReload(t *testing.T) {
+	unit := readUnit(t, "panely-caddy.service")
+
+	// Pozitif kontrol: ayrıştırıcı bu dosyada bir Exec* satırını
+	// göremiyorsa "ExecReload yok" hiçbir şey kanıtlamaz.
+	if got := directive(unit, "ExecStart"); len(got) != 1 {
+		t.Fatalf("ExecStart= okunamadı: %v", got)
+	}
+	if got := directive(unit, "ExecReload"); len(got) != 0 {
+		t.Errorf("ExecReload= var: %v — taban yapılandırma rotasız, reload siteleri kapatır", got)
+	}
+}
+
 // TestReverseProxyKeepsOnlyThePortBindingCapability, ters vekile :80/:443
 // dışında bir yetenek verilmediğini doğrular.
 func TestReverseProxyKeepsOnlyThePortBindingCapability(t *testing.T) {

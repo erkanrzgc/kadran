@@ -10,6 +10,10 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   traffic. A separate line names the live release even when it is older than the
   listed ones. Against an older server that does not report the live release,
   it says "unknown" instead of claiming nothing is live (K-112).
+- The reverse-proxy unit no longer has a reload command. It never worked, and a
+  working one would have loaded the base configuration, which has no routes, and
+  taken every site down. The next upgrade restarts the proxy once because its unit
+  file changed (K-112).
 
 ## v0.1.0 — 2026-09-27
 

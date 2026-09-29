@@ -6954,6 +6954,17 @@ olduğu doğrulandı.
     yeniden başlatır (~1 sn, 6. bulgu).
   - Sunucusuz ölçülemediği için sunucuya dokunan bir sonraki işe
     bırakıldı.
+  - ✅ **30 Eylül, kullanıcı kararıyla kaldırıldı.** Satır silindi,
+    yerine gerekçe yorumu kondu. `TestReverseProxyHasNoReload` önce
+    kırmızıydı (eski dosyada satırı buldu); pozitif kontrolü var
+    (`ExecStart` okunamıyorsa "yok" bir şey kanıtlamaz).
+    `mutate-units.sh`'e "ExecReload geri eklendi" mutantı eklendi ve
+    yakalandı.
+  - Düzeltilen iddia: taslak yorum hatayı "canlıda ölçüldü" diye
+    yazıyordu. Oturum kaydına bakıldı: ölçüm taze test sunucusundaydı.
+  - ÖLÇÜLMEDİ: gerçek sunucuda `systemctl reload panely-caddy` şimdi
+    ne diyor, yükseltme caddy'yi gerçekten bir kez yeniden başlatıyor
+    mu. İkisi de bir sonraki canlı yükseltmeyle ölçülecek.
 - ✅ 28 Eylül'de kapandı — UX: `app show`'daki DURUM derlemenin durumunu
   gösteriyordu, hangi sürümün CANLI olduğunu işaretlemiyordu.
   `GetAppResponse.active_release_id` eklendi (`internal/pb` bütçe

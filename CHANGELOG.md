@@ -20,6 +20,13 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   into the same wall, so `panely status` never answered. The bound is derived from
   the code's timeouts; the hang itself was not reproduced (K-117).
 
+Running in production since 30 September 2026 (K-118):
+- the upgrade itself cost ~1.5 s of downtime, measured from inside the server;
+- a killed reverse proxy was serving again in ~6.4 s;
+- a reboot onto a new kernel had sites back after ~43 s, and the startup alarm
+  closed on its own;
+- the watchdog was armed after the upgrade and after the reboot.
+
 - `panely app show` marks which release is live. The old status column showed the
   build status only; after a rollback the top "built" release does not get the
   traffic. A separate line names the live release even when it is older than the

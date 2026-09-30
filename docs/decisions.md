@@ -6926,6 +6926,7 @@ sonra     üç ikili yeni (md5 = derlenen = kurulan = çalışan),
 Canlıda ölçülMEYEN: reboot (7. bulgu) ve Caddy çökmesi (4. bulgu).
 İkisi de taze sunucuda aynı ikililerle ölçüldü; canlıyı bunun için
 yeniden başlatmak ya da Caddy'yi öldürmek kullanıcının kararı.
+→ 30 Eylül'de kullanıcı onayıyla canlıda ölçüldü, bkz. K-118.
 
 Kurulum sonrası `systemctl --failed` 23 geçici `run-u*.service`
 gösteriyor. Hepsi 26 Eylül 10:32 UTC'den, K-110 ölçümümün artığı
@@ -6965,6 +6966,8 @@ olduğu doğrulandı.
   - ÖLÇÜLMEDİ: gerçek sunucuda `systemctl reload panely-caddy` şimdi
     ne diyor, yükseltme caddy'yi gerçekten bir kez yeniden başlatıyor
     mu. İkisi de bir sonraki canlı yükseltmeyle ölçülecek.
+    → 30 Eylül'de canlıda ölçüldü (K-118): reload "not applicable" ile
+    reddediliyor, caddy'ye dokunmuyor; yükseltme ~1,5 sn kesinti verdi.
 - ✅ 28 Eylül'de kapandı — UX: `app show`'daki DURUM derlemenin durumunu
   gösteriyordu, hangi sürümün CANLI olduğunu işaretlemiyordu.
   `GetAppResponse.active_release_id` eklendi (`internal/pb` bütçe
@@ -7426,7 +7429,8 @@ mekanizma. Koşu 36639350499:
 ÖLÇÜLMEDİ:
 - canlıda gerçek döngü süreleri (saatlik rapor bunun için);
 - canlıda watchdog'un bir yükseltme ve reboot'tan sağ çıkması. İkisi de
-  bir sonraki canlı yükseltmeyle birlikte ölçülecek.
+  bir sonraki canlı yükseltmeyle birlikte ölçülecek. → 30 Eylül'de
+  ölçüldü (K-118): iki olayda da watchdog kuruldu, zaman aşımı yok.
 - Kilitlenen bir DÖNGÜNÜN gerçek ikilide tespiti ölçülmedi: test kancası
   eklemeden dışarıdan tetiklenemiyor. Birim testleriyle ve gerçek döngü
   fonksiyonlarıyla sınanıyor (mutasyon 22/22).
@@ -7561,4 +7565,105 @@ ya da ListContainers'da asılı kalan sahte bir Docker gerekiyor. Salt
 dinleyip hiç cevap vermeyen bir soket muhtemelen yetmez, çünkü gRPC el
 sıkışması hiç tamamlanmaz; bu da ölçülmedi. Sayı bu yüzden koddan
 türetildi.
+
+## K-118 — 30 Eylül: v0.1.0 Release, canlı yükseltme, çökme ve reboot ölçümleri
+
+**Tarih:** 30 Eylül 2026
+**Durum:** ÖLÇÜLDÜ. Canlı adımlar kullanıcı onayıyla yapıldı ("yükseltmeyle
+aynı ziyarette").
+
+### Release v0.1.0
+
+- Etiketten (`94d79bc`) LF satır sonlu bir klonda, CI'ın sürümüyle
+  (Go 1.25.13) derlendi.
+- Önbellek temizlenerek yapılan iki derleme birebir aynı `SHA256SUMS`
+  verdi. Arşivler deterministik: ad sırası, sabit zaman ve sahip,
+  `gzip -n`.
+- Dosyalar:
+  - iki sunucu arşivi (`bin/linux-<arch>/`, `bootstrap`'ın beklediği
+    düzen, koddan doğrulandı);
+  - beş platform için CLI;
+  - `SHA256SUMS`.
+- Yükleme dersi: `gh release create` dosyaları paralel yükledi. Biri
+  **HTTP 408** ile düştü ve gh taslağı sildi. Tek tek yükleme geçti
+  (~128 KB/s). Yayından sonra üç dosya geri indirilip
+  `sha256sum -c` ile doğrulandı.
+- Yalnızca v0.1.0 bölümü kullanıldı. "Unreleased"daki watchdog bu
+  ikililerde yok.
+
+### Yükseltme: `e5a464d` → `c71770b` (`v0.1.0-19-gc71770b`)
+
+- **Önce:**
+  - `panely backup create` ile yedek alındı;
+  - iki sürüm arasında göç yok;
+  - geri dönüş hazır: v0.1.0 klonu, birim ve ikiliyle birlikte, çünkü
+    WatchdogSec yüzünden yalnızca ikiliyi geri almak döngüdür (K-115).
+- **İlk deneme:** yükleme sırasında `Connection reset by peer`
+  (exit 255). Kurulum betiği hiç çalışmadı; canlı değişmedi (md5'ler,
+  birim tarihleri, sunucu içi yoklamada 0 hata). İkinci deneme ~13 dk'da
+  geçti.
+- **Kesinti:** sunucunun kendi içinden, ağdan bağımsız, 0,5 sn'lik
+  yoklamayla ölçüldü: 10:48:47.08 – 10:48:48.20, yani ~1,5 sn. Tek sebep
+  caddy'nin bir kez yeniden başlaması (birim değişti, ExecReload).
+- **Dış yoklama bu kesintiyi ölçemedi:** yükleme yerel bağlantıyı
+  doldurduğu için yükleme sırasında `000` üretti. Kesinti ölçümü sunucu
+  içinden yapılmalı.
+- **Doğrulandı:**
+  - çalışan üç ikili de kurulanla aynı (`/proc/<pid>/exe`);
+  - `WatchdogUSec=1min`, `TimeoutStartUSec=3min` (öncesinde `1min 30s`:
+    K-117'nin dayandığı varsayılan canlıda da buydu);
+  - `watchdog açık … ping_araligi=30s
+    izlenen_donguler=gözetmen,vekil-izleyici,disk,yedek`;
+  - `Watchdog timeout` 0;
+  - `systemctl reload panely-caddy` → "Job type reload is not
+    applicable", caddy PID değişmedi (K-112 kapandı).
+- **`app show` (K-114):**
+  - yeni CLI eski sunucuya karşı "Canlı: bilinmiyor — sunucu bu bilgiyi
+    göndermiyor" ve TRAFİK "?" dedi. Bu iddia şimdiye kadar yalnız birim
+    testiyle korunuyordu.
+  - yükseltmeden sonra "Canlı: r7" ve r7 satırında "canlı".
+
+### Caddy çökmesi (K-112 4. bulgu, canlıda)
+
+- `systemctl kill -s SIGKILL --kill-whom=main panely-caddy`, 10:50:41.93.
+- systemd 5 sn sonra geri getirdi (`NRestarts=1`). İzleyici üç rotayı
+  10:50:48.29'da geri yükledi, site 10:50:48.36'da tekrar 200 döndü:
+  **~6,4 sn**.
+- Taze sunucuda 3 ve 7 sn ölçülmüştü. En kötü durum koddan: RestartSec
+  5 sn + izleyici aralığı 10 sn.
+- panelyd yeniden başlamadı. Alarm açılmadı: onarım ilk turda başardı.
+
+### Reboot (K-112 7. bulgu, canlıda) — çekirdek de değişti
+
+- Sunucu 7,5 haftadır açıktı. `reboot-required` vardı; kurulu çekirdek
+  6.8.0-142, çalışan 6.8.0-137. Reboot aynı zamanda bir çekirdek
+  yükseltmesi oldu.
+- **Zaman çizelgesi:**
+  - reboot 10:52:12;
+  - çekirdek 10:52:19;
+  - panelyd hazır 10:52:44;
+  - site dışarıdan 10:52:55'te 200.
+  - Toplam **~43 sn**, çekirdekten sonra ~36 sn. Taze sunucuda ~19 sn
+    ölçülmüştü; buradaki fark, izleyicinin bir sonraki turunu beklemek.
+- **Açılış alarmı:** açılışta konteynerler hazır değildi ve "trafik
+  akmıyor" alarmı 10:52:44'te açıldı. İzleyici rotaları 10:52:54'te
+  yükledi, alarm 10:53:04'te **kendiliğinden kapandı**. `ce53413`
+  (yeni `fe17707`) canlıda da çalışıyor; eskiden bu alarm her reboot'tan
+  sonra açık kalıyordu.
+- Watchdog reboot'tan sonra da kurulu. Zaman aşımı 0, çekirdek
+  servislerde `NRestarts=0`.
+
+### Açık kalanlar
+
+- **Eşikler:** watchdog'un ilk saatlik "en uzun ilerleme aralıkları"
+  raporu 11:53 civarı bekleniyor. Eşikler o veri okunmadan doğrulanmış
+  sayılmıyor (K-115).
+- **Yükleme sağlamlığı:** kurulum paketi sıkıştırılmadan gönderiliyor
+  (74,7 MiB düz tar; aynı dosyalar gzip'le ~29 MiB). Yavaş bir
+  bağlantıda ~10 dk sürüyor ve bu sürede bir kez koptu. Sıkıştırma
+  ayrı bir iş.
+- **Küçük kullanım bulgusu:** `panely app show <hedef> <uygulama>` ters
+  sırayla çağrılınca "error reading server preface: EOF" hatası veriyor;
+  sebebi söylemiyor.
+
 

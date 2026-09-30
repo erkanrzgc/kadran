@@ -77,7 +77,7 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 ### Requirements
 
 - **Server:** a fresh Linux host with systemd, OpenSSH and Docker Engine, reachable
-  as root over SSH **once**. On Ubuntu, Docker from the distribution is enough:
+  over SSH as root or as a user with passwordless sudo (`-sudo`). On Ubuntu, Docker from the distribution is enough:
   `apt-get install -y docker.io`. The installer stops early if Docker is missing. Tested on Ubuntu 24.04 and Debian 13, x86_64. Debian 13 was tested on a GCP e2-micro with 1 GB RAM and 2 GB swap, where a Node build peaked with 237 MiB free (K-121). arm64 binaries are
   built, and CI runs the tests on real ARM hardware, but no server install on
   arm64 has been done yet.
@@ -86,11 +86,9 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 - Ports 80 and 443 must be free on the server. The installer stops if a `caddy`,
   `nginx`, `apache2`, `httpd` or `lighttpd` service is running.
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`):
-  for the install, allow key-only root login in a separate file such as
-  `/etc/ssh/sshd_config.d/01-panely-install.conf` containing
-  `PermitRootLogin prohibit-password`. Delete the file afterwards. Open 80/443 in
-  the provider's firewall; on GCP, use a rule with a target tag so that only this
-  machine is exposed.
+  use `panely bootstrap -sudo user@server` with a user that has passwordless sudo.
+  Root SSH stays closed; see step 2. Open 80/443 in the provider's firewall; on GCP,
+  use a rule with a target tag so that only this machine is exposed.
 - **GCP: never add `panely-client` to instance or project SSH metadata.** The guest
   agent manages the keys of every metadata user and puts them in the `docker` and
   `google-sudoers` groups. `panely-client` would lose its forced command and gain
@@ -113,22 +111,32 @@ buf generate
 scripts/build-release.sh          # bin/linux-{amd64,arm64}/… and bin/panely
 ```
 
-### 2. Bootstrap the server (one time, as root)
+### 2. Bootstrap the server
 
 ```bash
-bin/panely bootstrap root@your-server
+bin/panely bootstrap root@your-server          # root SSH with a key
+bin/panely bootstrap -sudo you@your-server     # or: passwordless sudo, root SSH stays closed
 ```
 
 This copies the binaries and systemd units, creates the unprivileged users, installs
 your public key for the `panely-client` user **bound to a forced command**, and
 checks its own work, for example by confirming that the daemon's user cannot reach
-Docker. It is idempotent and safe to run again. After this, you never need root for
-day-to-day work.
+Docker. It is idempotent and safe to run again, and the same command upgrades an
+existing install. After this, you never need root for day-to-day work.
 
-The installer bundle is about 75 MiB, so the upload speed of your connection
-matters. Measured from the same home line on the same day: one run finished the
-upload in under a minute, another had sent only 28 MB after five minutes. The time
-limit is 30 minutes; raise it with `-timeout 60m` if needed.
+Before uploading anything, the installer checks that it will actually run as root, in
+the exact form it will use.
+- With `-sudo`, the whole install runs under `sudo -n`, and sudo never asks for a
+  password. If one is required, the install stops with sudo's own message before the
+  upload.
+- The privilege is the same as a root key. What changes is that sshd's policy is left
+  alone, root SSH stays closed, and sudo's log records the command.
+- Measured on Debian 13 on GCP: an upgrade with `-sudo` passed 17/17 checks, root login
+  stayed refused before and after, and sites answered throughout (K-122).
+
+The installer bundle is gzip-compressed, about 28 MiB (K-119), so upload speed matters.
+To a US server from a home line in Turkey, it took 16–22 minutes. The time limit is
+30 minutes; raise it with `-timeout 60m` if needed.
 
 The installer was re-measured on a fresh Ubuntu 24.04 server (Hetzner cx23, x86_64)
 on 26–27 September 2026: fresh install, upgrades across commits, a same-build

@@ -7965,7 +7965,107 @@ Bellek sunucu içinden saniyede bir `/proc/meminfo`'dan kaydedildi.
 - Swap'sız 1 GB'de derleme ölçülmedi.
 - arm64 sunucu kurulumu hâlâ hiç yapılmadı.
 - **Sudo kipi** (K-113 1b) yazılmadı. Her yükseltmede root girişini elle
-  açıp kapatmak gerekiyor.
+  açıp kapatmak gerekiyor. → Aynı gün yazıldı ve ölçüldü, bkz. K-122.
+
+## K-122 — `bootstrap -sudo`: root'a SSH açmadan kurulum ve yükseltme
+
+**Tarih:** 30 Eylül 2026
+**Durum:** UYGULANDI ve GCP'de (Debian 13) gerçek bir yükseltmeyle ÖLÇÜLDÜ.
+
+### Neden
+
+Bulut imajlarının çoğu root'a SSH'ı kapalı getiriyor (GCP Debian:
+`PermitRootLogin no`, K-121). K-121'de kurulum için sshd politikası elle
+açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
+
+### Tasarım
+
+- **`panely bootstrap -sudo kullanıcı@sunucu`.** Uzak komut SABİT:
+  `sudo -n -- bash -c '<aynı betik>'`.
+  - İçine kullanıcı girdisi girmiyor; betikler paketin sabitleri.
+  - Tırnak `shellQuote` ile atılıyor.
+  - `-n`: sudo asla parola sormaz, gerekiyorsa düşer. Parola hiç
+    alınmıyor, sırrı görmeme ilkesi korunuyor.
+  - `-E` yok: install.sh hazırlık dizinini ortamla değil argümanla
+    alıyor.
+- **Yetki önkontrolü** 28 MB'lık yüklemeden ÖNCE, kurulumun koşacağı TAM
+  biçimle yapılıyor: `sudo -n -- bash -c 'id -u'` çıktısı tam olarak `0`
+  olmalı.
+  - `sudo -n true` yetmezdi: `bash -c`'ye izin verildiğini ve uid 0'a
+    inildiğini göstermez.
+  - Hata sudo'nun KENDİ mesajını taşıyor. Genel bir cümle K-120'nin
+    hatasını tekrarlardı.
+- **Root kipinde de önkontrol var.** Root olmayan bir hedef eskiden 28 MB
+  yükleyip ancak install.sh'in ilk satırında düşüyordu. Artık yüklemeden
+  önce `-sudo` önerisiyle duruyor.
+- **`panely-client` ile kurulum her iki kipte de reddediliyor.** Kullanıcı
+  adı verilmeyen hedef ona düşüyordu (`client.DefaultSSHUser`) ve kurulum
+  anlaşılmaz biçimde zorlanmış komuta çarpıyordu. O hesaba sudo da
+  verilmemeli.
+- **Güvenlik çerçevesi:** yetki root anahtarıyla AYNI; sudo'suz root
+  olmuyor. Değişen üç şey: sshd politikasına dokunulmuyor, root'a SSH kapalı
+  kalıyor, sudo komutu günlüğe yazıyor.
+
+### Test
+
+- **Sahte ssh:** test binary'si kendini ssh yerine çalıştırıyor, çağrıları
+  kaydediyor ve senaryoya göre cevap veriyor. Kanıtladığı: argv'nin biçimi
+  ve çağrı SIRASI.
+- **Sıra testi yanlış sebepten geçemiyor:** sudo'nun parola istediği
+  testte `BinaryDir` YOK.
+  - Paket önkontrolden önce üretilseydi hata "bulunamadı" olurdu.
+  - Gelen, sudo'nun kendi mesajı ("a password is required"). Yani
+    önkontrol paket üretiminden ve yüklemeden önce koştu.
+- **Tırnak:**
+  - Go'da taşınabilir bir POSIX çözücüyle gidiş-dönüş sınanıyor;
+    Windows'ta da çalışıyor.
+  - Linux'ta gerçek `sh` ile. Ubuntu CI'da `sh` dash; Debian'da useradd'ın
+    varsayılan kabuğu `/bin/sh`.
+- Önce kırmızı: beş test asıl sebepten düştü (önkontrol yok, sarmalayıcı
+  yok, `panely-client` reddi yok).
+- **`mutate-bootstrapssh.sh` +7, toplam 16/16:**
+  - önkontrol yok;
+  - uid denetlenmiyor;
+  - sudo'nun mesajı taşınmıyor;
+  - betik sudo'suz;
+  - `-n` düştü;
+  - tırnak kaçırılmıyor;
+  - `panely-client` kabul ediliyor.
+
+  Tırnak mutantı ilk yazımda UYGULANAMADI: bash-python kaçışı yanlıştı.
+  Kapı ölçümü durdurdu; mutant `chr()` ile yeniden yazıldı.
+- **Belge yorumu hatası:** `gofmt`, Go belge yorumundaki `''` dizisini
+  tipografik tırnağa çevirdi ve yorum yanlış bilgi verir oldu. Yorum o
+  diziyi içermeyecek biçimde yeniden yazıldı.
+
+### Gerçek sunucuda ölçüldü (GCP, Debian 13)
+
+- **Kuru koşu:** kodun ürettiği sudo komutu, hiçbir şey kurmayan küçük bir
+  paketle gönderildi. Sahte ssh'ın kanıtlayamadıklarını ölçtü:
+  - `uid=0`, `SUDO_USER=panely-kurulum`;
+  - hazırlık dizini argümanla geldi;
+  - 3 MB rastgele veri sudo'dan bayt bayt eksiksiz geçti;
+  - hazırlık dizini temizlendi;
+  - giriş kabuğu bash.
+- **Gerçek yükseltme:** `v0.1.0-24` → `v0.1.0-26`, `-sudo` ile.
+  - **Öncesinde ve sonrasında** `permitrootlogin no`; root denemesi iki
+    kez de "Permission denied". Geçici bir sshd dosyası YOK.
+  - Önkontrol: "Yetki: parolasız sudo ile root".
+  - 17/17 kurulum sonrası kontrol ✓, 980 sn (neredeyse tamamı yükleme).
+  - **Sudo günlüğü:** 20:21:00'de `COMMAND=/usr/bin/bash -c 'id -u'`,
+    20:21:08'de `COMMAND=/usr/bin/bash -c 'set -e…`. Kurulumun kimin
+    adına ve ne zaman koştuğu kayıtlı.
+  - **Kesinti 0:** sunucu içinden 0,5 sn'lik 1923 yoklamanın 1923'ü de
+    200. Ters vekil değişmedi, yeniden başlatılmadı.
+  - Watchdog kurulu, zaman aşımı 0, alarm yok.
+
+### Açık kalanlar
+
+- Sudo için parola isteyen bir hesapla gerçek bir koşu yapılmadı. Hata
+  yolu sahte ssh ile sınandı. Kod mesajın metnine bakmıyor, onu olduğu gibi
+  taşıyor; ama gerçek sudo'nun o durumda ne yazdığı burada ölçülmedi.
+- `requiretty` kullanan eski dağıtımlar ölçülmedi. Önkontrol onları da
+  yüklemeden önce durdurmalı (sudo'nun kendi mesajıyla).
 
 
 

@@ -53,6 +53,17 @@ Measured in production (K-118):
 
 ### CLI
 
+- `panely bootstrap -sudo user@server` installs and upgrades through the user's
+  passwordless sudo, so root SSH stays closed and sshd's policy is left alone.
+  - The whole install runs under `sudo -n`, which never prompts. Before anything is
+    uploaded, the installer checks in the exact form it will use that it becomes
+    uid 0, and it stops with sudo's own message if it cannot.
+  - Root mode also checks the uid before uploading. `panely-client` is refused as an
+    install account in both modes.
+  - Measured on Debian 13 on GCP: 17/17 checks passed, root login was refused before
+    and after, sudo's log recorded the command, and sites answered throughout the
+    upgrade (K-122).
+
 - `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB
   with the same binaries. On a slow link the uncompressed upload took about
   13 minutes and dropped once (K-119).

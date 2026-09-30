@@ -29,6 +29,12 @@ const (
 	fakeSSHOutEnv  = "PANELY_TEST_FAKE_SSH_OUT"
 	fakeSSHArgvEnv = "PANELY_TEST_FAKE_SSH_ARGV"
 	fakeSSHEchoEnv = "PANELY_TEST_FAKE_SSH_ECHO"
+	// fakeSSHFailEnv: stderr'e bu metni yazıp 255 ile çıkar, stdin'i hiç
+	// okumadan. Gerçek ssh bağlanamadığında (DNS, kimlik doğrulama, host
+	// anahtarı) tam olarak böyle davranıyor.
+	fakeSSHFailEnv = "PANELY_TEST_FAKE_SSH_FAIL"
+	// fakeSSHCleanEnv: hiçbir şey yazmadan 0 ile çıkar (kontrol grubu).
+	fakeSSHCleanEnv = "PANELY_TEST_FAKE_SSH_CLEAN"
 )
 
 // http2Preface, gRPC'nin bağlantıda gönderdiği ilk baytlardır (RFC 7540 §3.5).
@@ -52,6 +58,13 @@ func TestMain(m *testing.M) {
 func fakeSSHMain() {
 	if path := os.Getenv(fakeSSHArgvEnv); path != "" {
 		_ = os.WriteFile(path, []byte(strings.Join(os.Args[1:], "\n")), 0o600)
+	}
+	if msg := os.Getenv(fakeSSHFailEnv); msg != "" {
+		_, _ = os.Stderr.WriteString(msg + "\r\n")
+		os.Exit(255)
+	}
+	if os.Getenv(fakeSSHCleanEnv) != "" {
+		return
 	}
 	// Yankı kipi: stdin'i stdout'a kopyalar ve stdin kapanana kadar
 	// YAŞAR. Alt sürecin ömrünü sınayan testler bunu kullanıyor —

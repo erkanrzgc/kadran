@@ -7688,6 +7688,13 @@ aynı ziyarette").
   %38'i). GNU tar `-tzf` ile sorunsuz açtı.
 - `gzip` ve `tar -z` Ubuntu ile Debian'ın temel kurulumunda var. Sunucu
   tarafında yeni bir bağımlılık yok.
+- **Süre kazancı boyut oranı kadar DEĞİL, ölçüldü:**
+  - gzip'li paket aynı bağlantıdan canlıya `wc -c`'ye (hiçbir şey
+    kurmadan) 473 sn'de yüklendi, yani ~62 KB/s;
+  - düz paket yükseltmede ~12 dk sürmüştü, yani ~106 KB/s;
+  - hat hızı iki ölçüm arasında değişti. Kesin olan boyut: %62 daha az
+    bayt. Aynı hızda yükleme süresi ve kopma penceresi de o oranda
+    kısalır, ama aynı anda iki paketle yapılmış bir karşılaştırma yok.
 
 ### Testler
 
@@ -7710,5 +7717,57 @@ aynı ziyarette").
   zayıf test değil, betiğin `-run` listesiydi: yeni testleri hiç
   seçmiyordu. Liste düzeltildi. Ders: mutant yeşil kalınca önce
   mutasyonun ve test seçiminin kendisine bak (K-080).
+
+## K-120 — ssh'ın hata mesajı kullanıcıya ulaşmıyordu
+
+**Tarih:** 30 Eylül 2026
+**Durum:** UYGULANDI
+
+### Bulgu (K-118'deki kullanım notundan)
+
+- `panely app show <hedef> <uygulama>` ters sırayla çağrılınca yalnızca
+  `error reading server preface: EOF` dönüyordu.
+- Kök sebep sıraya özgü değildi, ölçüldü: `panely status
+  panely-client@yok-boyle-bir-sunucu.invalid` da aynı mesajı verdi.
+- Bağlanamayan HER ssh, yani yanlış ad, reddedilen anahtar ve DEĞİŞMİŞ
+  host anahtarı, kullanıcıya bu anlaşılmaz gRPC hatası olarak
+  ulaşıyordu. Sonuncusu güvenlik açısından önemli: "Host key
+  verification failed" uyarısı görünmüyordu.
+- **Neden:** ssh'ın stderr'i yakalanıyordu, ama yalnızca bağlantı
+  KAPANIRKEN (`cleanup`) okunuyordu. gRPC stdout'taki EOF'u ondan önce
+  kendi mesajına çeviriyordu.
+
+### Düzeltme
+
+- Alt süreç TEK KEZ toplanıyor (`sync.Once`); hem kapanış hem okuyucu
+  aynı sonucu kullanıyor.
+- `pipeConn.Read` io.EOF görünce `onEOF`'a soruyor:
+  - ssh hatayla çıktıysa kendi mesajı döndürülüyor;
+  - temiz çıktıysa düz io.EOF kalıyor.
+- gRPC artık `error reading server preface: ssh: Could not resolve
+  hostname …` diyor.
+- `cmd.Wait` ancak EOF'tan SONRA çağrılıyor: okumalar bittikten sonra.
+  Wait'in borusunu kapatması veri kaybettirmez.
+
+### Test ve ölçüm
+
+- Sahte ssh'a iki kip eklendi:
+  - stderr'e "Permission denied (publickey)." yazıp 255 ile çıkan;
+  - sessizce 0 ile çıkan (kontrol grubu).
+- **Önce kırmızı**, üretimdekiyle aynı mesajla:
+  - `TestSSHFailureReachesTheReader`: okuyucu düz EOF aldı;
+  - `TestSSHFailureReachesTheUser`: CLI'ın yolu olan Dial + gerçek RPC
+    "error reading server preface: EOF" döndü.
+- `TestCleanSSHExitIsPlainEOF`: temiz çıkış hâlâ io.EOF.
+- `-race` ile yeşil.
+- **Gerçek CLI'da ölçüldü:**
+  - olmayan sunucu → "ssh: Could not resolve hostname
+    yok-boyle-bir-sunucu.invalid: Name or service not known";
+  - ters sıra → "Could not resolve hostname portfolio" (hedefin yanlış
+    alındığı artık görünüyor);
+  - kontrol: canlı sunucuya bağlantı değişmedi.
+- `mutate-client.sh` +3, 3/3 yakalandı. Betik artık `pipeconn.go`'yu da
+  bozabiliyor ve yeni testleri `-run` listesine alıyor.
+
 
 

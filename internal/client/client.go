@@ -400,34 +400,48 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 		return nil, fmt.Errorf("client: ssh başlatılamadı: %w", err)
 	}
 
-	// cleanup, bağlantı kapanınca alt süreci toplar.
+	// wait, alt süreci TEK KEZ toplar; hem kapanış hem okuyucu kullanıyor.
 	//
 	// Süreç artık dial bağlamına bağlı olmadığı için toplanması TAMAMEN
 	// buraya kaldı. pipeConn önce yazma ucunu kapatıyor; ssh normalde
 	// EOF görüp kendiliğinden çıkar. Çıkmazsa süresiz beklemek her
 	// bağlantıda asılı bir süreç bırakırdı — o yüzden süre sınırı var.
-	cleanup := func() error {
-		bitti := make(chan error, 1)
-		go func() { bitti <- cmd.Wait() }()
-
-		var err error
-		select {
-		case err = <-bitti:
-		case <-time.After(sshExitGrace):
-			_ = cmd.Process.Kill()
-			err = <-bitti
-		}
-
+	var (
+		waitOnce sync.Once
+		waitErr  error
+	)
+	wait := func() error {
+		waitOnce.Do(func() {
+			bitti := make(chan error, 1)
+			go func() { bitti <- cmd.Wait() }()
+			select {
+			case waitErr = <-bitti:
+			case <-time.After(sshExitGrace):
+				_ = cmd.Process.Kill()
+				waitErr = <-bitti
+			}
+		})
+		return waitErr
+	}
+	sebep := func() error {
+		err := wait()
 		if err == nil {
 			return nil
 		}
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("ssh: %s", msg)
+			return fmt.Errorf("ssh: %s", strings.TrimPrefix(msg, "ssh: "))
 		}
 		return fmt.Errorf("ssh sonlandı: %w", err)
 	}
 
-	return newPipeConn(stdout, stdin, t.String(), cleanup), nil
+	pc := newPipeConn(stdout, stdin, t.String(), sebep)
+	// ssh bağlanamazsa stdout hemen kapanır ve gRPC bunu "error reading
+	// server preface: EOF" diye raporlardı; asıl sebep (DNS, reddedilen
+	// anahtar, DEĞİŞMİŞ host anahtarı) ancak kapanışta okunuyordu ve
+	// kullanıcıya hiç ulaşmıyordu (K-120). Okuyucu artık EOF'ta ssh'ın
+	// çıkmasını bekleyip onun mesajını döndürüyor. Temiz çıkışta düz EOF.
+	pc.onEOF = sebep
+	return pc, nil
 }
 
 // syncBuffer, alt sürecin stderr'ini eşzamanlı okuma/yazmaya karşı güvenli

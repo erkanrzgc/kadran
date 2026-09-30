@@ -24,6 +24,9 @@ type pipeConn struct {
 
 	// cleanup, bağlantı kapandığında alt sürecin toplanmasını sağlar.
 	cleanup func() error
+	// onEOF, okuma ucu kapanınca çağrılır; nil olmayan dönüşü io.EOF'un
+	// yerine geçer (nil olabilir). ssh taşımasında ssh'ın hata mesajı.
+	onEOF func() error
 
 	closeOnce sync.Once
 	closeErr  error
@@ -51,7 +54,19 @@ func newPipeConn(r io.ReadCloser, w io.WriteCloser, remote string, cleanup func(
 	}
 }
 
-func (c *pipeConn) Read(p []byte) (int, error)  { return c.reader.Read(p) }
+// Read, okuma ucundan okur. Uç kapanınca (io.EOF) ve onEOF tanımlıysa
+// onun sebebini döndürür: karşı taraf bir alt süreçse, "bağlantı
+// kapandı" yerine NEDEN kapandığı.
+func (c *pipeConn) Read(p []byte) (int, error) {
+	n, err := c.reader.Read(p)
+	if errors.Is(err, io.EOF) && c.onEOF != nil {
+		if cause := c.onEOF(); cause != nil {
+			return n, cause
+		}
+	}
+	return n, err
+}
+
 func (c *pipeConn) Write(p []byte) (int, error) { return c.writer.Write(p) }
 
 // Close, boruları kapatır ve alt süreci toplar.

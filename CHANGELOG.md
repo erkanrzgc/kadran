@@ -24,6 +24,10 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   with the same binaries. On a slow link the uncompressed upload took about
   13 minutes and dropped once (K-119).
 
+- When SSH cannot connect (unknown host, rejected key, changed host key), the CLI
+  now shows SSH's own message. It used to show only "error reading server
+  preface: EOF", which hid even a host key verification failure (K-120).
+
 Running in production since 30 September 2026 (K-118):
 - the upgrade itself cost ~1.5 s of downtime, measured from inside the server;
 - a killed reverse proxy was serving again in ~6.4 s;

@@ -377,6 +377,12 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 		return nil, fmt.Errorf("client: bağlanmadan önce iptal edildi: %w", err)
 	}
 	cmd := exec.Command(sshCommand, args...) //nolint:noctx // gerekçe yukarıda
+	// ssh ölüp stderr'i açık tutan bir alt süreç bırakırsa (ör.
+	// ControlPersist ustası) Wait, stderr kopyasını o süreç bitene kadar
+	// bekler; Kill yalnızca doğrudan çocuğa ulaşır. Okuyucu EOF'ta Wait'i
+	// beklediği için bu, hızlı bir ssh hatasını uzun bir asılmaya
+	// çevirirdi (ölçüldü: 20 sn, TestSSHFailureIsBoundedWhenAChildHoldsStderr).
+	cmd.WaitDelay = sshExitGrace
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {

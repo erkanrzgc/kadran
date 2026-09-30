@@ -6,7 +6,9 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +37,12 @@ const (
 	fakeSSHFailEnv = "PANELY_TEST_FAKE_SSH_FAIL"
 	// fakeSSHCleanEnv: hiçbir şey yazmadan 0 ile çıkar (kontrol grubu).
 	fakeSSHCleanEnv = "PANELY_TEST_FAKE_SSH_CLEAN"
+	// fakeSSHLingerEnv: fakeSSHFailEnv gibi, ama çıkmadan önce stderr'i
+	// devralan ve 20 sn yaşayan bir alt süreç bırakır (ControlPersist
+	// ustası gibi). PID'i fakeSSHLingerPIDEnv'deki dosyaya yazılır.
+	fakeSSHLingerEnv    = "PANELY_TEST_FAKE_SSH_LINGER"
+	fakeSSHLingerPIDEnv = "PANELY_TEST_FAKE_SSH_LINGER_PID"
+	fakeSSHSleepEnv     = "PANELY_TEST_FAKE_SSH_SLEEP"
 )
 
 // http2Preface, gRPC'nin bağlantıda gönderdiği ilk baytlardır (RFC 7540 §3.5).
@@ -58,6 +66,20 @@ func TestMain(m *testing.M) {
 func fakeSSHMain() {
 	if path := os.Getenv(fakeSSHArgvEnv); path != "" {
 		_ = os.WriteFile(path, []byte(strings.Join(os.Args[1:], "\n")), 0o600)
+	}
+	if os.Getenv(fakeSSHSleepEnv) != "" {
+		time.Sleep(20 * time.Second)
+		return
+	}
+	if msg := os.Getenv(fakeSSHLingerEnv); msg != "" {
+		torun := exec.Command(os.Args[0]) //nolint:gosec,noctx // test binary'sinin kendisi
+		torun.Env = append(os.Environ(), fakeSSHLingerEnv+"=", fakeSSHSleepEnv+"=1")
+		torun.Stderr = os.Stderr // stderr borusunu DEVRALIR
+		if err := torun.Start(); err == nil {
+			_ = os.WriteFile(os.Getenv(fakeSSHLingerPIDEnv), []byte(strconv.Itoa(torun.Process.Pid)), 0o600)
+		}
+		_, _ = os.Stderr.WriteString(msg + "\r\n")
+		os.Exit(255)
 	}
 	if msg := os.Getenv(fakeSSHFailEnv); msg != "" {
 		_, _ = os.Stderr.WriteString(msg + "\r\n")

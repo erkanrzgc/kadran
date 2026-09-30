@@ -7652,6 +7652,21 @@ aynı ziyarette").
   sonra açık kalıyordu.
 - Watchdog reboot'tan sonra da kurulu. Zaman aşımı 0, çekirdek
   servislerde `NRestarts=0`.
+- **"Her şey geri geldi mi"** (danışman incelemesi, salt okuma):
+  - zamanlayıcılar (notify, offsite, volume-backup), hacim bağlaması,
+    admin soketi, docker ve ssh etkin;
+  - `systemctl --failed` boş;
+  - hacim kökü yeni çekirdekte de `rw,nosuid,nodev,relatime`;
+  - üç konteyner ayakta.
+- **Telegram teslimatı canlıda ilk kez uçtan uca ölçüldü (K-110,
+  K-108).** Alarm göndericisinin journal'ından yalnızca sonuç satırları
+  okundu; içerik ve anahtar okunmadı:
+  - 10:51:29 "servis durumu gönderildi" (caddy çöküşü);
+  - 10:54:20 "2 alarm olayı gönderildi" (açılış alarmı açıldı ve
+    kapandı);
+  - 10:54:20 "servis durumu gönderildi" (reboot).
+  - Yükseltmedeki kasıtlı caddy yeniden başlatması tasarım gereği mesaj
+    üretmedi.
 
 ### Açık kalanlar
 
@@ -7768,6 +7783,22 @@ aynı ziyarette").
   - kontrol: canlı sunucuya bağlantı değişmedi.
 - `mutate-client.sh` +3, 3/3 yakalandı. Betik artık `pipeconn.go`'yu da
   bozabiliyor ve yeni testleri `-run` listesine alıyor.
+
+### Ek (danışman incelemesi): Wait'in üst sınırı
+
+- **Risk:** okuyucu artık EOF'ta `cmd.Wait`'i bekliyor. ssh ölüp
+  stderr'i devralan bir alt süreç bırakırsa (ör. ControlPersist ustası),
+  Wait stderr kopyasını o süreç bitene kadar bekler. Kill yalnızca
+  doğrudan çocuğa ulaşır. Hızlı bir ssh hatası uzun bir asılmaya
+  dönerdi; K-120'nin vaat ettiğinin tersi.
+- **Ölçüldü, önce kırmızı:** sahte ssh stderr'i tutan ve 20 sn yaşayan
+  bir alt süreç bırakıp ölünce okuyucu 20 sn bekledi
+  (`TestSSHFailureIsBoundedWhenAChildHoldsStderr`).
+- **Düzeltme:** `cmd.WaitDelay = sshExitGrace` (Go'nun bu durum için
+  belgelenmiş sınırı). Okuyucu 5,06 sn'de döndü ve "Permission denied"
+  yine ulaştı.
+- **Mutasyon:** "Wait'in gecikme sınırı yok" mutantı yakalandı; toplam
+  4/4.
 
 
 

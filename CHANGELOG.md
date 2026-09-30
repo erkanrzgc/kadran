@@ -5,6 +5,8 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### Server — running in production since 30 September 2026
+
 - Hang detection. panelyd pings systemd's watchdog (`WatchdogSec=60s`) only while
   its background loops (health supervisor, proxy watcher, disk check, backups) make
   progress and its database pool can hand out a connection. A plain ping goroutine
@@ -19,31 +21,32 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   reports ready. systemd used to kill it just before that point and restart it
   into the same wall, so `panely status` never answered. The bound is derived from
   the code's timeouts; the hang itself was not reproduced (K-117).
-
-- `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB
-  with the same binaries. On a slow link the uncompressed upload took about
-  13 minutes and dropped once (K-119).
-
-- When SSH cannot connect (unknown host, rejected key, changed host key), the CLI
-  now shows SSH's own message. It used to show only "error reading server
-  preface: EOF", which hid even a host key verification failure (K-120).
-
-Running in production since 30 September 2026 (K-118):
-- the upgrade itself cost ~1.5 s of downtime, measured from inside the server;
-- a killed reverse proxy was serving again in ~6.4 s;
-- a reboot onto a new kernel had sites back after ~43 s, and the startup alarm
-  closed on its own;
-- the watchdog was armed after the upgrade and after the reboot.
-
+- The reverse-proxy unit no longer has a reload command. It never worked, and a
+  working one would have loaded the base configuration, which has no routes, and
+  taken every site down (K-112).
 - `panely app show` marks which release is live. The old status column showed the
   build status only; after a rollback the top "built" release does not get the
   traffic. A separate line names the live release even when it is older than the
   listed ones. Against an older server that does not report the live release,
-  it says "unknown" instead of claiming nothing is live (K-112).
-- The reverse-proxy unit no longer has a reload command. It never worked, and a
-  working one would have loaded the base configuration, which has no routes, and
-  taken every site down. The next upgrade restarts the proxy once because its unit
-  file changed (K-112).
+  it says "unknown" instead of claiming nothing is live (K-112, measured against
+  the old server in K-118).
+
+Measured in production (K-118):
+- the upgrade itself cost ~1.5 s of downtime, measured from inside the server;
+- a killed reverse proxy was serving again in ~6.4 s;
+- a reboot onto a new kernel had sites back after ~43 s, and the startup alarm
+  closed on its own;
+- the watchdog was armed after the upgrade and after the reboot;
+- Telegram delivery worked end to end for the proxy crash and the reboot.
+
+### CLI
+
+- `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB
+  with the same binaries. On a slow link the uncompressed upload took about
+  13 minutes and dropped once (K-119).
+- When SSH cannot connect (unknown host, rejected key, changed host key), the CLI
+  now shows SSH's own message. It used to show only "error reading server
+  preface: EOF", which hid even a host key verification failure (K-120).
 
 ## v0.1.0 — 2026-09-27
 

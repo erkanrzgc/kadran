@@ -102,6 +102,10 @@ mutate "okuyucuya ssh'ın sebebi bağlanmıyor" \
 HEDEF=$PIPE mutate "okuyucu sebebi yok sayıyor" \
     "s=s.replace('\tif errors.Is(err, io.EOF) && c.onEOF != nil {','\tif errors.Is(err, io.EOF) && c.onEOF != nil && n < 0 {',1)"
 
+# stderr'i tutan bir alt süreç Wait'i 20 sn kilitliyordu (ölçüldü).
+mutate "Wait'in gecikme sınırı yok" \
+    "s=s.replace('\tcmd.WaitDelay = sshExitGrace\n','',1)"
+
 # Kontrol grubunun koruduğu yön: temiz çıkış bir hata gibi görünmemeli.
 mutate "temiz çıkış da hata sayılıyor" \
     "s=s.replace('\t\terr := wait()\n\t\tif err == nil {\n\t\t\treturn nil\n\t\t}\n','\t\terr := wait()\n\t\tif err == nil {\n\t\t\terr = errors.New(\"temiz\")\n\t\t}\n',1)"

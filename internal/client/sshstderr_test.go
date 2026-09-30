@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -76,6 +78,40 @@ func TestSSHFailureReachesTheUser(t *testing.T) {
 	_, err = c.CheckProtocol(ctx)
 	if err == nil || !strings.Contains(err.Error(), "Permission denied") {
 		t.Fatalf("kullanıcı ssh'ın sebebini görmüyor: %v", err)
+	}
+}
+
+// TestSSHFailureIsBoundedWhenAChildHoldsStderr: ssh ölüp stderr'i açık
+// tutan bir alt süreç bırakırsa (ControlPersist ustası gibi), cmd.Wait
+// stderr kopyasını o süreç bitene kadar bekler. Okuyucu EOF'ta Wait'i
+// beklediği için hızlı bir ssh hatası uzun bir asılmaya dönerdi.
+// cmd.WaitDelay bunu sınırlıyor; mesaj yine ulaşmalı.
+func TestSSHFailureIsBoundedWhenAChildHoldsStderr(t *testing.T) {
+	pidDosyasi := filepath.Join(t.TempDir(), "torun.pid")
+	sahteSSH(t, map[string]string{fakeSSHLingerEnv: reddedildi, fakeSSHLingerPIDEnv: pidDosyasi})
+	t.Cleanup(func() {
+		if b, err := os.ReadFile(pidDosyasi); err == nil {
+			if pid, err := strconv.Atoi(string(b)); err == nil {
+				if p, err := os.FindProcess(pid); err == nil {
+					_ = p.Kill()
+				}
+			}
+		}
+	})
+
+	conn, err := dialSSH(context.Background(), Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+	if err != nil {
+		t.Fatalf("ssh başlatılamadı: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+
+	basla := time.Now()
+	_, err = conn.Read(make([]byte, 16))
+	if gecen := time.Since(basla); gecen > sshExitGrace+5*time.Second {
+		t.Fatalf("okuyucu %s bekledi — stderr'i tutan alt süreç Wait'i kilitliyor", gecen.Round(time.Second))
+	}
+	if err == nil || !strings.Contains(err.Error(), "Permission denied") {
+		t.Fatalf("okuyucu ssh'ın sebebini almadı: %v", err)
 	}
 }
 

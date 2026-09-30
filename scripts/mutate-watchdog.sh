@@ -172,6 +172,11 @@ echo "== Rapor =="
 mutate "rapor sıfırlanmıyor" "$L" "$LIV" \
     "s=s.replace('b.maxGap.Swap(0)','b.maxGap.Load()',1)"
 
+# Canlıdaki ilk rapor saatlik yedek için "0s" dedi (K-118): sürmekte olan
+# aralık sayılmıyordu.
+mutate "rapor sürmekte olan aralığı saymıyor" "$L" "$LIV" \
+    "s=s.replace('\t\tgap := max(b.maxGap.Swap(0), now-b.last.Load())','\t\tgap := max(b.maxGap.Swap(0), now-now)',1)"
+
 mutate "rapor en uzunu değil sonuncuyu tutuyor" "$L" "$LIV" \
     "s=s.replace('\t\tif gap <= cur || b.maxGap.CompareAndSwap(cur, gap) {','\t\tif b.maxGap.CompareAndSwap(cur, gap) {',1)"
 

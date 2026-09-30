@@ -254,6 +254,26 @@ func TestGapsReportTheLongestIntervalAndReset(t *testing.T) {
 	}
 }
 
+// Sürmekte olan aralık da sayılmalı: canlıdaki ilk rapor (K-118) yedek
+// döngüsü için "0s" dedi, çünkü 1 saatlik aralık rapordan hemen sonra
+// kapanacaktı. Aynı kusur, şu an takılmakta olan ama eşiğe henüz
+// varmamış bir döngüyü de gizlerdi.
+func TestGapsIncludeTheOngoingInterval(t *testing.T) {
+	saat := yeniSaat()
+	r := NewRegistry(saat.Now)
+	r.Register("yedek", 3*time.Hour)
+	b := r.Register("vekil", time.Hour)
+
+	saat.ilerlet(10 * time.Second)
+	b.Mark()
+	saat.ilerlet(40 * time.Minute)
+
+	got := strings.Join(r.Gaps(), " ")
+	if got != "yedek=40m10s vekil=40m0s" {
+		t.Fatalf("aralıklar = %q, beklenen sürmekte olanlar dahil", got)
+	}
+}
+
 func TestNamesListsRegisteredLoops(t *testing.T) {
 	r := NewRegistry(yeniSaat().Now)
 	r.Register("gözetmen", time.Minute)

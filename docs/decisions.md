@@ -7670,9 +7670,25 @@ aynı ziyarette").
 
 ### Açık kalanlar
 
-- **Eşikler:** watchdog'un ilk saatlik "en uzun ilerleme aralıkları"
-  raporu 11:53 civarı bekleniyor. Eşikler o veri okunmadan doğrulanmış
-  sayılmıyor (K-115).
+- **Eşikler:** ilk saatlik rapor tam zamanında geldi (11:52:44, açılıştan
+  bir saat sonra). `Run`'ın rapor yolu artık canlıda da gözlendi.
+  - Sonuç: `gözetmen=3s vekil-izleyici=10s disk=5m0s yedek=0s`.
+    `NRestarts=0`, watchdog zaman aşımı 0.
+  - Bu yalnızca BOŞTA bir saatin taban çizgisi. 15 dakikalık taban
+    iyileştirme, dağıtım ve kilit beklemesi için var; o saatte hiçbiri
+    olmadı. Eşikler bu veriyle doğrulanmış SAYILMIYOR; README'deki "not yet
+    measured in production" kalıyor.
+  - **Rapordaki kusur bulundu:** `yedek=0s`. Saatlik döngünün aralığı
+    raporla aynı anda kapanacaktı; rapor yalnızca TAMAMLANMIŞ aralıkları
+    sayıyordu. Aynı kusur, şu an takılmakta olan ama eşiğe varmamış bir
+    döngüyü de gizlerdi. Düzeltildi: `Gaps()` sürmekte olan aralığı da
+    sayıyor.
+    - Önce kırmızı: `TestGapsIncludeTheOngoingInterval` canlıdakiyle aynı
+      "yedek=0s"yi üretti.
+    - `mutate-watchdog.sh` +1. İlk yazımı derlenmedi (`now` kullanılmadan
+      kaldı); derleme kapısı ölçümü durdurdu, mutant yeniden yazıldı.
+      27/27.
+    - Bu düzeltme canlıda henüz yok; sonraki yükseltmeyle gelir.
 - **Yükleme sağlamlığı:** kurulum paketi sıkıştırılmadan gönderiliyor
   (74,7 MiB düz tar; aynı dosyalar gzip'le ~29 MiB). Yavaş bir
   bağlantıda ~10 dk sürüyor ve bu sürede bir kez koptu. Sıkıştırma

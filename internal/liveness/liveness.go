@@ -106,18 +106,26 @@ func (r *Registry) Stale() []string {
 	return out
 }
 
-// Gaps, son çağrıdan beri her döngünün iki ilerlemesi arasındaki EN UZUN
-// süreyi döndürür ve sayaçları sıfırlar.
+// Gaps, son çağrıdan beri her döngünün ilerlemesiz geçen EN UZUN süresini
+// döndürür ve sayaçları sıfırlar.
+//
+// Tamamlanmış aralıkların yanında SÜRMEKTE OLAN aralık da sayılıyor (son
+// Mark'tan bu yana). Canlıdaki ilk rapor (K-118) saatlik yedek döngüsü
+// için "0s" demişti: 1 saatlik aralık rapordan hemen sonra kapanacaktı.
+// Aynı kusur, şu an takılmakta olan ama eşiğe varmamış bir döngüyü de
+// gizlerdi.
 //
 // Eşikler koddaki zaman sınırlarından TÜRETİLDİ, ölçülmedi (K-115). Bu
 // rapor, onları gerçek sürelerle karşılaştırmanın tek veri kaynağı.
 func (r *Registry) Gaps() []string {
+	now := r.now().UnixNano()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	out := make([]string, 0, len(r.beats))
 	for _, b := range r.beats {
-		out = append(out, fmt.Sprintf("%s=%s", b.name, time.Duration(b.maxGap.Swap(0)).Round(time.Second)))
+		gap := max(b.maxGap.Swap(0), now-b.last.Load())
+		out = append(out, fmt.Sprintf("%s=%s", b.name, time.Duration(gap).Round(time.Second)))
 	}
 	return out
 }

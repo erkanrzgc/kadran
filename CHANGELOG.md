@@ -14,6 +14,11 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   - SIGABRT left a goroutine dump showing the loops in the journal;
   - a clean stop was not counted as a watchdog failure.
   The unit and the binary must be upgraded together (K-115).
+- panelyd's unit allows 180 s to start (was systemd's default 90 s). With a hung
+  executor or Docker daemon, startup can take up to 103 s before the daemon
+  reports ready. systemd used to kill it just before that point and restart it
+  into the same wall, so `panely status` never answered. The bound is derived from
+  the code's timeouts; the hang itself was not reproduced (K-117).
 
 - `panely app show` marks which release is live. The old status column showed the
   build status only; after a rollback the top "built" release does not get the

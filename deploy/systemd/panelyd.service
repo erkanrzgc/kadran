@@ -40,6 +40,21 @@ RestartSec=2s
 # başlatma döngüsüdür.
 WatchdogSec=60s
 
+# ── Açılış süresi (K-117) ───────────────────────────────────────────
+#
+# READY'den önceki en kötü durum koddan TÜRETİLDİ, ölçülmedi: executor
+# yoklaması 10 sn + açılış uzlaştırması 3 × 30 sn + aradaki 1+2 sn =
+# 103 sn. Executor ya da dockerd cevap vermezken ve en az bir uygulama
+# varken olur: replikaları listeleyen çağrı her denemenin 30 sn'sini
+# doldurur. systemd'nin varsayılanı 90 sn. panelyd READY göndermek
+# üzereyken öldürülür, Restart=on-failure onu aynı duvara geri gönderir ve
+# `panely status` hiç cevap vermez. Watchdog bu süreyi kapsamıyor, çünkü
+# systemd onu READY'den sonra kuruyor.
+#
+# TestUnitStartTimeoutCoversTheWorstStartup bu sayıyı koddaki sabitlere
+# bağlıyor. Değer Go süre biçiminde yazılmalı (test onu öyle okuyor).
+TimeoutStartSec=180s
+
 # YETKİSİZ. Bu satır ürünün tamamının dayandığı iddiadır.
 # `sudo -u panely docker ps` BAŞARISIZ OLMAK ZORUNDADIR.
 User=panely

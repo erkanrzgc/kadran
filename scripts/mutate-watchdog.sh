@@ -32,7 +32,9 @@ A=cmd/panelyd/alarmwatch.go
 B=cmd/panelyd/backup.go
 D=cmd/panelyd/watchdog.go
 S=internal/store/store.go
-FILES=("$L" "$H" "$W" "$A" "$B" "$D" "$S")
+M=cmd/panelyd/main.go
+U=deploy/systemd/panelyd.service
+FILES=("$L" "$H" "$W" "$A" "$B" "$D" "$S" "$M" "$U")
 LIV=./internal/liveness/
 HEA=./internal/health/
 PAN=./cmd/panelyd/
@@ -172,6 +174,22 @@ mutate "rapor sıfırlanmıyor" "$L" "$LIV" \
 
 mutate "rapor en uzunu değil sonuncuyu tutuyor" "$L" "$LIV" \
     "s=s.replace('\t\tif gap <= cur || b.maxGap.CompareAndSwap(cur, gap) {','\t\tif b.maxGap.CompareAndSwap(cur, gap) {',1)"
+
+echo "== Açılış systemd'nin sınırına sığıyor (K-117) =="
+
+# Watchdog READY'den sonra kuruluyor; READY'ye kadarki süreyi
+# TimeoutStartSec koruyor. Varsayılan 90 sn, en kötü açılış 103 sn.
+mutate "TimeoutStartSec yok (varsayılan 90 sn)" "$U" "$PAN" \
+    "s=s.replace('\nTimeoutStartSec=180s\n','\n',1)"
+
+mutate "TimeoutStartSec en kötü açılıştan kısa" "$U" "$PAN" \
+    "s=s.replace('\nTimeoutStartSec=180s\n','\nTimeoutStartSec=90s\n',1)"
+
+mutate "deneme sayısı arttı, birim güncellenmedi" "$M" "$PAN" \
+    "s=s.replace('const startupReconcileTries = 3','const startupReconcileTries = 5',1)"
+
+mutate "deneme süresi arttı, birim güncellenmedi" "$M" "$PAN" \
+    "s=s.replace('const startupReconcileTimeout = 30 * time.Second','const startupReconcileTimeout = 60 * time.Second',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

@@ -7506,3 +7506,59 @@ mekanizma. Koşu 36639350499:
 | 2026-09-30 | `c27db52` | `03d8b35` | fix: ters vekil biriminden ExecReload kaldirildi (K-112) |
 | 2026-09-30 | `3f19a29` | `6d86542` | feat: askida kalma tespiti - dongu damgalari + veritabani yoklamasi (K-115) |
 | 2026-09-30 | `63ca0e7` | `62098a4` | docs: K-115 uygulandi, gercek systemd olcumleri; README/CHANGELOG |
+
+## K-117 — panelyd'nin açılışı systemd'nin başlangıç sınırını aşabiliyordu
+
+**Tarih:** 30 Eylül 2026
+**Durum:** UYGULANDI (`TimeoutStartSec=180s`). Senaryo YENİDEN ÜRETİLMEDİ,
+sınır koddan türetildi.
+
+### Bulgu (danışman, K-115 incelemesi sırasında)
+
+- READY'den önce panelyd iki iş yapıyor:
+  - executor'ı yokluyor (`execclient.DefaultTimeout`, 10 sn);
+  - ters vekili SQLite'tan uzlaştırıyor: `startupReconcileTries` (3)
+    deneme, her biri `startupReconcileTimeout` (30 sn), aralarında
+    1 ve 2 sn bekleme.
+- En kötü toplam **103 sn**. `panelyd.service`'te `TimeoutStartSec` yoktu;
+  varsayılan **90 sn**.
+- **Ne zaman dolar:** executor ya da dockerd cevap vermiyorsa ve en az
+  bir uygulama varsa. Replikaları listeleyen çağrı (`ListReplicas`)
+  executor'da Docker'ın 60 sn'lik sınırına, panelyd'de her denemenin
+  30 sn'sine takılıyor ve her denemeyi sonuna kadar dolduruyor.
+- **Sonuç:** systemd panelyd'yi READY'den önce öldürür. Restart=on-failure
+  onu aynı duvara geri gönderir. Döngü 90 sn sürdüğü için
+  `StartLimitBurst`'e hiç takılmaz ve sonsuza dek sürer. `panely status`
+  hiç cevap vermez. Bu, açılış kodunun kaçınmaya çalıştığı durumun ta
+  kendisi ("ölümcül değil, görünür kıl"). K-115'in watchdog'u bu süreyi
+  kapsamıyor, çünkü systemd onu READY'den sonra kuruyor.
+
+### Düzeltme
+
+- `TimeoutStartSec=180s`: 103 sn + 30 sn pay (store.Open ve göç öncesi
+  yedek için TAHMİN), üstüne yuvarlama.
+- Davranış değişmiyor. Asılı bir executor'la panelyd ~103 sn sonra READY
+  gönderiyor ve STATUS "BOZUK: …" diyor; teşhis araçları çalışıyor.
+- Neden koddaki denemeler kısaltılmadı: üç deneme, Caddy'nin admin
+  soketinin geç açıldığı sıradan açılışı kurtarıyor (K-055). Beklemek
+  ucuz, trafiği kurtarmak değerli.
+
+### Test
+
+- `TestUnitStartTimeoutCoversTheWorstStartup` birimdeki değeri koddaki
+  sabitlerden hesaplanan en kötü açılışla karşılaştırıyor. Önce
+  kırmızıydı: birimde değer yoktu.
+- `TestWorstStartupIsWhatK117Says` 103 sn'yi sabit olarak tutuyor.
+  Sabitler değişirse bu kayıt ve birim yorumu da güncellenmeli.
+- `mutate-watchdog.sh` +4, hepsi yakalandı: değer yok, değer 90 sn,
+  deneme sayısı 5, deneme süresi 60 sn.
+
+### ÖLÇÜLMEDİ
+
+Asılı bir executor ya da dockerd ile gerçek bir açılış. Yeniden üretmek
+için ya HTTP/2 el sıkışmasını tamamlayıp sonra susan sahte bir executor,
+ya da ListContainers'da asılı kalan sahte bir Docker gerekiyor. Salt
+dinleyip hiç cevap vermeyen bir soket muhtemelen yetmez, çünkü gRPC el
+sıkışması hiç tamamlanmaz; bu da ölçülmedi. Sayı bu yüzden koddan
+türetildi.
+

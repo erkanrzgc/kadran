@@ -66,7 +66,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
         return
     fi
 
-    if go test "$PKG" -run 'TestSSHArgs|TestArchFromUname|OptionLikeHost|OrdinaryHost|TestRemoteExtractionMatchesTheArchiveFormat|TestArchiveCarriesEverythingTheInstallerNeeds' -count=1 >/dev/null 2>&1; then
+    if go test "$PKG" -run 'TestSSHArgs|TestArchFromUname|OptionLikeHost|OrdinaryHost|TestRemoteExtractionMatchesTheArchiveFormat|TestArchiveCarriesEverythingTheInstallerNeeds|TestSudo|TestRootMode|TestRootInstall|TestBootstrapRefusesTheClientUser|TestShellQuote' -count=1 >/dev/null 2>&1; then
         echo "  KIRMIZI OLMADI: $name"
         fail=1
     else
@@ -110,6 +110,34 @@ mutate "paket gzip'lenmiyor" \
 
 mutate "sunucu gzip açmıyor" \
     "s=s.replace('tar -x -z -m -C','tar -x -m -C',1)"
+
+echo "== Sudo kipi (K-122) =="
+
+# Önkontrol yüklemeden ÖNCE: parola isteyen sudo ya da root olmayan hedef
+# 28 MB'ı boşuna yüklerdi.
+mutate "yetki önkontrolü yok" \
+    "s=s.replace('\tif err := checkPrivilege(ctx, opts); err != nil {\n\t\treturn err\n\t}\n','',1)"
+
+mutate "uid denetlenmiyor" \
+    "s=s.replace('if uid := strings.TrimSpace(out); uid != \"0\" {','if uid := strings.TrimSpace(out); uid == \"hiç\" {',1)"
+
+mutate "sudo'nun kendi mesajı taşınmıyor" \
+    "s=s.replace('(-sudo kipi parola SORMAZ; sudoers\\'ta NOPASSWD gerekir): %w\", opts.Host, err)','(-sudo kipi parola SORMAZ; sudoers\\'ta NOPASSWD gerekir)\", opts.Host)',1)"
+
+mutate "sudo kipinde betik sudo'suz koşuyor" \
+    "s=s.replace('\tif !opts.Sudo {\n\t\treturn script\n\t}','\tif true {\n\t\treturn script\n\t}',1)"
+
+# -n olmadan sudo parola sormaya kalkar: sırrı görmeme ilkesi delinir.
+mutate "sudo -n düştü" \
+    "s=s.replace('\"sudo -n -- bash -c \"','\"sudo -- bash -c \"',1)"
+
+# Tırnaklar kaçış derdi olmasın diye chr() ile: ReplaceAll'ın aradığı
+# tek tırnak başka bir metne çevriliyor, yani hiçbir tırnak kaçırılmıyor.
+mutate "tek tırnak kaçırılmıyor" \
+    "s=s.replace('strings.ReplaceAll(s, '+chr(34)+chr(39)+chr(34)+',','strings.ReplaceAll(s, '+chr(34)+'YOK'+chr(34)+',',1)"
+
+mutate "panely-client ile kurulum kabul ediliyor" \
+    "s=s.replace('ok && user == clientUser {','ok && user == \"hiç\" {',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

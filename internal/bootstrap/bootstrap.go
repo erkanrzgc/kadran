@@ -82,6 +82,10 @@ type Options struct {
 	// ClientKeyPath, sunucuya yetkilendirilecek AÇIK anahtar.
 	ClientKeyPath string
 
+	// Sudo, kurulumu root'a SSH açmadan, hedef kullanıcının PAROLASIZ
+	// sudo'suyla yapar (K-122).
+	Sudo bool
+
 	// Stdout/Stderr, uzak betiğin çıktısının aktarılacağı akışlar.
 	Stdout io.Writer
 	Stderr io.Writer
@@ -98,6 +102,13 @@ func Run(ctx context.Context, opts Options) error {
 		return err
 	}
 	fmt.Fprintf(opts.Stdout, "==> Sunucu mimarisi: %s\n", arch)
+
+	if err := checkPrivilege(ctx, opts); err != nil {
+		return err
+	}
+	if opts.Sudo {
+		fmt.Fprintln(opts.Stdout, "==> Yetki: parolasız sudo ile root (root'a SSH kullanılmıyor)")
+	}
 
 	archive, err := buildArchive(opts, arch)
 	if err != nil {
@@ -124,6 +135,14 @@ func validate(opts *Options) error {
 			"bootstrap: hedef `-` ile başlayamaz (%q) — "+
 				"ssh bunu seçenek olarak yorumlar", opts.Host)
 	}
+	// panely-client zorlanmış komutlu, yetkisiz istemci hesabı; kurulum
+	// hesabı OLAMAZ. Kullanıcı adı verilmeyen hedef ona düşüyor
+	// (client.DefaultSSHUser) ve kurulum anlaşılmaz biçimde zorlanmış
+	// komuta çarpardı. Sudo kipinde ayrıca: o hesaba sudo verilmemeli.
+	if user, _, ok := strings.Cut(opts.Host, "@"); ok && user == clientUser {
+		return fmt.Errorf("bootstrap: %s yetkisiz istemci hesabı, kurulum onunla yapılamaz — "+
+			"root@sunucu ya da -sudo kullanıcı@sunucu verin", clientUser)
+	}
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
 	}
@@ -137,6 +156,52 @@ func validate(opts *Options) error {
 			opts.ClientKeyPath, err)
 	}
 	return nil
+}
+
+// clientUser, install.sh'in oluşturduğu yetkisiz istemci hesabı.
+const clientUser = "panely-client"
+
+// checkPrivilege, paketi üretip yüklemeden ÖNCE uzakta root olunup
+// olunamayacağını, kurulumun koşacağı TAM biçimle sınar (K-122).
+//
+// Eskiden root olmayan bir hedef 28 MB'ı yükleyip ancak install.sh'in ilk
+// satırında düşüyordu. Sudo kipinde `sudo -n true` yetmezdi: `bash -c`'ye
+// izin verildiğini ve uid 0'a inildiğini göstermezdi.
+//
+// Hata sudo'nun KENDİ mesajını taşıyor ("a password is required", "a
+// terminal is required"...): genel bir cümle K-120'nin hatasını
+// tekrarlardı.
+func checkPrivilege(ctx context.Context, opts Options) error {
+	out, err := sshOutput(ctx, opts, remoteCommand(opts, "id -u"))
+	if err != nil {
+		if opts.Sudo {
+			return fmt.Errorf("bootstrap: %s parolasız sudo ile root olamıyor "+
+				"(-sudo kipi parola SORMAZ; sudoers'ta NOPASSWD gerekir): %w", opts.Host, err)
+		}
+		return fmt.Errorf("bootstrap: sunucuda yetki sınanamadı: %w", err)
+	}
+	if uid := strings.TrimSpace(out); uid != "0" {
+		if opts.Sudo {
+			return fmt.Errorf("bootstrap: sudo root'a geçmedi (uid %q)", uid)
+		}
+		return fmt.Errorf("bootstrap: %s root değil (uid %s) — root'a SSH kapalıysa "+
+			"`panely bootstrap -sudo kullanıcı@sunucu` kullanın", opts.Host, uid)
+	}
+	return nil
+}
+
+// remoteCommand, bir uzak betiği kipine göre sarar.
+//
+// Sudo kipinde betik SABİT bir `sudo -n -- bash -c '<betik>'` satırına
+// giriyor; içine kullanıcı girdisi girmiyor, betikler bu paketin
+// sabitleri. `-n`: sudo asla parola sormaz, gerekiyorsa düşer — parola
+// hiç alınmıyor, sırrı görmeme ilkesi korunuyor. `-E` YOK: install.sh
+// hazırlık dizinini ortamla değil argümanla alıyor.
+func remoteCommand(opts Options, script string) string {
+	if !opts.Sudo {
+		return script
+	}
+	return "sudo -n -- bash -c " + shellQuote(script)
 }
 
 // detectArch, sunucunun mimarisini sorar.
@@ -306,7 +371,7 @@ func runInstaller(ctx context.Context, opts Options, archive []byte) error {
 	// enjeksiyonuydu (`-` ile başlayan hedefi ssh seçenek sanar);
 	// validate() onu reddediyor, bkz. TestRejectsOptionLikeHost.
 	// remoteInstall sabit bir dize.
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remoteInstall)...) //nolint:gosec
+	cmd := exec.CommandContext(ctx, sshCommand, sshArgs(opts, remoteCommand(opts, remoteInstall))...) //nolint:gosec
 	cmd.Stdin = bytes.NewReader(archive)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr
@@ -333,6 +398,19 @@ func kurulumHatasi(ctx context.Context, err error, paketBoyutu int) error {
 	return fmt.Errorf("bootstrap: kurulum başarısız: %w", err)
 }
 
+// sshCommand, çalıştırılan ssh programı; testler onu sahte bir ssh ile
+// değiştiriyor.
+var sshCommand = "ssh"
+
+// shellQuote, s'yi POSIX kabuğunda TEK bir kelime olarak tek tırnağa alır.
+// Uzaktaki giriş kabuğu (Debian'da useradd varsayılanı /bin/sh, yani dash)
+// bu tırnağı çözer. İçerideki her tek tırnak dört karaktere dönüşür:
+// tırnağı kapat, ters bölüyle kaçırılmış bir tırnak yaz, tırnağı yeniden
+// aç (TestShellQuoteRoundTrips).
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 func sshArgs(opts Options, remoteCommand string) []string {
 	args := []string{
 		"-T",
@@ -348,7 +426,7 @@ func sshArgs(opts Options, remoteCommand string) []string {
 func sshOutput(ctx context.Context, opts Options, remoteCommand string) (string, error) {
 	// G204 gerekçesi için runInstaller'daki nota bakın: sabit komut adı,
 	// kabuksuz argv, ve `-` ile başlayan hedef validate()'te reddediliyor.
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remoteCommand)...) //nolint:gosec
+	cmd := exec.CommandContext(ctx, sshCommand, sshArgs(opts, remoteCommand)...) //nolint:gosec
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

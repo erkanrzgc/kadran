@@ -59,7 +59,7 @@ vekil_parmak_izi() {
 
 step "Ön koşullar"
 
-[ "$(id -u)" -eq 0 ] || die "bu betik root olarak çalışmalı"
+[ "$(id -u)" -eq 0 ] || die "bu betik root olarak çalışmalı (root'a SSH kapalıysa: panely bootstrap -sudo kullanıcı@sunucu)"
 command -v systemctl >/dev/null || die "systemd bulunamadı — desteklenmiyor"
 command -v sshd >/dev/null || command -v /usr/sbin/sshd >/dev/null \
     || die "sshd bulunamadı"

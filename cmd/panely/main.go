@@ -89,7 +89,7 @@ func commands() []command {
 		{"backup", "<create|list> [hedef]", "veritabanı yedeklerini alır ve listeler", (*cli).runBackup},
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
-		{"bootstrap", "root@sunucu", "sunucuyu sıfırdan kurar (tek seferlik)", (*cli).runBootstrap},
+		{"bootstrap", "root@sunucu | -sudo kullanıcı@sunucu", "sunucuyu kurar ya da yükseltir", (*cli).runBootstrap},
 		{"version", "", "sürüm bilgisini yazar", (*cli).runVersion},
 	}
 }
@@ -211,12 +211,12 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 	return exitOK
 }
 
-// runBootstrap, sunucuyu sıfırdan kurar.
+// runBootstrap, sunucuyu kurar ya da yükseltir.
 //
-// Bu komut root olarak bağlanan TEK komuttur ve yalnızca bir kez
-// çalıştırılır. Kurulum bittikten sonra günlük kullanım yetkisiz
-// `panely-client` kullanıcısı üzerinden yürür; root erişimine bir daha
-// gerek kalmaz.
+// Root yetkisi isteyen TEK komut bu. Yetki ya root'a SSH ile ya da -sudo
+// kipinde hedef kullanıcının PAROLASIZ sudo'suyla alınıyor (K-122); ikinci
+// yol, root'a SSH'ı kapalı getiren bulut imajları için. Kurulumdan sonra
+// günlük kullanım yetkisiz `panely-client` üzerinden yürür.
 func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("bootstrap")
 	binaryDir := fs.String("binaries", defaultBinaryDir(), "linux binary'lerinin bulunduğu dizin")
@@ -227,11 +227,13 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	// dakikalık eski sınır kurulumu yükleme bitmeden kesti; aynı gün başka
 	// bir koşu yüklemeyi bir dakikadan kısa sürede bitirdi.
 	timeout := fs.Duration("timeout", 30*time.Minute, "toplam süre sınırı")
+	sudo := fs.Bool("sudo", false,
+		"root'a SSH açmadan, hedef kullanıcının PAROLASIZ sudo'suyla kur (parola asla sorulmaz)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() != 1 {
-		return c.usageError("kullanım: panely bootstrap [seçenekler] root@sunucu")
+		return c.usageError("kullanım: panely bootstrap [seçenekler] root@sunucu  |  panely bootstrap -sudo kullanıcı@sunucu")
 	}
 
 	target, err := client.ParseTarget(fs.Arg(0))
@@ -258,6 +260,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		BinaryDir:     *binaryDir,
 		RepoRoot:      *repoRoot,
 		ClientKeyPath: *clientKey,
+		Sudo:          *sudo,
 		Stdout:        c.stdout,
 		Stderr:        c.stderr,
 	})

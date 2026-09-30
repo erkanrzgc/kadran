@@ -66,7 +66,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
         return
     fi
 
-    if go test "$PKG" -run 'TestSSHArgs|TestArchFromUname|OptionLikeHost|OrdinaryHost' -count=1 >/dev/null 2>&1; then
+    if go test "$PKG" -run 'TestSSHArgs|TestArchFromUname|OptionLikeHost|OrdinaryHost|TestRemoteExtractionMatchesTheArchiveFormat|TestArchiveCarriesEverythingTheInstallerNeeds' -count=1 >/dev/null 2>&1; then
         echo "  KIRMIZI OLMADI: $name"
         fail=1
     else
@@ -100,6 +100,16 @@ mutate "aarch64 amd64 sanılıyor" \
 
 mutate "tanınmayan mimari amd64 sayılıyor" \
     "s=s.replace('\t\treturn \"\", fmt.Errorf(\"bootstrap: desteklenmeyen mimari: %q\", machine)','\t\treturn \"amd64\", nil',1)"
+
+echo "== Paket biçimi ile açma komutu (K-119) =="
+
+# İki taraf ayrı yerde yazılıyor; biri değişip öbürü değişmezse kurulum
+# sunucuda "not in gzip format" ile düşer.
+mutate "paket gzip'lenmiyor" \
+    "s=s.replace('\ttw := tar.NewWriter(gz)','\ttw := tar.NewWriter(&buf)',1)"
+
+mutate "sunucu gzip açmıyor" \
+    "s=s.replace('tar -x -z -m -C','tar -x -m -C',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

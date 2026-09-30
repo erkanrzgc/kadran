@@ -3,10 +3,13 @@ package bootstrap
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -560,11 +563,80 @@ func newFakeRepo(t *testing.T) string {
 	return root
 }
 
+// TestRemoteExtractionMatchesTheArchiveFormat, sunucudaki açma komutunun
+// paketin biçimiyle uyuştuğunu doğrular (K-119).
+//
+// İki taraf ayrı yerlerde yazılıyor: paket burada gzip'leniyor, açma
+// komutu uzak kabukta. Biri değişip öbürü değişmezse kurulum sunucuda
+// "not in gzip format" ile düşer ve bunu hiçbir birim testi görmez.
+func TestRemoteExtractionMatchesTheArchiveFormat(t *testing.T) {
+	if !strings.Contains(remoteInstall, "tar -x -z ") {
+		t.Fatalf("uzak komut gzip açmıyor:\n%s", remoteInstall)
+	}
+}
+
+// TestRemoteTarLineExtractsTheRealArchive, uzak komuttaki tar satırını
+// GERÇEK bash ve tar ile, buildArchive'ın ürettiği pakete karşı koşturur.
+//
+// Yukarıdaki test yalnızca metne bakıyor. CI'da bootstrap'ı uçtan uca
+// koşturan bir adım yok; bu test olmasa bayrakların gerçek tar'la
+// uyuştuğu yalnızca canlı kurulumda görülürdü. install.sh ÇALIŞTIRILMIYOR:
+// yalnızca tar satırı alınıyor.
+//
+// Yalnızca Linux: uzak komut Linux sunucuda koşuyor; CI'daki Linux işleri
+// (amd64 ve arm64) bunu koşturuyor.
+func TestRemoteTarLineExtractsTheRealArchive(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("uzak komut Linux sunucuda koşar")
+	}
+	var line string
+	for _, l := range strings.Split(remoteInstall, "\n") {
+		if strings.HasPrefix(l, "tar ") {
+			line = l
+		}
+	}
+	if line == "" {
+		t.Fatalf("uzak komutta tar satırı yok:\n%s", remoteInstall)
+	}
+
+	repo := newFakeRepo(t)
+	archive, err := buildArchive(Options{
+		BinaryDir:     filepath.Join(repo, "bin"),
+		RepoRoot:      repo,
+		ClientKeyPath: filepath.Join(repo, "key.pub"),
+	}, "amd64")
+	if err != nil {
+		t.Fatalf("paket üretilemedi: %v", err)
+	}
+
+	dir := t.TempDir()
+	// Kabuk KASTEN: uzak taraf bu satırı bash'te koşturuyor. Girdiler
+	// sabit remoteInstall ve t.TempDir(); dışarıdan gelen hiçbir şey yok.
+	cmd := exec.CommandContext(t.Context(), "bash", "-c", //nolint:gosec // G204: yukarıdaki not
+		strings.ReplaceAll(line, `"$d"`, "'"+dir+"'"))
+	cmd.Stdin = bytes.NewReader(archive)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%q gerçek pakette düştü: %v\n%s", line, err, out)
+	}
+	for _, name := range []string{"install.sh", "panelyd", "client_key.pub"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Errorf("%s açılmadı: %v", name, err)
+		}
+	}
+}
+
+// readArchive, paketi sunucunun açtığı gibi açar: ÖNCE gzip, sonra tar.
+// Sıkıştırılmamış bir paket burada düşer; sunucudaki `tar -x -z` de onu
+// açamazdı (TestRemoteExtractionMatchesTheArchiveFormat).
 func readArchive(t *testing.T, archive []byte) map[string][]byte {
 	t.Helper()
 
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		t.Fatalf("paket gzip değil: %v", err)
+	}
 	files := make(map[string][]byte)
-	tr := tar.NewReader(bytes.NewReader(archive))
+	tr := tar.NewReader(gz)
 	for {
 		header, err := tr.Next()
 		if errors.Is(err, io.EOF) {

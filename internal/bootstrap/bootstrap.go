@@ -17,6 +17,7 @@ package bootstrap
 import (
 	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"embed"
 	"errors"
@@ -166,9 +167,14 @@ func archFromUname(out string) (string, error) {
 }
 
 // buildArchive, kurulum paketini bellekte üretir.
+//
+// gzip'li (K-119): düz tar 74,7 MiB'tı ve yavaş bir bağlantıda canlıya
+// yüklemesi ~13 dk sürdü, bir denemede de bağlantı koptu (K-118). Aynı
+// ikililerle gzip'li paket 28,3 MiB (ölçüldü, K-119).
 func buildArchive(opts Options, arch string) ([]byte, error) {
 	var buf bytes.Buffer
-	tw := tar.NewWriter(&buf)
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
 
 	add := func(name string, mode int64, content []byte) error {
 		header := &tar.Header{
@@ -236,6 +242,9 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 	if err := tw.Close(); err != nil {
 		return nil, err
 	}
+	if err := gz.Close(); err != nil {
+		return nil, err
+	}
 	return buf.Bytes(), nil
 }
 
@@ -279,12 +288,16 @@ func normalizeLineEndings(content []byte) []byte {
 // `tar -m`: dosya zamanları uygulanmıyor. İş istasyonunun saati sunucudan
 // biraz ilerideyse tar "time stamp … in the future" uyarısı basıyordu
 // (taze sunucu testi, K-112); geçici kurulum dosyaları için zaman önemsiz.
-func runInstaller(ctx context.Context, opts Options, archive []byte) error {
-	const remote = `set -e
+//
+// `-z`: paket gzip'li (buildArchive). İkisi ayrı yerde yazıldığı için
+// TestRemoteExtractionMatchesTheArchiveFormat onları birbirine bağlıyor.
+const remoteInstall = `set -e
 d="$(mktemp -d /tmp/panely-bootstrap.XXXXXX)"
 trap 'rm -rf "$d"' EXIT
-tar -x -m -C "$d"
+tar -x -z -m -C "$d"
 bash "$d/install.sh" "$d"`
+
+func runInstaller(ctx context.Context, opts Options, archive []byte) error {
 
 	// G204 bastırılıyor. Bastırılan şey tam olarak şu: gosec, argv'nin
 	// sabit olmamasını bayrak ediyor. Komut adı sabit ("ssh"), kabuk
@@ -292,8 +305,8 @@ bash "$d/install.sh" "$d"`
 	// burada temsil EDİLEMEZ. Geriye kalan gerçek sınıf argüman
 	// enjeksiyonuydu (`-` ile başlayan hedefi ssh seçenek sanar);
 	// validate() onu reddediyor, bkz. TestRejectsOptionLikeHost.
-	// remote sabit bir dize.
-	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remote)...) //nolint:gosec
+	// remoteInstall sabit bir dize.
+	cmd := exec.CommandContext(ctx, "ssh", sshArgs(opts, remoteInstall)...) //nolint:gosec
 	cmd.Stdin = bytes.NewReader(archive)
 	cmd.Stdout = opts.Stdout
 	cmd.Stderr = opts.Stderr

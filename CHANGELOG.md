@@ -20,6 +20,10 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   into the same wall, so `panely status` never answered. The bound is derived from
   the code's timeouts; the hang itself was not reproduced (K-117).
 
+- `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB
+  with the same binaries. On a slow link the uncompressed upload took about
+  13 minutes and dropped once (K-119).
+
 Running in production since 30 September 2026 (K-118):
 - the upgrade itself cost ~1.5 s of downtime, measured from inside the server;
 - a killed reverse proxy was serving again in ~6.4 s;

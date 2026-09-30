@@ -7666,4 +7666,49 @@ aynı ziyarette").
   sırayla çağrılınca "error reading server preface: EOF" hatası veriyor;
   sebebi söylemiyor.
 
+## K-119 — Kurulum paketi gzip'leniyor
+
+**Tarih:** 30 Eylül 2026
+**Durum:** UYGULANDI
+
+### Sebep (K-118'de ölçüldü)
+
+- `bootstrap` paketi düz tar olarak gönderiyordu: 74,7 MiB. Tek başına
+  46 MB'lık ters vekil ikilisi bunun büyük kısmı.
+- Canlı yükseltmede yükleme ~13 dk sürdü ve ilk denemede bağlantı
+  koptu (`Connection reset by peer`).
+- Taze sunucu testinde (K-112) aynı paket 10 dk'lık eski sınırı da
+  aşmıştı.
+
+### Yapılan
+
+- `buildArchive` tar'ı `compress/gzip` (varsayılan seviye) üzerinden
+  yazıyor. Uzak komut `tar -x -z -m -C "$d"`.
+- **Ölçüldü:** canlıya giden aynı ikililerle paket 28,3 MiB oldu (74,7'nin
+  %38'i). GNU tar `-tzf` ile sorunsuz açtı.
+- `gzip` ve `tar -z` Ubuntu ile Debian'ın temel kurulumunda var. Sunucu
+  tarafında yeni bir bağımlılık yok.
+
+### Testler
+
+- `readArchive` paketi sunucunun açtığı gibi açıyor: önce gzip, sonra
+  tar. Düz tar üreten her kod burada düşer. Önce kırmızıydı: paketi
+  okuyan üç test "gzip: invalid header" ile düştü.
+- `TestRemoteExtractionMatchesTheArchiveFormat`: uzak komut `-z`
+  taşıyor mu. Paket ile açma komutu ayrı yerlerde yazılıyor; biri
+  değişip öbürü değişmezse kurulum sunucuda "not in gzip format" ile
+  düşerdi.
+- `TestRemoteTarLineExtractsTheRealArchive` (yalnız Linux):
+  - uzak komuttaki tar satırını gerçek bash ve tar ile, `buildArchive`'ın
+    ürettiği pakete karşı koşturuyor;
+  - `install.sh` çalıştırılmıyor;
+  - CI'da `bootstrap`'ı uçtan uca koşturan bir adım olmadığı için, gerçek
+    tar'la uyum başka türlü ancak canlı kurulumda görülürdü.
+- `mutate-bootstrapssh.sh` +2 mutant ("paket gzip'lenmiyor", "sunucu
+  gzip açmıyor"), ikisi de yakalandı.
+- **Betik hatası da bulundu:** ilk koşuda iki mutant yeşil kaldı. Sebep
+  zayıf test değil, betiğin `-run` listesiydi: yeni testleri hiç
+  seçmiyordu. Liste düzeltildi. Ders: mutant yeşil kalınca önce
+  mutasyonun ve test seçiminin kendisine bak (K-080).
+
 

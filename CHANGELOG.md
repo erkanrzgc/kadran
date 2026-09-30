@@ -39,6 +39,18 @@ Measured in production (K-118):
 - the watchdog was armed after the upgrade and after the reboot;
 - Telegram delivery worked end to end for the proxy crash and the reboot.
 
+### Tested platforms
+
+- Debian 13 on a GCP e2-micro (1 GB RAM, 2 GB swap). Measured:
+  - all 17 post-install checks pass;
+  - HTTPS with a Let's Encrypt certificate works end to end;
+  - a Node build peaked with 237 MiB free and no OOM;
+  - after a reboot everything came back and the startup alarm closed on its own.
+
+  GCP's guest agent did not touch `panely-client`'s forced-command key through
+  metadata changes, an agent restart or a reboot. Never add `panely-client` to
+  SSH metadata (K-121).
+
 ### CLI
 
 - `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB

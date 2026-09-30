@@ -7816,5 +7816,156 @@ aynı ziyarette").
 - **Mutasyon:** "Wait'in gecikme sınırı yok" mutantı yakalandı; toplam
   4/4.
 
+## K-121 — İkinci sunucu: GCP e2-micro, Debian 13 — ölçüldü
+
+**Tarih:** 30 Eylül 2026
+**Durum:** ÖLÇÜLDÜ. K-113'ün üç kararını kullanıcı verdi:
+- root'a anahtar: kurulumda aç, sonra kapat;
+- 80/443 açılsın;
+- deneme GCP'nin kendisinde.
+
+Kimlik bilgileri (IP, proje, alan adı) bu kayda bilerek yazılmadı.
+
+### Makine ve başlangıç durumu (salt okuma)
+
+- e2-micro: 2 paylaşımlı vCPU, 964 MiB RAM; kullanıcının açtığı 2 GB
+  swap dosyası var.
+- 10 GB `pd-standard` disk (ücretsiz kotada). Dış IP geçici; makine içten
+  yeniden başlatıldığında korunuyor.
+- Debian 13 (trixie), systemd 257, çekirdek 6.12.
+- OS Login kapalı; metadata anahtarları geçerli.
+- **Boş değildi:** varsayılan dağıtım Caddy'si "Caddy works!" sayfasıyla
+  80'i tutuyordu. Kurulum çalışan bir Caddy görünce bilerek durur.
+  - Kullanıcı onayıyla kaldırıldı; yapılandırması `/root` altında
+    yedekli.
+  - Güvenlik duvarında 80 kapalıydı, yani dışarıdan hiç görünmüyordu.
+- **Root girişi kapalıydı:** `PermitRootLogin no`, `sshd_config`'te iki
+  kez (33. ve 83. satır). K-113'ün "root'a bir kez anahtar koy" yolu tek
+  başına yetmiyordu.
+
+### Güven zinciri
+
+- **Host anahtarı:** Google'ın kanalından doğrulandı. Guest attributes
+  kapalıydı, seri konsolda da parmak izi yoktu. Kullanıcı tarayıcı
+  SSH'ında `ssh-keygen -lf` çalıştırdı; üç parmak izi (RSA, ECDSA,
+  ED25519) `ssh-keyscan` ile birebir eşleşti ve `known_hosts`'a yazıldı.
+- Bundan sonraki her bağlantı `StrictHostKeyChecking=yes` ile yapıldı.
+  "accept-new" kullanılmadı; K-120 tam da host anahtarı hatası görünmez
+  olmasın diye var.
+- **Erişim:**
+  - iş istasyonunun anahtarı YALNIZCA bu makinenin metadata'sına eklendi,
+    `panely-kurulum` kullanıcısı için. Proje geneline dokunulmadı;
+    `gcloud compute ssh` kullanılmadı;
+  - `add-metadata` listeyi değiştirdiği için süresi dolmuş eski iki
+    tarayıcı anahtarı korunarak yazıldı.
+
+### Kurulum
+
+- **Docker:** `docker.io` 26.1.5, API 1.45; sürücünün 1.44–1.48
+  aralığında.
+- **Root girişi geçici açıldı:** `sshd_config.d/01-…conf` →
+  `PermitRootLogin prohibit-password`. Include en üstte olduğu için ilk
+  değer bu oldu; `sshd -T` doğruladı.
+- **Güvenlik duvarı:** tek kural, tcp 80/443, `0.0.0.0/0`, HEDEF
+  ETİKETLİ, yalnızca bu makine. Dışarıdan doğrulandı: kurulumdan önce
+  80'e bağlantı "reddedildi" (duvar açık, dinleyen yok), zaman aşımı
+  değil.
+- **`bootstrap`:**
+  - gzip'li paket (K-119) ilk kez gerçek bir sunucuda: 28,3 MiB, toplam
+    1333 sn;
+  - neredeyse tamamı yükleme: ABD'ye hat ~30–90 KB/s, sunucu tarafında
+    açılan veriden ölçüldü;
+  - düz paket bu hızda 30 dk'lık sınırı büyük olasılıkla aşardı.
+- **Sonuç:** 17/17 kurulum sonrası kontrol ✓. Hacim kökü `nosuid,nodev`.
+  Watchdog kurulu (`ping_araligi=30s`, dört döngü). `status` ve
+  `audit verify` ssh + zorlanmış komut üzerinden çalıştı.
+- **Root girişi kapatıldı:** dosya silindi, `permitrootlogin no`; root
+  denemesi "Permission denied" aldı. Root'un `authorized_keys`'indeki
+  anahtar sonraki yükseltme için kaldı, giriş kapalıyken işe yaramıyor.
+
+### Konuk ajanı (K-113'ün güvenlik sorusu)
+
+- **Bulgu:** ajan metadata'dan eklenen HER kullanıcıyı `google-sudoers`'a
+  ve `adm,dip,docker,lxd,plugdev,video` gruplarına koyuyor
+  (`/etc/default/instance_configs.cfg`). `docker` grubu root'a denk.
+  Metadata'ya yazabilen biri zaten root olabilir; bu GCP'nin tasarımı,
+  Panely'nin açığı değil.
+- **Anlık görüntü:** `panely-client`'ın `authorized_keys` özeti, zorlanmış
+  komut satırı, sahip ve kipi, grupları, `60-panely.conf` özeti ve
+  `sshd -T -C user=panely-client` çıktısı. Üç durumda karşılaştırıldı:
+  1. ilgisiz bir deneme anahtarı eklendi. Pozitif kontrol: ajan onu
+     `panely-kurulum`'un dosyasına yazdı;
+  2. ajan (`google-guest-agent-manager`) yeniden başlatıldı. Günlükte
+     hesapları yeniden işlediği görüldü;
+  3. reboot.
+- **Üçünde de `panely-client` DEĞİŞMEDİ.** Deneme anahtarı sonra kaldırıldı
+  ve ajan onu dosyadan da sildi.
+- **ÖLÇÜLMEDİ, bilerek:** `panely-client` metadata'ya eklenirse ne olur.
+  Ajan o kullanıcının anahtarlarını yönetmeye ve onu `docker` grubuna
+  koymaya başlar; zorlanmış komut sınırı ve yetkisizlik ikisi birden
+  kaybolur. Denemek canlı bir yetki yükseltmesi olurdu. README uyarıyor.
+
+### 1 GB RAM'de derleme
+
+Bellek sunucu içinden saniyede bir `/proc/meminfo`'dan kaydedildi.
+
+- **hello-world** (busybox): 22 sn; en düşük `MemAvailable` 429 MiB; swap
+  artmadı.
+- **portfolio** (Node 22, `npm ci` + derleme + nginx, Hetzner'daki gerçek
+  uygulama): 201 sn; en düşük `MemAvailable` 237 MiB; swap 52 → 98 MiB;
+  OOM 0.
+- **Çekince:** makinede 2 GB swap var. Sonuç "964 MiB RAM + swap ile
+  yetti"; swap'sız ölçülmedi.
+
+### HTTPS uçtan uca
+
+- **Ad:** IP'ye kendiliğinden çözülen bir sslip.io adı; kullanıcının
+  DNS'ine dokunulmadı.
+- **Sertifika:** Let's Encrypt (YE1) HTTP-01 ile alındı.
+- **Yanıtlar:** dışarıdan HTTPS 200; HTTP → 308 ile HTTPS'e.
+
+### Reboot
+
+- Makine içten yeniden başlatıldı. Bu reboot'ta da çekirdek değişti
+  (6.12.107 → 6.12.111; otomatik güncelleme kurmuş).
+- **Ölçüm hatası yakalandı:** reboot komutundan sonra SSH 5 sn'de "geri
+  geldi" göründü. Açılış zamanı değişmemişti; makine henüz kapanmamıştı.
+  Ölçüm açılış zamanı değişene kadar beklenerek düzeltildi.
+- **Zaman çizelgesi (UTC):**
+  - komut 19:48:08;
+  - çekirdek 19:48:43;
+  - panelyd hazır 19:49:27;
+  - izleyici rotayı yükledi 19:49:38;
+  - ilk dış 200 19:49:41.
+  - Kesinti **~94 sn**; ~35 sn'si kapanış.
+- **Dış yoklamadaki gürültü:** sonrasında 200'lerin arasına `000`'lar
+  serpiştirildi. Kontrol grubu: hiçbir şey olmazken 60 sn'de 28
+  yoklamanın 4'ü (%14) `000` döndü. Bu, iş istasyonundan ABD'ye giden
+  isteklerde 3 sn'lik yoklama sınırının aşılması; sunucu kesintisi değil.
+- **Doğrulandı:**
+  - birimler etkin, `--failed` boş, hacim kökü `nosuid,nodev`;
+  - watchdog kurulu, zaman aşımı 0, `NRestarts=0`;
+  - açılış alarmı açıldı ve 10 sn sonra kendiliğinden kapandı;
+  - iki uygulama ayakta, alarm yok.
+
+### Kalıcı değişiklikler (kullanıcının hesabında ve makinesinde)
+
+- **Metadata:** `panely-kurulum` anahtarı (yalnız bu makine). Kullanıcı
+  `google-sudoers` ve `docker`'da. Yükseltmelerde root girişini açıp
+  kapatmak için gerekli; istenirse kaldırılabilir.
+- **Güvenlik duvarı:** `panely-web` kuralı ve makinedeki `panely-web`
+  etiketi. Siteler için gerekli.
+- **Root'un anahtarı:** `/root/.ssh/authorized_keys`'te iş istasyonunun
+  anahtarı. `PermitRootLogin no` iken işe yaramıyor.
+- **Makine:** dağıtım Caddy'si kaldırıldı; Docker, Panely, iki uygulama
+  (`hello`, `portfolio`) kuruldu.
+
+### Açık kalanlar
+
+- Swap'sız 1 GB'de derleme ölçülmedi.
+- arm64 sunucu kurulumu hâlâ hiç yapılmadı.
+- **Sudo kipi** (K-113 1b) yazılmadı. Her yükseltmede root girişini elle
+  açıp kapatmak gerekiyor.
+
 
 

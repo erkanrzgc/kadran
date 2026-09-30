@@ -78,13 +78,24 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 
 - **Server:** a fresh Linux host with systemd, OpenSSH and Docker Engine, reachable
   as root over SSH **once**. On Ubuntu, Docker from the distribution is enough:
-  `apt-get install -y docker.io`. The installer stops early if Docker is missing. Tested on Ubuntu 24.04, x86_64. arm64 binaries are
+  `apt-get install -y docker.io`. The installer stops early if Docker is missing. Tested on Ubuntu 24.04 and Debian 13, x86_64. Debian 13 was tested on a GCP e2-micro with 1 GB RAM and 2 GB swap, where a Node build peaked with 237 MiB free (K-121). arm64 binaries are
   built, and CI runs the tests on real ARM hardware, but no server install on
   arm64 has been done yet.
 - **Workstation:** Go 1.25+, an OpenSSH client, and a key pair
   (`~/.ssh/id_ed25519.pub` is used by default; `-client-key` picks another).
 - Ports 80 and 443 must be free on the server. The installer stops if a `caddy`,
   `nginx`, `apache2`, `httpd` or `lighttpd` service is running.
+- **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`):
+  for the install, allow key-only root login in a separate file such as
+  `/etc/ssh/sshd_config.d/01-panely-install.conf` containing
+  `PermitRootLogin prohibit-password`. Delete the file afterwards. Open 80/443 in
+  the provider's firewall; on GCP, use a rule with a target tag so that only this
+  machine is exposed.
+- **GCP: never add `panely-client` to instance or project SSH metadata.** The guest
+  agent manages the keys of every metadata user and puts them in the `docker` and
+  `google-sudoers` groups. `panely-client` would lose its forced command and gain
+  root. Unrelated metadata users, an agent restart and a reboot were measured
+  not to touch `panely-client` (K-121).
 
 ### 1. Build
 

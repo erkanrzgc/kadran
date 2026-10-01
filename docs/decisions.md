@@ -8585,24 +8585,53 @@ erişemiyor.
     her mutantı "yakalandı" gösterirdi. Sonsuz döngüye sokan mutantlar
     `-timeout` ile düşüyor.
 
-### Gerçek sunucuda ölçülecek
+### Gerçek sunucuda ölçüldü (GCP, Debian 13, `-sudo`, 1 Ekim gece)
 
-v0.2.0 kurulumlarında (GCP `-sudo`, Hetzner `root@`) ölçülecek; sonuçlar
-buraya eklenecek. Ölçülene kadar "oturumdan ayrılan kurulum" yalnızca
-yerelde kanıtlı (boru tutulmuyor), sshd/logind altında DEĞİL.
-- Başlatma bağlantısı kapandıktan sonra kurulum sürüyor mu: her başarılı
-  kurulum bunu ölçer, çünkü kurulum o bağlantı kapandıktan SONRA koşuyor.
-  logind oturum süreçlerini öldürseydi izleme "bitiş işareti bırakmadan
-  sona erdi" derdi.
-- İki sunucuda `KillUserProcesses` değeri.
-- İzleme bağlantısı sunucuda sshd oturumu öldürülerek koparılınca: istemci
-  255 alıp doğru bayttan devam ediyor mu, kurulum etkilenmeden bitiyor mu.
-- Kendiliğinden bir hat kopmasında "kaldığı yerden" satırı.
+v0.2.0 yayın dosyalarından (etiketten iki derleme, SHA256SUMS aynı),
+yayın notlarındaki yolla kuruldu. Kopmalar KASITLI üretildi: kurulum
+kullanıcısıyla koşan bir bekçi, ilgili sürecin sshd oturum atasını
+(`sshd-session`, OpenSSH 10.0) öldürdü. Bu, hattın kopmasıyla aynı şeyi
+yapıyor: istemcinin bağlantısı sunucu tarafında kapanıyor.
+
+- **logind:** `KillUserProcesses=false`; `logind.conf`'ta tanım yok
+  (varsayılan).
+- **İzleme kesildi** (1. kurulum, 45 sn):
+  - Bekçi izleme sürecini 21:09:32'de gördü, 8 sn sonra oturumu öldürdü.
+  - İstemci: "Connection to … closed by remote host", ardından
+    "Bağlantı koptu (kurulumu izleme, deneme 1/6)".
+  - Kurulum etkilenmedi: işaret `0`, 17/17 ✓.
+  - **Bayt bayt:** sunucudaki 1867 baytlık günlük, istemcinin çıktısında
+    araya giren iki satır çıkarılınca TAM BİR KEZ ve aynen duruyor.
+    Kopma günlüğün 576. baytındaydı; izleme oradan sürdü.
+  - Başlatma bağlantısı kurulumdan ÖNCE kapandı ve kurulum sürdü. Bu,
+    bu sunucuda oturumdan ayrılmanın sshd/logind altında da işlediğini
+    gösteriyor.
+- **Yükleme kesildi** (2. kurulum, aynı paket, 40 sn):
+  - İstemci: "Connection reset by peer". Bu, 1 Ekim'de üç kez görülen
+    gerçek hatanın aynı metni.
+  - Ardından "Yükleme kaldığı yerden sürüyor: 10.4 MiB/28.3 MiB", özet
+    tuttu, 17/17 ✓.
+  - **Ölü oturumun gecikmiş yazması GERÇEKTEN oldu:** öldürmeden hemen
+    önce yarım dosya 10 846 208 bayt; 2 sn sonra 10 911 744. Aradaki
+    fark tam bir `dd` bloğu (65 536), yani oturum öldükten SONRA yazıldı.
+    Açık ofsetle yazma tasarlandığı gibi bunu zararsız kıldı ve özet
+    tuttu. Ekleme (`>>`) kullanılsaydı bu blok dosyanın sonuna ikinci
+    kez eklenirdi.
+- **İki kurulumda da:**
+  - kesinti yoklaması (sunucu içinden, 0,5 sn): 148/148 ve 212/212 `200`;
+  - `/tmp/panely-bootstrap.*` artığı yok, kalan `dd` yok;
+  - başarıda yarım paket silindi;
+  - günlük, işaret ve kilit `root:root 0644`, dizin `0700`;
+  - panelyd `v0.2.0 (e9f5a17a40ab)`, watchdog 1 dk, 0 yeniden başlatma.
+- **Ölçülmeyen:** kendiliğinden bir hat kopması. Bu gece hat hızlıydı,
+  28 MiB ~25 sn'de gitti. Kopma kasıtlı üretildi.
 
 ### Açık kalanlar
 
-- `setsid`'in ve logind'in (`KillUserProcesses`) oturum bitince ne yaptığı
-  yerelde ölçülemiyor; gerçek sunucuda ölçülüyor (yukarıda).
+- `KillUserProcesses=yes` olan bir sunucu ölçülmedi. Orada kurulum
+  başlatma oturumuyla birlikte öldürülebilir. İzleme bunu "bitiş işareti
+  bırakmadan sona erdi" diye bildirir, sessizce asılı kalmaz; ama kurulum
+  yapılmamış olur.
 - İşaretin atomik yazımı (geçici dosya + `mv`) bir yarışı kapatıyor; yarış
   belirlenimci olarak üretilemediği için mutasyonla sınanmadı.
 

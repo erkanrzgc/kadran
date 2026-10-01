@@ -8591,3 +8591,184 @@ yerelde kanıtlı (boru tutulmuyor), sshd/logind altında DEĞİL.
   yerelde ölçülemiyor; gerçek sunucuda ölçülüyor (yukarıda).
 - İşaretin atomik yazımı (geçici dosya + `mv`) bir yarışı kapatıyor; yarış
   belirlenimci olarak üretilemediği için mutasyonla sınanmadı.
+
+## K-128 — Alan adı önkontrolü: tasarım taslağı
+
+**Tarih:** 1 Ekim 2026
+**Durum:** TASLAK — kod YOK; seçim kullanıcıda (aşağıda "Kararlar")
+
+Kaynak: Coolify'ın `CheckDomainDns` eylemi (1 Ekim'de okundu, HEAD
+`0ed423a`). Fikir alınıyor, kod değil (Apache-2.0, bkz. kopya kararı).
+
+### Bugün ne oluyor
+
+- `app create -domain` / `app update -domain` alan adını yalnız SÖZDİZİMİ
+  olarak doğruluyor (`validateDomain`: uzunluk, şema/port/yol yok).
+- Alan adı sunucuyu göstermiyorsa ya da 80/443 kapalıysa (GCP'de K-121'de
+  ilk başta öyleydi) komut BAŞARILI dönüyor. Sertifika alınamıyor ve bunu
+  kullanıcıya söyleyen bir şey yok.
+- **Caddy'nin davranışı (belgesinden okundu, sunucuda ÖLÇÜLMEDİ):**
+  - başarısız sertifika denemesinden sonra önce bir kez yeniden deniyor,
+    sonra diğer doğrulama türüne, sonra diğer sağlayıcıya (ZeroSSL)
+    geçiyor;
+  - sonra üstel olarak bekliyor: denemeler arası **en çok 1 gün**,
+    **30 güne kadar**;
+  - yeniden denemelerde Let's Encrypt'in **test ortamına** geçiyor ki
+    sınırlara takılmasın.
+- **Let's Encrypt sınırı (belgesinden):** hesap ve alan adı başına saatte
+  5 doğrulama hatası; 12 dakikada bir hak geri geliyor.
+
+**Asıl sorun hız sınırı DEĞİL** (Caddy onu test ortamıyla yumuşatıyor).
+Asıl sorun: kullanıcı DNS'i ya da güvenlik duvarını düzeltince sertifika
+hemen gelmiyor. Caddy bir sonraki denemeyi bekliyor ve bu bekleme 1 güne
+kadar uzayabiliyor. Kullanıcı "düzelttim, neden HTTPS yok?" diye kalıyor.
+Ayrıca hiçbir komut sorunun ne olduğunu söylemiyor.
+
+### Kısıt: denetimi kim yapacak
+
+- **panelyd YAPAMAZ:** `IPAddressDeny=any`, DNS dahil ağa çıkamıyor
+  (K-107'de birimlerin DNS'i ayrıca açılmak zorunda kalmıştı). Ona ağ
+  açmak, ele geçirilmiş daemon'a dışarı sızma yolu verir.
+- **CLI yapabilir:** kullanıcının makinesinde koşuyor, ağı var, ve
+  sunucunun genel adresini SSH hedefinden biliyor.
+- **Sunucu kendi genel IP'sini bilemeyebilir:** GCP'de arayüzde özel
+  adres var, genel adres NAT'ta (K-121). Yani "sunucu kendi adresine
+  baksın" yolu güvenilir değil.
+
+### Seçenekler
+
+**A. CLI'da DNS önkontrolü (sunucuya kod yok).**
+- `-domain` verilince, RPC'den ÖNCE alan adının A ve AAAA kayıtları
+  çözülüyor ve SSH hedefinin adresleriyle karşılaştırılıyor.
+- Sonuç üç sınıf:
+  - **eşleşiyor** → devam;
+  - **açıkça yanlış** (A kaydı var ve hiçbiri sunucu değil, ya da HİÇ
+    kayıt yok) → durur, bulunan adresleri ve beklenen adresi yazar;
+    `-skip-dns-check` ile geçilebilir;
+  - **belirsiz** → uyarır, devam eder:
+    - SSH hedefi özel/CGNAT/Tailscale adresi (10/8, 172.16/12,
+      192.168/16, 100.64/10): genel adres bilinmiyor;
+    - adresler bir vekilin olabilir (ör. Cloudflare);
+    - yerel hedef (sunucunun üstündeki CLI): genel adres bilinmiyor.
+- **Klasik tuzak, ayrıca yakalanıyor:** A doğru ama AAAA BAŞKA bir yeri
+  gösteriyor (kayıt firmasının park sayfası). Let's Encrypt IPv6'yı
+  tercih edebildiği için doğrulama düşer. A eşleşse de uyarılır.
+- Bedel: küçük. Sunucuya, ayrıcalıklı bütçeye, saldırı yüzeyine dokunmaz.
+- Sınır: DNS'i ölçer, 80/443'ün açık olduğunu ÖLÇMEZ.
+
+**B. Sonradan tanı komutu: `panely domain check <app>` (CLI).**
+- Kullanıcının makinesinden: DNS (A/AAAA), 80 ve 443'e TCP bağlantısı,
+  443'te TLS el sıkışması: sertifika bu alan adını kapsıyor mu, kim
+  vermiş, ne zaman bitiyor.
+- 80/443 kapalı güvenlik duvarını yakalar (K-121'deki durum).
+- "Sertifika neden yok" sorusuna cevap. A ile aynı kodu paylaşır.
+- Bedel: küçük, yine yalnız CLI.
+
+**C. Uçtan uca HTTP denetimi (sunucu değişikliği).**
+- CLI rastgele bir belirteç üretir; panelyd Caddy'ye o belirteci 80'de
+  sunan geçici bir rota ekler; CLI `http://<alan adı>/...` adresinden
+  onu okur.
+- Gerçekten bu sunucuya ulaşıldığını kanıtlar. Vekil ve NAT arkasında da
+  çalışır, güvenlik duvarını da kapsar.
+- **Bedel ve risk:**
+  - yeni bir API ve geçici Caddy rotası;
+  - Caddy'nin 80'deki kendi sunucusu (K-058: `:80`'i Caddy kendisi
+    kuruyor) ile nasıl birleşeceği ÖLÇÜLMELİ;
+  - ana makine eşleştiricisi olan rota Caddy'ye o ad için sertifika
+    ALDIRIR. Yani yanlış yazılırsa önlemeye çalıştığı şeyi tetikler.
+
+### Öneri
+
+1. **A + B birlikte**, yalnız CLI'da. Sunucu kodu yok, yüzey büyümüyor.
+   Sertifika sorunlarının çoğunu (DNS, AAAA tuzağı, kapalı port)
+   yakalıyorlar ve sebebi adıyla söylüyorlar.
+2. **C** yalnız A+B'nin yakalamadığı gerçek bir vaka görülürse.
+
+### Test planı (A+B seçilirse)
+
+- Çözücü bir arayüz arkasında; sahte çözücüyle her sınıf için tablo
+  testi: eşleşen, yanlış A, kayıt yok, yanlış AAAA, özel SSH adresi,
+  yerel hedef.
+- Önce kırmızı: bugün yanlış DNS'le `app update -domain` başarılı dönüyor.
+- Gerçek ölçüm: GCP'nin sslip adı (doğru), var olmayan bir alt alan adı
+  (kayıt yok), ve 80'i kapalı bir hedef (B'nin port denetimi).
+
+### Kararlar (kullanıcıda)
+
+1. A+B mi, yalnız A mı, C de mi?
+2. "Açıkça yanlış" DNS komutu DURDURSUN mu (öneri: durdursun,
+   `-skip-dns-check` ile geçilsin), yoksa yalnız uyarsın mı?
+3. Cloudflare gibi vekiller: adres listesi CLI'ya gömülsün mü (eskir),
+   yoksa eşleşmeyen her adres "belirsiz: vekil olabilir" diye mi
+   uyarılsın (öneri: ikincisi)?
+
+## K-129 — Commit mesajıyla otomatik dağıtımı atlama (`[skip ci]`): K-125'e ek taslak
+
+**Tarih:** 1 Ekim 2026
+**Durum:** TASLAK — kod YOK. K-125'e BAĞLI: otomatik dağıtım yoksa bu
+kuralın uygulanacağı yer de yok.
+
+Kaynak: Coolify'ın `DetectsSkipDeployCommits` ve GitHub webhook işleyicisi
+(1 Ekim'de okundu). Fikir alınıyor, kod değil.
+
+### Kural
+
+- Otomatik dağıtım (K-125) bir push gördüğünde, aşağıdaki işaretlerden
+  biri commit mesajındaysa o push için dağıtım YAPILMAZ:
+  `[skip ci]`, `[ci skip]`, `[skip cd]`, `[no ci]`, `[skip deploy]`.
+  - İlk dördü GitHub'ın ve Coolify'ın tanıdığı yaygın işaretler;
+    `[skip deploy]` testleri koşturup dağıtımı atlamak isteyen için.
+  - Büyük/küçük harf duyarsız.
+- **ELLE dağıtım (`panely deploy`) işaretlere BAKMAZ.** Atlama yalnızca
+  otomatik tetikleme içindir. Kullanıcı açıkça istiyorsa dağıtılır.
+- Atlanan her push denetim kaydına ve `app show`'a yazılır: "abc1234
+  atlandı: [skip ci]". Sessiz atlama yok.
+
+### Asıl ince nokta: bir push'ta BİRDEN ÇOK commit
+
+Örnek: arka arkaya iki commit — A (kod değişikliği), B (`[skip ci]` ile
+yalnız belge). Yalnız uçtaki B'ye bakılırsa **A HİÇ dağıtılmaz**; bir
+sonraki işaretsiz push'a kadar canlıda eski kod kalır.
+
+- **Coolify'ın kuralı (kodundan okundu):** dağıtım ancak push'taki
+  commit'lerin HEPSİ işaret taşıyorsa atlanıyor.
+- **Panely'nin kuralı, aynı yönde:** son dağıtılan commit ile yeni uç
+  arasındaki commit'lerin HEPSİ işaret taşıyorsa atlanır; biri bile
+  taşımıyorsa dağıtılır.
+
+**K-125'in önerdiği yoklamada (B) bu bilgi kendiliğinden gelmiyor:**
+- `git ls-remote` yalnız SHA verir, mesaj vermez.
+- Aradaki commit'ler için yoklayıcının geçmişi çekmesi gerekir:
+  son dağıtılan SHA'dan uca kadar `git fetch`.
+- **Bilinemiyorsa DAĞITILIR:**
+  - zorla push (son dağıtılan SHA artık uçla bağlı değil);
+  - sığ geçmiş, çekme hatası, ilk dağıtım.
+
+  Atlama bir iyileştirmedir. Şüphede dağıtmak normal yoldur; şüphede
+  atlamak bir değişikliği sessizce canlıdan uzak tutar.
+- Webhook'ta (K-125 A) GitHub push yükünde commit listesi var ama tavanı
+  belgede doğrulanmalı. Liste kesikse yine "bilinemiyor → dağıt".
+
+### Güvenlik
+
+- İşareti yalnızca depoya push yetkisi olan biri koyabilir; o kişi zaten
+  dağıtılacak kodu belirliyor. Yeni bir yetki doğmuyor.
+- İşaret yalnızca ATLATIR, hiçbir şeyi tetiklemez. Mesaj içeriği hiçbir
+  komuta, yola ya da ayara girmez; yalnız sabit dizgilerle
+  karşılaştırılır.
+
+### Test planı
+
+- Mesaj sınıflandırması için tablo testi: her işaret, büyük/küçük harf,
+  işaretin satır ortasında ve sonunda olması, benzer ama farklı
+  dizgiler (`[skip]`, `skip ci` köşeli parantezsiz).
+- Çoklu commit: hepsi işaretli → atla; biri işaretsiz → dağıt; geçmiş
+  bilinmiyor → dağıt.
+- Elle `panely deploy` işaretli uçta da dağıtır.
+- Mutasyon: "uca bak" mutantı A/B örneğiyle düşmeli; "bilinemiyorsa
+  atla" mutantı zorla push örneğiyle düşmeli.
+
+### Kararlar (kullanıcıda)
+
+1. K-125 seçildiğinde bu kural da gelsin mi?
+2. `[skip deploy]` eklensin mi, yoksa yalnız yaygın dört işaret mi?

@@ -7375,6 +7375,33 @@ başlatırdı. Gerçek süreler için watchdog saatte bir, her döngünün en
 uzun ilerleme aralığını günlüğe yazıyor. Canlıda o dağılım okunmadan
 eşik küçültülmemeli.
 
+**1 Ekim: ölçülen dağılım.**
+- **Canlı (Hetzner), boşta:** ilk 22 saatlik rapor. Gözetmen 2–3 sn, vekil
+  izleyicisi 10 sn, disk 5 dk, yedek 1 sa. `NRestarts=0`.
+- **GCP, normal yük altında:** 12:41–12:48 (Türkiye saati) arasında dört
+  senaryo tek bir rapor penceresine sığdırıldı. Her iyileştirmenin süresi
+  günlüğün "sağlıksız" → "iyileştirme uygulandı" zaman damgalarından
+  okundu:
+  - A, bir konteyner öldürüldü: 6,5 sn;
+  - D, iki konteyner aynı turda: 1,8 + 2,7 sn;
+  - C, dağıtım sürerken bir konteyner: 2,7 sn;
+  - B, dağıtım: 68 sn. Önbellekten derlendi; ağır bir derleme DEĞİLDİ.
+- **Saatlik rapor (üst sınır):** gözetmen **7 sn**, vekil izleyicisi
+  10 sn (boştakiyle aynı), disk 5 dk, yedek 1 sa. `NRestarts=0`, watchdog
+  zaman aşımı 0.
+- **Kilit yarışı gözlenmedi:** vekil izleyicisinin en uzun aralığı kendi
+  turunu aşmadı.
+- **Kapsam:**
+  - bu NORMAL yük. `docker start` hızlı ve dağıtımlar kilidi yalnızca
+    kısa Caddy çağrılarında tutuyor;
+  - 15 dakikalık tabanın asıl sebebi olan durumlar ölçülmedi: 60 sn'lik
+    `containerTimeout`'a dayanan asılı executor, asılı dockerd, uzun kilit
+    beklemesi;
+  - taban bu veriyle KÜÇÜLTÜLMEDİ; README'deki "derived, not measured"
+    kalıyor;
+  - bellek izleme bu pencerede başlayamadı (SSH kopukluğu); bellek
+    verisi K-121'deki ağır derlemeden.
+
 ### Mutasyon
 
 - `scripts/mutate-watchdog.sh` 22/22. Açılıştaki ve ticker'daki `Mark`

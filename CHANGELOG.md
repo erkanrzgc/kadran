@@ -3,11 +3,25 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.2.0 — 2026-10-01
 
-### Server — running in production since 30 September 2026
+Hang detection, a bounded start-up, installs without root SSH, and a second tested
+platform (Debian 13).
 
-- Hang detection. panelyd pings systemd's watchdog (`WatchdogSec=60s`) only while
+### Upgrading from v0.1.0
+
+Run `panely bootstrap` again with the v0.2.0 files, either as `root@server` or as
+`-sudo user@server`.
+- The unit file and the binary must change together. The new unit turns on
+  systemd's watchdog, and an old panelyd under it would be killed every minute.
+- To roll back, run `bootstrap` from the v0.1.0 tree. Never swap a binary on its
+  own.
+- The reverse proxy restarts once during this upgrade, because its unit changed.
+  The restart cost about 1.5 s of downtime (K-118).
+
+### Server
+
+- **Hang detection.** panelyd pings systemd's watchdog (`WatchdogSec=60s`) only while
   its background loops (health supervisor, proxy watcher, disk check, backups) make
   progress and its database pool can hand out a connection. A plain ping goroutine
   would keep pinging through a deadlock. Measured under real systemd in CI:
@@ -15,23 +29,32 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   - a frozen daemon was killed and restarted;
   - SIGABRT left a goroutine dump showing the loops in the journal;
   - a clean stop was not counted as a watchdog failure.
-  The unit and the binary must be upgraded together (K-115).
+
+  The thresholds (15 minutes, 3 hours for backups) are derived from the code's
+  timeouts. Production was idle for its first 22 hourly reports: the longest gaps
+  were 2–3 s for the supervisor and 10 s for the proxy watcher (K-115, K-118).
+  Under normal load on a test server (deploys and killed containers), the longest
+  gaps were 7 s for the supervisor and 10 s for the proxy watcher. The hung-executor
+  cases that the 15-minute floor exists for were not measured (K-115).
+- The watchdog's hourly report counts the interval that is still open. A loop that
+  is stuck but has not yet reached its threshold used to be invisible, and an hourly
+  loop always showed "0s" (K-118).
 - panelyd's unit allows 180 s to start (was systemd's default 90 s). With a hung
-  executor or Docker daemon, startup can take up to 103 s before the daemon
-  reports ready. systemd used to kill it just before that point and restart it
-  into the same wall, so `panely status` never answered. The bound is derived from
-  the code's timeouts; the hang itself was not reproduced (K-117).
+  executor or Docker daemon, startup can take up to 103 s before the daemon reports
+  ready. systemd used to kill it just before that point and restart it into the same
+  wall, so `panely status` never answered. The bound is derived from the code's
+  timeouts; the hang itself was not reproduced (K-117).
 - The reverse-proxy unit no longer has a reload command. It never worked, and a
   working one would have loaded the base configuration, which has no routes, and
   taken every site down (K-112).
 - `panely app show` marks which release is live. The old status column showed the
   build status only; after a rollback the top "built" release does not get the
   traffic. A separate line names the live release even when it is older than the
-  listed ones. Against an older server that does not report the live release,
-  it says "unknown" instead of claiming nothing is live (K-112, measured against
-  the old server in K-118).
+  listed ones. Against an older server that does not report the live release, it
+  says "unknown" instead of claiming nothing is live (K-112, measured against the
+  old server in K-118).
 
-Measured in production (K-118):
+Measured in production on 30 September (K-118):
 - the upgrade itself cost ~1.5 s of downtime, measured from inside the server;
 - a killed reverse proxy was serving again in ~6.4 s;
 - a reboot onto a new kernel had sites back after ~43 s, and the startup alarm
@@ -39,19 +62,7 @@ Measured in production (K-118):
 - the watchdog was armed after the upgrade and after the reboot;
 - Telegram delivery worked end to end for the proxy crash and the reboot.
 
-### Tested platforms
-
-- Debian 13 on a GCP e2-micro (1 GB RAM, 2 GB swap). Measured:
-  - all 17 post-install checks pass;
-  - HTTPS with a Let's Encrypt certificate works end to end;
-  - a Node build peaked with 237 MiB free and no OOM;
-  - after a reboot everything came back and the startup alarm closed on its own.
-
-  GCP's guest agent did not touch `panely-client`'s forced-command key through
-  metadata changes, an agent restart or a reboot. Never add `panely-client` to
-  SSH metadata (K-121).
-
-### CLI
+### Install
 
 - `panely bootstrap -sudo user@server` installs and upgrades through the user's
   passwordless sudo, so root SSH stays closed and sshd's policy is left alone.
@@ -63,13 +74,39 @@ Measured in production (K-118):
   - Measured on Debian 13 on GCP: 17/17 checks passed, root login was refused before
     and after, sudo's log recorded the command, and sites answered throughout the
     upgrade (K-122).
-
 - `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB
   with the same binaries. On a slow link the uncompressed upload took about
   13 minutes and dropped once (K-119).
+- **Debian 13** is a tested platform, alongside Ubuntu 24.04. Tested on a GCP
+  e2-micro with 1 GB RAM and 2 GB swap. Measured:
+  - all 17 post-install checks pass;
+  - HTTPS with a Let's Encrypt certificate works end to end;
+  - a Node build peaked with 237 MiB free and no OOM;
+  - after a reboot everything came back and the startup alarm closed on its own.
+
+  GCP's guest agent did not touch `panely-client`'s forced-command key through
+  metadata changes, an agent restart or a reboot. Never add `panely-client` to SSH
+  metadata (K-121).
+
+### CLI
+
 - When SSH cannot connect (unknown host, rejected key, changed host key), the CLI
-  now shows SSH's own message. It used to show only "error reading server
-  preface: EOF", which hid even a host key verification failure (K-120).
+  shows SSH's own message. It used to show only "error reading server preface:
+  EOF", which hid even a host key verification failure. A child process that
+  keeps SSH's stderr open can no longer turn a fast failure into a long hang
+  (K-120).
+
+### Known gaps
+
+Listed in full in the README. In short:
+- audit chains are not cross-checked;
+- hang detection covers only what its loops and probe watch, with derived
+  thresholds;
+- volume backups are not snapshots;
+- no secret store;
+- Dockerfile builds from public repositories only;
+- single node;
+- CLI messages are in Turkish.
 
 ## v0.1.0 — 2026-09-27
 

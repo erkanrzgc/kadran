@@ -362,7 +362,9 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
   while its four background loops make progress and its database pool can hand out
   a connection. An RPC handler stuck on something no loop or probe touches still
   goes unnoticed. The thresholds (15 minutes, 3 hours for backups) are derived from
-  the code's timeouts, not yet measured in production (K-115).
+  the code's timeouts. Under normal load (deploys, killed containers), the longest
+  gaps measured 7 s for the supervisor and 10 s for the proxy watcher. The hung-executor
+  cases that the floor exists for were not measured (K-115).
 - **No secret store.** Environment variables are stored in the daemon's database and
   are visible to `docker inspect` on the host. Do not put secrets you cannot rotate in
   them.

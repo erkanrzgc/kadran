@@ -66,7 +66,8 @@ Measured in production on 30 September (K-118):
 
 - `panely bootstrap -sudo user@server` installs and upgrades through the user's
   passwordless sudo, so root SSH stays closed and sshd's policy is left alone.
-  - The whole install runs under `sudo -n`, which never prompts. Before anything is
+  - The privilege check and the install itself run under `sudo -n`, which never
+    prompts; the upload and the log follow run as the user. Before anything is
     uploaded, the installer checks in the exact form it will use that it becomes
     uid 0, and it stops with sudo's own message if it cannot.
   - Root mode also checks the uid before uploading. `panely-client` is refused as an
@@ -74,6 +75,21 @@ Measured in production on 30 September (K-118):
   - Measured on Debian 13 on GCP: 17/17 checks passed, root login was refused before
     and after, sudo's log recorded the command, and sites answered throughout the
     upgrade (K-122).
+- **A dropped connection no longer restarts the install.** On 1 October three long
+  uploads in a row were cut with "Connection reset by peer", on two providers.
+  - The package goes to the SSH user's own directory, named by its SHA-256. After a
+    drop only the missing bytes are sent. They are written at an explicit offset, so
+    a dead session's late write cannot shorten or shift the file.
+  - The server checks the SHA-256 before installing. A corrupt package is deleted
+    and uploaded once more.
+  - The install runs detached from the SSH session and logs to a file. The CLI
+    follows the log from the last byte it printed and reconnects if the link drops.
+  - If the install process dies before it finishes (for example, out of memory),
+    the CLI says so and does not wait forever. Only one install runs at a time.
+  - SSH keepalives now detect a connection that dies without a reset.
+
+  Measured with the real tools on Debian 13, including a real `sudo -n` as an
+  unprivileged user (K-127).
 - `panely bootstrap` sends a gzip-compressed package: 28.3 MiB instead of 74.7 MiB
   with the same binaries. On a slow link the uncompressed upload took about
   13 minutes and dropped once (K-119).

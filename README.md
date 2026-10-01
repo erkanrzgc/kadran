@@ -126,13 +126,22 @@ existing install. After this, you never need root for day-to-day work.
 
 Before uploading anything, the installer checks that it will actually run as root, in
 the exact form it will use.
-- With `-sudo`, the whole install runs under `sudo -n`, and sudo never asks for a
-  password. If one is required, the install stops with sudo's own message before the
-  upload.
+- With `-sudo`, the privilege check and the install itself run under `sudo -n`, and
+  sudo never asks for a password. If one is required, the install stops with sudo's
+  own message before the upload. The upload and the log follow run as your user.
 - The privilege is the same as a root key. What changes is that sshd's policy is left
   alone, root SSH stays closed, and sudo's log records the command.
 - Measured on Debian 13 on GCP: an upgrade with `-sudo` passed 17/17 checks, root login
   stayed refused before and after, and sites answered throughout (K-122).
+
+A dropped connection does not restart the install (K-127).
+- The package goes to `~/.panely-upload` on the server, named by its SHA-256. After
+  a drop, only the missing part is sent. The server checks the SHA-256 before it
+  installs anything.
+- The install runs detached from the SSH session and logs to
+  `~/.panely-upload/<sha256>.log`. The CLI follows that log and reconnects if the link
+  drops. If the install process dies before it finishes, the CLI says so instead of
+  waiting.
 
 The installer bundle is gzip-compressed, about 28 MiB (K-119), so upload speed matters.
 To a US server from a home line in Turkey, it took 16–22 minutes. The time limit is

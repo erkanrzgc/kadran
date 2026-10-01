@@ -8413,3 +8413,181 @@ ek katman.
 
 
 
+
+## K-127 — Kaldığı yerden devam eden yükleme, oturumdan ayrılan kurulum
+
+**Tarih:** 1 Ekim 2026
+**Durum:** UYGULANDI; gerçek araçlarla (Debian 13 kapsayıcısı, gerçek
+`sudo -n`) ölçüldü. Gerçek sunucu ölçümü aşağıda.
+
+### Neden
+
+- 1 Ekim'de v0.2.0 kurulumu için yapılan üç uzun yüklemenin ÜÇÜ de
+  "Connection reset by peer" ile koptu: iki kez GCP, bir kez Hetzner. 30
+  Eylül'de de bir kez kopmuştu; K-119'da sıkıştırmasız paket de kopmuştu.
+- Kopma hattan geliyor, hedeften bağımsız: iki ayrı sağlayıcıda, farklı
+  saatlerde.
+- Eski akış paketi TEK bir ssh akışıyla gönderip AYNI akışta kuruyordu.
+  Her kopma 28 MB'ı baştan göndermek demekti. Yarım kurulum olmuyordu
+  (gzip bütünlüğü + `trap`); sunucular her seferinde dokunulmamış çıktı.
+  Ama kurulum, hat bir kez bile kopmadan bitmek ZORUNDAYDI.
+
+### Tasarım
+
+Üç ayrı adım; her biri ayrı ssh bağlantısı, ayrı yeniden deneme:
+
+1. **Yükleme.**
+   - Paket, bağlanan kullanıcının KENDİ dizinine yazılıyor:
+     `~/.panely-upload` (0700). Dosyanın adı paketin sha256'sı.
+   - Kopmadan sonra sunucudaki boyut sorulup yalnızca eksik kısım
+     gönderiliyor.
+   - Yazma AÇIK OFSETLE: `dd seek=<ofset> oflag=seek_bytes conv=notrunc`.
+     Ekleme (`>>`) değil. 1 Ekim'de iki sunucuda da ölü oturumların
+     süreçleri dakikalarca yaşadı. Böyle bir süreç sonradan yazsa da aynı
+     baytları aynı yere yazar; dosyayı kısaltamaz, kaydıramaz.
+   - Paket artık belirlenimci: sabit dosya zamanı, sıralı birimler. Aynı
+     dosyalar → aynı sha → yarım yükleme yalnızca AYNI pakete devam eder.
+   - Bir günden eski artıklar bir sonraki koşuda siliniyor.
+2. **Başlatma** (sudo kipinde YALNIZCA bu adım ve yetki denetimi sudo
+   altında):
+   - `flock -n`: aynı anda tek kurulum. Kilit tutuluyorsa ve AYNI paketin
+     bitmemiş günlüğü varsa "zaten sürüyor" (önceki başlatma kopmuş ama
+     kurulumu başlatmış) → izlemeye geçiliyor. Yoksa "başka bir kurulum
+     sürüyor" → hata.
+   - Dosya paket boyutuna kesiliyor (`truncate -c`), sha256 denetleniyor.
+     Tutmazsa dosya siliniyor ve istemci BİR KEZ baştan yüklüyor.
+   - Kurulum `setsid` ile oturumdan ayrılıyor; çıktısı `<sha>.log`'a.
+     Kilidi (fd 9) bitene kadar tutuyor ama alt süreçlerine geçirmiyor
+     (`9>&-`): arkada kalan bir süreç kilidi sonsuza dek tutmasın.
+   - Bitiş kodu `<sha>.done`'a önce geçici dosyaya yazılıp taşınıyor:
+     izleme yarım (boş) bir işaret okumasın.
+   - `umask 022`: sudo kipinde günlüğü ve kilidi root yazıyor, izleyen
+     yetkisiz kullanıcı okuyor. Dizin 0700, başkası göremiyor.
+3. **İzleme.**
+   - İstemci günlüğü kaldığı bayttan izliyor. Kopunca aynı bayttan
+     yeniden bağlanıyor: günlük ne tekrar ne eksik.
+   - Bitiş kodunu işaret dosyasından okuyor.
+   - **Ölen kurulum:** kilit boşaldığı hâlde işaret yoksa kurulum süreci
+     ölmüş demektir (ör. 1 GB'lık e2-micro'da bellek yetmedi). İzleme bunu
+     söylüyor; sonsuza dek beklemiyor.
+
+Ortak kurallar:
+- Uzak betikler SABİT; değişkenler (sha, dizin, ofset, boyut) argüman.
+  Sunucunun bildirdiği dizin ayrıca sınırlanıyor (mutlak, boşluksuz,
+  tırnaksız, `..` yok).
+- Yalnızca ssh'ın KENDİ hatası (255) yeniden deneniyor. Özet uyuşmazlığı,
+  disk dolması, kurulum hatası gerçek sonuç; tekrar denemek aynısını
+  üretir.
+- Adım başına 6 deneme (5 kopma tolere), artan bekleme.
+- `ServerAliveInterval=15`, `ServerAliveCountMax=4`: RST'siz ölen bağlantı
+  (ör. NAT zaman aşımı) ssh'ı sonsuza dek bekletirdi ve yeniden bağlanma
+  hiç tetiklenmezdi. İzleme uzun süre sessiz kalabildiği için şart.
+
+**Güvenlik çerçevesi:** sudo kipinde root, kullanıcının dizinindeki
+dosyalarla çalışıyor (paket, günlük, kilit). Kullanıcı o dosyaları
+değiştirebilir; ama o kullanıcı zaten parolasız sudo'lu, yani root'a
+denk. Burada yeni bir yetki sınırı yok. Dizin 0700, başka kullanıcılar
+erişemiyor.
+
+### Bulunan hatalar
+
+- **Deneme sayımı bir eksikti (önce kırmızı test).** Başarılı yazmayı
+  doğrulayan tur da bir deneme sayılıyordu. 5 kopmadan sonra TAMAMLANAN
+  yükleme "bağlantı sürekli kopuyor" diye reddediliyordu. Artık yalnızca
+  kopmalar sayılıyor; başarılı yazmadan sonra dosya hâlâ eksikse sonsuz
+  döngü yerine duruluyor.
+- **Uzun artık sahte hata üretiyordu.** Sunucudaki dosya paketten uzunsa
+  her tur baştan yazıyor ve 6 turdan sonra yine "bağlantı sürekli
+  kopuyor" diyordu. Artık uzun dosya "tamam" sayılıp başlatmada kesiliyor
+  ve özet denetleniyor.
+- **Test tamponu veriyi siliyordu (yalnız testte).** Gerçek-betik testinin
+  ilk koşusu izlemenin hiçbir şey basmadığını gösterdi. Betik elle
+  koşturulunca çalışıyordu. Sebep: test, stdout ve stderr için AYNI
+  `bytes.Buffer`'ı verdi. exec.Cmd ikisini ayrı goroutine'lerle
+  kopyalıyor ve `Buffer.ReadFrom` öbürünün yazdığını eziyor. Üretimde
+  CLI dosya (`os.Stdout`/`os.Stderr`) veriyor, bu yol yok. Test kilitli
+  bir tampona geçti.
+- **Yorum yanlış mekanizma iddia ediyordu.** `truncate -c` için "olmasa
+  root'a ait dosya sonraki yüklemeyi engellerdi" yazmıştım. Yanlış: özet
+  tutmayınca dosya zaten siliniyor. Yorum düzeltildi.
+
+### Test
+
+- **Sahte ssh (protokol):** test binary'si sunucuyu taklit ediyor; uzak
+  komutu POSIX kelimelerine ayırıp hangi betiğin çağrıldığını tanıyor.
+  Dizin ve çalıştırıcı argümanlarını da denetliyor. Senaryolar:
+  - tek kopma → doğru ofsetten devam;
+  - 5 kopma → başarı; sürekli kopma → 6 denemede vazgeçme, başlatma YOK;
+  - uzun artık → yeniden yazılmıyor;
+  - bozuk artık → bir kez yeniden yükleme; hep bozuk → hata, izleme YOK;
+  - izleme kopması → doğru bayttan devam, günlük bir kez;
+  - kurulum hatası → çıkış kodu taşınıyor;
+  - "zaten sürüyor" → izleme; "başka kurulum" → hata;
+  - ölen kurulum → günlüğün yeriyle hata;
+  - başarılı ama eksik yazma → döngü değil hata;
+  - beklenmedik dizin → hiçbir şey yazılmıyor.
+- **Gerçek araçlar (Linux):** ssh yerine son argümanı `sh -c` ile koşturan
+  bir ara betik. Tırnaklar gerçek dash'ten, betikler gerçek dd, flock,
+  setsid, sha256sum, truncate ve tar'dan geçiyor. install.sh zararsız bir
+  test betiği. Ölçülenler:
+  - başlatma, kurulum SÜRERKEN dönüyor (arkadaki süreç ssh borusunu
+    tutsaydı beklerdi);
+  - devam blok katı olmayan ofsette (100 001) doğru;
+  - ölü oturumun gecikmiş yazması dosyayı kısaltmıyor;
+  - bozuk paket gerçek sha256sum ile reddediliyor;
+  - kilit "bizim" ile "başkası"nı ayırıyor ve pakete dokunmuyor;
+  - kurulumun 5 sn yaşayan alt süreci kilidi tutmuyor;
+  - `kill -9` ile öldürülen kurulum "bitiş işareti bırakmadan" bildiriliyor.
+  - **Sudo:** gerçek `sudo -n`, kullanıcının umask'ı KASTEN 077. Günlüğün
+    sahibi uid 0; yetkisiz izleme onu okuyor.
+- Koşuldu: Debian 13 kapsayıcısında (GCP ile aynı sürüm), parolasız
+  sudo'lu YETKİSİZ bir kullanıcıyla, deponun bütün bootstrap testleri.
+  CI'da Linux runner'larında `PANELY_TEST_REAL_SUDO=1` ile; değişken set
+  iken test atlanmıyor.
+- **`mutate-bootstrapssh.sh` +20, toplam 36/36.** Debian 13
+  kapsayıcısında, parolasız sudo'lu yetkisiz kullanıcıyla, CI'daki gibi
+  koşuldu.
+  - Yükleme: devam yok, `conv=notrunc`, `seek_bytes`, özet, deneme sayımı,
+    eksik yazma, sınırsız yeniden yükleme, kopma dışı sonucun yeniden
+    denenmesi, dizin doğrulaması.
+  - Kurulum: kilit, başkasının kurulumu, `9>&-`, izleme ofseti, ölen
+    kurulum, umask, başlatmanın sudo'suz koşması, `sudo -n`,
+    `ServerAliveInterval`.
+  - Paket: birim sırası, dosya zamanı.
+  - umask mutantını YALNIZCA gerçek sudo testi yakaladı (ayrıca
+    doğrulandı). Gerçek-betik testlerinin yakaladığı mutantlar Windows'ta
+    yeşil kalır; CI'da betik Linux'ta ve `PANELY_TEST_REAL_SUDO=1` ile
+    koşuyor.
+- **Betiğin kendisinde iki kusur bulundu:**
+  - `conv=notrunc` mutantı ilk koşuda YEŞİL kaldı. Sebep test değildi:
+    aranan metin dosyada İKİ kez geçiyordu (biri yorumda) ve
+    `replace(…,1)` İLKİNİ, yani yorumu değiştirdi. Kod hiç mutasyona
+    uğramadan ölçüldü. Betik artık TAM BİR eşleşme şart koşuyor; mutant
+    düzeltilince doğru testten doğru sebeple düştü ("paket boyutu 70000").
+    Aynı sınıfın diğer 19 betikte taranması ayrı bir iş.
+  - "Sınırsız yeniden yükleme" mutantı derlenmiyordu; derleme kapısı
+    durdurdu (K-096), mutant derlenir biçimde yeniden yazıldı.
+  - Betik artık önce tabanın YEŞİL olduğunu denetliyor: kırmızı taban
+    her mutantı "yakalandı" gösterirdi. Sonsuz döngüye sokan mutantlar
+    `-timeout` ile düşüyor.
+
+### Gerçek sunucuda ölçülecek
+
+v0.2.0 kurulumlarında (GCP `-sudo`, Hetzner `root@`) ölçülecek; sonuçlar
+buraya eklenecek. Ölçülene kadar "oturumdan ayrılan kurulum" yalnızca
+yerelde kanıtlı (boru tutulmuyor), sshd/logind altında DEĞİL.
+- Başlatma bağlantısı kapandıktan sonra kurulum sürüyor mu: her başarılı
+  kurulum bunu ölçer, çünkü kurulum o bağlantı kapandıktan SONRA koşuyor.
+  logind oturum süreçlerini öldürseydi izleme "bitiş işareti bırakmadan
+  sona erdi" derdi.
+- İki sunucuda `KillUserProcesses` değeri.
+- İzleme bağlantısı sunucuda sshd oturumu öldürülerek koparılınca: istemci
+  255 alıp doğru bayttan devam ediyor mu, kurulum etkilenmeden bitiyor mu.
+- Kendiliğinden bir hat kopmasında "kaldığı yerden" satırı.
+
+### Açık kalanlar
+
+- `setsid`'in ve logind'in (`KillUserProcesses`) oturum bitince ne yaptığı
+  yerelde ölçülemiyor; gerçek sunucuda ölçülüyor (yukarıda).
+- İşaretin atomik yazımı (geçici dosya + `mv`) bir yarışı kapatıyor; yarış
+  belirlenimci olarak üretilemediği için mutasyonla sınanmadı.

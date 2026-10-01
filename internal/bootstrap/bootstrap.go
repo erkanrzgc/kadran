@@ -23,9 +23,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -158,6 +160,10 @@ func validate(opts *Options) error {
 	return nil
 }
 
+// archiveModTime, paketteki her dosyanın zamanı: sabit, paket
+// deterministik olsun diye (K-127).
+var archiveModTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+
 // clientUser, install.sh'in oluşturduğu yetkisiz istemci hesabı.
 const clientUser = "panely-client"
 
@@ -241,12 +247,16 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
 
+	// Paket DETERMİNİSTİK (K-127): sha'sı sunucudaki yarım yüklemenin adı.
+	// Sabit zaman (uzakta `tar -m` zaten uygulamıyor) ve sıralı birimler;
+	// yoksa her koşu farklı bir sha üretir ve kesilen yükleme bir sonraki
+	// koşuda devam edemezdi.
 	add := func(name string, mode int64, content []byte) error {
 		header := &tar.Header{
 			Name:    name,
 			Mode:    mode,
 			Size:    int64(len(content)),
-			ModTime: time.Now(),
+			ModTime: archiveModTime,
 			Format:  tar.FormatPAX,
 		}
 		if err := tw.WriteHeader(header); err != nil {
@@ -281,7 +291,8 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 		}
 	}
 
-	for name, rel := range unitFiles {
+	for _, name := range slices.Sorted(maps.Keys(unitFiles)) {
+		rel := unitFiles[name]
 		content, err := os.ReadFile(filepath.Join(opts.RepoRoot, filepath.FromSlash(rel)))
 		if err != nil {
 			return nil, fmt.Errorf("bootstrap: %s okunamadı: %w", rel, err)
@@ -344,43 +355,18 @@ func normalizeLineEndings(content []byte) []byte {
 	return bytes.ReplaceAll(content, []byte("\r\n"), []byte("\n"))
 }
 
-// runInstaller, paketi gönderir ve kurulum betiğini çalıştırır.
-//
-// Uzak kabuk komutu bilerek küçük: geçici dizin aç, tar'ı çöz, betiği
-// çalıştır, dizini temizle. Betiğin kendisi paketin içinde olduğu için
-// buradaki tek satır güncellenmek zorunda kalmıyor.
+// runInstaller ve uzak betikler upload.go'da (K-127).
 //
 // `tar -m`: dosya zamanları uygulanmıyor. İş istasyonunun saati sunucudan
 // biraz ilerideyse tar "time stamp … in the future" uyarısı basıyordu
 // (taze sunucu testi, K-112); geçici kurulum dosyaları için zaman önemsiz.
 //
-// `-z`: paket gzip'li (buildArchive). İkisi ayrı yerde yazıldığı için
-// TestRemoteExtractionMatchesTheArchiveFormat onları birbirine bağlıyor.
-const remoteInstall = `set -e
-d="$(mktemp -d /tmp/panely-bootstrap.XXXXXX)"
-trap 'rm -rf "$d"' EXIT
-tar -x -z -m -C "$d"
-bash "$d/install.sh" "$d"`
-
-func runInstaller(ctx context.Context, opts Options, archive []byte) error {
-
-	// G204 bastırılıyor. Bastırılan şey tam olarak şu: gosec, argv'nin
-	// sabit olmamasını bayrak ediyor. Komut adı sabit ("ssh"), kabuk
-	// kullanılmıyor ve argv dizi olarak veriliyor — kabuk enjeksiyonu
-	// burada temsil EDİLEMEZ. Geriye kalan gerçek sınıf argüman
-	// enjeksiyonuydu (`-` ile başlayan hedefi ssh seçenek sanar);
-	// validate() onu reddediyor, bkz. TestRejectsOptionLikeHost.
-	// remoteInstall sabit bir dize.
-	cmd := exec.CommandContext(ctx, sshCommand, sshArgs(opts, remoteCommand(opts, remoteInstall))...) //nolint:gosec
-	cmd.Stdin = bytes.NewReader(archive)
-	cmd.Stdout = opts.Stdout
-	cmd.Stderr = opts.Stderr
-
-	if err := cmd.Run(); err != nil {
-		return kurulumHatasi(ctx, err, len(archive))
-	}
-	return nil
-}
+// G204 (upload.go'daki sshRun): gosec argv'nin sabit olmamasını bayrak
+// ediyor. Komut adı sabit, kabuk kullanılmıyor ve argv dizi olarak
+// veriliyor; kabuk enjeksiyonu burada temsil EDİLEMEZ. Geriye kalan gerçek
+// sınıf argüman enjeksiyonuydu (`-` ile başlayan hedefi ssh seçenek sanar);
+// validate() onu reddediyor, bkz. TestRejectsOptionLikeHost. Uzak betikler
+// sabit; değişkenler doğrulanmış argüman.
 
 // kurulumHatasi, uzak kurulumun hatasını kullanıcının anlayacağı hâle
 // getirir.
@@ -416,6 +402,12 @@ func sshArgs(opts Options, remoteCommand string) []string {
 		"-T",
 		"-o", "BatchMode=yes",
 		"-o", "ConnectTimeout=15",
+		// Sessizce ölen bağlantı (RST'siz, ör. NAT zaman aşımı) ssh'ı
+		// sonsuza dek bekletirdi; ~60 sn yanıtsızlıkta 255 ile çıkıyor ve
+		// yükleme/izleme yeniden bağlanıyor (K-127). İzleme uzun süre
+		// sessiz kalabildiği için bu şart.
+		"-o", "ServerAliveInterval=15",
+		"-o", "ServerAliveCountMax=4",
 	}
 	if opts.Port != 0 {
 		args = append(args, "-p", fmt.Sprint(opts.Port))

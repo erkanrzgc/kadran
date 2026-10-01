@@ -149,6 +149,11 @@ jobs:
           buf-version: ${{ env.BUF_VERSION }}
 
       - name: go test -race
+        # Linux runner'larında parolasız sudo var: bootstrap'ın sudo kipi
+        # gerçek `sudo -n` ile koşuyor (TestRealScriptsInstallUnderSudo,
+        # K-127). Değişken set iken test atlanmıyor; sudo yoksa düşüyor.
+        env:
+          PANELY_TEST_REAL_SUDO: ${{ runner.os == 'Linux' && '1' || '' }}
         run: go test -race -count=1 ./...
 
   build:
@@ -404,6 +409,10 @@ jobs:
           python-version: '3.x'
 
       - name: Bütün mutasyon betikleri
+        # Sudo kipinin umask mutasyonunu yalnızca gerçek sudo testi
+        # yakalıyor (mutate-bootstrapssh.sh, K-127).
+        env:
+          PANELY_TEST_REAL_SUDO: "1"
         run: |
           set -uo pipefail
 

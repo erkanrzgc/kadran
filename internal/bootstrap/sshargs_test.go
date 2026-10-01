@@ -25,6 +25,19 @@ func TestSSHArgsNeverPromptForAPassword(t *testing.T) {
 	}
 }
 
+// Sessizce ölen bağlantı (RST'siz) ssh'ı sonsuza dek bekletirdi ve
+// yeniden bağlanma hiç tetiklenmezdi; izleme uzun süre sessiz kalabiliyor
+// (K-127).
+func TestSSHArgsDetectSilentlyDeadConnections(t *testing.T) {
+	args := sshArgs(Options{Host: "h"}, "c")
+	for _, want := range []string{"ServerAliveInterval=15", "ServerAliveCountMax=4"} {
+		i := slices.Index(args, want)
+		if i < 1 || args[i-1] != "-o" {
+			t.Errorf("%s seçenek olarak yok: %q", want, args)
+		}
+	}
+}
+
 func TestSSHArgsKeepHostLastBeforeTheRemoteCommand(t *testing.T) {
 	for _, port := range []int{0, 2222} {
 		args := sshArgs(Options{Host: "root@1.2.3.4", Port: port}, "uname -m")

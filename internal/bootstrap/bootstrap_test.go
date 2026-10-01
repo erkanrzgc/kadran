@@ -563,6 +563,34 @@ func newFakeRepo(t *testing.T) string {
 	return root
 }
 
+// TestArchiveIsDeterministic: aynı girdiden iki paket bayt bayt aynı
+// olmalı (K-127). Paketin sha'sı sunucudaki yarım yüklemenin ADI; her
+// koşuda değişseydi zaman aşımından ya da Ctrl-C'den sonraki yeni koşu
+// baştan başlardı. Eskiden her dosyaya time.Now() yazılıyor ve birimler
+// bir haritadan rastgele sırayla geliyordu.
+func TestArchiveIsDeterministic(t *testing.T) {
+	repo := newFakeRepo(t)
+	opts := Options{
+		BinaryDir:     filepath.Join(repo, "bin"),
+		RepoRoot:      repo,
+		ClientKeyPath: filepath.Join(repo, "key.pub"),
+	}
+	var ilk []byte
+	for i := 0; i < 5; i++ {
+		a, err := buildArchive(opts, "amd64")
+		if err != nil {
+			t.Fatalf("paket üretilemedi: %v", err)
+		}
+		if i == 0 {
+			ilk = a
+			continue
+		}
+		if !bytes.Equal(a, ilk) {
+			t.Fatalf("%d. paket ilkinden farklı — yarım yükleme sonraki koşuda devam edemez", i+1)
+		}
+	}
+}
+
 // TestRemoteExtractionMatchesTheArchiveFormat, sunucudaki açma komutunun
 // paketin biçimiyle uyuştuğunu doğrular (K-119).
 //
@@ -570,8 +598,8 @@ func newFakeRepo(t *testing.T) string {
 // komutu uzak kabukta. Biri değişip öbürü değişmezse kurulum sunucuda
 // "not in gzip format" ile düşer ve bunu hiçbir birim testi görmez.
 func TestRemoteExtractionMatchesTheArchiveFormat(t *testing.T) {
-	if !strings.Contains(remoteInstall, "tar -x -z ") {
-		t.Fatalf("uzak komut gzip açmıyor:\n%s", remoteInstall)
+	if !strings.Contains(remoteInstallRun, "tar -x -z ") {
+		t.Fatalf("uzak komut gzip açmıyor:\n%s", remoteInstallRun)
 	}
 }
 
@@ -581,7 +609,8 @@ func TestRemoteExtractionMatchesTheArchiveFormat(t *testing.T) {
 // Yukarıdaki test yalnızca metne bakıyor. CI'da bootstrap'ı uçtan uca
 // koşturan bir adım yok; bu test olmasa bayrakların gerçek tar'la
 // uyuştuğu yalnızca canlı kurulumda görülürdü. install.sh ÇALIŞTIRILMIYOR:
-// yalnızca tar satırı alınıyor.
+// yalnızca tar satırının `&&` öncesi alınıyor (K-127'den beri paket
+// dosyadan okunuyor).
 //
 // Yalnızca Linux: uzak komut Linux sunucuda koşuyor; CI'daki Linux işleri
 // (amd64 ve arm64) bunu koşturuyor.
@@ -590,13 +619,13 @@ func TestRemoteTarLineExtractsTheRealArchive(t *testing.T) {
 		t.Skip("uzak komut Linux sunucuda koşar")
 	}
 	var line string
-	for _, l := range strings.Split(remoteInstall, "\n") {
+	for _, l := range strings.Split(remoteInstallRun, "\n") {
 		if strings.HasPrefix(l, "tar ") {
-			line = l
+			line, _, _ = strings.Cut(l, " && ")
 		}
 	}
 	if line == "" {
-		t.Fatalf("uzak komutta tar satırı yok:\n%s", remoteInstall)
+		t.Fatalf("uzak komutta tar satırı yok:\n%s", remoteInstallRun)
 	}
 
 	repo := newFakeRepo(t)
@@ -610,11 +639,15 @@ func TestRemoteTarLineExtractsTheRealArchive(t *testing.T) {
 	}
 
 	dir := t.TempDir()
+	paket := filepath.Join(t.TempDir(), "paket.part")
+	if err := os.WriteFile(paket, archive, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	line = strings.ReplaceAll(line, `"$1/$2.part"`, "'"+paket+"'")
 	// Kabuk KASTEN: uzak taraf bu satırı bash'te koşturuyor. Girdiler
-	// sabit remoteInstall ve t.TempDir(); dışarıdan gelen hiçbir şey yok.
+	// sabit remoteInstallRun ve t.TempDir(); dışarıdan gelen hiçbir şey yok.
 	cmd := exec.CommandContext(t.Context(), "bash", "-c", //nolint:gosec // G204: yukarıdaki not
 		strings.ReplaceAll(line, `"$d"`, "'"+dir+"'"))
-	cmd.Stdin = bytes.NewReader(archive)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%q gerçek pakette düştü: %v\n%s", line, err, out)
 	}

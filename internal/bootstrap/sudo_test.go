@@ -2,8 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"io"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -17,95 +15,10 @@ import (
 // `PermitRootLogin no`, K-121). Sudo kipi kurulumu, sshd politikasına
 // dokunmadan, hedef kullanıcının PAROLASIZ sudo'suyla yapıyor.
 //
-// Buradaki sahte ssh yalnızca argv'nin BİÇİMİNİ ve çağrı SIRASINI
-// kanıtlar; gerçek sudo'yu, stdin'in sudo'dan geçmesini ve uzaktaki
-// kabuğun tırnakları nasıl çözdüğünü KANITLAMAZ. Onlar gerçek sunucuda
-// ölçülür (K-122).
-
-const (
-	fakeSSHEnv      = "PANELY_TEST_FAKE_SSH"
-	fakeSSHLogEnv   = "PANELY_TEST_FAKE_SSH_LOG"
-	fakeSSHUIDEnv   = "PANELY_TEST_FAKE_SSH_UID"
-	fakeSudoFailEnv = "PANELY_TEST_FAKE_SUDO_FAIL"
-	callSeparator   = "\n--- çağrı ---\n"
-)
-
-func TestMain(m *testing.M) {
-	if os.Getenv(fakeSSHEnv) != "" {
-		fakeSSHMain()
-		return
-	}
-	os.Exit(m.Run())
-}
-
-// fakeSSHMain, uzak komuta (argv'nin sonu) göre sunucuyu taklit eder.
-func fakeSSHMain() {
-	remote := os.Args[len(os.Args)-1]
-	if f, err := os.OpenFile(os.Getenv(fakeSSHLogEnv), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		_, _ = f.WriteString(remote + callSeparator)
-		_ = f.Close()
-	}
-	switch {
-	case remote == "uname -m":
-		_, _ = os.Stdout.WriteString("x86_64\n")
-	case strings.HasSuffix(remote, "id -u") || strings.HasSuffix(remote, "'id -u'"):
-		if strings.HasPrefix(remote, "sudo ") {
-			if msg := os.Getenv(fakeSudoFailEnv); msg != "" {
-				_, _ = os.Stderr.WriteString(msg + "\n")
-				os.Exit(1)
-			}
-			_, _ = os.Stdout.WriteString("0\n")
-			return
-		}
-		uid := os.Getenv(fakeSSHUIDEnv)
-		if uid == "" {
-			uid = "0"
-		}
-		_, _ = os.Stdout.WriteString(uid + "\n")
-	default:
-		// Kurulum: paketi tüket.
-		_, _ = io.Copy(io.Discard, os.Stdin)
-	}
-}
-
-// sahteSSH, sshCommand'ı test binary'sine çevirir; çağrı günlüğünün yolunu döndürür.
-func sahteSSH(t *testing.T, env map[string]string) string {
-	t.Helper()
-	if _, err := os.Stat(os.Args[0]); err != nil {
-		t.Skipf("test binary'si bulunamadı, sahte ssh kurulamıyor: %v", err)
-	}
-	log := filepath.Join(t.TempDir(), "ssh.log")
-	t.Setenv(fakeSSHEnv, "1")
-	t.Setenv(fakeSSHLogEnv, log)
-	for k, v := range env {
-		t.Setenv(k, v)
-	}
-	original := sshCommand
-	sshCommand = os.Args[0]
-	t.Cleanup(func() { sshCommand = original })
-	return log
-}
-
-func cagrilar(t *testing.T, log string) []string {
-	t.Helper()
-	b, err := os.ReadFile(log)
-	if err != nil {
-		t.Fatalf("çağrı günlüğü okunamadı: %v", err)
-	}
-	parts := strings.Split(string(b), callSeparator)
-	return parts[:len(parts)-1]
-}
-
-func kurulumSecenekleri(t *testing.T, repo, host string, sudo bool) Options {
-	t.Helper()
-	return Options{
-		Host:          host,
-		BinaryDir:     filepath.Join(repo, "bin"),
-		RepoRoot:      repo,
-		ClientKeyPath: filepath.Join(repo, "key.pub"),
-		Sudo:          sudo,
-	}
-}
+// Sahte ssh fakessh_test.go'da. O, argv'nin BİÇİMİNİ ve çağrı SIRASINI
+// kanıtlar; gerçek sudo'yu ve uzaktaki kabuğun tırnakları nasıl çözdüğünü
+// KANITLAMAZ. Onlar Linux'ta gerçek araçlarla (upload_linux_test.go) ve
+// gerçek sunucuda ölçülür (K-122, K-127).
 
 // Sıra testi: BinaryDir YOK. Paket önkontrolden önce üretilseydi hata
 // "bulunamadı" olurdu; sudo'nun kendi mesajı geliyorsa önkontrol, 28 MB'lık
@@ -124,10 +37,8 @@ func TestSudoRefusesBeforeUploadWhenAPasswordIsRequired(t *testing.T) {
 	if strings.Contains(err.Error(), "bulunamadı") {
 		t.Fatalf("paket önkontrolden önce üretildi: %v", err)
 	}
-	for _, c := range cagrilar(t, log) {
-		if strings.Contains(c, "install.sh") {
-			t.Fatalf("parola isteyen sudo'ya rağmen kurulum gönderildi: %q", c)
-		}
+	if c := cagrilar(t, log); birKurulumCagrisiVarMi(c) {
+		t.Fatalf("parola isteyen sudo'ya rağmen sunucuya yükleme yapıldı: %q", c)
 	}
 }
 
@@ -144,14 +55,14 @@ func TestRootModeRefusesANonRootTargetBeforeUpload(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "-sudo") {
 		t.Fatalf("root olmayan hedefte -sudo önerilmedi: %v", err)
 	}
-	for _, c := range cagrilar(t, log) {
-		if strings.Contains(c, "install.sh") {
-			t.Fatalf("root olmayan hedefe kurulum gönderildi: %q", c)
-		}
+	if c := cagrilar(t, log); birKurulumCagrisiVarMi(c) {
+		t.Fatalf("root olmayan hedefe yükleme yapıldı: %q", c)
 	}
 }
 
-func TestSudoInstallRunsTheScriptUnderSudo(t *testing.T) {
+// Sudo yalnızca yetki denetiminde ve kurulumu başlatırken: yükleme ve
+// izleme bağlanan kullanıcının kendi dizininde, yetkisiz koşuyor.
+func TestSudoInstallRunsOnlyTheStartUnderSudo(t *testing.T) {
 	log := sahteSSH(t, nil)
 	repo := newFakeRepo(t)
 
@@ -159,13 +70,8 @@ func TestSudoInstallRunsTheScriptUnderSudo(t *testing.T) {
 		t.Fatalf("sudo kipinde kurulum düştü: %v", err)
 	}
 
-	c := cagrilar(t, log)
-	want := []string{
-		"uname -m",
-		"sudo -n -- bash -c " + shellQuote("id -u"),
-		"sudo -n -- bash -c " + shellQuote(remoteInstall),
-	}
-	if strings.Join(c, "\n|\n") != strings.Join(want, "\n|\n") {
+	want := []string{"uname", "yetki sudo", "hazırla", "yaz 0", "hazırla", "başlat sudo", "izle 0"}
+	if c := cagrilar(t, log); strings.Join(c, "|") != strings.Join(want, "|") {
 		t.Fatalf("çağrılar:\n%q\nbeklenen:\n%q", c, want)
 	}
 }
@@ -178,9 +84,8 @@ func TestRootInstallRunsTheScriptDirectly(t *testing.T) {
 		t.Fatalf("root kipinde kurulum düştü: %v", err)
 	}
 
-	c := cagrilar(t, log)
-	want := []string{"uname -m", "id -u", remoteInstall}
-	if strings.Join(c, "\n|\n") != strings.Join(want, "\n|\n") {
+	want := []string{"uname", "yetki", "hazırla", "yaz 0", "hazırla", "başlat", "izle 0"}
+	if c := cagrilar(t, log); strings.Join(c, "|") != strings.Join(want, "|") {
 		t.Fatalf("çağrılar:\n%q\nbeklenen:\n%q", c, want)
 	}
 }
@@ -225,7 +130,7 @@ func posixUnquote(s string) string {
 }
 
 func TestShellQuoteRoundTrips(t *testing.T) {
-	for _, s := range []string{remoteInstall, "id -u", "a'b", "'", "''", `x"y$z` + "`w`"} {
+	for _, s := range []string{remoteInstallStart, remoteInstallRun, "id -u", "a'b", "'", "''", `x"y$z` + "`w`"} {
 		if got := posixUnquote(shellQuote(s)); got != s {
 			t.Errorf("shellQuote(%q) çözülünce %q", s, got)
 		}
@@ -239,12 +144,16 @@ func TestSudoCommandSurvivesThePOSIXShell(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("uzak kabuk Linux'ta")
 	}
-	out, err := exec.CommandContext(t.Context(), "sh", "-c", //nolint:gosec // sabit metin
-		"printf %s "+shellQuote(remoteInstall)).Output()
-	if err != nil {
-		t.Fatalf("sh düştü: %v", err)
-	}
-	if string(out) != remoteInstall {
-		t.Fatalf("sh betiği değiştirdi:\n%s", out)
+	// remoteInstallRun, başlatma betiğine ARGÜMAN olarak gidiyor: tek
+	// tırnaklarıyla (trap) birlikte iki kat tırnaklanmış oluyor.
+	for _, s := range []string{remoteInstallStart, remoteInstallRun} {
+		out, err := exec.CommandContext(t.Context(), "sh", "-c", //nolint:gosec // sabit metin
+			"printf %s "+shellQuote(s)).Output()
+		if err != nil {
+			t.Fatalf("sh düştü: %v", err)
+		}
+		if string(out) != s {
+			t.Fatalf("sh betiği değiştirdi:\n%s", out)
+		}
 	}
 }

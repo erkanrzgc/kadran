@@ -8067,5 +8067,322 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 - `requiretty` kullanan eski dağıtımlar ölçülmedi. Önkontrol onları da
   yüklemeden önce durdurmalı (sudo'nun kendi mesajıyla).
 
+## K-123 — Gizli bilgi kasası: tasarım taslağı
+
+**Tarih:** 1 Ekim 2026
+**Durum:** TASLAK — kod YOK; seçim kullanıcıda (aşağıda "Kararlar")
+
+README'nin bilinen eksiği: "No secret store. Environment variables are
+stored in the daemon's database and are visible to `docker inspect`."
+
+### Bugün değer nerede açıkta (koddan ve canlıdan okundu)
+
+| Yer | Durum |
+|---|---|
+| panelyd'nin veritabanı | `apps.env_json` sütununda düz JSON; dosya `panely:panely 0600` |
+| Yerel yedekler | 24 saatlik `VACUUM INTO` anlık görüntüsü, düz metin, aynı sahip (`0700` dizin) |
+| Uzak yedek | `age` açık anahtarıyla şifreli; sunucu kendi yedeğini çözemiyor (K-098) ✅ |
+| Denetim zincirleri | yalnız ADLAR (`audit.RedactEnv`) ✅ |
+| panelyd → executor RPC | düz metin (`exec.proto` `map<string,string> env`) |
+| Konteyner | ortam değişkeni: `docker inspect` (root ya da `docker` grubu), konteynerin içindeki her süreç, çocuk süreçlere miras, hata dökümleri |
+| İstemci | CLI yalnız adları basıyor; ama API değerleri de gönderiyor (`app show --json`). İstemci zorlanmış komutlu yetkili operatör, kabul edilebilir. |
+
+### Tehdit modeli: neye karşı?
+
+1. **Disk ve yedek sızıntısı:** sağlayıcı anlık görüntüsü, atılan disk,
+   bir yerel yedeğin kopyalanması.
+2. **Ele geçirilmiş panelyd:** ağsız ama SSH zorlanmış komutundan
+   ulaşılabilir, yetkisiz daemon. Bugün GEÇMİŞ ve gelecek bütün
+   değerleri okur.
+3. **Konteyner içi sızıntı:** ortam değişkeni çocuk süreçlere geçer,
+   hata raporlayıcılar ve `/proc/*/environ` onu döker.
+4. **Host root'u ya da `docker` grubu:** kapsam DIŞI. Her şeyi
+   okuyabilirler; hiçbir tasarım bunu değiştirmez.
+
+### Seçenekler
+
+**A. Bugünkü hâl + belge.** Maliyet 0; hiçbir tehdidi kapatmaz.
+
+**B. Değerler veritabanında executor'ın anahtarıyla şifreli.**
+- **Akış:**
+  - panelyd yalnızca AÇIK anahtarı tutuyor ve değeri yazarken `age` ile
+    şifreliyor;
+  - özel anahtar `/var/lib/panely-exec` altında, root 0600;
+  - executor konteyneri kurarken çözüyor.
+- **Kapattığı:** (1) tümüyle; veritabanı ve yerel yedekler artık
+  şifreli. (2) GEÇMİŞ değerler için.
+- **Kapatmadığı:**
+  - ele geçirilmiş panelyd YENİ değerleri yazılırken görür; değer
+    istemciden panelyd'ye düz metin geliyor;
+  - (3) açık kalır.
+- **Bedeli:**
+  - **ayrıcalıklı yüzey:** şifre çözme executor'a girer (`filippo.io/age`
+    + ~40-60 satır). Bütçe 2498/2500 olduğu için bu, gerekçeli bir sınır
+    yükseltme kararı demek (betiğin kuralı);
+  - **anahtar yönetimi:** anahtar kaybı bütün değerleri kaybettirir.
+    Yedeklenmeli; uzak yedek anahtarıyla aynı yere DEĞİL.
+  - **göç:** var olan düz değerlerin bir kez şifrelenmesi gerekir.
+  - **Davranış değişir:** API değerleri istemciye artık geri veremez
+    (`app show --json` yalnız adları gösterir). `app update`'in birleştirmesi
+    ise anahtar üzerinden çalıştığı için bozulmaz; bu okundu, ölçülmedi.
+
+**C. Değerler dosya olarak (ortam değişkeni yerine).**
+- executor değeri hostta bir tmpfs dizinine
+  (`/run/panely-secrets/<uygulama>/<ad>`, root 0700) yazıyor ve konteynere
+  salt-okunur bağlıyor (`/run/secrets/<ad>`); dosya konteynerin
+  kullanıcısına 0400.
+- **Kapattığı:** (3) büyük ölçüde. `docker inspect`'te görünmez,
+  çocuklara miras kalmaz. tmpfs olduğu için diske de düşmez.
+- **Bedeli:**
+  - uygulamanın değeri DOSYADAN okuması gerekir; 12-factor uygulamalar
+    ortam değişkeni bekler. O yüzden değişken başına isteğe bağlı olur
+    (`-env` yanında `-secret`).
+  - executor'a dosya yazma, sahiplik ve temizlik girer: yüzey, yine bütçe
+    kararı.
+  - reboot sonrası tmpfs boş açılır; executor açılışta yeniden yazmalı.
+
+**D. Dış kasa** (HashiCorp Vault, bulut KMS).
+- Tek sunucu ve az bileşen hedefine ters.
+- Ağ ister: panelyd'de `IPAddressDeny=any` var.
+- Önerilmiyor.
+
+**E. B + C birlikte.** En kapsamlı; iki bütçe kararı birden.
+
+### Öneri
+
+**Önce B**, çünkü kasanın asıl işi bu: veritabanı ve yedekler sızsa da
+değerler açılmasın, ele geçirilmiş daemon geçmişi okuyamasın. C, isteyen
+uygulamalar için sonraki adım olabilir.
+
+B'yi uygulamadan önce ölçülmesi gerekenler:
+- `filippo.io/age`'in executor ikilisine ve yüzey sayımına gerçek etkisi
+  (`go list -deps` ile sayılır);
+- göçün geri alınabilirliği;
+- anahtar kaybı kurtarma yolu.
+
+### Kararlar (kullanıcıda)
+
+1. Hangi seçenek: A, B, C ya da E?
+2. B seçilirse ayrıcalıklı yüzey sınırının yükseltilmesi kabul mü? Önce
+   gerçek satır etkisi ölçülür, sonra karar.
+3. Anahtar yedeği nerede durmalı? Uzak yedek anahtarıyla AYNI yerde
+   olmamalı.
+
+## K-124 — Özel depolardan derleme: tasarım taslağı
+
+**Tarih:** 1 Ekim 2026
+**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+
+### Bugün (koddan okundu)
+
+- executor, Docker'a uzak bir git bağlamı veriyor:
+  `https://<host>/<sahip>/<depo>.git#<40 haneli sha>` (`BuildContextURL`).
+  Bağlamı dockerd çekiyor.
+- dockerd git'i `HOME=/dev/null` ve `GIT_CONFIG_NOSYSTEM=1` ile
+  çalıştırıyor. Hostta duran hiçbir git kimliği kullanılamıyor (ölçüldü,
+  K-056'yı çürüten kayıt). Bu yüzden yalnızca herkese açık depolar
+  derlenebiliyor.
+- Kaynak doğrulaması sıkı: host ve depo izin listesinden geliyor, sha tam
+  40 hane, URL'e kullanıcı bilgisi ya da yol enjekte edilemiyor
+  (CVE-2026-33748 sınıfı).
+
+### Seçenekler
+
+**A. dockerd'nin ortamına SSH anahtarı** (`GIT_SSH_COMMAND` drop-in'i).
+- Docker'ın GENEL yapılandırmasını değiştirir; hosttaki bütün derlemeler
+  o anahtarı görür.
+- Panely'nin kendi olmayan bir bileşene dokunur.
+- Reddedilmeli.
+
+**B. Belirteç URL'de** (`https://x-access-token:<belirteç>@github.com/…`).
+- En kısa yol.
+- Ama belirteç dockerd'ye, hata mesajlarına ve olası günlüklere düz metin
+  girer.
+- Bugün URL'e kullanıcı bilgisi koyulamaması bilinçli bir güvenlik
+  kararı; bu seçenek onu geri alır. executor'un denetim kayıtları ve
+  panelyd'ye dönen hatalar da ayrıca redakte edilmelidir.
+- Kırılgan; önerilmiyor.
+
+**C. Kaynağı ayrı bir çekici birim alır, Docker'a tar bağlamı gider.**
+- **Çekici birim:**
+  - Yeni bir systemd birimi, alarm göndericisi ve uzak yedek deseninde:
+    `DynamicUser`, Docker'a erişimi yok, ağı yalnızca izinli git
+    hostuna açık.
+  - Depo başına bir deploy key ya da belirteç `LoadCredential` ile
+    yalnızca o birime veriliyor. panelyd onu hiç görmüyor.
+  - Belirli sha'yı sığ bir klonla çekip bir tar üretiyor.
+- **executor:** uzak URL yerine o tar'ı yerel bir bağlam olarak
+  Docker'a veriyor.
+- **Kazanç:**
+  - kimlik bilgisi Docker'a, panelyd'ye ve günlüklere hiç girmez;
+  - root olan executor yabancı bir depoyu kendisi çekmez.
+- **Bedel:**
+  - yeni bir birim ve betik;
+  - executor'da "tar'dan derle" yolu: ayrıcalıklı yüzey, bütçe kararı;
+  - bağlamın boyutu sınırlanmalı (disk doldurma).
+
+**D. BuildKit'in `--ssh` / secret iletimi.**
+- BuildKit'in oturum API'sini ister. Bugünkü klasik derleme yolundan
+  büyük bir sapma.
+- Ayrıcalıklı yüzeye en büyük ekleme.
+
+### Öneri
+
+C. Projede zaten iki kez ölçülerek kurulmuş deseni tekrarlıyor: ayrı,
+dar yetkili, kimlik bilgisini `LoadCredential` ile alan birim (K-098,
+K-108).
+
+Kimlik bilgisinin depolanması K-123'e bağlı değil. systemd'nin
+credential dosyası root 0600 duruyor ve panelyd'nin veritabanına hiç
+girmiyor.
+
+### Kararlar (kullanıcıda)
+
+1. Özel depo desteği gerekli mi, yoksa herkese açık depolar yetiyor mu?
+2. Gerekliyse C kabul mü? executor'a "tar bağlamından derle" yolunun
+   eklenmesi bir yüzey bütçesi kararı demek.
+3. Kimlik bilgisi türü: depo başına salt-okunur deploy key (önerilen) ya
+   da ince taneli belirteç.
+
+## K-125 — Push ile otomatik dağıtım (webhook / yoklama): tasarım taslağı
+
+**Tarih:** 1 Ekim 2026
+**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+
+README'nin yol haritası maddesi: "Webhook receiver, deploy-on-push, cron
+manager". README'nin kendi gerekçesi de burada sınır koyuyor: bir
+webhook ayrıştırıcısındaki hata, Docker soketini tutan panellerde bütün
+hostun ele geçirilmesi demek. Panely'de panelyd Docker'a ulaşamıyor; ama
+internete açık yeni bir ayrıştırıcı, şimdiye kadar hiç olmayan bir saldırı
+yüzeyi olur. Bugün tek kapı SSH.
+
+### Seçenekler
+
+**A. Gelen webhook alıcısı.**
+- Ayrı, yetkisiz bir birim bir unix soketinde dinliyor; Caddy bir yolu
+  ona yönlendiriyor.
+- GitHub'ın HMAC imzasını gövdeyi ayrıştırmadan ÖNCE doğruluyor; doğruysa
+  panelyd'ye "şu uygulamayı dağıt" diyor.
+- **Bedel:**
+  - internetten erişilen ilk Panely bileşeni;
+  - uygulama başına bir HMAC sırrı tutulmalı (K-123'e bağlı);
+  - panelyd'de "yalnız dağıtabilen" yeni bir kimlik ve yetki ayrımı
+    gerekiyor. Bugün bağlanan her istemci her şeyi yapabiliyor.
+
+**B. Yoklama: dışarıdan hiçbir şey gelmez.**
+- Ayrı bir birim; ağı yalnızca izinli git hostuna açık. N dakikada bir
+  her uygulamanın dalının ucunu `git ls-remote` ile soruyor.
+- Uç değiştiyse panelyd'den dağıtım istiyor.
+- **Kazanç:**
+  - gelen bağlantı yok; "tek kapı SSH" duruşu korunuyor;
+  - herkese açık depo için sır gerekmiyor;
+  - özel depoda K-124'ün kimlik bilgisiyle aynı yol kullanılıyor.
+- **Bedel:**
+  - gecikme, yoklama aralığı kadar;
+  - "yalnız dağıtabilen" kimlik bu seçenekte de gerekli;
+  - dal ucu her değiştiğinde dağıtım yapıldığı için yanlışlıkla bir
+    push'un canlıya gitmesi kolaylaşır. Uygulama başına açık/kapalı
+    olmalı ve varsayılanı kapalı.
+
+**C. Panely kodu yok: kullanıcının CI'ı `panely deploy` çalıştırır.**
+- GitHub Actions, SSH ile zorlanmış komut üzerinden bağlanıyor.
+- **Bedel:** CI'a verilen anahtar bugün TAM yetkili bir istemci anahtarı.
+  "Yalnız dağıtabilen" kimlik olmadan önerilemez.
+
+### Ortak ön koşul: yetki ayrımı
+
+Üç seçeneğin üçü de panelyd'de istemci başına yetki ister: "bu kimlik
+yalnızca dağıtım yapabilir". Bugün yok. Bu, otomatik dağıtımdan ÖNCE
+ayrı bir K kaydı ve testlerle gelmesi gereken iş.
+
+### Öneri
+
+1. Önce yetki ayrımı.
+2. Sonra **B (yoklama)**. Gelen saldırı yüzeyi açmadan otomatik dağıtım
+   sağlıyor.
+3. **A** ancak saniyelik gecikme gerçekten gerekirse ve ayrı bir güvenlik
+   incelemesiyle.
+
+### Kararlar (kullanıcıda)
+
+1. Otomatik dağıtım gerekli mi?
+2. Gerekliyse A, B ya da C?
+3. Yoklama aralığı (B için): 1 dakika mı, 5 dakika mı?
+
+## K-126 — Denetim zincirlerinin çapraz denetimi: tasarım taslağı
+
+**Tarih:** 1 Ekim 2026
+**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+
+### Sorun (README "Audit log" bölümü)
+
+- İki zincir var, ikisi de ayrı ayrı doğrulanıyor:
+  - panelyd'nin zinciri kendi veritabanında;
+  - executor'ınki root'a ait bir dizinde. panelyd onu ne okuyabiliyor ne
+    değiştirebiliyor (K-100, K-102).
+- Ele geçirilmiş bir panelyd kendi zincirini baştan YENİDEN YAZABİLİR:
+  - kayıt silebilir;
+  - işlemi başka bir istemciye atfedebilir.
+
+  Yeni zincir kendi içinde tutarlı olduğu için `audit verify` iki zinciri
+  de "geçerli" bulur.
+- Ek bir sınır: executor yalnızca panelyd'yi tanıyor; işlemi hangi SSH
+  kimliğinin istediğini bilmiyor.
+
+### Neyi çözebiliriz, neyi çözemeyiz
+
+- **Çözülebilen:** panelyd'nin GEÇMİŞİ sonradan yeniden yazması.
+- **Çözülemeyen:** ele geçirilmiş bir panelyd'nin istek ANINDA yalan
+  söylemesi. O anda ne dediyse o kaydedilir. Bu, panelyd'nin aracı
+  olduğu her tasarımın sınırı.
+
+### Seçenekler
+
+**A. executor her işlemin sonunda kendi kaydının (seq, hash) çiftini
+döndürür.**
+- panelyd bunu kendi kaydına yazar. `verify`, her executor kaydını
+  gösteren bir daemon kaydı arıyor ve hash'in tuttuğunu denetliyor.
+- **Yakaladığı:** ayrıcalıklı işlemlere ait daemon kayıtlarının silinmesi
+  ya da değiştirilmesi.
+- **Yakalamadığı:** executor'a hiç uğramayan işlemler (`app create`, env
+  değişikliği, alarmlar).
+- **Bedel:** her yanıt mesajına alan eklenir; yüzey az büyür.
+
+**B. Kontrol noktası: panelyd zincirinin ucu executor'ın günlüğüne
+yazılır.**
+- panelyd, periyodik olarak ve her ayrıcalıklı işlemde kendi zincirinin
+  (seq, hash) ucunu yeni bir `Checkpoint` RPC'siyle executor'a bildiriyor.
+  executor bunu kendi zincirine kayıt olarak ekliyor.
+- `verify`, her kontrol noktasında daemon zincirinin o seq'teki hash'inin
+  aynı olduğunu denetliyor.
+- **Yakaladığı:** son kontrol noktasına kadar daemon geçmişinin HER türlü
+  yeniden yazımı, ayrıcalıksız işlemler dahil.
+- **Bedel:** executor'a tek, dar bir RPC (~20-30 satır) ve
+  `exec.proto`'ya bir mesaj. İkisi de ayrıcalıklı yüzey: bütçe kararı.
+  Yüzey denetçisinin şema kuralları geçerli.
+
+**C. Dış çapa: zincir uçları uzak yedekle birlikte host dışına gider.**
+- Uzak yedek birimi zaten R2'ye yüklüyor; uçları ayrı bir dosya olarak
+  ekler.
+- **Yakaladığı:** host root'u ele geçirse bile son çapaya kadarki geçmişin
+  yeniden yazılması. Bunun için bucket'ta sürümleme ya da object lock
+  açık olmalı.
+- **Bedel:** ayrıcalıklı yüzeye dokunmaz, yalnızca betik. Ama koruması
+  bucket ayarına bağlı ve uzak yedek kapalıysa çalışmaz.
+
+### Öneri
+
+**B.** Tek dar bir RPC'yle daemon geçmişinin tamamını kapsıyor ve
+README'nin söz verdiği "executor kaydının daemon'a dönmesi" yönünü
+genelleştiriyor. C, uzak yedeği açık olanlar için ucuz ve ayrıcalıksız bir
+ek katman.
+
+### Kararlar (kullanıcıda)
+
+1. Hangi seçenek: A, B, C ya da B+C?
+2. B için yüzey bütçesi: önce gerçek satır etkisi ölçülür, sonra
+   gerekçeli karar.
+3. Kontrol noktası sıklığı: her ayrıcalıklı işlem ve saatte bir mi?
+
 
 

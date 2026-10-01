@@ -8626,6 +8626,22 @@ yapıyor: istemcinin bağlantısı sunucu tarafında kapanıyor.
 - **Ölçülmeyen:** kendiliğinden bir hat kopması. Bu gece hat hızlıydı,
   28 MiB ~25 sn'de gitti. Kopma kasıtlı üretildi.
 
+### Canlıda (Hetzner, Ubuntu 24.04, `root@`, 1 Ekim 21:31 UTC)
+
+v0.1.0-19'dan v0.2.0'a, aynı yayın dosyalarından:
+- Önce `panely backup create`. Geri dönüş ağacının ikilileri, canlıda
+  çalışanlarla md5 olarak aynı çıktı.
+- 28 sn, kopma yok, 17/17 ✓.
+- Çalışan üç ikilinin `/proc/<pid>/exe` sha256'sı sunucu tar'ındakilerle
+  aynı.
+- Ters vekil değişmedi ve yeniden başlatılmadı (30 Eylül'den beri ayakta).
+- Watchdog açık; 3 uygulamanın rotası uzlaştırıldı.
+- Sunucu içi yoklama 154/154 `200`; artık yok. Root kipinde yükleme
+  dizini `/root/.panely-upload`.
+
+Ardından yayın açıldı. GitHub'dan geri indirilen 7 dosyanın hepsi
+`sha256sum -c` ile doğrulandı.
+
 ### Açık kalanlar
 
 - `KillUserProcesses=yes` olan bir sunucu ölçülmedi. Orada kurulum

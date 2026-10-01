@@ -150,16 +150,23 @@ func yokOlmali(t *testing.T, path string) {
 // dönmeli: arkadaki süreç ssh'ın çıktı borusunu tutsaydı exec.Cmd.Wait
 // kurulum bitene kadar beklerdi (oturumdan ayrılmanın yerelde ölçülebilen
 // yarısı).
+//
+// umask KASTEN 077: başlatma betiğindeki `umask 022` olmasa günlük ve
+// kilit 0600 olurdu. Bu testin sudo'lu kardeşi bunu her yerde göremiyor:
+// Ubuntu 24.04'te pam_umask sudo'nun umask'ını 0022'ye çekiyor, Debian
+// 13'te kullanıcınınki (0077) aynen geçiyor (K-127, ikisi de ölçüldü).
 func TestRealScriptsInstallDetachedAndFollow(t *testing.T) {
+	old := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(old) })
 	gercekKurulum(t, false)
 }
 
 // Sudo kipi: başlatma GERÇEK `sudo -n` ile root olarak koşuyor; izleme
 // yetkisiz kullanıcıyla root'un yazdığı günlüğü ve kilidi okuyor. Kullanıcının
-// umask'ı KASTEN 077: sudo onu root'a geçiriyor (sudoers varsayılanı:
-// kullanıcınınki ile 022'nin birleşimi) ve başlatma betiğindeki `umask 022`
-// olmasa izleyen kullanıcı günlüğü okuyamazdı. CI'da parolasız sudo var ve
-// değişken orada set; yerelde atlanıyor.
+// umask'ı KASTEN 077. Debian 13'te sudo onu root'a geçiriyor ve başlatma
+// betiğindeki `umask 022` olmasa izleyen kullanıcı günlüğü okuyamazdı;
+// Ubuntu 24.04'te pam_umask onu zaten 0022'ye çekiyor (ikisi ölçüldü). CI'da
+// parolasız sudo var ve değişken orada set; yerelde atlanıyor.
 func TestRealScriptsInstallUnderSudo(t *testing.T) {
 	if os.Getenv("PANELY_TEST_REAL_SUDO") == "" {
 		t.Skip("yalnızca CI'da (PANELY_TEST_REAL_SUDO): parolasız sudo ister")
@@ -220,6 +227,17 @@ sleep 5 </dev/null >/dev/null 2>&1 &
 	yokOlmali(t, filepath.Join(dir, sum+".part"))
 	yokOlmali(t, strings.TrimSpace(okunmali(t, marker))) // geçici kurulum dizini
 	kilitBosalmali(t, dir)
+	// Sudo kipinde günlüğü ve kilidi root yazıyor, yetkisiz kullanıcı
+	// izliyor: ikisi de grup ve diğerlerine okunur olmalı (dizin 0700).
+	for _, name := range []string{sum + ".log", "install.lock"} {
+		st, err := os.Stat(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Mode().Perm()&0o044 != 0o044 {
+			t.Fatalf("%s kipi %v: izleyen kullanıcı okuyamaz", name, st.Mode().Perm())
+		}
+	}
 	if sudo {
 		var st syscall.Stat_t
 		if err := syscall.Stat(filepath.Join(dir, sum+".log"), &st); err != nil {

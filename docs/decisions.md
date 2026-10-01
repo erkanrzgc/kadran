@@ -8554,10 +8554,24 @@ erişemiyor.
     kurulum, umask, başlatmanın sudo'suz koşması, `sudo -n`,
     `ServerAliveInterval`.
   - Paket: birim sırası, dosya zamanı.
-  - umask mutantını YALNIZCA gerçek sudo testi yakaladı (ayrıca
-    doğrulandı). Gerçek-betik testlerinin yakaladığı mutantlar Windows'ta
-    yeşil kalır; CI'da betik Linux'ta ve `PANELY_TEST_REAL_SUDO=1` ile
-    koşuyor.
+  - Gerçek-betik testlerinin yakaladığı mutantlar Windows'ta yeşil kalır;
+    CI'da betik Linux'ta ve `PANELY_TEST_REAL_SUDO=1` ile koşuyor.
+- **umask mutantı: yerelde yakalandı, CI'da KAÇTI.** "Debian 13
+  kapsayıcısında sudo testi yakalıyor" diye yazmıştım; CI'daki Ubuntu
+  runner'ında yeşil kaldı. Sebep ölçüldü (umask 077'li kullanıcı,
+  `sudo -n sh -c umask`):
+  - Ubuntu 24.04: `0022`. `pam_umask` + `login.defs` `UMASK 022` sudo'nun
+    umask'ını sıfırlıyor.
+  - Debian 13: `0077`. `login.defs`'te UMASK yok, kullanıcınınki aynen
+    geçiyor.
+
+  Yani `umask 022` satırı GCP'nin dağıtımında GEREKLİ, ama sudo testi
+  onu yalnızca bazı dağıtımlarda görebiliyor. Test ortamdan bağımsız
+  yapıldı: sudo'suz gerçek-betik testi de umask 077 ile koşuyor ve
+  günlükle kilidin grup/diğerlerine okunur olduğunu doğrudan denetliyor.
+  Mutant şimdi Ubuntu'da da düşüyor ("kipi -rw-------"). Ders: bir
+  testin bir ortamda yakaladığı, başka bir ortamda yakalayacağının
+  kanıtı değil; CI'ın ortamı ayrıca ölçülmeli.
 - **Betiğin kendisinde iki kusur bulundu:**
   - `conv=notrunc` mutantı ilk koşuda YEŞİL kaldı. Sebep test değildi:
     aranan metin dosyada İKİ kez geçiyordu (biri yorumda) ve

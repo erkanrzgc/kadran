@@ -9090,6 +9090,9 @@ yönetici anahtarı olurdu.
 - Rol denetim kaydına (`audit.Actor`) EKLENMEDİ: zincir hash'ini
   değiştirirdi. Parmak izi anahtarı zaten tanımlıyor; rol journal
   satırında (`yetki reddedildi ... rol=`).
+  - ⚠ Yazıldığında YANLIŞTI: parmak izi hiçbir kayda yazılmıyordu (K-134).
+    "Hangi dağıtım anahtarı dağıttı" sorusu ancak K-134'le ve yalnız
+    yükseltilmiş sunucularda yanıtlanabiliyor.
 
 ### Kapsamın gerçek sınırı
 

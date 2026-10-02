@@ -312,7 +312,10 @@ write permission covers unlinking. That was found by measurement and fixed
 
 Identity is the client's **SSH public-key fingerprint**, transmitted in a connection
 preamble written by `panely-connect` before any remote byte is read — not in gRPC
-metadata, which the remote client controls and could forge.
+metadata, which the remote client controls and could forge. Servers running v0.2.0
+or earlier record only the source IP: they read the fingerprint from a variable
+OpenSSH never passes to the session, so that field stayed empty. Records written
+after the upgrade carry it (K-134).
 
 **What the audit log does not do yet:** the two chains are verified *separately*. No
 code compares them, so a compromised `panelyd` that drops its own records produces

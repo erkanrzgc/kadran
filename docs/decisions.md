@@ -9510,3 +9510,131 @@ korumasız (`branches/main/protection` → 404). Dağıtılan, main'e gelen
 commit'in kendisi; test edilmiş olması gerekmiyor. README düzeltildi
 (test isteyen `needs:` ile bağlasın). Portfolio'nun iş akışına
 dokunulmadı: oraya her push canlıya dağıtım demek, karar kullanıcıda.
+
+## K-136 — Ad değişikliğinin ikinci yarısı: sunucu tarafı panely → kadran
+
+**Tarih:** 2 Ekim 2026
+**Durum:** TASARIM. Kullanıcı kararı: "her şey şimdi" (K-130'un "bilerek
+değişmeyen" listesinin tamamı). Kod ayrı dalda; önce GCP'de prova, sonra
+canlı.
+
+### Neden ayrı ve neden dikkatli
+
+K-130 yalnız marka katmanını değiştirdi. Kalan adlar sunucuda KALICI
+durumdur: kullanıcılar, dizinler, veritabanı dosyası, Docker etiketleri,
+yedek adları. Bir sed bunları değiştiremez; canlı iki sunucuda (Hetzner,
+GCP) bir göç gerekir. Göç yarıda kalabilir; kaldığı yerden sürmeli ve
+geri alınabilmeli.
+
+### Ad eşlemesi
+
+| Eski | Yeni |
+|---|---|
+| `panelyd`, `panely-exec`, `panely-connect`, `panely-caddy` | `kadrand`, `kadran-exec`, `kadran-connect`, `kadran-caddy` |
+| kullanıcı/grup `panely`, `panely-client`, `panely-caddy` | `kadran`, `kadran-client`, `kadran-caddy` (uid/gid AYNI) |
+| `/var/lib/panely{,-exec,-caddy,-client,-volume-backup}` | `/var/lib/kadran{…}` |
+| `/var/lib/private/panely-notify` (DynamicUser durumu) | `/var/lib/private/kadran-notify` |
+| `/etc/panely`, `/usr/local/lib/panely`, `/run/panely*` | `/etc/kadran`, `/usr/local/lib/kadran`, `/run/kadran*` |
+| `panely.db` (+ `-wal`, `-shm`, `.pre-*`) | `kadran.db` (…) |
+| yedek `panely-<damga>.db`, hacim arşivi `panely-hacim-*` | `kadran-<damga>.db`, `kadran-hacim-*` |
+| Docker etiketi `panely.*`, imaj `panely/<uyg>`, ağ `panely-<uyg>`, konteyner `panely_*` | `kadran.*`, `kadran/<uyg>`, `kadran-<uyg>`, `kadran_*` |
+| protokol paketi `panely.v1` | `kadran.v1` |
+| `PANELY_*` ortam değişkenleri, `window.panely` | `KADRAN_*`, `window.kadran` |
+| rclone hedefi `[panely-offsite]` | `[kadran-offsite]` |
+| birimler (`panelyd.service`, `var-lib-panely-volumes.mount`, …) | `kadrand.service`, `var-lib-kadran-volumes.mount`, … |
+
+Dokunulmayanlar ve nedeni:
+
+- Geçmiş K kayıtları, CHANGELOG'un eski bölümleri, git geçmişi: tarihtir.
+- `panely.erkanrzgc.dev`: bir uygulamanın alan adı, ürün adı değil. DNS
+  kullanıcının; `app update -domain` ile taşınabilir (K-065, ölçüldü:
+  dağıtımsız taşıma).
+- Nabız Worker'ının dağıtılmış adı/adresi ve GCP'deki kaynak adları
+  (`panely-kurulum` giriş kullanıcısı, `panely-web` güvenlik duvarı
+  kuralı): depoda değil, kullanıcının hesaplarında.
+
+### Uyumluluk kırılıyor (bilerek)
+
+- `kadran.v1` kablodaki servis adı. v0.3.0 CLI v0.4.0 sunucuyla, v0.4.0
+  CLI v0.3.0 sunucuyla KONUŞAMAZ. Yeni CLI eski sunucuyu tanıyıp "önce
+  bootstrap ile yükseltin" der (gRPC `Unimplemented`).
+- Portfolio iş akışı: `KADRAN_VERSION` ve `KADRAN_TARGET`
+  (`kadran-client@…`) sunucu göçüyle AYNI anda değişmeli. Göç süresince
+  portfolio'ya push yapılmaz.
+- Masaüstü: Electron kullanıcı verisi dizini paket adından türüyor;
+  ilk açılışta eski dizindeki profiller yeniye kopyalanır.
+
+### Kısıtlar
+
+1. **Executor yüzeyi 2498/2500.** Göç ya da iki adı birden tanıyan kod
+   `kadran-exec`'e GİRMEZ. Göç root'un `install.sh`'ında.
+2. **Kullanıcılar yerinde yeniden adlandırılır** (`groupmod -n`,
+   `usermod -l`, istemci için ev dizini de): uid/gid değişmez, dosya
+   sahipliği olduğu gibi kalır. Yeni kullanıcı + chown YOK.
+3. **`/var/lib/panely-caddy` TAŞINIR**, yeniden yaratılmaz: ACME hesabı ve
+   sertifikalar orada. Ölçüt: göç öncesi/sonrası sertifika seri numarası
+   aynı.
+4. **Docker etiketleri değiştirilemez.** İmajlar yeni adla etiketlenir
+   (ucuz, yeniden derleme yok); yeni konteynerleri daemon'un kendi
+   iyileştirme yolu kurar (`Rollout.Heal`: eksik replikayı imajdan kurar,
+   ağı yaratır). Eski konteynerler, yeniler trafik alana kadar
+   SİLİNMEZ: onlar geri dönüş yoludur.
+5. **Bağlama birimi:** dosya adı `Where=` yolunun kaçışlı hâli olmak
+   zorunda. Eski birim durdurulup devre dışı bırakılmadan `mv` yapılmaz.
+6. **authorized_keys:** zorlanmış komut yolları (dağıtım anahtarı dahil)
+   yeniden yazılır; kurulum sonrası denetim yeni yolu ister.
+7. **Durum doğrulaması:** göçten önce veritabanı anlık görüntüsü;
+   `audit verify` iki zincir için önce ve sonra.
+8. **Yerel yedek adları:** yeniden adlandırılır (`kadran-…`). Bedeli: uzak
+   yedek onları yeni adla BİR KEZ daha yükler (canlıda ~3,4 MB yedek +
+   küçük hacim arşivleri). Kazancı: budayıcı tek önek bilir, iki önekli
+   kalıcı kod yok.
+
+### Göç sırası (install.sh, eski kurulum algılanınca)
+
+Amaç: sitenin kesintisi yalnız ters vekil değişirken olsun.
+
+1. Algıla: `/usr/local/lib/panely` ya da `panelyd.service` var mı. Yoksa
+   göç adımı atlanır (taze kurulum ya da zaten göçmüş).
+2. Ön denetim: `panely-client`'ın açık oturumu (ör. süren bir CI
+   dağıtımı) varsa DUR. Veritabanı anlık görüntüsü.
+3. İmajları yeniden etiketle: her `panely/<uyg>:<sha>` → `kadran/…`.
+4. `panelyd`, `panely-exec` ve zamanlayıcıları durdur. **Eski ters vekil
+   ve eski konteynerler çalışmaya devam eder: site açık.**
+5. `panely` ve `panely-client` kullanıcı/gruplarını yeniden adlandır;
+   dizinleri, veritabanını, yedekleri, yapılandırmayı, rclone hedefini,
+   bildirim durumunu taşı; eski birimleri kaldır.
+6. Yeni birimleri kur, `kadran-exec` ve `kadrand`'ı başlat. Ters vekil
+   henüz eski; `kadrand` ona ulaşamaz ama gözetmen yeni konteynerleri
+   kurar ve sağlık kapısından geçirir (uzlaştırma başarısız, konteynerler
+   ayakta kalır).
+7. Her eski çalışan (uygulama, sürüm, replika) için yeni etiketli
+   karşılığı çalışana kadar bekle (zaman aşımlı).
+8. **Kesinti burada başlar:** `panely-caddy`'yi durdur, kullanıcısını
+   yeniden adlandır, dizinini taşı, `kadran-caddy`'yi başlat.
+   `kadrand`'ın vekil izleyicisi (K-055) rotaları yeni konteynerlere
+   yazar.
+9. Yeni rotalar doğrulanınca eski konteynerleri, `panely-*` ağlarını ve
+   `panely/*` etiketlerini kaldır. Doğrulanamazsa eskilere DOKUNMA ve ne
+   yapılacağını yaz.
+
+Her adım durumuna bakarak karar verir (eski ad var mı, yeni ad var mı);
+ikisi birden varsa ve yeni boş değilse DURUR, hiçbir şeyi silmez.
+
+### Geri dönüş
+
+`scripts/rollback-kadran-to-panely.sh` (root, sunucuda): aynı adımlar
+ters yönde; ardından v0.3.0 ağacıyla `bootstrap`. GCP'de ölçülecek: göç →
+geri dönüş → yeniden göç, her birinde yoklama açık.
+
+### Ölçüm planı
+
+- GCP önce v0.3.0'a getirilir (şu an `15398e8`), Hetzner'e benzetilir:
+  hacimli bir uygulama, bir dağıtım anahtarı satırı, uzak yedek (yerel
+  rclone hedefiyle), bildirim birimi.
+- Ölçütler: yoklamada `200` dışı yanıtların sayısı ve süresi (curl çıkış
+  koduyla); sertifika seri numarası; uid/gid ve dosya sahipliği; iki
+  zincirin `audit verify`'ı; `/proc/<pid>/exe`; reboot sonrası birimler.
+- Canlıdan önce kullanıcıya durum verilir. R2'de `kadran-` öneki için
+  kilit ve yaşam döngüsü kurallarını kullanıcı ekler; kilit, uzak yedek
+  README'sindeki yöntemle ölçülür.

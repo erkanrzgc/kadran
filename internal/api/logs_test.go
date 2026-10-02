@@ -10,20 +10,20 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // logStream, akışa gönderilen kareleri toplar.
 type logStream struct {
-	grpc.ServerStreamingServer[panelyv1.StreamLogsResponse]
+	grpc.ServerStreamingServer[kadranv1.StreamLogsResponse]
 	ctx  context.Context
-	sent []*panelyv1.StreamLogsResponse
+	sent []*kadranv1.StreamLogsResponse
 }
 
 func (s *logStream) Context() context.Context { return s.ctx }
 
-func (s *logStream) Send(m *panelyv1.StreamLogsResponse) error {
+func (s *logStream) Send(m *kadranv1.StreamLogsResponse) error {
 	s.sent = append(s.sent, m)
 	return nil
 }
@@ -54,7 +54,7 @@ func TestStreamLogsResolvesTheLiveReleaseItself(t *testing.T) {
 	want := seedLiveApp(t, db, "blog")
 
 	st := newLogStream()
-	if err := srv.StreamLogs(&panelyv1.StreamLogsRequest{AppId: "blog"}, st); err != nil {
+	if err := srv.StreamLogs(&kadranv1.StreamLogsRequest{AppId: "blog"}, st); err != nil {
 		t.Fatalf("akış başarısız: %v", err)
 	}
 
@@ -79,7 +79,7 @@ func TestStreamLogsForwardsFrames(t *testing.T) {
 	seedLiveApp(t, db, "blog")
 
 	st := newLogStream()
-	if err := srv.StreamLogs(&panelyv1.StreamLogsRequest{AppId: "blog"}, st); err != nil {
+	if err := srv.StreamLogs(&kadranv1.StreamLogsRequest{AppId: "blog"}, st); err != nil {
 		t.Fatalf("akış başarısız: %v", err)
 	}
 
@@ -104,7 +104,7 @@ func TestStreamLogsForwardsFrames(t *testing.T) {
 // TestStreamLogsCapsTailLines, sınırsız geçmiş istenemediğini doğrular.
 //
 // Sınırsız bırakmak, aylardır koşan bir konteynerin bütün geçmişini tek
-// istekte executor'dan panelyd'ye, oradan SSH üzerinden istemciye
+// istekte executor'dan kadrand'ye, oradan SSH üzerinden istemciye
 // pompalamak demekti.
 func TestStreamLogsCapsTailLines(t *testing.T) {
 	exec := &fakeExec{}
@@ -112,7 +112,7 @@ func TestStreamLogsCapsTailLines(t *testing.T) {
 	seedLiveApp(t, db, "blog")
 
 	st := newLogStream()
-	if err := srv.StreamLogs(&panelyv1.StreamLogsRequest{
+	if err := srv.StreamLogs(&kadranv1.StreamLogsRequest{
 		AppId: "blog", TailLines: 5_000_000}, st); err != nil {
 		t.Fatalf("akış başarısız: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestStreamLogsPassesTailAndFollowThrough(t *testing.T) {
 	seedLiveApp(t, db, "blog")
 
 	st := newLogStream()
-	if err := srv.StreamLogs(&panelyv1.StreamLogsRequest{
+	if err := srv.StreamLogs(&kadranv1.StreamLogsRequest{
 		AppId: "blog", TailLines: 42, Follow: true}, st); err != nil {
 		t.Fatalf("akış başarısız: %v", err)
 	}
@@ -159,7 +159,7 @@ func TestStreamLogsRefusesAppWithoutLiveRelease(t *testing.T) {
 	srv, db := newDeleteServer(t, exec)
 	seedDeletableApp(t, db, "blog") // dağıtım YOK
 
-	err := srv.StreamLogs(&panelyv1.StreamLogsRequest{AppId: "blog"}, newLogStream())
+	err := srv.StreamLogs(&kadranv1.StreamLogsRequest{AppId: "blog"}, newLogStream())
 	if err == nil {
 		t.Fatal("dağıtılmamış uygulamanın günlüğü akıtıldı")
 	}
@@ -177,7 +177,7 @@ func TestStreamLogsReportsMissingApp(t *testing.T) {
 	exec := &fakeExec{}
 	srv, _ := newDeleteServer(t, exec)
 
-	err := srv.StreamLogs(&panelyv1.StreamLogsRequest{AppId: "yok"}, newLogStream())
+	err := srv.StreamLogs(&kadranv1.StreamLogsRequest{AppId: "yok"}, newLogStream())
 	if status.Code(err) != codes.NotFound {
 		t.Errorf("kod %s, NotFound bekleniyordu (%v)", status.Code(err), err)
 	}
@@ -193,7 +193,7 @@ func TestStreamLogsPropagatesExecutorFailure(t *testing.T) {
 	srv, db := newDeleteServer(t, exec)
 	seedLiveApp(t, db, "blog")
 
-	err := srv.StreamLogs(&panelyv1.StreamLogsRequest{AppId: "blog"}, newLogStream())
+	err := srv.StreamLogs(&kadranv1.StreamLogsRequest{AppId: "blog"}, newLogStream())
 	if err == nil {
 		t.Fatal("executor hatası yutuldu — istemci boş bir akış görüp " +
 			"uygulamanın sessiz olduğunu sanırdı")

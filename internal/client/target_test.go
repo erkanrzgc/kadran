@@ -9,9 +9,9 @@ func TestParseTargetLocalForms(t *testing.T) {
 		want  string
 	}{
 		{"boş → varsayılan soket", "", DefaultSocketPath},
-		{"mutlak yol", "/run/panely/api.sock", "/run/panely/api.sock"},
+		{"mutlak yol", "/run/kadran/api.sock", "/run/kadran/api.sock"},
 		{"unix şeması", "unix:///tmp/x.sock", "/tmp/x.sock"},
-		{"boşluklu girdi", "  /run/panely/api.sock  ", "/run/panely/api.sock"},
+		{"boşluklu girdi", "  /run/kadran/api.sock  ", "/run/kadran/api.sock"},
 	}
 
 	for _, tc := range tests {
@@ -146,7 +146,7 @@ func TestTargetStringRoundTrips(t *testing.T) {
 		{"erkan@1.2.3.4", "erkan@1.2.3.4"},
 		{"erkan@example.com:2222", "erkan@example.com:2222"},
 		{"erkan@example.com:22", "erkan@example.com"},
-		{"/run/panely/api.sock", "unix:/run/panely/api.sock"},
+		{"/run/kadran/api.sock", "unix:/run/kadran/api.sock"},
 	}
 
 	for _, tc := range tests {
@@ -164,7 +164,7 @@ func TestTargetStringRoundTrips(t *testing.T) {
 
 func TestDialLocalTargetDoesNotConnectEagerly(t *testing.T) {
 	// Bağlantı tembel olmalı: var olmayan bir sokete Dial hata vermemeli.
-	// Bu sayede `panely --help` gibi komutlar sunucuya hiç dokunmaz.
+	// Bu sayede `kadran --help` gibi komutlar sunucuya hiç dokunmaz.
 	c, err := Dial(Target{SocketPath: "/olmayan/soket.sock"})
 	if err != nil {
 		t.Fatalf("tembel bağlantı hata verdi: %v", err)

@@ -18,10 +18,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-WSL_DISTRO="${PANELY_WSL_DISTRO:-Ubuntu}"
+WSL_DISTRO="${KADRAN_WSL_DISTRO:-Ubuntu}"
 
-echo "==> panely-exec linux/amd64 derleniyor"
-GOOS=linux GOARCH=amd64 go build -o bin/panely-exec ./cmd/panely-exec
+echo "==> kadran-exec linux/amd64 derleniyor"
+GOOS=linux GOARCH=amd64 go build -o bin/kadran-exec ./cmd/kadran-exec
 
 # Windows yolunu WSL'in gördüğü yola çevir.
 wsl_path() {
@@ -38,20 +38,20 @@ RUNNER="bin/e2e-executor-runner.sh"
 cat > "$RUNNER" <<'REMOTE'
 set -euo pipefail
 REPO="$1"
-WORK=/tmp/panely-e2e
+WORK=/tmp/kadran-e2e
 rm -rf "$WORK"
 mkdir -p "$WORK/bin" "$WORK/scripts"
-cp "$REPO/bin/panely-exec"           "$WORK/bin/"
+cp "$REPO/bin/kadran-exec"           "$WORK/bin/"
 cp "$REPO/scripts/e2e-executor.sh"   "$WORK/scripts/"
-chmod +x "$WORK/bin/panely-exec" "$WORK/scripts/e2e-executor.sh"
+chmod +x "$WORK/bin/kadran-exec" "$WORK/scripts/e2e-executor.sh"
 cd "$WORK"
-export PANELY_EXEC_BIN="$WORK/bin/panely-exec"
+export KADRAN_EXEC_BIN="$WORK/bin/kadran-exec"
 
 echo "############ 1/2 — TESTİN KENDİSİNİ SINA ############"
 echo "Executor kasten davetsiz kullanıcıyı kabul edecek."
 echo "5. doğrulama BAŞARISIZ olmalı; olmazsa test hiçbir şey ölçmüyor."
 echo
-if PANELY_E2E_ALLOW_INTRUDER=1 bash "$WORK/scripts/e2e-executor.sh"; then
+if KADRAN_E2E_ALLOW_INTRUDER=1 bash "$WORK/scripts/e2e-executor.sh"; then
     echo
     echo "!! TESTİN KENDİSİ BOZUK: SO_PEERCRED kasten gevşetildiği hâlde test geçti." >&2
     exit 1

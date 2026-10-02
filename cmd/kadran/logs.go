@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // defaultTailLines, `-tail` verilmediğinde gösterilecek geçmiş satır
@@ -53,7 +53,7 @@ func (c *cli) runLogs(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	stream, err := conn.RPC().StreamLogs(ctx, &panelyv1.StreamLogsRequest{
+	stream, err := conn.RPC().StreamLogs(ctx, &kadranv1.StreamLogsRequest{
 		AppId:     fs.Arg(0),
 		TailLines: uint32(*tail), //nolint:gosec // bayrak uint, sunucu ayrıca sınırlıyor
 		Follow:    *follow,
@@ -74,7 +74,7 @@ func (c *cli) runLogs(ctx context.Context, args []string) int {
 // birleştirip atmak, akışları ayırmanın bütün faydasını yok ederdi.
 func (c *cli) consumeLogs(
 	ctx context.Context,
-	stream panelyv1.PanelyService_StreamLogsClient,
+	stream kadranv1.KadranService_StreamLogsClient,
 ) int {
 	// ⚠ HİÇ BAŞLAMAMIŞ akış ile YARIDA KOPMUŞ akış ayrı şeyler.
 	//

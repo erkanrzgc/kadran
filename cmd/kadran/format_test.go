@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 func TestHumanBytes(t *testing.T) {
@@ -88,16 +88,16 @@ func TestShortFingerprintLeavesShortValuesAlone(t *testing.T) {
 func TestDescribeActorFallsBackHonestly(t *testing.T) {
 	tests := []struct {
 		name  string
-		actor *panelyv1.Actor
+		actor *kadranv1.Actor
 		want  string
 	}{
 		{"aktör yok", nil, "bilinmiyor"},
-		{"boş aktör", &panelyv1.Actor{}, "bilinmiyor"},
-		{"yalnızca köken", &panelyv1.Actor{Origin: "local"}, "local"},
+		{"boş aktör", &kadranv1.Actor{}, "bilinmiyor"},
+		{"yalnızca köken", &kadranv1.Actor{Origin: "local"}, "local"},
 		{"etiket kökene tercih edilir",
-			&panelyv1.Actor{Origin: "ssh", Label: "erkan-dizustu"}, "erkan-dizustu"},
+			&kadranv1.Actor{Origin: "ssh", Label: "erkan-dizustu"}, "erkan-dizustu"},
 		{"parmak izi her şeye tercih edilir",
-			&panelyv1.Actor{Origin: "ssh", Label: "x", SshKeyFingerprint: "SHA256:kisa"},
+			&kadranv1.Actor{Origin: "ssh", Label: "x", SshKeyFingerprint: "SHA256:kisa"},
 			"SHA256:kisa"},
 	}
 
@@ -113,9 +113,9 @@ func TestDescribeActorFallsBackHonestly(t *testing.T) {
 // TestChainStatusLabelsAreDistinct, üç durumun ekranda birbirine
 // karışmadığını doğrular.
 func TestChainStatusLabelsAreDistinct(t *testing.T) {
-	valid := chainStatusLabel(panelyv1.ChainStatus_CHAIN_STATUS_VALID)
-	invalid := chainStatusLabel(panelyv1.ChainStatus_CHAIN_STATUS_INVALID)
-	unreachable := chainStatusLabel(panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE)
+	valid := chainStatusLabel(kadranv1.ChainStatus_CHAIN_STATUS_VALID)
+	invalid := chainStatusLabel(kadranv1.ChainStatus_CHAIN_STATUS_INVALID)
+	unreachable := chainStatusLabel(kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE)
 
 	if valid == invalid || invalid == unreachable || valid == unreachable {
 		t.Errorf("etiketler ayırt edilemiyor: %q / %q / %q", valid, invalid, unreachable)
@@ -129,8 +129,8 @@ func TestChainStatusLabelsAreDistinct(t *testing.T) {
 func TestOutcomeLabelMarksDenied(t *testing.T) {
 	// REDDEDİLDİ, güvenlik modelinin devreye girdiği durumdur ve
 	// başarısızlıktan ayrı görünmelidir.
-	denied := outcomeLabel(panelyv1.AuditOutcome_AUDIT_OUTCOME_DENIED)
-	failure := outcomeLabel(panelyv1.AuditOutcome_AUDIT_OUTCOME_FAILURE)
+	denied := outcomeLabel(kadranv1.AuditOutcome_AUDIT_OUTCOME_DENIED)
+	failure := outcomeLabel(kadranv1.AuditOutcome_AUDIT_OUTCOME_FAILURE)
 
 	if denied == failure {
 		t.Errorf("reddedilme ile başarısızlık aynı görünüyor: %q", denied)

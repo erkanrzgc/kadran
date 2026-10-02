@@ -58,8 +58,8 @@ func anahtarCLI(t *testing.T, s *sahteAnahtarlar) (*cli, *bytes.Buffer, *bytes.B
 
 func TestKeyListShowsRolesAndScopes(t *testing.T) {
 	s := &sahteAnahtarlar{icerik: strings.Join([]string{
-		`command="/usr/local/lib/panely/panely-connect",restrict ` + yoneticiGovde + " erkan@dizustu",
-		`command="/usr/local/lib/panely/panely-connect -deploy=site,api",restrict ` + ciGovde + " ci",
+		`command="/usr/local/lib/kadran/kadran-connect",restrict ` + yoneticiGovde + " erkan@dizustu",
+		`command="/usr/local/lib/kadran/kadran-connect -deploy=site,api",restrict ` + ciGovde + " ci",
 	}, "\n")}
 	c, out, _ := anahtarCLI(t, s)
 
@@ -77,11 +77,11 @@ func TestKeyListShowsRolesAndScopes(t *testing.T) {
 	}
 }
 
-// TestKeyListFlagsUnrestrictedLines: kısıtsız satır panely-client'a kabuk
+// TestKeyListFlagsUnrestrictedLines: kısıtsız satır kadran-client'a kabuk
 // açar. Liste bunu GÖSTERMELİ ve çıkış koduyla bildirmeli.
 func TestKeyListFlagsUnrestrictedLines(t *testing.T) {
 	s := &sahteAnahtarlar{icerik: strings.Join([]string{
-		`command="/usr/local/lib/panely/panely-connect",restrict ` + yoneticiGovde + " erkan",
+		`command="/usr/local/lib/kadran/kadran-connect",restrict ` + yoneticiGovde + " erkan",
 		ciGovde + " elle-eklenmis",
 	}, "\n")}
 	c, out, errOut := anahtarCLI(t, s)
@@ -132,7 +132,7 @@ func TestKeyUsageErrors(t *testing.T) {
 		{"key", "add", "-deploy", "Site", pub, "root@s"}, // geçersiz kapsam
 		{"key", "remove", "root@sunucu"},                 // parmak izi yok
 		{"key", "remove", "MD5:ab", "root@sunucu"},       // biçim
-		{"key", "list", "/run/panely/api.sock"},          // yerel soket
+		{"key", "list", "/run/kadran/api.sock"},          // yerel soket
 	} {
 		s := &sahteAnahtarlar{}
 		c, _, _ := anahtarCLI(t, s)

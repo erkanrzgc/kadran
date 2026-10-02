@@ -11,7 +11,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -23,13 +23,13 @@ func TestCreateAppRoundTripsThroughGetApp(t *testing.T) {
 	spec.BuildArgs = map[string]string{"NODE_ENV": "production"}
 	mustCreateApp(t, srv, spec)
 
-	resp, err := srv.GetApp(context.Background(), &panelyv1.GetAppRequest{AppId: "blog"})
+	resp, err := srv.GetApp(context.Background(), &kadranv1.GetAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("uygulama okunamadı: %v", err)
 	}
 
 	got := resp.GetApp().GetSpec()
-	if got.GetGitOwner() != "erkanrzgc" || got.GetGitRepo() != "panely" {
+	if got.GetGitOwner() != "erkanrzgc" || got.GetGitRepo() != "kadran" {
 		t.Errorf("owner/repo karıştı: %q / %q", got.GetGitOwner(), got.GetGitRepo())
 	}
 	if got.GetDomain() != "blog.example.com" {
@@ -51,7 +51,7 @@ func TestCreateAppRejectsDuplicate(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	_, err := srv.CreateApp(context.Background(),
-		&panelyv1.CreateAppRequest{Spec: testSpec()})
+		&kadranv1.CreateAppRequest{Spec: testSpec()})
 	if status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("kod = %v, beklenen AlreadyExists (%v)", status.Code(err), err)
 	}
@@ -66,36 +66,36 @@ func TestCreateAppRejectsDuplicate(t *testing.T) {
 func TestCreateAppValidation(t *testing.T) {
 	cases := []struct {
 		name  string
-		mutil func(*panelyv1.AppSpec)
+		mutil func(*kadranv1.AppSpec)
 	}{
-		{"büyük harfli app_id", func(s *panelyv1.AppSpec) { s.AppId = "Blog" }},
-		{"rakamla başlayan app_id", func(s *panelyv1.AppSpec) { s.AppId = "1blog" }},
-		{"eğik çizgili app_id", func(s *panelyv1.AppSpec) { s.AppId = "a/b" }},
-		{"boş app_id", func(s *panelyv1.AppSpec) { s.AppId = "" }},
-		{"şemalı git_host", func(s *panelyv1.AppSpec) { s.GitHost = "https://github.com" }},
-		{"portlu git_host", func(s *panelyv1.AppSpec) { s.GitHost = "github.com:443" }},
-		{"eğik çizgili owner", func(s *panelyv1.AppSpec) { s.GitOwner = "a/b" }},
-		{"nokta nokta repo", func(s *panelyv1.AppSpec) { s.GitRepo = ".." }},
-		{"mutlak dockerfile", func(s *panelyv1.AppSpec) { s.DockerfilePath = "/etc/passwd" }},
-		{"kaçan dockerfile", func(s *panelyv1.AppSpec) { s.DockerfilePath = "../Dockerfile" }},
-		{"windows dockerfile", func(s *panelyv1.AppSpec) { s.DockerfilePath = `C:\evil` }},
-		{"temiz olmayan dockerfile", func(s *panelyv1.AppSpec) { s.DockerfilePath = "./a/../Dockerfile" }},
-		{"sıfır port", func(s *panelyv1.AppSpec) { s.ContainerPort = 0 }},
-		{"sıfır replika", func(s *panelyv1.AppSpec) { s.Replicas = 0 }},
-		{"aşırı replika", func(s *panelyv1.AppSpec) { s.Replicas = 1000 }},
-		{"eğik çizgisiz health_path", func(s *panelyv1.AppSpec) { s.HealthPath = "healthz" }},
-		{"satır sonlu health_path", func(s *panelyv1.AppSpec) { s.HealthPath = "/a\r\nHost: x" }},
-		{"limitsiz", func(s *panelyv1.AppSpec) { s.Limits = nil }},
-		{"sıfır bellek", func(s *panelyv1.AppSpec) { s.Limits.MemoryBytes = 0 }},
-		{"sıfır cpu", func(s *panelyv1.AppSpec) { s.Limits.CpuMillis = 0 }},
-		{"aralık dışı blkio", func(s *panelyv1.AppSpec) { s.Limits.BlkioWeight = 5 }},
-		{"geçersiz derleme argümanı adı", func(s *panelyv1.AppSpec) {
+		{"büyük harfli app_id", func(s *kadranv1.AppSpec) { s.AppId = "Blog" }},
+		{"rakamla başlayan app_id", func(s *kadranv1.AppSpec) { s.AppId = "1blog" }},
+		{"eğik çizgili app_id", func(s *kadranv1.AppSpec) { s.AppId = "a/b" }},
+		{"boş app_id", func(s *kadranv1.AppSpec) { s.AppId = "" }},
+		{"şemalı git_host", func(s *kadranv1.AppSpec) { s.GitHost = "https://github.com" }},
+		{"portlu git_host", func(s *kadranv1.AppSpec) { s.GitHost = "github.com:443" }},
+		{"eğik çizgili owner", func(s *kadranv1.AppSpec) { s.GitOwner = "a/b" }},
+		{"nokta nokta repo", func(s *kadranv1.AppSpec) { s.GitRepo = ".." }},
+		{"mutlak dockerfile", func(s *kadranv1.AppSpec) { s.DockerfilePath = "/etc/passwd" }},
+		{"kaçan dockerfile", func(s *kadranv1.AppSpec) { s.DockerfilePath = "../Dockerfile" }},
+		{"windows dockerfile", func(s *kadranv1.AppSpec) { s.DockerfilePath = `C:\evil` }},
+		{"temiz olmayan dockerfile", func(s *kadranv1.AppSpec) { s.DockerfilePath = "./a/../Dockerfile" }},
+		{"sıfır port", func(s *kadranv1.AppSpec) { s.ContainerPort = 0 }},
+		{"sıfır replika", func(s *kadranv1.AppSpec) { s.Replicas = 0 }},
+		{"aşırı replika", func(s *kadranv1.AppSpec) { s.Replicas = 1000 }},
+		{"eğik çizgisiz health_path", func(s *kadranv1.AppSpec) { s.HealthPath = "healthz" }},
+		{"satır sonlu health_path", func(s *kadranv1.AppSpec) { s.HealthPath = "/a\r\nHost: x" }},
+		{"limitsiz", func(s *kadranv1.AppSpec) { s.Limits = nil }},
+		{"sıfır bellek", func(s *kadranv1.AppSpec) { s.Limits.MemoryBytes = 0 }},
+		{"sıfır cpu", func(s *kadranv1.AppSpec) { s.Limits.CpuMillis = 0 }},
+		{"aralık dışı blkio", func(s *kadranv1.AppSpec) { s.Limits.BlkioWeight = 5 }},
+		{"geçersiz derleme argümanı adı", func(s *kadranv1.AppSpec) {
 			s.BuildArgs = map[string]string{"bad-name": "x"}
 		}},
-		{"NUL içeren derleme argümanı", func(s *panelyv1.AppSpec) {
+		{"NUL içeren derleme argümanı", func(s *kadranv1.AppSpec) {
 			s.BuildArgs = map[string]string{"OK": "a\x00b"}
 		}},
-		{"şemalı domain", func(s *panelyv1.AppSpec) { s.Domain = "https://x.com" }},
+		{"şemalı domain", func(s *kadranv1.AppSpec) { s.Domain = "https://x.com" }},
 	}
 
 	for _, tc := range cases {
@@ -105,7 +105,7 @@ func TestCreateAppValidation(t *testing.T) {
 			tc.mutil(spec)
 
 			_, err := srv.CreateApp(context.Background(),
-				&panelyv1.CreateAppRequest{Spec: spec})
+				&kadranv1.CreateAppRequest{Spec: spec})
 			if status.Code(err) != codes.InvalidArgument {
 				t.Fatalf("kod = %v, beklenen InvalidArgument (%v)", status.Code(err), err)
 			}
@@ -131,7 +131,7 @@ func TestRejectedCreateIsRecordedAsDenied(t *testing.T) {
 
 	spec := testSpec()
 	spec.AppId = "Blog"
-	_, _ = srv.CreateApp(context.Background(), &panelyv1.CreateAppRequest{Spec: spec})
+	_, _ = srv.CreateApp(context.Background(), &kadranv1.CreateAppRequest{Spec: spec})
 
 	recs := auditActions(t, db)
 	if len(recs) != 1 {
@@ -174,12 +174,12 @@ func TestGetAppReturnsReleasesNewestFirst(t *testing.T) {
 
 	for range 3 {
 		st := newDeployStream(context.Background())
-		if err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
+		if err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
 			t.Fatalf("dağıtım başarısız: %v", err)
 		}
 	}
 
-	resp, err := srv.GetApp(context.Background(), &panelyv1.GetAppRequest{AppId: "blog"})
+	resp, err := srv.GetApp(context.Background(), &kadranv1.GetAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("uygulama okunamadı: %v", err)
 	}
@@ -206,7 +206,7 @@ func TestGetAppReportsTheLiveRelease(t *testing.T) {
 	srv, db := newDeployServer(t, &fakeExec{})
 	mustCreateApp(t, srv, testSpec())
 
-	resp, err := srv.GetApp(ctx, &panelyv1.GetAppRequest{AppId: "blog"})
+	resp, err := srv.GetApp(ctx, &kadranv1.GetAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("dağıtımsız uygulama hata verdi: %v", err)
 	}
@@ -221,14 +221,14 @@ func TestGetAppReportsTheLiveRelease(t *testing.T) {
 
 	for range 3 {
 		st := newDeployStream(ctx)
-		if err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
+		if err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
 			t.Fatalf("dağıtım başarısız: %v", err)
 		}
 	}
 	if err := db.SetActiveRelease(ctx, "blog", "r3"); err != nil {
 		t.Fatal(err)
 	}
-	if resp, _ = srv.GetApp(ctx, &panelyv1.GetAppRequest{AppId: "blog"}); resp.GetActiveReleaseId() != "r3" {
+	if resp, _ = srv.GetApp(ctx, &kadranv1.GetAppRequest{AppId: "blog"}); resp.GetActiveReleaseId() != "r3" {
 		t.Errorf("canlı sürüm %q, beklenen r3", resp.GetActiveReleaseId())
 	}
 
@@ -236,7 +236,7 @@ func TestGetAppReportsTheLiveRelease(t *testing.T) {
 	if err := db.SetActiveRelease(ctx, "blog", "r1"); err != nil {
 		t.Fatal(err)
 	}
-	resp, err = srv.GetApp(ctx, &panelyv1.GetAppRequest{AppId: "blog", ReleaseLimit: 1})
+	resp, err = srv.GetApp(ctx, &kadranv1.GetAppRequest{AppId: "blog", ReleaseLimit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func TestGetAppReportsTheLiveRelease(t *testing.T) {
 
 func TestGetAppReportsMissingAsNotFound(t *testing.T) {
 	srv, _ := newDeployServer(t, &fakeExec{})
-	_, err := srv.GetApp(context.Background(), &panelyv1.GetAppRequest{AppId: "yok"})
+	_, err := srv.GetApp(context.Background(), &kadranv1.GetAppRequest{AppId: "yok"})
 	if status.Code(err) != codes.NotFound {
 		t.Fatalf("kod = %v, beklenen NotFound (%v)", status.Code(err), err)
 	}
@@ -259,7 +259,7 @@ func TestGetAppReportsMissingAsNotFound(t *testing.T) {
 func TestListAppsIsEmptyNotNil(t *testing.T) {
 	srv, _ := newDeployServer(t, &fakeExec{})
 
-	resp, err := srv.ListApps(context.Background(), &panelyv1.ListAppsRequest{})
+	resp, err := srv.ListApps(context.Background(), &kadranv1.ListAppsRequest{})
 	if err != nil {
 		t.Fatalf("liste başarısız: %v", err)
 	}
@@ -283,11 +283,11 @@ func TestReadOnlyQueriesStayOutOfTheChain(t *testing.T) {
 	before := len(auditActions(t, db))
 
 	for range 5 {
-		if _, err := srv.ListApps(context.Background(), &panelyv1.ListAppsRequest{}); err != nil {
+		if _, err := srv.ListApps(context.Background(), &kadranv1.ListAppsRequest{}); err != nil {
 			t.Fatalf("liste başarısız: %v", err)
 		}
 		if _, err := srv.GetApp(context.Background(),
-			&panelyv1.GetAppRequest{AppId: "blog"}); err != nil {
+			&kadranv1.GetAppRequest{AppId: "blog"}); err != nil {
 			t.Fatalf("okuma başarısız: %v", err)
 		}
 	}
@@ -302,11 +302,11 @@ func TestReadOnlyQueriesStayOutOfTheChain(t *testing.T) {
 //
 // Bu hatalı durum, Executor somut tipten arayüze çevrilince TEMSİL
 // EDİLEBİLİR hale geldi. Düz `== nil` onu YAKALAMAZ: arayüzün tip sözcüğü
-// dolu, yalnızca değeri nil. Kontrol olmasaydı panelyd hatalı kablolamayla
+// dolu, yalnızca değeri nil. Kontrol olmasaydı kadrand hatalı kablolamayla
 // ayağa kalkar ve ilk RPC'de nil başvurusuyla düşerdi — yani hata kurulum
 // yerinden uzakta görünürdü.
 func TestNewServerRejectsTypedNilExecutor(t *testing.T) {
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Ölçek küçültme ───────────────────────────────────────────────────
@@ -227,7 +227,7 @@ func TestScaleDownNeverTouchesAnotherRelease(t *testing.T) {
 		if rep.ReleaseID == relNew {
 			continue
 		}
-		if rep.State != panelyv1.ContainerState_CONTAINER_STATE_RUNNING {
+		if rep.State != kadranv1.ContainerState_CONTAINER_STATE_RUNNING {
 			t.Errorf("eski sürümün replikası %s#%d artık %s — ölçek "+
 				"küçültme yalnızca aktif sürüme dokunmalı; eskiyi indirmek "+
 				"boşaltma yolunun işi ve o boşaltma penceresini bekler",

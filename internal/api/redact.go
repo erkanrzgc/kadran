@@ -7,15 +7,15 @@ import (
 )
 
 // ════════════════════════════════════════════════════════════════════
-// KARIŞIK PARAMETRE REDAKSİYONU — yalnızca panelyd'nin politikası
+// KARIŞIK PARAMETRE REDAKSİYONU — yalnızca kadrand'nin politikası
 // ════════════════════════════════════════════════════════════════════
 //
 // ── Neden internal/audit'te DEĞİL? ──────────────────────────────────
 //
-// Bu kod bir dönem `internal/audit` içindeydi ve oradan `panely-exec`'in
+// Bu kod bir dönem `internal/audit` içindeydi ve oradan `kadran-exec`'in
 // içe aktarma grafiğine giriyordu. Ayrıcalıklı ikili onu HİÇ ÇAĞIRMIYOR
 // — executor denetime yalnızca `audit.RedactEnv` (varsayılan REDDET) ile
-// yazıyor. Ölçüldü: `deadcode ./cmd/panely-exec` bu dört fonksiyonu
+// yazıyor. Ölçüldü: `deadcode ./cmd/kadran-exec` bu dört fonksiyonu
 // "unreachable" olarak işaretledi.
 //
 // Kaynak satırları yine de ayrıcalıklı yüzey bütçesine sayılıyordu (betik
@@ -109,7 +109,7 @@ func isUpper(r rune) bool { return r >= 'A' && r <= 'Z' }
 // ⚠ Ortam değişkenleri için bunu DEĞİL, audit.RedactEnv'i kullanın.
 // Sezgisel, kullanıcının seçtiği adlarda güvenilmez: bir parola `CONFIG`
 // ya da `SMTP_URL` adının altında durabilir. Env'de varsayılan REDDET
-// uygulanır, burada varsayılan GEÇİR — çünkü buradaki anahtarları panely
+// uygulanır, burada varsayılan GEÇİR — çünkü buradaki anahtarları kadran
 // KENDİSİ üretiyor ve hangilerinin sır olabileceğini biliyor.
 func redactSensitive(params map[string]string) map[string]string {
 	if params == nil {

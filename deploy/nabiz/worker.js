@@ -1,4 +1,4 @@
-// Panely DIŞ nabız kontrolü — Cloudflare Worker (K-109).
+// Kadran DIŞ nabız kontrolü — Cloudflare Worker (K-109).
 //
 // ── Neden sunucunun DIŞINDA ──────────────────────────────────────────
 //

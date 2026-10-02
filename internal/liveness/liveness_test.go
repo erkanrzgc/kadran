@@ -169,7 +169,7 @@ func TestDatabaseProbeHasItsOwnTimeout(t *testing.T) {
 // göremez ve bu test kırmızıya döner.
 func TestPingDetectsAnExhaustedPool(t *testing.T) {
 	ctx := context.Background()
-	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(ctx, filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}

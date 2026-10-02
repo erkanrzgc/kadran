@@ -74,7 +74,7 @@ func (c *Client) ContainerLogs(
 // demux, Docker'ın çoğullanmış günlük akışını ayırır.
 //
 // Bu çerçeveleme yalnızca konteynerin TTY'si KAPALIYKEN geçerlidir; TTY
-// açıksa akış çıplak bayt olur ve başlık aranmaz. Panely'nin konteynerleri
+// açıksa akış çıplak bayt olur ve başlık aranmaz. Kadran'ın konteynerleri
 // `Tty` alanını hiç göndermez, yani daima false — ölçüldü. createBody'ye
 // bir gün Tty eklenirse BURASI da değişmek zorunda; bu yüzden alanın
 // yokluğu container.go'da kasıtlı olarak belgeli.

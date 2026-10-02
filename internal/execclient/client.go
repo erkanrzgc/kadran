@@ -1,4 +1,4 @@
-// Package execclient, panelyd'nin ayrıcalıklı executor'a bağlanmasını
+// Package execclient, kadrand'nin ayrıcalıklı executor'a bağlanmasını
 // sağlar.
 package execclient
 
@@ -12,14 +12,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // Client, executor'a bağlı bir gRPC istemcisidir.
 type Client struct {
 	conn *grpc.ClientConn
-	rpc  panelyv1.ExecutorServiceClient
+	rpc  kadranv1.ExecutorServiceClient
 }
 
 // Dial, executor soketine bağlanır.
@@ -27,8 +27,8 @@ type Client struct {
 // # Neden insecure taşıma?
 //
 // "insecure" burada TLS'siz demektir, korumasız değil. Güven sınırı
-// dosya sistemidir: sokete ancak /run/panely-exec dizinini traverse
-// edebilen (0750 root:panely) bir süreç ulaşabilir, ve ulaştığında da
+// dosya sistemidir: sokete ancak /run/kadran-exec dizinini traverse
+// edebilen (0750 root:kadran) bir süreç ulaşabilir, ve ulaştığında da
 // sunucu tarafı SO_PEERCRED ile uid'ini doğrular. Aynı makinedeki bir
 // unix soketine TLS eklemek, korumayı artırmadan anahtar yönetimi
 // yükü getirirdi.
@@ -52,7 +52,7 @@ func Dial(socketPath string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("executor'a bağlanılamadı: %w", err)
 	}
-	return &Client{conn: conn, rpc: panelyv1.NewExecutorServiceClient(conn)}, nil
+	return &Client{conn: conn, rpc: kadranv1.NewExecutorServiceClient(conn)}, nil
 }
 
 // Close, bağlantıyı kapatır.
@@ -67,7 +67,7 @@ type PingResult struct {
 
 // Ping, executor'ın canlılığını sorgular ve sürüm uyumunu denetler.
 func (c *Client) Ping(ctx context.Context) (PingResult, error) {
-	resp, err := c.rpc.Ping(ctx, &panelyv1.ExecutorServicePingRequest{})
+	resp, err := c.rpc.Ping(ctx, &kadranv1.ExecutorServicePingRequest{})
 	if err != nil {
 		return PingResult{}, fmt.Errorf("executor yanıt vermiyor: %w", err)
 	}
@@ -95,8 +95,8 @@ func (c *Client) Ping(ctx context.Context) (PingResult, error) {
 }
 
 // HostInfo, sunucunun donanım ve çekirdek bilgisini döner.
-func (c *Client) HostInfo(ctx context.Context) (*panelyv1.HostInfo, error) {
-	resp, err := c.rpc.GetHostInfo(ctx, &panelyv1.GetHostInfoRequest{})
+func (c *Client) HostInfo(ctx context.Context) (*kadranv1.HostInfo, error) {
+	resp, err := c.rpc.GetHostInfo(ctx, &kadranv1.GetHostInfoRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("host bilgisi alınamadı: %w", err)
 	}
@@ -114,7 +114,7 @@ type JournalPage struct {
 // Executor bu kayıtları teslim etmeden önce zinciri seq 1'den yeniden
 // doğrular; buradan dönen kayıtlar okuma anında kanıtlanmıştır.
 func (c *Client) ReadJournal(ctx context.Context, afterSeq uint64, limit uint32) (JournalPage, error) {
-	resp, err := c.rpc.ReadAuditJournal(ctx, &panelyv1.ReadAuditJournalRequest{
+	resp, err := c.rpc.ReadAuditJournal(ctx, &kadranv1.ReadAuditJournalRequest{
 		AfterSeq: afterSeq,
 		Limit:    limit,
 	})

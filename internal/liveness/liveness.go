@@ -1,4 +1,4 @@
-// Package liveness, panelyd'nin "süreç ayakta ama iş yapmıyor" hâlini
+// Package liveness, kadrand'nin "süreç ayakta ama iş yapmıyor" hâlini
 // systemd'nin watchdog'una bağlar (K-115).
 //
 // ── Neden ayrı bir sayaç goroutine'i DEĞİL ──────────────────────────
@@ -74,7 +74,7 @@ func (r *Registry) Register(name string, maxAge time.Duration) *Beat {
 // nil alıcıyla hiçbir şey yapmaz: watchdog kapalıyken ya da testte
 // döngüler damgasız koşabilsin. Bu kolaylığın bedeli, main'in bir
 // döngüye damga vermeyi UNUTMASININ derleyiciye görünmemesi; bu yüzden
-// panelyd açılışta izlenen döngülerin adlarını günlüğe yazıyor.
+// kadrand açılışta izlenen döngülerin adlarını günlüğe yazıyor.
 func (b *Beat) Mark() {
 	if b == nil {
 		return
@@ -212,7 +212,7 @@ func (w *Watchdog) Run(ctx context.Context) {
 
 func (w *Watchdog) beat(ctx context.Context) {
 	if err := w.Check(ctx); err != nil {
-		slog.Error("watchdog: canlılık BİLDİRİLMİYOR — sürerse systemd panelyd'yi yeniden başlatacak",
+		slog.Error("watchdog: canlılık BİLDİRİLMİYOR — sürerse systemd kadrand'yi yeniden başlatacak",
 			"sebep", err)
 		return
 	}

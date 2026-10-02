@@ -6,7 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runAlarms, etkin arıza koşullarını listeler.
@@ -37,7 +37,7 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().ListAlarms(ctx, &panelyv1.ListAlarmsRequest{})
+	resp, err := conn.RPC().ListAlarms(ctx, &kadranv1.ListAlarmsRequest{})
 	if err != nil {
 		return c.fail(fmt.Errorf("alarms: %w", err))
 	}
@@ -84,11 +84,11 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 }
 
 // severityLabel, ciddiyeti okunur etikete çevirir.
-func severityLabel(s panelyv1.AlarmSeverity) string {
+func severityLabel(s kadranv1.AlarmSeverity) string {
 	switch s {
-	case panelyv1.AlarmSeverity_ALARM_SEVERITY_CRITICAL:
+	case kadranv1.AlarmSeverity_ALARM_SEVERITY_CRITICAL:
 		return "KRİTİK"
-	case panelyv1.AlarmSeverity_ALARM_SEVERITY_WARNING:
+	case kadranv1.AlarmSeverity_ALARM_SEVERITY_WARNING:
 		return "uyarı"
 	default:
 		// Tanınmayan ciddiyeti "uyarı" saymak, gerçekten kritik bir

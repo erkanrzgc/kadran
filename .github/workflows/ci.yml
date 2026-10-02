@@ -60,7 +60,7 @@ jobs:
         run: go vet ./...
 
       # Kabuk betiklerinin SÖZDİZİMİ. Hiçbir test betiklerin çoğunu
-      # koşturmuyor; `panely-offsite.sh` gibi bir betik yalnızca sunucuda,
+      # koşturmuyor; `kadran-offsite.sh` gibi bir betik yalnızca sunucuda,
       # zamanlayıcıyla koşar. Bozuk bir sözdizimi orada ilk kez görülür ve
       # birim her gece sessizce `failed` kalırdı. K-101'de tam olarak bu
       # oldu: `${VAR:?…}` içindeki bir kesme işareti betiğin tamamını
@@ -73,7 +73,7 @@ jobs:
           done < <(git ls-files '*.sh')
           exit "$bozuk"
 
-      # Alarm göndericisinin biçimlendiricisi (K-108). Girdiler panelyd'nin
+      # Alarm göndericisinin biçimlendiricisi (K-108). Girdiler kadrand'nin
       # journal'ına gerçekten düşen satırların biçiminde; ağa dokunmaz.
       - name: Alarm mesajı biçimlendiricisi
         run: bash scripts/check-notify-format.sh
@@ -153,7 +153,7 @@ jobs:
         # gerçek `sudo -n` ile koşuyor (TestRealScriptsInstallUnderSudo,
         # K-127). Değişken set iken test atlanmıyor; sudo yoksa düşüyor.
         env:
-          PANELY_TEST_REAL_SUDO: ${{ runner.os == 'Linux' && '1' || '' }}
+          KADRAN_TEST_REAL_SUDO: ${{ runner.os == 'Linux' && '1' || '' }}
         run: go test -race -count=1 ./...
 
   build:
@@ -185,12 +185,12 @@ jobs:
           ldflags="-s -w"
           ldflags="$ldflags -X $mod/internal/version.Version=$version"
           ldflags="$ldflags -X $mod/internal/version.Commit=${GITHUB_SHA::12}"
-          for binary in panelyd panely-exec panely-connect kadran; do
+          for binary in kadrand kadran-exec kadran-connect kadran; do
             go build -trimpath -ldflags "$ldflags" -o "dist/$binary" "./cmd/$binary"
           done
           ls -la dist/
 
-      # panely-caddy AYRI bir Go modülü (build/caddy/go.mod), yani
+      # kadran-caddy AYRI bir Go modülü (build/caddy/go.mod), yani
       # `go build ./...` onu KAPSAMAZ ve kök modülün testleri de görmez.
       # Ayrı derlenmezse sessizce çürür: Caddy'nin modül yolları sürüm
       # atlarında değişebiliyor ve arıza ancak sunucuda kurulum sırasında
@@ -202,8 +202,8 @@ jobs:
       # sınırın hâlâ ETKİLİ olduğu ise sunucuda ölçülüyor.
       - name: Ters vekili derle (ayrı modül)
         run: |
-          bash scripts/build-caddy.sh "${{ matrix.arch }}" "$PWD/dist/panely-caddy"
-          ls -la dist/panely-caddy
+          bash scripts/build-caddy.sh "${{ matrix.arch }}" "$PWD/dist/kadran-caddy"
+          ls -la dist/kadran-caddy
 
       # Kurulum betiği ters vekili yalnızca ikili değişince yeniden
       # başlatıyor. İkiliye commit gömülürse Caddy'ye dokunmayan her
@@ -211,25 +211,25 @@ jobs:
       # derleme bilgisi okunamazsa "vcs yok" hiçbir şey kanıtlamaz.
       - name: Ters vekil ikilisi commit'ten bağımsız mı
         run: |
-          info="$(go version -m dist/panely-caddy)"
-          if ! grep -q 'github.com/erkanrzgc/panely/build/caddy' <<<"$info"; then
-            echo "ölçüm geçersiz: panely-caddy'nin derleme bilgisi okunamadı"; exit 1
+          info="$(go version -m dist/kadran-caddy)"
+          if ! grep -q 'github.com/erkanrzgc/kadran/build/caddy' <<<"$info"; then
+            echo "ölçüm geçersiz: kadran-caddy'nin derleme bilgisi okunamadı"; exit 1
           fi
           if grep -q 'vcs\.revision' <<<"$info"; then
-            echo "panely-caddy commit bilgisi taşıyor: her yükseltme ters vekili yeniden başlatır (K-112)"
+            echo "kadran-caddy commit bilgisi taşıyor: her yükseltme ters vekili yeniden başlatır (K-112)"
             exit 1
           fi
           # Build ID kaynak baytlarının özeti: satır sonu ya da yorum farkı
           # bile ikiliyi değiştirir. Boş olmalı (scripts/build-caddy.sh).
-          bid="$(go tool buildid dist/panely-caddy)"
+          bid="$(go tool buildid dist/kadran-caddy)"
           if [ -n "$bid" ]; then
-            echo "panely-caddy build ID taşıyor ($bid): ikili kaynak baytlarına bağlı (K-112)"
+            echo "kadran-caddy build ID taşıyor ($bid): ikili kaynak baytlarına bağlı (K-112)"
             exit 1
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: panely-linux-${{ matrix.arch }}
+          name: kadran-linux-${{ matrix.arch }}
           path: dist/
           retention-days: 14
 
@@ -257,8 +257,8 @@ jobs:
             t="kadran-server-ci-${GITHUB_SHA::12}-linux-$arch.tar.gz"
             listed="$(tar -tzf "$t" | sort)"
             for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
-                     "bin/linux-$arch/panelyd" "bin/linux-$arch/panely-exec" \
-                     "bin/linux-$arch/panely-connect" "bin/linux-$arch/panely-caddy"; do
+                     "bin/linux-$arch/kadrand" "bin/linux-$arch/kadran-exec" \
+                     "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy"; do
               grep -qxF "$f" <<<"$listed" || { echo "::error::$t içinde $f yok" >&2; exit 1; }
             done
             # Tar'daki lisans dosyası boş ya da yanlış olmamalı: içinden oku.
@@ -273,7 +273,7 @@ jobs:
           ls -la
 
   e2e:
-    name: Uçtan uca (gerçek panelyd)
+    name: Uçtan uca (gerçek kadrand)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -284,14 +284,14 @@ jobs:
 
       # Birim testleri istemciyi SAHTE bir sunucuya karşı sınıyor. Sahte
       # sunucu SO_PEERCRED doğrulaması yapmıyor ve kimlik önsözünü okumuyor;
-      # K-012'deki hata tam olarak bu boşlukta yaşadı. Burada gerçek panelyd
-      # başlatılıp gerçek panely ile konuşuluyor.
+      # K-012'deki hata tam olarak bu boşlukta yaşadı. Burada gerçek kadrand
+      # başlatılıp gerçek kadran ile konuşuluyor.
       - name: Binary'leri derle
         run: |
           mkdir -p bin/linux
-          go build -o bin/linux/panelyd ./cmd/panelyd
+          go build -o bin/linux/kadrand ./cmd/kadrand
           go build -o bin/linux/kadran ./cmd/kadran
-          go build -o bin/linux/panely-connect ./cmd/panely-connect
+          go build -o bin/linux/kadran-connect ./cmd/kadran-connect
 
       - name: E2E CLI kontrolleri
         run: bash scripts/e2e-cli-runner.sh bin/linux
@@ -317,17 +317,17 @@ jobs:
       # yeşil rozetten başka bir şey üretmez.
       - name: Hacim kökünü sertleştir (nodev,nosuid)
         run: |
-          sudo mkdir -p /var/lib/panely/volumes
-          sudo mount -o bind,nodev,nosuid /var/lib/panely/volumes /var/lib/panely/volumes
-          opts="$(awk '$5=="/var/lib/panely/volumes"{print $6}' /proc/self/mountinfo | head -1)"
+          sudo mkdir -p /var/lib/kadran/volumes
+          sudo mount -o bind,nodev,nosuid /var/lib/kadran/volumes /var/lib/kadran/volumes
+          opts="$(awk '$5=="/var/lib/kadran/volumes"{print $6}' /proc/self/mountinfo | head -1)"
           echo "etkin: $opts"
           for f in nodev nosuid; do
             printf '%s' "$opts" | tr ',' '\n' | grep -qx "$f" \
               || { echo "::error::$f uygulanmadı — sürücü testi anlamsız olurdu"; exit 1; }
           done
-          sudo chmod 0777 /var/lib/panely/volumes
+          sudo chmod 0777 /var/lib/kadran/volumes
 
-      # PANELY_E2E_REQUIRE_DOCKER: burada Docker VAR, dolayısıyla test
+      # KADRAN_E2E_REQUIRE_DOCKER: burada Docker VAR, dolayısıyla test
       # atlamak bir arızadır ve atlama hakkı kaldırılıyor.
       #
       # Bu değişken, ilk koşuda tam olarak gereken şeydi: API sürümü
@@ -336,14 +336,14 @@ jobs:
       # yeşil rozetten başka bir şey üretmez.
       # ── ROOT olarak koşuyor ve bu ÜRETİME SADAKATTİR ────────────────
       #
-      # `panely-exec` üretimde root çalışıyor. Sürücü, hacim dizinini
+      # `kadran-exec` üretimde root çalışıyor. Sürücü, hacim dizinini
       # oluşturup sahibini imajın kullanıcısına devrediyor ve `chown`
       # ayrıcalık ister.
       #
       # Bu adım bir dönem normal runner kullanıcısıyla koşuyordu ve
       # hacim sahipliği eklendiğinde ateşledi:
       #
-      #   chown /var/lib/panely/volumes/e2etest/data: operation not permitted
+      #   chown /var/lib/kadran/volumes/e2etest/data: operation not permitted
       #
       # Hata TESTİN kendisindeydi, kodun değil: üretimdeki ayrıcalıkla
       # koşmayan bir E2E, üretimdeki davranışı ölçmüyor. Aynı sınıf bu
@@ -354,7 +354,7 @@ jobs:
       # setup-go'nun kurduğu `go` orada yoktur.
       - name: Docker sürücüsü E2E
         env:
-          PANELY_E2E_REQUIRE_DOCKER: "1"
+          KADRAN_E2E_REQUIRE_DOCKER: "1"
         run: |
           sudo -E env "PATH=$PATH" \
             go test -tags dockere2e -count=1 -v ./internal/dockerdrv/
@@ -363,9 +363,9 @@ jobs:
       # BAŞARISIZ olmalı, sessizce geçmemeli.
       - name: Sertleştirme testi gerçekten ateşliyor mu?
         env:
-          PANELY_E2E_REQUIRE_DOCKER: "1"
+          KADRAN_E2E_REQUIRE_DOCKER: "1"
         run: |
-          sudo umount /var/lib/panely/volumes
+          sudo umount /var/lib/kadran/volumes
           out="$(go test -tags dockere2e -count=1 -v -run TestVolumeMountIsHardenedEndToEnd ./internal/dockerdrv/ 2>&1)" && rc=0 || rc=1
           echo "$out"
           [[ $rc -ne 0 ]] \
@@ -405,19 +405,19 @@ jobs:
       # üretmez.
       - name: Ayrıcalık izolasyonu (root)
         run: |
-          GOOS=linux GOARCH=amd64 go build -o bin/panely-exec ./cmd/panely-exec
-          export PANELY_EXEC_BIN="$PWD/bin/panely-exec"
+          GOOS=linux GOARCH=amd64 go build -o bin/kadran-exec ./cmd/kadran-exec
+          export KADRAN_EXEC_BIN="$PWD/bin/kadran-exec"
 
           echo "── 1/2: testin kendisi bozuk politikayı yakalıyor mu?"
-          if sudo -E PANELY_E2E_ALLOW_INTRUDER=1 \
-               PANELY_EXEC_BIN="$PANELY_EXEC_BIN" bash scripts/e2e-executor.sh; then
+          if sudo -E KADRAN_E2E_ALLOW_INTRUDER=1 \
+               KADRAN_EXEC_BIN="$KADRAN_EXEC_BIN" bash scripts/e2e-executor.sh; then
             echo "::error::SO_PEERCRED kasten gevşetildiği hâlde test geçti — test hiçbir şey ölçmüyor." >&2
             exit 1
           fi
           echo "  ✓ test bozuk politikayı yakaladı"
 
           echo "── 2/2: gerçek doğrulama"
-          sudo -E PANELY_EXEC_BIN="$PANELY_EXEC_BIN" bash scripts/e2e-executor.sh
+          sudo -E KADRAN_EXEC_BIN="$KADRAN_EXEC_BIN" bash scripts/e2e-executor.sh
 
       - name: govulncheck
         run: |
@@ -455,7 +455,7 @@ jobs:
         # Sudo kipinin umask mutasyonunu yalnızca gerçek sudo testi
         # yakalıyor (mutate-bootstrapssh.sh, K-127).
         env:
-          PANELY_TEST_REAL_SUDO: "1"
+          KADRAN_TEST_REAL_SUDO: "1"
         run: |
           set -uo pipefail
 

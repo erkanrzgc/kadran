@@ -17,15 +17,15 @@ import (
 
 // TestUpstreamRejectsAnythingButAnIP, K-050'nin yükümlülüğünü doğrular.
 //
-// Serbest bir `dial` dizesi, ele geçirilmiş bir panelyd'nin ayrıcalıklı
+// Serbest bir `dial` dizesi, ele geçirilmiş bir kadrand'nin ayrıcalıklı
 // executor soketini internete açmasına izin verirdi. Adres bir IP olarak
 // AYRIŞTIRILIYOR, yani bu girdilerin hiçbiri temsil edilemiyor.
 func TestUpstreamRejectsAnythingButAnIP(t *testing.T) {
 	cases := []string{
-		"unix//run/panely-exec/exec.sock",
-		"unix//run/panely/api.sock",
+		"unix//run/kadran-exec/exec.sock",
+		"unix//run/kadran/api.sock",
 		"localhost",
-		"panely_hello_r1_0",
+		"kadran_hello_r1_0",
 		"127.0.0.1:8080",         // port ayrı alanda verilmeli
 		"http://127.0.0.1",       // şema
 		"0.0.0.0",                // belirsiz
@@ -89,10 +89,10 @@ func mustUpstream(t *testing.T, ip string, port uint32) Upstream {
 //
 // `POST /load` kök nesnenin TAMAMINI değiştiriyor. Admin bloğu olmayan
 // bir yapılandırma yüklenirse Caddy varsayılana (TCP :2019) döner ve
-// panelyd unix soketinden bir daha ULAŞAMAZ — sistem kendini kilitler.
+// kadrand unix soketinden bir daha ULAŞAMAZ — sistem kendini kilitler.
 func TestBuildConfigAlwaysCarriesAdmin(t *testing.T) {
 	if _, err := BuildConfig(BuildOptions{}); err == nil {
-		t.Fatal("admin bloğu olmadan yapılandırma üretildi — panelyd kilitlenirdi")
+		t.Fatal("admin bloğu olmadan yapılandırma üretildi — kadrand kilitlenirdi")
 	}
 
 	cfg, err := BuildConfig(BuildOptions{Admin: testAdmin()})
@@ -269,7 +269,7 @@ func newFakeClient(t *testing.T, f *fakeCaddy) *Client {
 	t.Helper()
 
 	// ⚠ Windows'ta ATLANIYOR ve bu, garanti ortamda atlama YASAĞINI
-	// ihlal etmiyor: panelyd yalnızca Linux'ta çalışıyor (systemd birimi,
+	// ihlal etmiyor: kadrand yalnızca Linux'ta çalışıyor (systemd birimi,
 	// unix soketleri, SO_PEERCRED). Windows burada bir hedef değil,
 	// geliştirme makinesi.
 	//
@@ -280,7 +280,7 @@ func newFakeClient(t *testing.T, f *fakeCaddy) *Client {
 	// CI'ın Linux işleri (ubuntu-latest ve ubuntu-24.04-arm) bu testleri
 	// GERÇEKTEN koşturuyor; yerelde de WSL üzerinden doğrulandı.
 	if runtime.GOOS == "windows" {
-		t.Skip("panelyd Linux'ta çalışır; unix soketi taşıması burada sınanamıyor")
+		t.Skip("kadrand Linux'ta çalışır; unix soketi taşıması burada sınanamıyor")
 	}
 
 	sock := filepath.Join(t.TempDir(), "admin.sock")
@@ -324,7 +324,7 @@ func TestLoadSendsAdminHost(t *testing.T) {
 //
 // Sahte Caddy /load'ı KABUL ediyor ama canlıya yansıtmıyor — admin
 // soketine yazan başka bir sürecin üzerine yazması gibi. Geri okuma
-// olmasaydı panelyd bunu hiç fark etmez ve SQLite canlı olmayan bir
+// olmasaydı kadrand bunu hiç fark etmez ve SQLite canlı olmayan bir
 // durumu tarif ederdi.
 func TestLoadDetectsConfigThatDidNotApply(t *testing.T) {
 	f := &fakeCaddy{drift: true}

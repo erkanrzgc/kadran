@@ -25,7 +25,7 @@ func rota(app, host, dial string) AppRoute {
 //
 // Tetik YALNIZCA tek yönlü: beklenen bir alan adının canlıda HİÇ rotası
 // yoksa. Taze sunucu testinde ölçülen arıza tam buydu — Caddy yeniden
-// başlayınca rotasız açıldı ve site panelyd yeniden başlayana kadar
+// başlayınca rotasız açıldı ve site kadrand yeniden başlayana kadar
 // kapalı kaldı.
 //
 // Fazla rotalar ve upstream farkları BİLEREK tetik değil: uzlaştırma
@@ -66,7 +66,7 @@ func TestMissingHosts(t *testing.T) {
 // upstream'lerinin taşınabilmesini — ve yalnızca GEÇERLİ olanların
 // taşınmasını — sınar.
 //
-// Canlı yapılandırma güvenilir kaynak değil: admin soketine panelyd'den
+// Canlı yapılandırma güvenilir kaynak değil: admin soketine kadrand'den
 // başka biri de yazabilir (K-054). Taşınan her adres NewUpstream'den
 // yeniden geçiyor; soket yolu, ad ya da belirsiz adres geçemez.
 func TestLiveUpstreams(t *testing.T) {

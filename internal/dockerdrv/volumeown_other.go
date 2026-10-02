@@ -6,7 +6,7 @@ import "errors"
 
 // platformChownDir, Linux dışı platformlarda daima hata döndürür.
 //
-// Panely'nin ayrıcalıklı bileşeni (panely-exec) yalnızca Linux'ta
+// Kadran'ın ayrıcalıklı bileşeni (kadran-exec) yalnızca Linux'ta
 // çalışır. Bu dosyanın var olma sebebi, iş istasyonu geliştiricisinin
 // Windows veya macOS üzerinde `go build ./...` ve `go vet ./...`
 // çalıştırabilmesidir — sessizce izin veren bir yedek uygulama DEĞİL.

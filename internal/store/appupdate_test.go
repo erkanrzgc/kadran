@@ -140,7 +140,7 @@ func TestUpdateAppWritesEachFieldToItsOwnColumn(t *testing.T) {
 		t.Errorf("replicas = %d, beklenen 7", got.Replicas)
 	}
 	// Yazma yolunun DOKUNMAMASI gereken alanlar.
-	if got.ContainerPort != 8080 || got.GitRepo != "panely" || got.GitOwner != "erkanrzgc" {
+	if got.ContainerPort != 8080 || got.GitRepo != "kadran" || got.GitOwner != "erkanrzgc" {
 		t.Errorf("yazma yolu adlandırmadığı sütunlara dokundu: %+v", got)
 	}
 }
@@ -173,14 +173,14 @@ func TestUpdateAppRejectsDomainOwnedByAnotherApp(t *testing.T) {
 	ctx := context.Background()
 
 	first := sampleApp("portfolio")
-	first.Domain = "panely.example.com"
+	first.Domain = "kadran.example.com"
 	mustCreate(t, s, first)
 
 	second := sampleApp("blog")
 	second.Domain = "blog.example.com"
 	mustCreate(t, s, second)
 
-	_, err := s.UpdateApp(ctx, "blog", AppUpdate{Domain: strptr("panely.example.com")})
+	_, err := s.UpdateApp(ctx, "blog", AppUpdate{Domain: strptr("kadran.example.com")})
 	if !errors.Is(err, ErrDomainTaken) {
 		t.Fatalf("ErrDomainTaken bekleniyordu, geldi: %v", err)
 	}
@@ -320,11 +320,11 @@ func TestCreateAppDoesNotBlameTheIdWhenTheDomainIsTaken(t *testing.T) {
 	ctx := context.Background()
 
 	first := sampleApp("portfolio")
-	first.Domain = "panely.example.com"
+	first.Domain = "kadran.example.com"
 	mustCreate(t, s, first)
 
 	second := sampleApp("yepyeni")
-	second.Domain = "panely.example.com"
+	second.Domain = "kadran.example.com"
 
 	_, err := s.CreateApp(ctx, second)
 	if err == nil {
@@ -385,8 +385,8 @@ func TestEmptyDomainsDoNotCollide(t *testing.T) {
 // ── Neden bu senaryo ayrıca sınanmalı? ───────────────────────────────
 //
 // Başarısız göç `schema_migrations`'a yazılmaz (applyMigration tek
-// transaction), yani panelyd HER AÇILIŞTA aynı yerde ölür. Ve onarım
-// aracı — `kadran app update` — o panelyd'nin içinde. Yani bu, aracın
+// transaction), yani kadrand HER AÇILIŞTA aynı yerde ölür. Ve onarım
+// aracı — `kadran app update` — o kadrand'nin içinde. Yani bu, aracın
 // kendisini kilitlediği bir kilitlenmedir; kurtarma yolu hostta elle
 // sqlite3.
 //
@@ -396,7 +396,7 @@ func TestEmptyDomainsDoNotCollide(t *testing.T) {
 // hangi göçün ve hangi ALANIN sorun çıkardığını söylemeli.
 func TestMigrationFailsLegiblyOnPreexistingDuplicates(t *testing.T) {
 	ctx := context.Background()
-	path := t.TempDir() + "/panely.db"
+	path := t.TempDir() + "/kadran.db"
 
 	s, err := Open(ctx, path)
 	if err != nil {

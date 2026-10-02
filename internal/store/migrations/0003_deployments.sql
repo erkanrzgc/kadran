@@ -1,4 +1,4 @@
--- Panely kontrol düzlemi şeması — göç 0003: aktif dağıtımlar
+-- Kadran kontrol düzlemi şeması — göç 0003: aktif dağıtımlar
 --
 -- ⚠⚠ BU DOSYA TARİHSELDİR — göç 0005 tabloyu YENİDEN KURDU.
 --

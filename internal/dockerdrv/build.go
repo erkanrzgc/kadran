@@ -80,7 +80,7 @@ type buildFrame struct {
 // derleme başarısızdır, hata karesi hiç gelmemiş olsa bile.
 //
 // Bu aynı zamanda "imaj var mı" diye sormaktan da güçlü. Etiket
-// panely/<app>:<sha> biçiminde ve aynı commit daha önce derlenmiş olabilir;
+// kadran/<app>:<sha> biçiminde ve aynı commit daha önce derlenmiş olabilir;
 // o durumda başarısız bir derlemeden sonra ESKİ imaj bulunur ve kontrol
 // yanılırdı. aux karesi BU derlemenin ürettiği kimliktir.
 func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (string, error) {
@@ -96,9 +96,9 @@ func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (str
 	if spec.Dockerfile != "" {
 		q.Set("dockerfile", spec.Dockerfile)
 	}
-	// İmaja Panely etiketi YAZILMIYOR. `labels` parametresinin çalıştığı
+	// İmaja Kadran etiketi YAZILMIYOR. `labels` parametresinin çalıştığı
 	// ölçüldü, ama sahiplik işaretini etiket taşımak zorunda değil: ad
-	// zaten `panely/<app_id>:<sha>` ve bu önek imajı tanımlamaya yetiyor.
+	// zaten `kadran/<app_id>:<sha>` ve bu önek imajı tanımlamaya yetiyor.
 	// Öksüz imaj tespiti Faz 2'nin kapsamında; ihtiyaç doğduğunda eklenir.
 	//
 	// ⚠ Derleme argümanlarının DEĞERLERİ imaj geçmişinde görünür — bu da

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -63,7 +63,7 @@ func (c *cli) runDeploy(ctx context.Context, args []string) int {
 		return c.fail(err)
 	}
 
-	stream, err := conn.RPC().Deploy(ctx, &panelyv1.DeployRequest{
+	stream, err := conn.RPC().Deploy(ctx, &kadranv1.DeployRequest{
 		AppId:     appID,
 		CommitSha: sha,
 	})
@@ -82,10 +82,10 @@ func (c *cli) runDeploy(ctx context.Context, args []string) int {
 // istemci, sunucu tarafında sessizce değişen bir davranışı fark etmezdi.
 // Bayrak burada, istemcide de ayrıca denetleniyor: iki uç aynı ölçütü
 // kullanmazsa "başarılı" kelimesinin anlamı ikisinde ayrışır.
-func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
+func (c *cli) consumeDeploy(stream kadranv1.KadranService_DeployClient) int {
 	var (
 		releaseID string
-		succeeded *panelyv1.DeploySucceeded
+		succeeded *kadranv1.DeploySucceeded
 	)
 
 	for {
@@ -136,7 +136,7 @@ func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
 //
 // ── Neden çözümü İSTEMCİ yapıyor? ──────────────────────────────────
 //
-// panelyd yapamaz. Gerekçe dilim 4c'de DEĞİŞTİ ama sonuç aynı kaldı:
+// kadrand yapamaz. Gerekçe dilim 4c'de DEĞİŞTİ ama sonuç aynı kaldı:
 // birim artık AF_INET açıyor (sağlık yoklaması için), ancak
 // `IPAddressDeny=any` + `IPAddressAllow=172.16.0.0/12` yalnızca Docker'ın
 // özel ağına izin veriyor. GitHub'a bağlanmak hâlâ imkânsız — gerçek
@@ -147,7 +147,7 @@ func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
 // değil, en-az-yetkinin ölçülebilir hâli. `git ls-remote` karşılığı
 // burada, iş istasyonunda koşar.
 func (c *cli) resolveCommit(
-	ctx context.Context, rpc panelyv1.PanelyServiceClient,
+	ctx context.Context, rpc kadranv1.KadranServiceClient,
 	appID, commit, branch string,
 ) (string, error) {
 	if commit != "" {
@@ -163,7 +163,7 @@ func (c *cli) resolveCommit(
 	// sunucudaki tanımdan okuyoruz. Böylece kullanıcı depoyu iki kez
 	// yazmıyor ve `app create`'te kaydedilen tanım tek gerçek kaynak
 	// olarak kalıyor.
-	resp, err := rpc.GetApp(ctx, &panelyv1.GetAppRequest{AppId: appID})
+	resp, err := rpc.GetApp(ctx, &kadranv1.GetAppRequest{AppId: appID})
 	if status.Code(err) == codes.PermissionDenied {
 		// Dağıtım anahtarı uygulama tanımını okuyamaz: ortam
 		// değişkenlerinin değerlerini taşıyor (K-131). Dal çözülemez.

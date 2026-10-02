@@ -18,7 +18,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/erkanrzgc/kadran/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Sahte ssh alt süreci ─────────────────────────────────────────────
@@ -27,22 +27,22 @@ import (
 // boruya yazdığı İLK BAYTLAR gerçekten ölçülebiliyor.
 
 const (
-	fakeSSHEnv     = "PANELY_TEST_FAKE_SSH"
-	fakeSSHOutEnv  = "PANELY_TEST_FAKE_SSH_OUT"
-	fakeSSHArgvEnv = "PANELY_TEST_FAKE_SSH_ARGV"
-	fakeSSHEchoEnv = "PANELY_TEST_FAKE_SSH_ECHO"
+	fakeSSHEnv     = "KADRAN_TEST_FAKE_SSH"
+	fakeSSHOutEnv  = "KADRAN_TEST_FAKE_SSH_OUT"
+	fakeSSHArgvEnv = "KADRAN_TEST_FAKE_SSH_ARGV"
+	fakeSSHEchoEnv = "KADRAN_TEST_FAKE_SSH_ECHO"
 	// fakeSSHFailEnv: stderr'e bu metni yazıp 255 ile çıkar, stdin'i hiç
 	// okumadan. Gerçek ssh bağlanamadığında (DNS, kimlik doğrulama, host
 	// anahtarı) tam olarak böyle davranıyor.
-	fakeSSHFailEnv = "PANELY_TEST_FAKE_SSH_FAIL"
+	fakeSSHFailEnv = "KADRAN_TEST_FAKE_SSH_FAIL"
 	// fakeSSHCleanEnv: hiçbir şey yazmadan 0 ile çıkar (kontrol grubu).
-	fakeSSHCleanEnv = "PANELY_TEST_FAKE_SSH_CLEAN"
+	fakeSSHCleanEnv = "KADRAN_TEST_FAKE_SSH_CLEAN"
 	// fakeSSHLingerEnv: fakeSSHFailEnv gibi, ama çıkmadan önce stderr'i
 	// devralan ve 20 sn yaşayan bir alt süreç bırakır (ControlPersist
 	// ustası gibi). PID'i fakeSSHLingerPIDEnv'deki dosyaya yazılır.
-	fakeSSHLingerEnv    = "PANELY_TEST_FAKE_SSH_LINGER"
-	fakeSSHLingerPIDEnv = "PANELY_TEST_FAKE_SSH_LINGER_PID"
-	fakeSSHSleepEnv     = "PANELY_TEST_FAKE_SSH_SLEEP"
+	fakeSSHLingerEnv    = "KADRAN_TEST_FAKE_SSH_LINGER"
+	fakeSSHLingerPIDEnv = "KADRAN_TEST_FAKE_SSH_LINGER_PID"
+	fakeSSHSleepEnv     = "KADRAN_TEST_FAKE_SSH_SLEEP"
 )
 
 // http2Preface, gRPC'nin bağlantıda gönderdiği ilk baytlardır (RFC 7540 §3.5).
@@ -147,7 +147,7 @@ func (testAuthInfo) AuthType() string { return "test" }
 // okusa HTTP/2 akışı bozulurdu ve bu ancak uçtan uca bir testte görünür.
 //
 // Bu test bir HATA yüzünden yazıldı: yerel yol hiç önsöz yazmıyordu.
-// panelyd önsözü koşulsuz okuduğu için, sunucuda argümansız `panely
+// kadrand önsözü koşulsuz okuduğu için, sunucuda argümansız `kadran
 // status` yazmak — yani birincil kullanım — gRPC'nin HTTP/2 önsözünü
 // uzunluk sanıp ("PRI " → 1.35 milyar) "önsöz çok büyük" hatasıyla ölürdü.
 //
@@ -158,7 +158,7 @@ func TestPreambleThenGRPCOverSameConn(t *testing.T) {
 
 	creds := &preambleCreds{seen: make(chan connproto.Identity, 1)}
 	server := grpc.NewServer(grpc.Creds(creds))
-	panelyv1.RegisterPanelyServiceServer(server, &stubService{})
+	kadranv1.RegisterKadranServiceServer(server, &stubService{})
 
 	listener := newSingleConnListener(serverSide)
 	done := make(chan struct{})
@@ -192,7 +192,7 @@ func TestPreambleThenGRPCOverSameConn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp, err := panelyv1.NewPanelyServiceClient(conn).Ping(ctx, &panelyv1.PingRequest{})
+	resp, err := kadranv1.NewKadranServiceClient(conn).Ping(ctx, &kadranv1.PingRequest{})
 	if err != nil {
 		t.Fatalf("önsözden sonra gRPC çağrısı başarısız: %v", err)
 	}
@@ -237,8 +237,8 @@ func TestLocalIdentityMakesNoSSHClaims(t *testing.T) {
 // TestSSHTransportWritesNoPreamble, SSH yolunun boruya önsöz YAZMADIĞINI
 // doğrular.
 //
-// SSH'ta önsözü sunucuda panely-connect yazıyor. İstemci de yazsaydı
-// panelyd iki önsöz görürdü: ilkini okur, ardından HTTP/2 beklediği yerde
+// SSH'ta önsözü sunucuda kadran-connect yazıyor. İstemci de yazsaydı
+// kadrand iki önsöz görürdü: ilkini okur, ardından HTTP/2 beklediği yerde
 // dört baytlık bir uzunluk artı JSON bulurdu.
 //
 // Bu testin varlık nedeni, ileride birinin "yerelde yazıyoruz, SSH'ta da
@@ -266,7 +266,7 @@ func TestSSHTransportWritesNoPreamble(t *testing.T) {
 	// Ölçtüğümüz şey sonuç değil, boruya yazılan ilk baytlar.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, _ = c.RPC().Ping(ctx, &panelyv1.PingRequest{})
+	_, _ = c.RPC().Ping(ctx, &kadranv1.PingRequest{})
 
 	data, err := waitForFile(captured, len(http2Preface), 10*time.Second)
 	if err != nil {
@@ -277,7 +277,7 @@ func TestSSHTransportWritesNoPreamble(t *testing.T) {
 		t.Errorf("SSH borusuna yazılan ilk baytlar HTTP/2 önsözü değil.\n"+
 			"alınan  : %q\nbeklenen: %q\n"+
 			"İstemci kimlik önsözü yazıyorsa bu bir gerileme: SSH yolunda "+
-			"önsözü panely-connect yazar.", got, http2Preface)
+			"önsözü kadran-connect yazar.", got, http2Preface)
 	}
 }
 

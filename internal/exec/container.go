@@ -12,7 +12,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/dockerdrv"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // Konteyner yaşam döngüsü uçları.
@@ -52,7 +52,7 @@ func target(appID, releaseID string) string {
 }
 
 // selectorOf, doğrulanmış bir proto seçicisini sürücünün dar tipine çevirir.
-func selectorOf(sel *panelyv1.ContainerSelector) dockerdrv.Selector {
+func selectorOf(sel *kadranv1.ContainerSelector) dockerdrv.Selector {
 	out := dockerdrv.Selector{
 		AppID:     sel.GetRelease().GetAppId(),
 		ReleaseID: sel.GetRelease().GetReleaseId(),
@@ -66,7 +66,7 @@ func selectorOf(sel *panelyv1.ContainerSelector) dockerdrv.Selector {
 }
 
 // NetworkEnsure, uygulamanın iç ağını oluşturur.
-func (s *Server) NetworkEnsure(ctx context.Context, req *panelyv1.NetworkEnsureRequest) (*panelyv1.NetworkEnsureResponse, error) {
+func (s *Server) NetworkEnsure(ctx context.Context, req *kadranv1.NetworkEnsureRequest) (*kadranv1.NetworkEnsureResponse, error) {
 	appID := req.GetAppId()
 	const action = "network.ensure"
 
@@ -78,11 +78,11 @@ func (s *Server) NetworkEnsure(ctx context.Context, req *panelyv1.NetworkEnsureR
 	if err := s.completed(action, target(appID, ""), nil, opErr); err != nil {
 		return nil, internalError(err)
 	}
-	return &panelyv1.NetworkEnsureResponse{NetworkName: name}, nil
+	return &kadranv1.NetworkEnsureResponse{NetworkName: name}, nil
 }
 
 // ContainerCreate, tek bir replika konteyner oluşturur. Başlatmaz.
-func (s *Server) ContainerCreate(ctx context.Context, req *panelyv1.ContainerCreateRequest) (*panelyv1.ContainerCreateResponse, error) {
+func (s *Server) ContainerCreate(ctx context.Context, req *kadranv1.ContainerCreateRequest) (*kadranv1.ContainerCreateResponse, error) {
 	const action = "container.create"
 	ref := req.GetRef()
 	tgt := target(ref.GetRelease().GetAppId(), ref.GetRelease().GetReleaseId())
@@ -111,7 +111,7 @@ func (s *Server) ContainerCreate(ctx context.Context, req *panelyv1.ContainerCre
 	if err := s.completed(action, tgt, params, opErr); err != nil {
 		return nil, internalError(err)
 	}
-	return &panelyv1.ContainerCreateResponse{Ref: ref}, nil
+	return &kadranv1.ContainerCreateResponse{Ref: ref}, nil
 }
 
 // auditParams, oluşturma isteğinin denetime yazılacak parametrelerini
@@ -121,7 +121,7 @@ func (s *Server) ContainerCreate(ctx context.Context, req *panelyv1.ContainerCre
 // denetimin asıl işine yarayan alanlar: release_id ↔ commit_sha sapması
 // ancak kayıtta ikisi de varsa yakalanabilir (exec.proto'daki nota
 // bakınız). env ise DEĞERLERİ olmadan, yalnızca anahtar adlarıyla girer.
-func auditParams(req *panelyv1.ContainerCreateRequest) map[string]string {
+func auditParams(req *kadranv1.ContainerCreateRequest) map[string]string {
 	params := map[string]string{
 		"commit_sha": req.GetCommitSha(),
 		"replica":    strconv.FormatUint(uint64(req.GetRef().GetReplica()), 10),
@@ -133,7 +133,7 @@ func auditParams(req *panelyv1.ContainerCreateRequest) map[string]string {
 }
 
 // mountsOf, doğrulanmış hacim bağlamalarını sürücünün dar tipine çevirir.
-func mountsOf(vols []*panelyv1.VolumeMount) []dockerdrv.Mount {
+func mountsOf(vols []*kadranv1.VolumeMount) []dockerdrv.Mount {
 	if len(vols) == 0 {
 		return nil
 	}
@@ -149,7 +149,7 @@ func mountsOf(vols []*panelyv1.VolumeMount) []dockerdrv.Mount {
 }
 
 // ContainerStart, seçilen konteynerleri başlatır.
-func (s *Server) ContainerStart(ctx context.Context, req *panelyv1.ContainerStartRequest) (*panelyv1.ContainerStartResponse, error) {
+func (s *Server) ContainerStart(ctx context.Context, req *kadranv1.ContainerStartRequest) (*kadranv1.ContainerStartResponse, error) {
 	const action = "container.start"
 	sel := req.GetSelector()
 	tgt := target(sel.GetRelease().GetAppId(), sel.GetRelease().GetReleaseId())
@@ -162,11 +162,11 @@ func (s *Server) ContainerStart(ctx context.Context, req *panelyv1.ContainerStar
 	if err := s.completed(action, tgt, affectedParams(n), opErr); err != nil {
 		return nil, internalError(err)
 	}
-	return &panelyv1.ContainerStartResponse{Affected: uint32(n)}, nil //nolint:gosec // sürücü sayımı replika sınırıyla kapalı
+	return &kadranv1.ContainerStartResponse{Affected: uint32(n)}, nil //nolint:gosec // sürücü sayımı replika sınırıyla kapalı
 }
 
 // ContainerStop, seçilen konteynerleri durdurur.
-func (s *Server) ContainerStop(ctx context.Context, req *panelyv1.ContainerStopRequest) (*panelyv1.ContainerStopResponse, error) {
+func (s *Server) ContainerStop(ctx context.Context, req *kadranv1.ContainerStopRequest) (*kadranv1.ContainerStopResponse, error) {
 	const action = "container.stop"
 	sel := req.GetSelector()
 	tgt := target(sel.GetRelease().GetAppId(), sel.GetRelease().GetReleaseId())
@@ -182,7 +182,7 @@ func (s *Server) ContainerStop(ctx context.Context, req *panelyv1.ContainerStopR
 	if err := s.completed(action, tgt, affectedParams(n), opErr); err != nil {
 		return nil, internalError(err)
 	}
-	return &panelyv1.ContainerStopResponse{Affected: uint32(n)}, nil //nolint:gosec // sürücü sayımı replika sınırıyla kapalı
+	return &kadranv1.ContainerStopResponse{Affected: uint32(n)}, nil //nolint:gosec // sürücü sayımı replika sınırıyla kapalı
 }
 
 // ContainerRemove, seçilen konteynerleri durdurup siler.
@@ -191,7 +191,7 @@ func (s *Server) ContainerStop(ctx context.Context, req *panelyv1.ContainerStopR
 // (yeniden oluşturulur); hacim silmek değildir ve şartname §1.3 gereği
 // TOTP kapısına tabidir. İkisini tek uçta birleştirmek, geri alınamaz
 // işlemi geri alınabilir bir isteğin yan etkisi hâline getirirdi.
-func (s *Server) ContainerRemove(ctx context.Context, req *panelyv1.ContainerRemoveRequest) (*panelyv1.ContainerRemoveResponse, error) {
+func (s *Server) ContainerRemove(ctx context.Context, req *kadranv1.ContainerRemoveRequest) (*kadranv1.ContainerRemoveResponse, error) {
 	const action = "container.remove"
 	sel := req.GetSelector()
 	tgt := target(sel.GetRelease().GetAppId(), sel.GetRelease().GetReleaseId())
@@ -204,7 +204,7 @@ func (s *Server) ContainerRemove(ctx context.Context, req *panelyv1.ContainerRem
 	if err := s.completed(action, tgt, affectedParams(n), opErr); err != nil {
 		return nil, internalError(err)
 	}
-	return &panelyv1.ContainerRemoveResponse{Affected: uint32(n)}, nil //nolint:gosec // sürücü sayımı replika sınırıyla kapalı
+	return &kadranv1.ContainerRemoveResponse{Affected: uint32(n)}, nil //nolint:gosec // sürücü sayımı replika sınırıyla kapalı
 }
 
 // affectedParams, kaç konteynerin etkilendiğini denetime yazar.
@@ -215,17 +215,17 @@ func affectedParams(n int) map[string]string {
 	return map[string]string{"affected": strconv.Itoa(n)}
 }
 
-// ContainerList, Panely'nin yönettiği konteynerleri sayar. Salt okunur.
+// ContainerList, Kadran'ın yönettiği konteynerleri sayar. Salt okunur.
 //
 // Denetime YAZILMAZ: durum değiştirmeyen çağrılar kaydedilmez (server.go'
-// daki denetim politikasına bakınız). panelyd bu ucu durum ekranı için
+// daki denetim politikasına bakınız). kadrand bu ucu durum ekranı için
 // düzenli olarak çağırır; her çağrıyı kaydetmek günlüğü gürültüyle
 // doldurur ve asıl ayrıcalıklı işlemleri görünmez kılardı.
 //
-// app_id BOŞ olabilir: o zaman `panely.app_id` etiketi taşıyan tüm
-// konteynerler dönülür. panelyd bir uygulama kaydını tamamen kaybederse
+// app_id BOŞ olabilir: o zaman `kadran.app_id` etiketi taşıyan tüm
+// konteynerler dönülür. kadrand bir uygulama kaydını tamamen kaybederse
 // öksüz konteynerleri ancak böyle bulabilir.
-func (s *Server) ContainerList(ctx context.Context, req *panelyv1.ContainerListRequest) (*panelyv1.ContainerListResponse, error) {
+func (s *Server) ContainerList(ctx context.Context, req *kadranv1.ContainerListRequest) (*kadranv1.ContainerListResponse, error) {
 	if appID := req.GetAppId(); appID != "" {
 		if err := validateAppID(appID); err != nil {
 			return nil, invalidArgument(err)
@@ -236,24 +236,24 @@ func (s *Server) ContainerList(ctx context.Context, req *panelyv1.ContainerListR
 	if err != nil {
 		return nil, internalError(err)
 	}
-	return &panelyv1.ContainerListResponse{Containers: managedToProto(found)}, nil
+	return &kadranv1.ContainerListResponse{Containers: managedToProto(found)}, nil
 }
 
 // managedToProto, sürücünün konteyner tipini şemaya çevirir.
 //
 // # Neden pbconv'da değil?
 //
-// pbconv'u panelyd de içe aktarıyor. Dönüşüm oraya konsaydı pbconv
+// pbconv'u kadrand de içe aktarıyor. Dönüşüm oraya konsaydı pbconv
 // dockerdrv'ye bağımlı olur ve YETKİSİZ daemon, Docker sürücüsünü
-// binary'sine LİNKLERDİ. Kod yolu çağrılmasa bile bu, "panelyd Docker'a
+// binary'sine LİNKLERDİ. Kod yolu çağrılmasa bile bu, "kadrand Docker'a
 // erişemez" iddiasını okuyan biri için gereksiz bir soru işareti yaratır.
 // Dönüşümün tek kullanıcısı burası.
-func managedToProto(list []dockerdrv.Container) []*panelyv1.ManagedContainer {
-	out := make([]*panelyv1.ManagedContainer, 0, len(list))
+func managedToProto(list []dockerdrv.Container) []*kadranv1.ManagedContainer {
+	out := make([]*kadranv1.ManagedContainer, 0, len(list))
 	for _, c := range list {
-		out = append(out, &panelyv1.ManagedContainer{
-			Ref: &panelyv1.ContainerRef{
-				Release: &panelyv1.ReleaseRef{AppId: c.AppID, ReleaseId: c.ReleaseID},
+		out = append(out, &kadranv1.ManagedContainer{
+			Ref: &kadranv1.ContainerRef{
+				Release: &kadranv1.ReleaseRef{AppId: c.AppID, ReleaseId: c.ReleaseID},
 				Replica: c.Replica,
 			},
 			State:     containerStateToProto(c.State),
@@ -269,24 +269,24 @@ func managedToProto(list []dockerdrv.Container) []*panelyv1.ManagedContainer {
 // TANINMAYAN DURUM UNSPECIFIED olur, "çalışıyor" değil. Docker ileride
 // yeni bir durum eklerse, onu yanlışlıkla çalışıyor saymak sağlık
 // denetçisini yanıltır ve ölü bir sürüme trafik taşınmasına yol açabilir.
-func containerStateToProto(state string) panelyv1.ContainerState {
+func containerStateToProto(state string) kadranv1.ContainerState {
 	switch state {
 	case "created":
-		return panelyv1.ContainerState_CONTAINER_STATE_CREATED
+		return kadranv1.ContainerState_CONTAINER_STATE_CREATED
 	case "running":
-		return panelyv1.ContainerState_CONTAINER_STATE_RUNNING
+		return kadranv1.ContainerState_CONTAINER_STATE_RUNNING
 	case "paused":
-		return panelyv1.ContainerState_CONTAINER_STATE_PAUSED
+		return kadranv1.ContainerState_CONTAINER_STATE_PAUSED
 	case "restarting":
-		return panelyv1.ContainerState_CONTAINER_STATE_RESTARTING
+		return kadranv1.ContainerState_CONTAINER_STATE_RESTARTING
 	case "exited":
-		return panelyv1.ContainerState_CONTAINER_STATE_EXITED
+		return kadranv1.ContainerState_CONTAINER_STATE_EXITED
 	case "dead":
-		return panelyv1.ContainerState_CONTAINER_STATE_DEAD
+		return kadranv1.ContainerState_CONTAINER_STATE_DEAD
 	case "removing":
-		return panelyv1.ContainerState_CONTAINER_STATE_REMOVING
+		return kadranv1.ContainerState_CONTAINER_STATE_REMOVING
 	default:
-		return panelyv1.ContainerState_CONTAINER_STATE_UNSPECIFIED
+		return kadranv1.ContainerState_CONTAINER_STATE_UNSPECIFIED
 	}
 }
 
@@ -295,7 +295,7 @@ func containerStateToProto(state string) panelyv1.ContainerState {
 // # Neden denetime YAZILMIYOR
 //
 // Salt okunur bir çağrıdır ve server.go'daki politika yalnızca durum
-// değiştiren işlemleri kaydeder — ContainerList ile aynı gerekçe: panelyd
+// değiştiren işlemleri kaydeder — ContainerList ile aynı gerekçe: kadrand
 // bu ucu sürekli çağırır (GUI'de akan günlük penceresi) ve her açılışı
 // kaydetmek zinciri gürültüyle doldurup asıl ayrıcalıklı işlemleri
 // görünmez kılardı.
@@ -303,7 +303,7 @@ func containerStateToProto(state string) panelyv1.ContainerState {
 // Bu, §8.1'in terminaliyle KASITLI bir asimetridir: PTYOpen çalıştırma
 // yeteneği verir, kendi denetim kaydı ve TOTP kapısı vardır. Günlük okumak
 // yalnızca gözlemdir.
-func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, stream grpc.ServerStreamingServer[panelyv1.ContainerLogsResponse]) error {
+func (s *Server) ContainerLogs(req *kadranv1.ContainerLogsRequest, stream grpc.ServerStreamingServer[kadranv1.ContainerLogsResponse]) error {
 	ref := req.GetRef()
 	if err := validateContainerRef(ref); err != nil {
 		return invalidArgument(err)
@@ -326,7 +326,7 @@ func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, stream grpc.S
 	err := s.docker.ContainerLogs(stream.Context(), sel,
 		req.GetTailLines(), req.GetFollow(), since,
 		func(data []byte, isStderr bool) error {
-			return stream.Send(&panelyv1.ContainerLogsResponse{Data: data, IsStderr: isStderr})
+			return stream.Send(&kadranv1.ContainerLogsResponse{Data: data, IsStderr: isStderr})
 		})
 	if err != nil {
 		return internalError(err)
@@ -339,12 +339,12 @@ func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, stream grpc.S
 // ── Ağa KİM çıkıyor? Hiçbirimiz ─────────────────────────────────────
 //
 // Bu soru bu RPC'yi bir dilim boyunca geciktirdi ve notlardaki ikilem
-// ("panelyd mi çeksin, executor mü?") YANLIŞTI: ikisinin de ağa çıkması
+// ("kadrand mi çeksin, executor mü?") YANLIŞTI: ikisinin de ağa çıkması
 // gerekmiyor. Uzak bağlamı BuildKit kendi ağ ad alanında çözüyor;
 // executor yalnızca unix soketine bayt yazıyor (docs/decisions.md K-035).
 //
 // Executor bugün de `RestrictAddressFamilies=AF_UNIX` taşıyor ve öyle
-// kalmalı. panelyd dilim 4c'de AF_INET aldı (sağlık yoklaması) ama
+// kalmalı. kadrand dilim 4c'de AF_INET aldı (sağlık yoklaması) ama
 // yalnızca 172.16.0.0/12'ye; ikisi de GitHub'a ulaşamaz.
 //
 // Sürücü diliminin devraldığı yükümlülükler:
@@ -359,7 +359,7 @@ func (s *Server) ContainerLogs(req *panelyv1.ContainerLogsRequest, stream grpc.S
 //     kontrol etmek başarısız her derlemeyi BAŞARILI göstermeye yeter.
 //  6. Başarı ölçütü POZİTİF olmalı: sürücü `aux` karesini şart koşuyor,
 //     "hata karesi görmedim"i yeterli saymıyor (dockerdrv/build.go).
-func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
 	const action = "image.build"
 	rel := req.GetRelease()
 	tgt := target(rel.GetAppId(), rel.GetReleaseId())
@@ -384,21 +384,21 @@ func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, stream grpc.ServerS
 	}, func(data []byte, isStderr bool) error {
 		// ⚠ Derleme ÇIKTISI istemciye akar ama denetime GİRMEZ: kullanıcının
 		// deposundan gelir ve zincir ekle-sadece'dir.
-		return stream.Send(&panelyv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
+		return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
 	})
 
 	// image_id kaydın YANLIŞLANABİLİR olmasını sağlayan alandır: hangi
 	// imajın gerçekten üretildiği sonradan hostta kontrol edilebilir.
 	//
-	// Aynı değer panelyd'ye de gönderilir: başarının pozitif kanıtı
+	// Aynı değer kadrand'ye de gönderilir: başarının pozitif kanıtı
 	// yalnızca burada kalsaydı, daemon'ın elinde "hata almadım"dan başka
 	// bir ölçüt olmazdı (bkz. exec.proto, ImageBuildResponse.image_id).
 	// Gönderim başarısız olursa opErr dolar ve kayıt FAILURE yazar —
-	// doğru yön: panelyd kimliği öğrenmediyse sürümü mühürleyemez.
+	// doğru yön: kadrand kimliği öğrenmediyse sürümü mühürleyemez.
 	if imageID != "" {
 		params["image_id"] = imageID
 		if opErr == nil {
-			opErr = stream.Send(&panelyv1.ImageBuildResponse{ImageId: imageID})
+			opErr = stream.Send(&kadranv1.ImageBuildResponse{ImageId: imageID})
 		}
 	}
 	if err := s.completed(action, tgt, params, opErr); err != nil {
@@ -414,7 +414,7 @@ func (s *Server) ImageBuild(req *panelyv1.ImageBuildRequest, stream grpc.ServerS
 // yazılmaz: exec.proto onların sır taşımaması gerektiğini söylüyor, ama
 // "gerekiyor" ile "öyle" aynı şey değil ve zincire bir kez giren sır geri
 // alınamaz.
-func buildAuditParams(req *panelyv1.ImageBuildRequest) map[string]string {
+func buildAuditParams(req *kadranv1.ImageBuildRequest) map[string]string {
 	src := req.GetSource()
 	params := map[string]string{
 		"source":          src.GetHost() + "/" + src.GetOwner() + "/" + src.GetRepo(),

@@ -18,22 +18,22 @@ import (
 //
 // # Neden ayrı bir günlük?
 //
-// Denetim zincirinin ana kopyası panelyd'nin SQLite veritabanındadır. Ama
-// panelyd'nin ele geçirilmesi tehdit modelimizin merkezinde: eğer ayrıcalıklı
-// işlemlerin kaydı yalnızca panelyd'de tutulsaydı, ele geçirilmiş bir panelyd
+// Denetim zincirinin ana kopyası kadrand'nin SQLite veritabanındadır. Ama
+// kadrand'nin ele geçirilmesi tehdit modelimizin merkezinde: eğer ayrıcalıklı
+// işlemlerin kaydı yalnızca kadrand'de tutulsaydı, ele geçirilmiş bir kadrand
 // kendi yaptığı çağrıları hiç kaydetmeyebilirdi.
 //
 // Executor bu yüzden kendi eylemlerini kendi dosyasına yazar. Dosya
-// root'un dizinindedir (/var/lib/panely-exec, 0700): panelyd ne
+// root'un dizinindedir (/var/lib/kadran-exec, 0700): kadrand ne
 // okuyabilir ne değiştirebilir, zinciri ReadAuditJournal ile ister.
 //
 // ⚠ Bu yorum iki kez YANLIŞ bir şey söyledi:
-//   - "VerifyAuditChain iki zinciri karşılaştırır ve panelyd'nin düşürdüğü
+//   - "VerifyAuditChain iki zinciri karşılaştırır ve kadrand'nin düşürdüğü
 //     her kayıt fark olarak ortaya çıkar." Karşılaştırma kodu YOK (K-079);
 //     iki zincir ayrı ayrı doğrulanıyor.
-//   - "0640 root:panely: panelyd OKUYABİLİR, YAZAMAZ." Dosya için doğruydu,
-//     ama dosya panelyd'nin kendi dizinindeydi ve dizine yazma yetkisi
-//     silme yetkisidir. panelyd günlüğü silip yerine kendi zincirini
+//   - "0640 root:kadran: kadrand OKUYABİLİR, YAZAMAZ." Dosya için doğruydu,
+//     ama dosya kadrand'nin kendi dizinindeydi ve dizine yazma yetkisi
+//     silme yetkisidir. kadrand günlüğü silip yerine kendi zincirini
 //     koyabiliyordu (K-100, canlıda ölçüldü; K-102'de taşındı).
 //
 // # Neden SQLite değil?
@@ -65,7 +65,7 @@ type JournalOptions struct {
 	Path string
 
 	// GroupGID, dosyaya HER AÇILIŞTA atanacak gruptur — yalnızca ilk
-	// oluşturmada değil. panelyd'nin okuyabilmesi için `panely` grubu
+	// oluşturmada değil. kadrand'nin okuyabilmesi için `kadran` grubu
 	// verilir. Sıfır ise grup değiştirilmez (testler bunu kullanır;
 	// chown root gerektirir).
 	GroupGID int
@@ -81,7 +81,7 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 		return nil, errors.New("journal: yol boş olamaz")
 	}
 
-	// 0640: sahibi (root) yazar, grubu (panely) okur, diğerleri hiçbir şey.
+	// 0640: sahibi (root) yazar, grubu (kadran) okur, diğerleri hiçbir şey.
 	f, err := os.OpenFile(opts.Path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o640)
 	if err != nil {
 		return nil, fmt.Errorf("journal: dosya açılamadı: %w", err)
@@ -97,10 +97,10 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 	// yedekten geri alındı, elle oluşturuldu — eski kod onu bir daha
 	// ASLA düzeltmezdi.
 	//
-	// ⚠ Grubun (panely) okuma izni bugün ETKİSİZ: günlük root'un 0700
-	// dizininde (K-102) ve panelyd dizine giremiyor; zinciri
+	// ⚠ Grubun (kadran) okuma izni bugün ETKİSİZ: günlük root'un 0700
+	// dizininde (K-102) ve kadrand dizine giremiyor; zinciri
 	// ReadAuditJournal ile alıyor. Bu yorumun önceki hâli grup iznini
-	// "panelyd'nin dosyayı okuyup kendi zinciriyle karşılaştırması" ile
+	// "kadrand'nin dosyayı okuyup kendi zinciriyle karşılaştırması" ile
 	// gerekçelendiriyordu; öyle bir karşılaştırma hiç yazılmadı (K-079).
 	// chown ayrıcalıklı yüzeye dokunmamak için yerinde bırakıldı.
 	//
@@ -112,7 +112,7 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 			return nil, fmt.Errorf("journal: sahiplik zorlanamadı: %w", err)
 		}
 	}
-	// umask, O_CREATE'in modunu kısabilir. panely-exec.service `UMask=0027`
+	// umask, O_CREATE'in modunu kısabilir. kadran-exec.service `UMask=0027`
 	// pinliyor ama unit dosyası dışında da çalıştırılabilir; modu açıkça
 	// yerine oturtmak bu bağımlılığı kaldırır.
 	if err := f.Chmod(0o640); err != nil {
@@ -209,11 +209,11 @@ func (j *Journal) Append(rec audit.Record) (audit.Record, error) {
 // # Neden açılıştaki doğrulama yetmiyor?
 //
 // loadAndVerify yalnızca executor başlarken çalışır. Bu metodun tek gerçek
-// tüketicisi panelyd'nin ReadAuditJournal çağrısıdır; panelyd executor
+// tüketicisi kadrand'nin ReadAuditJournal çağrısıdır; kadrand executor
 // zincirini kendi tarafında da doğrular. (İki zinciri birbiriyle
 // KARŞILAŞTIRMAZ — o kod yok, K-079.) Executor çalışırken dosyaya sahte
 // bir satır eklenirse, okuma anında doğrulama olmadan bu satır "gerçek"
-// gibi teslim edilirdi ve panelyd'nin doğrulaması hiçbir şey kanıtlamazdı.
+// gibi teslim edilirdi ve kadrand'nin doğrulaması hiçbir şey kanıtlamazdı.
 //
 // Doğrulama daima seq 1'den başlar: zincir ancak baştan takip edilerek
 // kanıtlanabilir. Bu O(n)'dir, ama executor günlüğü yapısı gereği küçüktür

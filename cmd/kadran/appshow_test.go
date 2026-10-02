@@ -6,25 +6,25 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // K-112: `app show`'un DURUM sütunu derlemenin durumunu gösteriyordu,
 // hangi sürümün CANLI olduğunu değil. Geri almadan sonra en üstteki
 // "derlendi" satırı trafiği almıyor olabilir.
 
-func showResp(active *string, ids ...string) *panelyv1.GetAppResponse {
-	rels := make([]*panelyv1.Release, 0, len(ids))
+func showResp(active *string, ids ...string) *kadranv1.GetAppResponse {
+	rels := make([]*kadranv1.Release, 0, len(ids))
 	for _, id := range ids {
-		rels = append(rels, &panelyv1.Release{
+		rels = append(rels, &kadranv1.Release{
 			ReleaseId: id, AppId: "blog",
 			CommitSha: strings.Repeat("a", 40),
-			Status:    panelyv1.ReleaseStatus_RELEASE_STATUS_BUILT,
+			Status:    kadranv1.ReleaseStatus_RELEASE_STATUS_BUILT,
 			ImageId:   "sha256:" + strings.Repeat("b", 64),
 		})
 	}
-	return &panelyv1.GetAppResponse{
-		App:             &panelyv1.App{Spec: &panelyv1.AppSpec{AppId: "blog"}},
+	return &kadranv1.GetAppResponse{
+		App:             &kadranv1.App{Spec: &kadranv1.AppSpec{AppId: "blog"}},
 		Releases:        rels,
 		ActiveReleaseId: active,
 	}

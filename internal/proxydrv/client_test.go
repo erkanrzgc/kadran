@@ -58,7 +58,7 @@ func (a *sahteAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func adminKur(t *testing.T, a *sahteAdmin) *Client {
 	t.Helper()
-	// Admin istemcisi yalnızca Linux'ta koşuyor (panelyd). Windows'ta
+	// Admin istemcisi yalnızca Linux'ta koşuyor (kadrand). Windows'ta
 	// unix soketine Listen başarılı ama Dial "An invalid argument was
 	// supplied" veriyor — ölçüldü, kısa ad, uzun ad ve os.TempDir ile üç
 	// ayrı yolda; yol uzunluğu DEĞİL. Bu testler CI'ın Linux işlerinde

@@ -162,7 +162,7 @@ mutate "budama globu veritabanının yanına taşındı" "$SNAP" \
 		filepath.Join(dir, snapshotPrefix+\"*\"+snapshotExt))
 	if err != nil || len(matches) <= SnapshotKeep {
 		return
-	}''','''	matches, err := filepath.Glob(filepath.Join(filepath.Dir(dir), \"panely.db*\"))
+	}''','''	matches, err := filepath.Glob(filepath.Join(filepath.Dir(dir), \"kadran.db*\"))
 	if err != nil || len(matches) <= SnapshotKeep {
 		return
 	}''',1)"

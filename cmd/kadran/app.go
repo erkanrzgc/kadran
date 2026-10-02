@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runApp, `app` alt komutlarını dağıtır.
@@ -75,7 +75,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		return c.usageError("%v", err)
 	}
 
-	spec := &panelyv1.AppSpec{
+	spec := &kadranv1.AppSpec{
 		AppId:          fs.Arg(0),
 		GitHost:        host,
 		GitOwner:       owner,
@@ -89,7 +89,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		Replicas:       uint32(*replicas), //nolint:gosec // sunucu 1-64 doğruluyor
 		HealthPath:     *health,
 		Domain:         *domain,
-		Limits: &panelyv1.ResourceLimits{
+		Limits: &kadranv1.ResourceLimits{
 			MemoryBytes: mem,
 			CpuMillis:   uint32(*cpu),   //nolint:gosec // sunucu doğruluyor
 			BlkioWeight: uint32(*blkio), //nolint:gosec // sunucu 10-1000 doğruluyor
@@ -111,7 +111,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().CreateApp(ctx, &panelyv1.CreateAppRequest{Spec: spec})
+	resp, err := conn.RPC().CreateApp(ctx, &kadranv1.CreateAppRequest{Spec: spec})
 	if err != nil {
 		return c.fail(fmt.Errorf("uygulama oluşturulamadı: %w", err))
 	}
@@ -153,7 +153,7 @@ func (c *cli) runAppList(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().ListApps(ctx, &panelyv1.ListAppsRequest{})
+	resp, err := conn.RPC().ListApps(ctx, &kadranv1.ListAppsRequest{})
 	if err != nil {
 		return c.fail(fmt.Errorf("uygulamalar alınamadı: %w", err))
 	}
@@ -204,7 +204,7 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().GetApp(ctx, &panelyv1.GetAppRequest{
+	resp, err := conn.RPC().GetApp(ctx, &kadranv1.GetAppRequest{
 		AppId:        fs.Arg(0),
 		ReleaseLimit: uint32(*limit), //nolint:gosec // sunucu üst sınırı uyguluyor
 	})
@@ -224,7 +224,7 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 	return exitOK
 }
 
-func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
+func (c *cli) printApp(resp *kadranv1.GetAppResponse) {
 	s := resp.GetApp().GetSpec()
 	fmt.Fprintf(c.stdout, "%s\n", s.GetAppId())
 	fmt.Fprintf(c.stdout, "  Kaynak   : %s/%s/%s (%s)\n",
@@ -286,7 +286,7 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 		fmt.Fprintf(c.stdout, "  Canlı    : bilinmiyor — sunucu bu bilgiyi göndermiyor (eski sürüm; sunucuyu güncelleyin)\n")
 	case active == "":
 		fmt.Fprintf(c.stdout, "  Canlı    : yok — trafik bu uygulamaya yönlendirilmiyor\n")
-	case !slices.ContainsFunc(releases, func(r *panelyv1.Release) bool { return r.GetReleaseId() == active }):
+	case !slices.ContainsFunc(releases, func(r *kadranv1.Release) bool { return r.GetReleaseId() == active }):
 		fmt.Fprintf(c.stdout, "  Canlı    : %s (aşağıdaki listede yok — `--releases` ile artırın)\n", active)
 	default:
 		fmt.Fprintf(c.stdout, "  Canlı    : %s\n", active)
@@ -321,19 +321,19 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 	// Başarısız sürümlerin sebebi ayrı basılır: tabloya sığmaz ve asıl
 	// aranan bilgi odur.
 	for _, r := range releases {
-		if r.GetStatus() == panelyv1.ReleaseStatus_RELEASE_STATUS_FAILED && r.GetDetail() != "" {
+		if r.GetStatus() == kadranv1.ReleaseStatus_RELEASE_STATUS_FAILED && r.GetDetail() != "" {
 			fmt.Fprintf(c.stdout, "\n%s başarısız: %s\n", r.GetReleaseId(), r.GetDetail())
 		}
 	}
 }
 
-func releaseStatusLabel(s panelyv1.ReleaseStatus) string {
+func releaseStatusLabel(s kadranv1.ReleaseStatus) string {
 	switch s {
-	case panelyv1.ReleaseStatus_RELEASE_STATUS_BUILDING:
+	case kadranv1.ReleaseStatus_RELEASE_STATUS_BUILDING:
 		return "derleniyor"
-	case panelyv1.ReleaseStatus_RELEASE_STATUS_BUILT:
+	case kadranv1.ReleaseStatus_RELEASE_STATUS_BUILT:
 		return "derlendi"
-	case panelyv1.ReleaseStatus_RELEASE_STATUS_FAILED:
+	case kadranv1.ReleaseStatus_RELEASE_STATUS_FAILED:
 		return "başarısız"
 	default:
 		return "bilinmiyor"

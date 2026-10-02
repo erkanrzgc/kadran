@@ -4,7 +4,7 @@
  * # Neden işletim sistemi anahtarlığı DEĞİL?
  *
  * Plan profilleri OS anahtarlığında saklamayı öngörüyordu. O madde bu
- * tasarımda gereksiz: bir profil `panely-client@1.2.3.4` gibi bir hedef
+ * tasarımda gereksiz: bir profil `kadran-client@1.2.3.4` gibi bir hedef
  * dizesinden ibaret ve İÇİNDE SIR YOK. Kimlik doğrulamayı `ssh` yapıyor,
  * anahtar ssh-agent'ta ya da ~/.ssh altında duruyor; bu uygulama anahtar
  * malzemesini hiç görmüyor.
@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 export interface Profile {
   /** Kullanıcının verdiği ad. */
   name: string;
-  /** `panely` hedef dizesi: kullanici@sunucu[:port] veya unix:// yolu. */
+  /** `kadran` hedef dizesi: kullanici@sunucu[:port] veya unix:// yolu. */
   target: string;
 }
 

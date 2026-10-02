@@ -16,7 +16,7 @@ import (
 // K-055: ters vekil `--resume` kullanmıyor ve "açılışta VE ters vekil
 // yeniden başladığında" uzlaştırılmak zorunda. İkinci yarı hiç
 // yapılmamıştı: taze sunucu testinde (K-112) yalnızca Caddy yeniden
-// başlatıldı ve site 40 saniyenin 40'ında da kapalı kaldı — panelyd
+// başlatıldı ve site 40 saniyenin 40'ında da kapalı kaldı — kadrand
 // yeniden başlayana kadar. Repair o yarı.
 
 func ikiUygulama() (fakeDeployments, fakeReplicas) {
@@ -65,7 +65,7 @@ func TestRepairReloadsWhenProxyLostItsRoutes(t *testing.T) {
 // AÇIK kaldı, çünkü onu kapatabilecek tek taraf izleyiciydi ve izleyici
 // "ben onarmadım" diye dokunmuyordu.
 //
-// Ama açılış alarmı canlıda panelyd'nin GÖNDERMEDİĞİ bir rota yüzünden
+// Ama açılış alarmı canlıda kadrand'nin GÖNDERMEDİĞİ bir rota yüzünden
 // de açılıyor (Load'un geri okuması, K-054). O hâlde hiçbir şey eksik
 // değil ve hiçbir uygulama atlanmıyor; "eksik yok, atlanan yok" diye
 // kapatmak güvenlikle ilgili bir alarmı sessizce kapatırdı. Kapatma

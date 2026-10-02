@@ -38,16 +38,16 @@ export interface ResolveOptions {
 }
 
 /**
- * PANELY_SIDECAR_COMMAND, binary çözümlemesini tamamen geçersiz kılar.
+ * KADRAN_SIDECAR_COMMAND, binary çözümlemesini tamamen geçersiz kılar.
  *
  * Boşlukla ayrılmış komut ve argümanlar. Geliştirmede WSL köprüsü için:
  *
- *   PANELY_SIDECAR_COMMAND="wsl.exe -d Ubuntu -- /mnt/c/.../panely"
+ *   KADRAN_SIDECAR_COMMAND="wsl.exe -d Ubuntu -- /mnt/c/.../kadran"
  *
  * Yalnızca geliştirici makinesinde anlamlı; paketlenmiş uygulamada da
  * çalışır ama orada kullanılması için bir neden yok.
  */
-const COMMAND_OVERRIDE = "PANELY_SIDECAR_COMMAND";
+const COMMAND_OVERRIDE = "KADRAN_SIDECAR_COMMAND";
 
 /** binaryName, platforma göre çalıştırılabilir adını verir. */
 export function binaryName(platform: NodeJS.Platform): string {

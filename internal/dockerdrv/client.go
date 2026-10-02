@@ -1,9 +1,9 @@
-// Package dockerdrv, Docker Engine API'sinin Panely'nin kullandığı KADARINI
+// Package dockerdrv, Docker Engine API'sinin Kadran'ın kullandığı KADARINI
 // sarmalar.
 //
 // # Bu paket neden proto mesajı kabul etmiyor
 //
-// Buradaki hiçbir fonksiyon `*panelyv1.*` almaz. Bu kasıtlı bir kısıttır:
+// Buradaki hiçbir fonksiyon `*kadranv1.*` almaz. Bu kasıtlı bir kısıttır:
 // doğrulama internal/exec'te, ayrıcalıklı hiçbir şey yapılmadan ÖNCE ve tek
 // noktada olur. Eğer sürücü proto isteklerini kabul etseydi, ileride bir
 // çağıran ona DOĞRULANMAMIŞ bir istek verebilirdi ve "önce doğrula" kuralı
@@ -119,7 +119,7 @@ func pickVersion(daemonMin, daemonMax string) (string, error) {
 	}
 	if compareVersions(lo, hi) > 0 {
 		return "", fmt.Errorf(
-			"docker: ortak API sürümü yok — daemon [%s, %s], Panely [%s, %s]",
+			"docker: ortak API sürümü yok — daemon [%s, %s], Kadran [%s, %s]",
 			daemonMin, daemonMax, minAPIVersion, maxAPIVersion)
 	}
 	return "v" + hi, nil

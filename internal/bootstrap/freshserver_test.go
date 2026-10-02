@@ -74,7 +74,7 @@ func TestInstallScriptRequiresDockerUpFront(t *testing.T) {
 	}
 }
 
-// TestInstallScriptProvesDockerIsolationWasMeasured, "panely Docker'a
+// TestInstallScriptProvesDockerIsolationWasMeasured, "kadran Docker'a
 // erişemiyor" kontrolünün ÖLÇEBİLDİĞİNİ kanıtladıktan sonra okunduğunu
 // doğrular.
 //
@@ -85,14 +85,14 @@ func TestInstallScriptRequiresDockerUpFront(t *testing.T) {
 func TestInstallScriptProvesDockerIsolationWasMeasured(t *testing.T) {
 	text := kurulumBetigi(t)
 
-	negatif := strings.Index(text, "setpriv --reuid panely --regid panely --clear-groups docker ps")
+	negatif := strings.Index(text, "setpriv --reuid kadran --regid kadran --clear-groups docker ps")
 	if negatif < 0 {
 		t.Fatal("ayrıcalık ayrımı kontrolü bulunamadı — ölçüm geçersiz")
 	}
 	pozitif := strings.Index(text, "if ! docker ps >/dev/null 2>&1; then")
 	if pozitif < 0 {
 		t.Fatal("pozitif kontrol yok: root'un Docker'a ulaştığı sınanmıyor, " +
-			"dolayısıyla 'panely erişemiyor' Docker yokken de geçer")
+			"dolayısıyla 'kadran erişemiyor' Docker yokken de geçer")
 	}
 	if pozitif > negatif {
 		t.Error("pozitif kontrol negatiften SONRA geliyor")
@@ -112,16 +112,16 @@ func servislerBolumu(t *testing.T) string {
 }
 
 // TestInstallerRestartsTheControlPlane, yeniden kurulumun (yükseltme
-// yolu) panelyd ve panely-exec'i YENİ ikiliyle çalıştırdığını doğrular.
+// yolu) kadrand ve kadran-exec'i YENİ ikiliyle çalıştırdığını doğrular.
 //
 // Taze sunucu testinde ölçüldü: betik `systemctl enable --now`
 // kullanıyordu; bu, ÇALIŞAN birimi yeniden başlatmıyor. İkinci kurulumdan
-// sonra /proc/<pid>/exe → "/usr/local/lib/panely/panelyd (deleted)":
+// sonra /proc/<pid>/exe → "/usr/local/lib/kadran/kadrand (deleted)":
 // süreç diskten silinmiş ESKİ ikiliyi çalıştırıyordu ve kurulum
 // "tamamlandı" diyordu. Yükseltmede yeni kod hiç çalışmazdı.
 func TestInstallerRestartsTheControlPlane(t *testing.T) {
 	bolum := servislerBolumu(t)
-	for _, birim := range []string{"panely-exec.service", "panelyd.service"} {
+	for _, birim := range []string{"kadran-exec.service", "kadrand.service"} {
 		if !strings.Contains(bolum, "systemctl restart "+birim) {
 			t.Errorf("%s yeniden başlatılmıyor — yükseltmede eski ikili çalışmaya devam eder", birim)
 		}
@@ -129,19 +129,19 @@ func TestInstallerRestartsTheControlPlane(t *testing.T) {
 			t.Errorf("%s hâlâ yalnızca `enable --now` ile başlatılıyor — çalışan birimi yeniden başlatmaz", birim)
 		}
 	}
-	if strings.Index(bolum, "systemctl restart panely-exec.service") > strings.Index(bolum, "systemctl restart panelyd.service") {
-		t.Error("panelyd executor'dan ÖNCE yeniden başlatılıyor — daemon açılışta executor'a bağlanıyor")
+	if strings.Index(bolum, "systemctl restart kadran-exec.service") > strings.Index(bolum, "systemctl restart kadrand.service") {
+		t.Error("kadrand executor'dan ÖNCE yeniden başlatılıyor — daemon açılışta executor'a bağlanıyor")
 	}
 }
 
 // TestInstallScriptVerifiesEveryRunningBinary, kurulum sonrası doğrulamanın
 // kontrol düzlemi için de çalışan imajı kurulan ikiliyle karşılaştırdığını
 // doğrular. Önceden yalnızca ters vekil için vardı (K-049, o kontrol
-// TestInstallScriptVerifiesTheRunningProxyImage'da); panelyd ve
+// TestInstallScriptVerifiesTheRunningProxyImage'da); kadrand ve
 // executor'daki kusuru bu yüzden hiçbir kontrol görmedi.
 func TestInstallScriptVerifiesEveryRunningBinary(t *testing.T) {
 	text := kurulumBetigi(t)
-	for _, ikili := range []string{"panelyd", "panely-exec"} {
+	for _, ikili := range []string{"kadrand", "kadran-exec"} {
 		if !strings.Contains(text, "calisan_ikili_dogrula "+ikili) {
 			t.Errorf("çalışan %s'nin kurulan ikili olduğu doğrulanmıyor", ikili)
 		}
@@ -153,8 +153,8 @@ func TestInstallScriptVerifiesEveryRunningBinary(t *testing.T) {
 //
 // Taze sunucu testinde ölçüldü: ikinci kurulumda (hiçbir şey
 // değişmemişken) Caddy koşulsuz yeniden başlatıldı, rotasız açıldı ve
-// site panelyd yeniden başlayana kadar KAPALI kaldı. Rotaları geri
-// getirmek panelyd'nin işi (K-055); ama ters vekil trafiğin yolu ve
+// site kadrand yeniden başlayana kadar KAPALI kaldı. Rotaları geri
+// getirmek kadrand'nin işi (K-055); ama ters vekil trafiğin yolu ve
 // gereksiz yeniden başlatma yine de kesinti demek.
 func TestInstallerLeavesAnUnchangedProxyRunning(t *testing.T) {
 	text := kurulumBetigi(t)
@@ -162,7 +162,7 @@ func TestInstallerLeavesAnUnchangedProxyRunning(t *testing.T) {
 		t.Fatal("ters vekilin yapılandırma/birim parmak izi alınmıyor — değişiklik ayırt edilemez")
 	}
 	onceki := strings.Index(text, `vekil_once="$(vekil_parmak_izi)"`)
-	kurulum := strings.Index(text, `install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/panely/caddy.json`)
+	kurulum := strings.Index(text, `install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/kadran/caddy.json`)
 	if onceki < 0 || kurulum < 0 || onceki > kurulum {
 		t.Error("parmak izi dosyalar kurulMADAN önce alınmıyor — önce/sonra karşılaştırması anlamsız")
 	}

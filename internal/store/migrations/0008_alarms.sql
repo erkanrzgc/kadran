@@ -10,7 +10,7 @@
 -- sayılmasıdır.
 --
 -- Kenar tetikleme "daha önce haber verdim mi?" bilgisini gerektirir ve
--- o bilgi panelyd'nin ÖMRÜNDEN UZUN yaşamalı. Bellekte tutulsaydı
+-- o bilgi kadrand'nin ÖMRÜNDEN UZUN yaşamalı. Bellekte tutulsaydı
 -- `Restart=on-failure` ile çöküp kalkan bir daemon her açılışta
 -- BÜTÜN alarmları yeniden ateşlerdi — yani en çok gürültüyü tam da en
 -- kötü durumda (çökme döngüsü) üretirdi.
@@ -39,7 +39,7 @@ CREATE TABLE alarms (
     -- disk_low). Türe göre sorgulamak ve sunmak için ayrı tutuluyor.
     kind TEXT NOT NULL,
 
-    -- Neyin bozuk olduğu: uygulama kimliği, "panely.db", "host" gibi.
+    -- Neyin bozuk olduğu: uygulama kimliği, "kadran.db", "host" gibi.
     target TEXT NOT NULL,
 
     -- Ciddiyet: "uyari" | "kritik". Metin, sayı değil — sayısal bir

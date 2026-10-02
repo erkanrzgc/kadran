@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Linux'a özgü testleri Windows iş istasyonundan çalıştırır.
 #
-# Panely'nin güvenlik sınırının bir kısmı Linux'a özgüdür: SO_PEERCRED,
+# Kadran'ın güvenlik sınırının bir kısmı Linux'a özgüdür: SO_PEERCRED,
 # unix soket izinleri, systemd bütünleşmesi. Bunlar Windows'ta derlenir ama
 # ÇALIŞMAZ — ve çalıştırılmayan bir güvenlik kontrolü doğrulanmış sayılmaz.
 #
@@ -21,7 +21,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-WSL_DISTRO="${PANELY_WSL_DISTRO:-Ubuntu}"
+WSL_DISTRO="${KADRAN_WSL_DISTRO:-Ubuntu}"
 OUT_DIR="bin/linux-test"
 
 # Test edilecek paketler. Argüman verilirse yalnızca o kullanılır.
@@ -66,7 +66,7 @@ for pkg in "${built[@]}"; do
     # cd /tmp: testler geçici dizin oluşturur; /mnt/c üzerinde çalışmak
     # hem yavaştır hem de dosya izinleri Windows semantiğini taşır ki bu
     # tam olarak doğrulamak istemediğimiz şeydir.
-    if ! wsl.exe -d "$WSL_DISTRO" -- bash -c "cd /tmp && chmod +x '$WSL_OUT/$pkg.test' && '$WSL_OUT/$pkg.test' ${PANELY_TEST_FLAGS:-}"; then
+    if ! wsl.exe -d "$WSL_DISTRO" -- bash -c "cd /tmp && chmod +x '$WSL_OUT/$pkg.test' && '$WSL_OUT/$pkg.test' ${KADRAN_TEST_FLAGS:-}"; then
         echo "!! $pkg BAŞARISIZ" >&2
         failed=1
     fi

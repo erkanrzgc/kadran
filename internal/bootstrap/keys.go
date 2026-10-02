@@ -20,7 +20,7 @@ import (
 // Dağıtım anahtarının rolü authorized_keys satırında duruyor (K-131); o
 // dosyaya yalnızca root yazabiliyor. Bu yüzden anahtar işlemleri bootstrap
 // ile AYNI yoldan gidiyor: root'a SSH ya da -sudo ile parolasız sudo.
-// panelyd hiç dahil değil.
+// kadrand hiç dahil değil.
 //
 // İş bölümü:
 //   - İş istasyonu: anahtarı ve kapsamı doğrular, satırı kurar, listeyi
@@ -34,8 +34,8 @@ var (
 	// libDir ve clientAuthorizedKeys install.sh'in LIB_DIR ve CLIENT_HOME'u
 	// (TestClientPathsMatchInstallScript). Değişken: testler geçici bir
 	// dosyaya yönlendiriyor.
-	libDir               = "/usr/local/lib/panely"
-	clientAuthorizedKeys = "/var/lib/panely-client/.ssh/authorized_keys"
+	libDir               = "/usr/local/lib/kadran"
+	clientAuthorizedKeys = "/var/lib/kadran-client/.ssh/authorized_keys"
 )
 
 // Uzak betiğin çıkış kodları.
@@ -55,7 +55,7 @@ const (
 // sonu taşıyan bir satır `=~` ile eşleşmez (desen tek satır).
 const remoteKeys = `set -euo pipefail
 op="$1"; f="$2"
-admin_re='^command="/usr/local/lib/panely/panely-connect",restrict '
+admin_re='^command="/usr/local/lib/kadran/kadran-connect",restrict '
 [ -f "$f" ] || { echo "authorized_keys yok ($f) — sunucu kurulmamış mı? önce kadran bootstrap" >&2; exit 3; }
 replace() {
     chown --reference="$f" "$1"
@@ -68,7 +68,7 @@ list)
     ;;
 add)
     line="$3"; body="$4"
-    re='^command="/usr/local/lib/panely/panely-connect -deploy=[a-z][a-z0-9-]*(,[a-z][a-z0-9-]*)*",restrict [a-z0-9@.-]+ [A-Za-z0-9+/]+=*( [A-Za-z0-9@._+-]+)?$'
+    re='^command="/usr/local/lib/kadran/kadran-connect -deploy=[a-z][a-z0-9-]*(,[a-z][a-z0-9-]*)*",restrict [a-z0-9@.-]+ [A-Za-z0-9+/]+=*( [A-Za-z0-9@._+-]+)?$'
     [[ "$line" =~ $re ]] || { echo "geçersiz anahtar satırı" >&2; exit 2; }
     case "$line" in *",restrict $body"|*",restrict $body "*) ;; *) echo "satır anahtar gövdesini taşımıyor" >&2; exit 2 ;; esac
     if grep -qF -- "$body" "$f"; then echo "bu anahtar zaten kayıtlı" >&2; exit 4; fi
@@ -120,15 +120,15 @@ type AuthorizedKey struct {
 	Fingerprint string
 	Comment     string
 
-	// forced: panely-connect'e zorlanmış ve restrict'li mi.
+	// forced: kadran-connect'e zorlanmış ve restrict'li mi.
 	forced bool
 	// body: tür + base64; silme bununla yapılıyor (install.sh'in eşleşme
 	// ölçütüyle aynı). Dışa açık değil: tip görüntülenecek alanları taşıyor.
 	body string
 }
 
-// Restricted, satırın panely-connect'e zorlanıp restrict taşıdığını söyler.
-// Kısıtsız bir satır panely-client'a kabuk açar.
+// Restricted, satırın kadran-connect'e zorlanıp restrict taşıdığını söyler.
+// Kısıtsız bir satır kadran-client'a kabuk açar.
 func (k AuthorizedKey) Restricted() bool { return k.forced }
 
 // publicKey, doğrulanmış bir açık anahtar.
@@ -216,7 +216,7 @@ func deployLine(k publicKey, apps []string, name string) (string, error) {
 		}
 		comment = name
 	}
-	line := fmt.Sprintf(`command="%s/panely-connect -deploy=%s",restrict %s`,
+	line := fmt.Sprintf(`command="%s/kadran-connect -deploy=%s",restrict %s`,
 		libDir, strings.Join(apps, ","), k.body())
 	if commentPattern.MatchString(comment) {
 		line += " " + comment
@@ -267,7 +267,7 @@ func parseAuthorizedLine(line string) AuthorizedKey {
 	if !hasCommand || !restricted {
 		return k
 	}
-	connect := libDir + "/panely-connect"
+	connect := libDir + "/kadran-connect"
 	switch {
 	case command == connect:
 		k.Role, k.forced = connproto.RoleAdmin, true

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# K-115: panelyd'nin watchdog'unu GERÇEK systemd altında ölçer.
+# K-115: kadrand'nin watchdog'unu GERÇEK systemd altında ölçer.
 #
-# ROOT olarak koşar (CI'da sudo); panelyd'yi sudo'yu çağıran kullanıcıyla
-# koşturur, çünkü panelyd root'ta başlamayı reddediyor.
+# ROOT olarak koşar (CI'da sudo); kadrand'yi sudo'yu çağıran kullanıcıyla
+# koşturur, çünkü kadrand root'ta başlamayı reddediyor.
 #
 # ── Üretim birimi DEĞİL, aynı watchdog ayarları ─────────────────────
 #
-# deploy/systemd/panelyd.service panely kullanıcısını, executor'ı ve
+# deploy/systemd/kadrand.service kadran kullanıcısını, executor'ı ve
 # sertleştirmeyi istiyor; runner'da hiçbiri yok. Burada sınanan şey
-# mekanizma: WATCHDOG_USEC'in panelyd'ye ulaşması, pinglerin gelmesi,
+# mekanizma: WATCHDOG_USEC'in kadrand'ye ulaşması, pinglerin gelmesi,
 # pingler kesilince systemd'nin öldürüp geri getirmesi. WatchdogSec
 # burada 10 sn (üretimde 60 sn): sayı değil mekanizma ölçülüyor ve CI
 # dakikalarca beklemesin.
@@ -30,15 +30,15 @@
 # 4. systemctl stop: sonuç "success", "watchdog" değil.
 set -uo pipefail
 
-BIN="${1:?kullanım: sudo bash scripts/e2e-watchdog.sh <panelyd dizini, mutlak>}"
+BIN="${1:?kullanım: sudo bash scripts/e2e-watchdog.sh <kadrand dizini, mutlak>}"
 cd "$(dirname "$0")/.."
 # Ayıklayıcı K-110'un bildirim betiğinden: systemd'nin GERÇEK watchdog
 # satırı aynı koddan geçsin (check-notify-format.sh türetilmiş bir satırla
 # sınıyor).
 # shellcheck source=/dev/null
-source deploy/notify/panely-notify.sh
+source deploy/notify/kadran-notify.sh
 
-UNIT=panelyd-wd
+UNIT=kadrand-wd
 KULLANICI="${SUDO_USER:?sudo ile koşturulmalı}"
 GRUP="$(id -gn "$KULLANICI")"
 WORK="$(mktemp -d)"
@@ -81,7 +81,7 @@ Type=notify
 NotifyAccess=main
 User=$KULLANICI
 Group=$GRUP
-ExecStart=$BIN/panelyd -socket $WORK/api.sock -exec-socket $WORK/olmayan-exec.sock -caddy-socket $WORK/olmayan-caddy.sock -db $WORK/panely.db -client-group $GRUP
+ExecStart=$BIN/kadrand -socket $WORK/api.sock -exec-socket $WORK/olmayan-exec.sock -caddy-socket $WORK/olmayan-caddy.sock -db $WORK/kadran.db -client-group $GRUP
 Restart=on-failure
 RestartSec=1s
 WatchdogSec=${WDSEC}s
@@ -91,7 +91,7 @@ systemctl daemon-reload
 
 echo "== Başlangıç =="
 if ! systemctl start "$UNIT.service"; then
-    bad "panelyd systemd altında başlamadı"
+    bad "kadrand systemd altında başlamadı"
     exit 1
 fi
 ok "READY geldi ($(ozellik ActiveState))"

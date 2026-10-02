@@ -215,7 +215,7 @@ func TestRestoreRejectsStructurallyCorruptFile(t *testing.T) {
 // Burada beklenti ELLE yazılıyor.
 func TestSnapshotDirIsSeparateSubdirectory(t *testing.T) {
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "panely.db")
+	dbPath := filepath.Join(dir, "kadran.db")
 
 	got := SnapshotDir(dbPath)
 	want := filepath.Join(dir, "backups")

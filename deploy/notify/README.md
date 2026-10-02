@@ -1,8 +1,8 @@
 # Alarm teslimatı (Telegram)
 
-panelyd alarmları tespit ediyor ama dışarı gönderemiyor: `IPAddressDeny=any`
-taşıyor, kasıtlı. Bu birim alarmları panelyd'nin journal'ından okuyup
-Telegram'a iletir. Çekirdek servisler (panelyd, panely-exec, panely-caddy)
+kadrand alarmları tespit ediyor ama dışarı gönderemiyor: `IPAddressDeny=any`
+taşıyor, kasıtlı. Bu birim alarmları kadrand'nin journal'ından okuyup
+Telegram'a iletir. Çekirdek servisler (kadrand, kadran-exec, kadran-caddy)
 çökerse ya da durursa onu da bildirir. Ayrıntı ve ölçümler:
 `docs/decisions.md`, K-108 ve K-110.
 
@@ -10,10 +10,10 @@ Telegram'a iletir. Çekirdek servisler (panelyd, panely-exec, panely-caddy)
 
 | olay | kaynak |
 |---|---|
-| 🔴 KRİTİK / 🟡 UYARI açıldı | panelyd `msg=ALARM durum=acildi` |
+| 🔴 KRİTİK / 🟡 UYARI açıldı | kadrand `msg=ALARM durum=acildi` |
 | 🔴 KÖTÜLEŞTİ | `durum=tirmandi` |
 | ✅ DÜZELDİ | `durum=kapandi` |
-| 🔴 BİRİM BAŞARISIZ | `OnFailure=` — şu an `panely-offsite.service` |
+| 🔴 BİRİM BAŞARISIZ | `OnFailure=` — şu an `kadran-offsite.service` |
 | 🟠 ÇÖKTÜ | çekirdek servis çöktü (systemd'nin "Failed with result" olayı) |
 | 🔴 ÇÖKME DÖNGÜSÜ | bir sonraki kontrolde de çökmüş; döngü sürdükçe yeni mesaj YOK |
 | 🔴 ÇALIŞMIYOR | iki kontrol üst üste süreci yok (`exit 0`, `stop`, vazgeçildi) |
@@ -28,9 +28,9 @@ Telegram'a gönderilmez.
 
 ## Güvenlik modeli
 
-- Gönderici `panely` DEĞİL, her koşuda geçici bir kullanıcı (`DynamicUser`).
+- Gönderici `kadran` DEĞİL, her koşuda geçici bir kullanıcı (`DynamicUser`).
 - Anahtar dosyası `0600 root:root`. systemd onu root olarak okuyup yalnızca
-  bu birime verir (`LoadCredential`). **panelyd anahtarı okuyamaz**; ele
+  bu birime verir (`LoadCredential`). **kadrand anahtarı okuyamaz**; ele
   geçirilse bile sizin adınıza mesaj atamaz.
 - Ağ: yalnızca dışarı. Yerel ağ kapalı, tek istisna DNS çözücüsü (K-107).
 - ⚠ Gönderici bütün sistem journal'ını okuyabilir (`systemd-journal`
@@ -48,8 +48,8 @@ Telegram'a gönderilmez.
 ### 2. Anahtarı sunucuya yaz (root)
 
 ```bash
-sudo install -m 0600 -o root -g root /dev/null /etc/panely/notify.conf
-sudo nano /etc/panely/notify.conf
+sudo install -m 0600 -o root -g root /dev/null /etc/kadran/notify.conf
+sudo nano /etc/kadran/notify.conf
 ```
 
 ```ini
@@ -60,7 +60,7 @@ TELEGRAM_CHAT_ID=
 ### 3. Sohbet kimliğini bul
 
 ```bash
-sudo /usr/local/lib/panely/notify/panely-notify.sh sohbet-bul
+sudo /usr/local/lib/kadran/notify/kadran-notify.sh sohbet-bul
 ```
 
 Çıkan `sohbet kimliği: 123456789` sayısını `TELEGRAM_CHAT_ID=` satırına yaz.
@@ -68,7 +68,7 @@ sudo /usr/local/lib/panely/notify/panely-notify.sh sohbet-bul
 ### 4. Dene — gerçek birimle
 
 ```bash
-sudo systemctl start panely-notify-failure@deneme.service
+sudo systemctl start kadran-notify-failure@deneme.service
 ```
 
 Telegram'a "BİRİM BAŞARISIZ — deneme" mesajı gelmeli. Bu, gerçek birimin
@@ -77,7 +77,7 @@ kısıtlarıyla (geçici kullanıcı, kimlik bilgisi, ağ) uçtan uca denemedir.
 ### 5. Aç
 
 ```bash
-sudo systemctl enable --now panely-notify.timer
+sudo systemctl enable --now kadran-notify.timer
 ```
 
 İlk koşu imleci "şimdi"ye koyar; kurulumdan önceki alarmlar gönderilmez.
@@ -88,7 +88,7 @@ sudo systemctl enable --now panely-notify.timer
   Dış nabız kontrolü ([`deploy/nabiz`](../nabiz/README.md), K-109) 15
   dakika nabız alamazsa haber verir.
 - **Askıda kalma yakalanmaz.** Çekirdek birimlerde `WatchdogSec` yok;
-  kilitlenen bir panelyd'nin süreci durur ama yaşar, "çalışıyor" görünür.
+  kilitlenen bir kadrand'nin süreci durur ama yaşar, "çalışıyor" görünür.
 - Bakım için bir çekirdek servisi iki dakikadan uzun durdurmak da
   "🔴 ÇALIŞMIYOR" mesajı üretir. Bu doğru: servis gerçekten çalışmıyor.
 - Bu kurulum `kadran bootstrap` tarafından yapılmıyor (uzak yedek gibi).

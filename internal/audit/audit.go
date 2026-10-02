@@ -1,4 +1,4 @@
-// Package audit, Panely'nin kurcalamaya-duyarlı denetim zincirini uygular
+// Package audit, Kadran'ın kurcalamaya-duyarlı denetim zincirini uygular
 // (şartname §1.3).
 //
 // Bu paket kasıtlı olarak G/Ç içermez. Zincir matematiği saf fonksiyonlardan
@@ -35,7 +35,7 @@ var GenesisHash = [HashSize]byte{}
 
 // Source, kaydı hangi bileşenin ürettiğini belirtir.
 //
-// Executor kendi eylemlerini kendi günlüğüne yazar. panelyd ele geçirilip
+// Executor kendi eylemlerini kendi günlüğüne yazar. kadrand ele geçirilip
 // bir kaydı düşürse bile, iki zincirin karşılaştırılması farkı ortaya
 // çıkarır — ayrıcalıklı işlemler kayıtsız kalamaz.
 type Source uint8
@@ -87,7 +87,7 @@ func (o Outcome) String() string {
 
 // Actor, eylemi kimin başlattığını tanımlar.
 //
-// Panely'de parola girişi yoktur; gerçek kimlik SSH açık anahtarının
+// Kadran'da parola girişi yoktur; gerçek kimlik SSH açık anahtarının
 // parmak izidir. SourceIP, şartname §1.3'ün "IP adresiyle kaydedilir"
 // gereksinimini karşılar ve hash yüküne dahildir.
 type Actor struct {

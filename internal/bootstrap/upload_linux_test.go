@@ -168,8 +168,8 @@ func TestRealScriptsInstallDetachedAndFollow(t *testing.T) {
 // Ubuntu 24.04'te pam_umask onu zaten 0022'ye çekiyor (ikisi ölçüldü). CI'da
 // parolasız sudo var ve değişken orada set; yerelde atlanıyor.
 func TestRealScriptsInstallUnderSudo(t *testing.T) {
-	if os.Getenv("PANELY_TEST_REAL_SUDO") == "" {
-		t.Skip("yalnızca CI'da (PANELY_TEST_REAL_SUDO): parolasız sudo ister")
+	if os.Getenv("KADRAN_TEST_REAL_SUDO") == "" {
+		t.Skip("yalnızca CI'da (KADRAN_TEST_REAL_SUDO): parolasız sudo ister")
 	}
 	old := syscall.Umask(0o077)
 	t.Cleanup(func() { syscall.Umask(old) })
@@ -197,7 +197,7 @@ sleep 5 </dev/null >/dev/null 2>&1 &
 	if err != nil {
 		t.Fatalf("yükleme: %v\n%s", err, out.String())
 	}
-	if want := filepath.Join(home, ".panely-upload"); dir != want {
+	if want := filepath.Join(home, ".kadran-upload"); dir != want {
 		t.Fatalf("yükleme dizini %q, beklenen %q", dir, want)
 	}
 
@@ -331,7 +331,7 @@ func TestRealScriptsResumeAndSurviveAStaleWriter(t *testing.T) {
 func TestRealScriptsRejectACorruptPart(t *testing.T) {
 	home := gercekSunucu(t)
 	archive, sum := testPaketi(t, "#!/bin/bash\necho tamam\n")
-	dir := filepath.Join(home, ".panely-upload")
+	dir := filepath.Join(home, ".kadran-upload")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestRealScriptsRejectACorruptPart(t *testing.T) {
 // "başka kurulum". İkisinde de pakete dokunulmuyor.
 func TestRealScriptsLockDistinguishesOursFromAnother(t *testing.T) {
 	home := gercekSunucu(t)
-	dir := filepath.Join(home, ".panely-upload")
+	dir := filepath.Join(home, ".kadran-upload")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
 	}

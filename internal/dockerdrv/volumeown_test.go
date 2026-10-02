@@ -22,7 +22,7 @@ import (
 //	  sh -c 'echo x > /veri/test.txt'
 //	→ sh: can't create /veri/test.txt: Permission denied
 //
-// Panely'nin canlı imajlarının ikisi `USER 101` ile koşuyor. Yani hacim
+// Kadran'ın canlı imajlarının ikisi `USER 101` ile koşuyor. Yani hacim
 // "çalışıyor" görünür, konteyner başlar, ve uygulama kendi diskine
 // YAZAMAZ. Özelliğin var olma sebebi tam da yazabilmek.
 //

@@ -5,7 +5,7 @@
 # K-127 mutasyonlarının bir kısmını yalnızca Linux'taki gerçek-betik
 # testleri (upload_linux_test.go) yakalıyor: dd, flock, sha256sum ve sudo
 # davranışı sahte ssh'ta yok. Bu betik CI'da Linux'ta ve
-# PANELY_TEST_REAL_SUDO=1 ile koşuyor; Windows'ta o mutasyonlar yeşil kalır.
+# KADRAN_TEST_REAL_SUDO=1 ile koşuyor; Windows'ta o mutasyonlar yeşil kalır.
 #
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
@@ -160,7 +160,7 @@ mutate "sudo -n düştü" \
 mutate "tek tırnak kaçırılmıyor" \
     "s=s.replace('strings.ReplaceAll(s, '+chr(34)+chr(39)+chr(34)+',','strings.ReplaceAll(s, '+chr(34)+'YOK'+chr(34)+',',1)"
 
-mutate "panely-client ile kurulum kabul ediliyor" \
+mutate "kadran-client ile kurulum kabul ediliyor" \
     "s=s.replace('ok && user == clientUser {','ok && user == \"hiç\" {',1)"
 
 echo "== Kaldığı yerden devam eden yükleme (K-127) =="
@@ -216,7 +216,7 @@ mutate_in "$UPLOAD" "ölen kurulum algılanmıyor" \
     "s=s.replace('if flock -n install.lock true; then','if false; then',1)"
 
 # Sudo'nun umask'ı 077 ise root'un günlüğünü izleyen kullanıcı okuyamaz.
-# Yalnızca gerçek sudo testi yakalar (PANELY_TEST_REAL_SUDO).
+# Yalnızca gerçek sudo testi yakalar (KADRAN_TEST_REAL_SUDO).
 mutate_in "$UPLOAD" "umask 022 düştü" \
     "s=s.replace('set -e\numask 022\n','set -e\n',1)"
 

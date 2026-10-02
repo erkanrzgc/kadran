@@ -26,9 +26,9 @@ func setUmask(mask int) int { return syscall.Umask(mask) }
 // oluşturuldu) eski kod onu bir daha düzeltmiyordu ve sonuç SESSİZ
 // oluyordu.
 //
-// ⚠ Bu yorum önceden izni "panelyd'nin okuyup çapraz doğrulama yapması"
+// ⚠ Bu yorum önceden izni "kadrand'nin okuyup çapraz doğrulama yapması"
 // ile gerekçelendiriyordu. Çapraz doğrulama yok (K-079) ve günlük artık
-// panelyd'nin giremediği bir dizinde (K-102).
+// kadrand'nin giremediği bir dizinde (K-102).
 //
 // Chown burada sınanamaz (root gerektirir); sınanan chmod yoludur.
 // GroupGID sıfır verilerek chown atlanıyor.

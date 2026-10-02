@@ -11,7 +11,7 @@ import "testing"
 // için otomatik HTTP→HTTPS yönlendirmesi EKLEMEZ: aynı sunucu iki portu
 // da servis ettiği için rotalar düz HTTP üzerinde de yanıt verir.
 //
-// Ölçüldü: https://panely.erkanrzgc.dev geçerli bir Let's Encrypt
+// Ölçüldü: https://kadran.erkanrzgc.dev geçerli bir Let's Encrypt
 // sertifikasıyla 200 dönerken, http:// AYNI içeriği ŞİFRESİZ 200 ile
 // veriyordu — 308 beklenirdi.
 //

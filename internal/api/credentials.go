@@ -25,7 +25,7 @@ const PreambleTimeout = 3 * time.Second
 // İki bağımsız kaynağı birleştirir:
 //
 //   - Unix: çekirdekten SO_PEERCRED ile alınır, uydurulamaz.
-//   - Identity: panely-connect tarafından, sshd'nin ortam değişkenlerinden
+//   - Identity: kadran-connect tarafından, sshd'nin ortam değişkenlerinden
 //     türetilerek yazılır. Uzak istemci bunu belirleyemez (bkz. connproto).
 type CallerInfo struct {
 	Unix     peercred.Cred
@@ -33,7 +33,7 @@ type CallerInfo struct {
 }
 
 // AuthType, credentials.AuthInfo arayüzünü karşılar.
-func (CallerInfo) AuthType() string { return "panely-caller" }
+func (CallerInfo) AuthType() string { return "kadran-caller" }
 
 // TransportCredentials, api.sock için taşıma kimlik bilgisi üretir.
 //
@@ -66,12 +66,12 @@ type callerCreds struct {
 // gRPC el sıkışma hatalarını kendi günlükçüsüne yazıyor ve o günlükçü
 // varsayılan olarak sessiz. Yani root ya da yanlış gruptaki bir
 // kullanıcı reddedildiğinde istemci "connection reset by peer" görüyor,
-// sunucu journal'ında TEK SATIR yok. `usermod -aG panely-client` ile
+// sunucu journal'ında TEK SATIR yok. `usermod -aG kadran-client` ile
 // eklenen ikinci bir yönetici (SO_PEERCRED yalnızca birincil grubu
 // raporlar) sorununu sunucu tarafında hiç bulamazdı.
 //
 // Hata metni peercred'den gelir ve `pid= uid= gid=` taşır; KİMİN
-// reddedildiği böylece görünür. Soketin dizini 0750 panely:panely-client
+// reddedildiği böylece görünür. Soketin dizini 0750 kadran:kadran-client
 // olduğundan buraya ulaşabilen herkes zaten yerel ve ayrıcalıklıdır;
 // satırları çoğaltarak günlüğü boğma riski ihmal edilebilir.
 func (c *callerCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
@@ -108,8 +108,8 @@ func (c *callerCreds) handshake(raw net.Conn) (net.Conn, credentials.AuthInfo, e
 	}
 
 	// Rol el sıkışmada doğrulanıyor: geçersiz ya da BOŞ rolle hiçbir RPC
-	// çağrılamaz. Boş rol eski bir panely-connect demek; kurulum
-	// panely-connect'i panelyd yeniden başlamadan önce değiştirdiği için
+	// çağrılamaz. Boş rol eski bir kadran-connect demek; kurulum
+	// kadran-connect'i kadrand yeniden başlamadan önce değiştirdiği için
 	// normal bir yükseltmede görülmez (K-131).
 	if err := identity.CheckRole(); err != nil {
 		_ = conn.Close()
@@ -129,7 +129,7 @@ func (c *callerCreds) ClientHandshake(context.Context, string, net.Conn) (net.Co
 }
 
 func (c *callerCreds) Info() credentials.ProtocolInfo {
-	return credentials.ProtocolInfo{SecurityProtocol: "panely-caller"}
+	return credentials.ProtocolInfo{SecurityProtocol: "kadran-caller"}
 }
 
 func (c *callerCreds) Clone() credentials.TransportCredentials {

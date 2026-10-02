@@ -20,7 +20,7 @@ import (
 // doğrular.
 //
 // Bu testin asıl konusu alanların eşitliği değil, hash'in korunmasıdır:
-// panelyd, executor'ın kayıtlarını protobuf üzerinden alıp kendi
+// kadrand, executor'ın kayıtlarını protobuf üzerinden alıp kendi
 // doğrulayıcısından geçirir. Çeviri tek bir alanı bile düşürürse
 // ComputeHash farklı sonuç verir ve çapraz doğrulama yanlış yere
 // "kurcalanmış" der.
@@ -35,7 +35,7 @@ func TestRoundTripPreservesChainIntegrity(t *testing.T) {
 		},
 		Action:     "container.create",
 		Target:     "container/blog-1",
-		ParamsJSON: `{"image":"panely/blog:abc","env":"[REDACTED]"}`,
+		ParamsJSON: `{"image":"kadran/blog:abc","env":"[REDACTED]"}`,
 		Outcome:    audit.OutcomeDenied,
 		Detail:     "hacim adı geçersiz",
 		Source:     audit.SourceExecutor,
@@ -147,7 +147,7 @@ func TestEmptySlicesRoundTrip(t *testing.T) {
 }
 
 // TestSliceRoundTripKeepsChainVerifiable, tam bir zincirin protobuf'tan
-// geçtikten sonra hâlâ doğrulanabilir olduğunu gösterir. panelyd,
+// geçtikten sonra hâlâ doğrulanabilir olduğunu gösterir. kadrand,
 // executor zincirini RPC ile alıp kendi tarafında doğrularken tam olarak
 // bunu yapar.
 func TestSliceRoundTripKeepsChainVerifiable(t *testing.T) {

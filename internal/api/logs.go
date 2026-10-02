@@ -4,13 +4,13 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // maxTailLines, geçmişten istenebilecek azami satır sayısıdır.
 //
 // Sınırsız bırakmak, aylardır koşan bir konteynerin bütün geçmişini tek
-// istekte executor'dan panelyd'ye, oradan SSH üzerinden istemciye
+// istekte executor'dan kadrand'ye, oradan SSH üzerinden istemciye
 // pompalamak demekti. Sınır kaba ama gerçek: 10.000 satır bir teşhis
 // için fazlasıyla yeter, gigabaytlık bir akışı ise engeller.
 const maxTailLines = 10_000
@@ -31,13 +31,13 @@ const maxTailLines = 10_000
 // kayıtların görünmez olacağı kadar gürültüyle doldururdu — `audit list`
 // zaten sayfalı ve varsayılanı 50 satır.
 //
-// ⚠ Bu bir TERCİH, bir unutma değil: okuma erişimi zaten `panely-client`
+// ⚠ Bu bir TERCİH, bir unutma değil: okuma erişimi zaten `kadran-client`
 // grubuyla sınırlı ve o sınır SO_PEERCRED ile bağlantı kurulurken
 // uygulanıyor. Kimin okuduğu sorusu gerekirse ayrı bir okuma günlüğü
 // ister; append-only zincire karıştırmak yanlış yer olurdu.
 func (s *Server) StreamLogs(
-	req *panelyv1.StreamLogsRequest,
-	stream grpc.ServerStreamingServer[panelyv1.StreamLogsResponse],
+	req *kadranv1.StreamLogsRequest,
+	stream grpc.ServerStreamingServer[kadranv1.StreamLogsResponse],
 ) error {
 	ctx := stream.Context()
 	appID := req.GetAppId()
@@ -69,7 +69,7 @@ func (s *Server) StreamLogs(
 		TailLines: tail,
 		Follow:    req.GetFollow(),
 	}, func(data []byte, isStderr bool) error {
-		return stream.Send(&panelyv1.StreamLogsResponse{
+		return stream.Send(&kadranv1.StreamLogsResponse{
 			Data:     data,
 			IsStderr: isStderr,
 		})

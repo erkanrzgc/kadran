@@ -14,7 +14,7 @@
 #   - yalnızca kendi onardığını kapatmak reboot'tan sonra alarmı SONSUZA
 #     DEK açık bıraktı (taze sunucuda ölçüldü).
 # Akla ilk gelen "eksik yok, atlanan yok → kapat" kuralı da yanlış:
-# canlıda panelyd'nin göndermediği bir rota varken de eksik yoktur
+# canlıda kadrand'nin göndermediği bir rota varken de eksik yoktur
 # (K-054). Üçü de aşağıda mutant olarak duruyor.
 #
 # ── K-071/K-080'in dersi ────────────────────────────────────────────
@@ -27,10 +27,10 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 REC=internal/deploy/reconcile.go
 CLI=internal/proxydrv/client.go
-WAT=cmd/panelyd/proxywatch.go
+WAT=cmd/kadrand/proxywatch.go
 DEP=./internal/deploy/
 DRV=./internal/proxydrv/
-PAN=./cmd/panelyd/
+PAN=./cmd/kadrand/
 
 BAK_REC=$(mktemp); BAK_CLI=$(mktemp); BAK_WAT=$(mktemp)
 cp "$REC" "$BAK_REC"; cp "$CLI" "$BAK_CLI"; cp "$WAT" "$BAK_WAT"

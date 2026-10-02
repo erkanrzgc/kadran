@@ -1,0 +1,214 @@
+// kadran-connect, SSH oturumu ile kadrand'nin unix soketi arasında bayt
+// taşır.
+//
+// authorized_keys'te zorlanmış komut (forced command) olarak çalışır:
+//
+//	command="/usr/local/lib/kadran/kadran-connect",restrict ssh-ed25519 AAAA...
+//
+// `restrict` her şeyi kapatır: pty yok, port yönlendirme yok, ajan
+// yönlendirme yok, X11 yok, user-rc yok. Zorlanmış komut da istemcinin
+// kendi komutunu çalıştırmasını engeller. Bu anahtarla yapılabilecek tek
+// şey bu programı çalıştırmaktır.
+//
+// Argümansız satır yönetici anahtarıdır. Yalnızca dağıtım yapabilen bir
+// anahtar (ör. CI için) kapsamını argümanla taşır (docs/decisions.md K-131):
+//
+//	command="/usr/local/lib/kadran/kadran-connect -deploy=web,api",restrict ssh-ed25519 AAAA...
+//
+// # Neden soket yönlendirmesi değil?
+//
+// OpenSSH'ta unix soketi yönlendirmesini açmak `port-forwarding` iznini
+// gerektirir; bu da istemciye sunucudaki HER TCP portuna tünel açma yetkisi
+// verirdi — örneğin localhost:5432'deki veritabanına. Zorlanmış komut bu
+// sınıfı tamamen kapatır (docs/decisions.md K-003).
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net"
+	"os"
+	"time"
+
+	"github.com/erkanrzgc/kadran/internal/connproto"
+	"github.com/erkanrzgc/kadran/internal/sshenv"
+	"github.com/erkanrzgc/kadran/internal/version"
+)
+
+const (
+	defaultSocket = "/run/kadran/api.sock"
+
+	// dialTimeout, kadrand soketine bağlanmak için tanınan süre.
+	dialTimeout = 10 * time.Second
+)
+
+func main() {
+	if err := run(); err != nil {
+		// TÜM tanılama stderr'e gider. stdout protokol kanalıdır;
+		// oraya yazılan tek bir bayt gRPC akışını bozar.
+		fmt.Fprintln(os.Stderr, "kadran-connect:", err)
+		os.Exit(1)
+	}
+}
+
+// options, kadran-connect'in argümanlarıdır.
+//
+// Argümanları authorized_keys'teki zorlanmış komut satırı verir, istemci
+// DEĞİL: istemcinin istediği komut (SSH_ORIGINAL_COMMAND) yok sayılıyor.
+type options struct {
+	socket  string
+	version bool
+	role    string
+	apps    []string
+}
+
+// parseArgs, argümanları ayrıştırır. Her belirsizlik HATADIR: hata
+// bağlantının hiç kurulmaması demek, yanlış yazılmış bir dağıtım satırının
+// yöneticiye düşmesi değil (K-131).
+func parseArgs(args []string, stderr io.Writer) (options, error) {
+	opts := options{role: connproto.RoleAdmin}
+
+	fs := flag.NewFlagSet("kadran-connect", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.StringVar(&opts.socket, "socket", defaultSocket, "kadrand api soketi")
+	fs.BoolVar(&opts.version, "version", false, "sürümü yazdır ve çık")
+
+	deploySet := false
+	fs.Func("deploy", "yalnızca bu uygulamaları dağıtabilen anahtar (virgülle ayrılmış)",
+		func(v string) error {
+			if deploySet {
+				return errors.New("-deploy bir kez verilir")
+			}
+			deploySet = true
+			apps, err := connproto.ParseDeployScope(v)
+			if err != nil {
+				return err
+			}
+			opts.role, opts.apps = connproto.RoleDeploy, apps
+			return nil
+		})
+
+	if err := fs.Parse(args); err != nil {
+		return options{}, err
+	}
+	if fs.NArg() > 0 {
+		return options{}, fmt.Errorf("beklenmeyen argüman: %q", fs.Args())
+	}
+	return opts, nil
+}
+
+func run() error {
+	opts, err := parseArgs(os.Args[1:], os.Stderr)
+	if err != nil {
+		return err
+	}
+
+	if opts.version {
+		fmt.Fprintf(os.Stderr, "kadran-connect %s (%s) protokol %d\n",
+			version.Version, version.Commit, version.Protocol)
+		return nil
+	}
+
+	// SSH_ORIGINAL_COMMAND, istemcinin çalıştırmak İSTEDİĞİ komutu taşır.
+	// Kasıtlı olarak YOK SAYILIR — zorlanmış komutun tüm amacı budur.
+	// Okumak bile istemiyoruz ki ileride kazara kullanılmasın.
+
+	identity := resolveIdentity(os.Getenv, opts)
+
+	// # Neden zaman aşımlı bağlanılıyor?
+	//
+	// Bu süreç bir SSH oturumunun içinde çalışıyor. kadrand yanıt
+	// vermiyorsa (askıda, yeniden başlıyor, soket dosyası duruyor ama
+	// arkasında kimse yok) zaman aşımsız bir Dial süresiz bekler ve
+	// SSH oturumunu açık tutar. Bağlantı başına bir asılı süreç,
+	// birikince sunucuda gerçek bir kaynak sorunu.
+	//
+	// Yerel unix soketine bağlanmak milisaniyeler sürer; 10 saniye
+	// fazlasıyla cömert bir üst sınır.
+	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+	defer cancel()
+
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(ctx, "unix", opts.socket)
+	if err != nil {
+		return fmt.Errorf("kadrand'ye bağlanılamadı (%s): %w", opts.socket, err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Kimlik önsözü, uzak istemciden TEK BAYT okumadan önce yazılır.
+	// Sıralama güvenlik açısından kritiktir: istemcinin baytları ondan
+	// sonra geldiği için kimliği değiştiremez (bkz. internal/connproto).
+	if err := connproto.Write(conn, identity); err != nil {
+		return err
+	}
+
+	return pump(conn)
+}
+
+// resolveIdentity, sshd'nin ortam değişkenlerinden çağıranın kimliğini
+// türetir.
+//
+// SSH ortamı yoksa (sunucuda elle çalıştırma) "local" kökenli, kimliksiz
+// bir kayıt üretilir. Uydurma bir kimlik yazmaktansa "bilinmiyor" demek
+// denetim izini dürüst tutar.
+//
+// Rol her iki yolda da argümandan gelir.
+func resolveIdentity(getenv func(string) string, opts options) connproto.Identity {
+	id := connproto.Identity{Origin: "local", Role: opts.role, Apps: opts.apps}
+	sshID, err := sshenv.Parse(getenv, os.ReadFile)
+	if err != nil {
+		return id
+	}
+	id.Fingerprint, id.SourceIP, id.Origin = sshID.Fingerprint, sshID.SourceIP, "ssh"
+	return id
+}
+
+// pump, stdin/stdout ile soket arasında çift yönlü bayt taşır.
+//
+// # Yarım kapanış neden önemli?
+//
+// İstemci isteğini gönderip yazmayı bitirdiğinde stdin EOF verir. Bu
+// noktada süreçten çıkmak YANLIŞ olurdu: sunucunun yanıtı hâlâ yolda
+// olabilir. Doğru davranış, sokete "artık yazmayacağım" demek
+// (CloseWrite) ve yanıt akışını sonuna kadar taşımaya devam etmektir.
+//
+// Oturumun bittiği yer soket→stdout yönüdür; süreç orada sonlanır.
+func pump(conn net.Conn) error {
+	unixConn, ok := conn.(*net.UnixConn)
+	if !ok {
+		return fmt.Errorf("beklenmedik bağlantı türü: %T", conn)
+	}
+
+	upstream := make(chan error, 1)
+	go func() {
+		_, err := io.Copy(unixConn, os.Stdin)
+		// Yarım kapanış: sunucu isteğin bittiğini görsün.
+		_ = unixConn.CloseWrite()
+		upstream <- err
+	}()
+
+	// Soket→stdout yönü oturumun ömrünü belirler.
+	if _, err := io.Copy(os.Stdout, unixConn); err != nil && !isExpectedClose(err) {
+		return fmt.Errorf("yanıt akışı kesildi: %w", err)
+	}
+
+	// Yukarı akışta biriken bir hata varsa bildir; yoksa bekleme.
+	select {
+	case err := <-upstream:
+		if err != nil && !isExpectedClose(err) {
+			return fmt.Errorf("istek akışı kesildi: %w", err)
+		}
+	default:
+	}
+	return nil
+}
+
+// isExpectedClose, oturum sonu sayılan hataları tanır.
+func isExpectedClose(err error) bool {
+	return errors.Is(err, io.EOF) ||
+		errors.Is(err, net.ErrClosed) ||
+		errors.Is(err, os.ErrClosed)
+}

@@ -1,4 +1,4 @@
-// Package domaincheck, bir alan adının DNS kaydının Panely sunucusunu
+// Package domaincheck, bir alan adının DNS kaydının Kadran sunucusunu
 // gösterip göstermediğini, uygulamaya yazılmadan ÖNCE denetler (K-128).
 //
 // Neden: DNS yanlışsa ya da 80/443 kapalıysa `app create/update -domain`
@@ -6,7 +6,7 @@
 // yoktu. Caddy başarısız denemeden sonra üstel bekliyor (denemeler arası 1
 // güne kadar); kullanıcı DNS'i düzeltse de HTTPS geç geliyordu.
 //
-// Denetimi CLI yapıyor: panelyd ağa çıkamıyor (`IPAddressDeny=any`) ve
+// Denetimi CLI yapıyor: kadrand ağa çıkamıyor (`IPAddressDeny=any`) ve
 // sunucu kendi genel adresini bilemeyebiliyor (GCP'de arayüzde özel adres
 // var, K-121). CLI ise sunucunun adresini SSH hedefinden biliyor.
 //

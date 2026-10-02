@@ -32,7 +32,7 @@ import (
 )
 
 // ErrUnsupportedPlatform, SO_PEERCRED bulunmayan platformlarda döner.
-// Panely sunucu bileşenleri yalnızca Linux'ta çalışır; bu hata Windows
+// Kadran sunucu bileşenleri yalnızca Linux'ta çalışır; bu hata Windows
 // veya macOS üzerinde derleme yapılabilsin diye vardır.
 var ErrUnsupportedPlatform = errors.New("peercred: bu platformda desteklenmiyor")
 
@@ -61,18 +61,18 @@ func (c Cred) String() string {
 type Policy struct {
 	// AllowUIDs, kabul edilen kullanıcı kimlikleri.
 	//
-	// Executor bunu kullanır: yalnızca `panely` kullanıcısı (yani panelyd)
+	// Executor bunu kullanır: yalnızca `kadran` kullanıcısı (yani kadrand)
 	// bağlanabilir.
 	AllowUIDs []uint32
 
 	// AllowGIDs, kabul edilen birincil grup kimlikleri.
 	//
-	// Daemon bunu kullanır: `panely-client` grubundaki herhangi bir
+	// Daemon bunu kullanır: `kadran-client` grubundaki herhangi bir
 	// istemci kullanıcısı bağlanabilir.
 	//
 	// UYARI: SO_PEERCRED yalnızca sürecin BİRİNCİL grubunu döndürür, ek
 	// grup üyeliklerini değil. Bootstrap bu yüzden istemci SSH kullanıcısını
-	// birincil grubu `panely-client` olacak şekilde oluşturur.
+	// birincil grubu `kadran-client` olacak şekilde oluşturur.
 	AllowGIDs []uint32
 }
 
@@ -132,7 +132,7 @@ func (t *transportCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.Au
 	return raw, AuthInfo{Cred: cred}, nil
 }
 
-// ClientHandshake, istemci tarafında kullanılmaz. Panely'de bu kimlik
+// ClientHandshake, istemci tarafında kullanılmaz. Kadran'da bu kimlik
 // bilgisi yalnızca sunucu tarafındadır; istemci tarafında insecure taşıma
 // kullanılır çünkü güven sınırı zaten dosya sistemi ve SSH'tır.
 func (t *transportCreds) ClientHandshake(_ context.Context, _ string, raw net.Conn) (net.Conn, credentials.AuthInfo, error) {

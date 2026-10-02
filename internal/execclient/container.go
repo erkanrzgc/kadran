@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // containerTimeout, konteyner yaşam döngüsü çağrıları için üst sınır.
@@ -21,7 +21,7 @@ const containerTimeout = 60 * time.Second
 
 // Replica, hostta duran tek bir konteynerdir.
 //
-// Executor'ın döndürdüğü proto mesajının panelyd tarafındaki karşılığı.
+// Executor'ın döndürdüğü proto mesajının kadrand tarafındaki karşılığı.
 // Ayrı bir tip olmasının sebebi `Addr`: proxydrv'nin ihtiyaç duyduğu şey
 // "adres" değil, "trafiğe HAZIR bir adres" ve ikisi aynı değil.
 type Replica struct {
@@ -29,7 +29,7 @@ type Replica struct {
 	ReleaseID string
 	Index     uint32
 
-	State     panelyv1.ContainerState
+	State     kadranv1.ContainerState
 	IPAddress string
 	CreatedAt time.Time
 }
@@ -41,7 +41,7 @@ type Replica struct {
 // belirmesine davetiye olurdu. RESTARTING çalışmıyor demektir — trafiği
 // oraya yollamak 502 üretir.
 func (r Replica) Running() bool {
-	return r.State == panelyv1.ContainerState_CONTAINER_STATE_RUNNING
+	return r.State == kadranv1.ContainerState_CONTAINER_STATE_RUNNING
 }
 
 // Routable, konteynerin trafik alabilecek durumda OLDUĞUNU bildirir.
@@ -56,13 +56,13 @@ func (r Replica) Routable() bool {
 
 // EnsureNetwork, uygulamanın izole ağını var eder ve adını döndürür.
 //
-// Ağ adı executor tarafından KURULUYOR, panelyd'den alınmıyor: aksi hâlde
-// ele geçirilmiş bir panelyd konteynerleri `host` ağına koyabilirdi.
+// Ağ adı executor tarafından KURULUYOR, kadrand'den alınmıyor: aksi hâlde
+// ele geçirilmiş bir kadrand konteynerleri `host` ağına koyabilirdi.
 func (c *Client) EnsureNetwork(ctx context.Context, appID string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, containerTimeout)
 	defer cancel()
 
-	resp, err := c.rpc.NetworkEnsure(ctx, &panelyv1.NetworkEnsureRequest{AppId: appID})
+	resp, err := c.rpc.NetworkEnsure(ctx, &kadranv1.NetworkEnsureRequest{AppId: appID})
 	if err != nil {
 		return "", fmt.Errorf("uygulama ağı kurulamadı (%s): %w", appID, err)
 	}
@@ -116,20 +116,20 @@ func (c *Client) CreateReplica(ctx context.Context, opts CreateReplicaOptions) e
 	ctx, cancel := context.WithTimeout(ctx, containerTimeout)
 	defer cancel()
 
-	volumes := make([]*panelyv1.VolumeMount, 0, len(opts.Volumes))
+	volumes := make([]*kadranv1.VolumeMount, 0, len(opts.Volumes))
 	for _, v := range opts.Volumes {
-		volumes = append(volumes, &panelyv1.VolumeMount{
+		volumes = append(volumes, &kadranv1.VolumeMount{
 			VolumeName: v.VolumeName,
 			MountPath:  v.MountPath,
 			ReadOnly:   v.ReadOnly,
 		})
 	}
 
-	_, err := c.rpc.ContainerCreate(ctx, &panelyv1.ContainerCreateRequest{
+	_, err := c.rpc.ContainerCreate(ctx, &kadranv1.ContainerCreateRequest{
 		Ref:       containerRef(opts.AppID, opts.ReleaseID, opts.Index),
 		CommitSha: opts.CommitSHA,
 		Env:       opts.Env,
-		Limits: &panelyv1.ResourceLimits{
+		Limits: &kadranv1.ResourceLimits{
 			MemoryBytes: opts.Limits.MemoryBytes,
 			CpuMillis:   opts.Limits.CPUMillis,
 			BlkioWeight: opts.Limits.BlkioWeight,
@@ -167,7 +167,7 @@ func (c *Client) StartReplica(ctx context.Context, appID, releaseID string, inde
 	ctx, cancel := context.WithTimeout(ctx, containerTimeout)
 	defer cancel()
 
-	resp, err := c.rpc.ContainerStart(ctx, &panelyv1.ContainerStartRequest{
+	resp, err := c.rpc.ContainerStart(ctx, &kadranv1.ContainerStartRequest{
 		Selector: replicaSelector(appID, releaseID, index),
 	})
 	if err != nil {
@@ -197,7 +197,7 @@ func (c *Client) StopRelease(ctx context.Context, appID, releaseID string, grace
 	ctx, cancel := context.WithTimeout(ctx, grace+containerTimeout)
 	defer cancel()
 
-	resp, err := c.rpc.ContainerStop(ctx, &panelyv1.ContainerStopRequest{
+	resp, err := c.rpc.ContainerStop(ctx, &kadranv1.ContainerStopRequest{
 		Selector:       releaseSelector(appID, releaseID),
 		TimeoutSeconds: uint32(grace.Seconds()),
 	})
@@ -226,7 +226,7 @@ func (c *Client) StopReplica(
 	sel := releaseSelector(appID, releaseID)
 	sel.Replica = &index
 
-	resp, err := c.rpc.ContainerStop(ctx, &panelyv1.ContainerStopRequest{
+	resp, err := c.rpc.ContainerStop(ctx, &kadranv1.ContainerStopRequest{
 		Selector:       sel,
 		TimeoutSeconds: uint32(grace.Seconds()),
 	})
@@ -244,7 +244,7 @@ func (c *Client) RemoveRelease(ctx context.Context, appID, releaseID string) (ui
 	ctx, cancel := context.WithTimeout(ctx, containerTimeout)
 	defer cancel()
 
-	resp, err := c.rpc.ContainerRemove(ctx, &panelyv1.ContainerRemoveRequest{
+	resp, err := c.rpc.ContainerRemove(ctx, &kadranv1.ContainerRemoveRequest{
 		Selector: releaseSelector(appID, releaseID),
 	})
 	if err != nil {
@@ -264,7 +264,7 @@ func (c *Client) ListReplicas(ctx context.Context, appID string) ([]Replica, err
 	ctx, cancel := context.WithTimeout(ctx, containerTimeout)
 	defer cancel()
 
-	resp, err := c.rpc.ContainerList(ctx, &panelyv1.ContainerListRequest{AppId: appID})
+	resp, err := c.rpc.ContainerList(ctx, &kadranv1.ContainerListRequest{AppId: appID})
 	if err != nil {
 		return nil, fmt.Errorf("konteynerler listelenemedi (%s): %w", appID, err)
 	}
@@ -284,17 +284,17 @@ func (c *Client) ListReplicas(ctx context.Context, appID string) ([]Replica, err
 	return out, nil
 }
 
-func containerRef(appID, releaseID string, index uint32) *panelyv1.ContainerRef {
-	return &panelyv1.ContainerRef{
-		Release: &panelyv1.ReleaseRef{AppId: appID, ReleaseId: releaseID},
+func containerRef(appID, releaseID string, index uint32) *kadranv1.ContainerRef {
+	return &kadranv1.ContainerRef{
+		Release: &kadranv1.ReleaseRef{AppId: appID, ReleaseId: releaseID},
 		Replica: index,
 	}
 }
 
 // replicaSelector, TEK bir replikayı seçer.
-func replicaSelector(appID, releaseID string, index uint32) *panelyv1.ContainerSelector {
-	return &panelyv1.ContainerSelector{
-		Release: &panelyv1.ReleaseRef{AppId: appID, ReleaseId: releaseID},
+func replicaSelector(appID, releaseID string, index uint32) *kadranv1.ContainerSelector {
+	return &kadranv1.ContainerSelector{
+		Release: &kadranv1.ReleaseRef{AppId: appID, ReleaseId: releaseID},
 		Replica: &index,
 	}
 }
@@ -305,8 +305,8 @@ func replicaSelector(appID, releaseID string, index uint32) *panelyv1.ContainerS
 // "0 numaralı replika". İkisi arasındaki fark proto3'te ancak `optional`
 // ile ifade edilebiliyordu ve karıştırılması, boşaltma sırasında yalnızca
 // ilk replikayı durdurup gerisini ayakta bırakırdı.
-func releaseSelector(appID, releaseID string) *panelyv1.ContainerSelector {
-	return &panelyv1.ContainerSelector{
-		Release: &panelyv1.ReleaseRef{AppId: appID, ReleaseId: releaseID},
+func releaseSelector(appID, releaseID string) *kadranv1.ContainerSelector {
+	return &kadranv1.ContainerSelector{
+		Release: &kadranv1.ReleaseRef{AppId: appID, ReleaseId: releaseID},
 	}
 }

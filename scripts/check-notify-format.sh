@@ -2,7 +2,7 @@
 # Alarm göndericisinin biçimlendiricisini (K-108) ve çekirdek servis
 # denetimini (K-110) sınar.
 #
-# Girdiler panelyd'nin journal'ına GERÇEKTEN düşmüş satırların
+# Girdiler kadrand'nin journal'ına GERÇEKTEN düşmüş satırların
 # biçiminde: `slog` metin çıktısı, değer boşluk içeriyorsa tırnaklı.
 # Kapanış satırları canlı sunucudan birebir alındı (17 Eyl).
 #
@@ -12,7 +12,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 
 # shellcheck source=/dev/null
-source deploy/notify/panely-notify.sh
+source deploy/notify/kadran-notify.sh
 
 fail=0
 bekle() {
@@ -36,8 +36,8 @@ bekle() {
 echo "== Alarm biçimlendirici =="
 
 bekle "kritik açılış, tırnaklı ayrıntı" \
-    'time=2026-09-17T20:15:02.1Z level=ERROR msg=ALARM alarm=backup_failed:panely.db durum=acildi ciddiyet=kritik hedef=panely.db ayrinti="zamanlı yedek alınamıyor — geri dönüş yolu YOK"' \
-    $'🔴 KRİTİK — backup_failed:panely.db\n   zamanlı yedek alınamıyor — geri dönüş yolu YOK'
+    'time=2026-09-17T20:15:02.1Z level=ERROR msg=ALARM alarm=backup_failed:kadran.db durum=acildi ciddiyet=kritik hedef=kadran.db ayrinti="zamanlı yedek alınamıyor — geri dönüş yolu YOK"' \
+    $'🔴 KRİTİK — backup_failed:kadran.db\n   zamanlı yedek alınamıyor — geri dönüş yolu YOK'
 
 bekle "uyarı açılış, hedef kimlikten farklı" \
     'time=x level=WARN msg=ALARM alarm=disk_low:host durum=acildi ciddiyet=uyari hedef=/ ayrinti="%9 boş, 3.4 GiB / 38 GiB"' \
@@ -72,7 +72,7 @@ conf_dene() {
     local ad="$1" icerik="$2" beklenen="$3" dosya sonuc
     dosya="$(mktemp)"
     printf '%b' "$icerik" > "$dosya"
-    sonuc="$( (PANELY_NOTIFY_CONF="$dosya"; unset CREDENTIALS_DIRECTORY
+    sonuc="$( (KADRAN_NOTIFY_CONF="$dosya"; unset CREDENTIALS_DIRECTORY
                yapilandirma_oku && printf '%s|%s' "$TOKEN" "$CHAT_ID") 2>/dev/null)"
     rm -f "$dosya"
     if [[ "$sonuc" == "$beklenen" ]]; then
@@ -111,7 +111,7 @@ echo "== Günlük seviyesi önekleri =="
 onek_dene() {
     local ad="$1" journal="$2" beklenen="$3" cikti
     cikti="$(JOURNAL_STREAM="$journal" bash -c \
-        'source deploy/notify/panely-notify.sh; log x; (die y) 2>&1' 2>&1)"
+        'source deploy/notify/kadran-notify.sh; log x; (die y) 2>&1' 2>&1)"
     if [[ "$cikti" == "$beklenen" ]]; then
         echo "  ✓ $ad"
     else
@@ -120,9 +120,9 @@ onek_dene() {
     fi
 }
 onek_dene "journal altında notice/err önekli" "8:123" \
-    $'<5>panely-notify: x\n<3>panely-notify: HATA: y'
+    $'<5>kadran-notify: x\n<3>kadran-notify: HATA: y'
 onek_dene "terminalde öneksiz" "" \
-    $'panely-notify: x\npanely-notify: HATA: y'
+    $'kadran-notify: x\nkadran-notify: HATA: y'
 
 echo "== Servis kararı (K-110) =="
 
@@ -160,9 +160,9 @@ echo "== journal olay ayıklayıcı (K-110) =="
 # Satırlar canlı sunucudan birebir (26 Eyl). `sahte`: sıradan bir
 # süreç UNIT= ve MESSAGE_ID= alanlarını KENDİSİ yazabiliyor (ölçüldü);
 # yalnızca _PID=1 olanlar systemd'nin kendi olayı.
-GERCEK='{"UNIT_RESULT":"signal","__SEQNUM":"1539133","UNIT":"panely-olcum-coken.service","_PID":"1","MESSAGE_ID":"d9b373ed55a64feb8242e02dbe79a49c","__MONOTONIC_TIMESTAMP":"4239811578782","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=177c3d;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db28768b9e;t=65c604af6d57c;x=bb85dbbdeadcf4cc","__REALTIME_TIMESTAMP":"1790418504570236","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65"}'
-SAHTE='{"__SEQNUM":"1540102","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65","__REALTIME_TIMESTAMP":"1790419089987293","UNIT_RESULT":"signal","_PID":"542425","MESSAGE_ID":"d9b373ed55a64feb8242e02dbe79a49c","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=178006;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db4b5b4cff;t=65c606ddb96dd;x=c28734a1e20fe064","UNIT":"panely-caddy.service","__MONOTONIC_TIMESTAMP":"4240396995839","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633"}'
-BASLADI='{"__MONOTONIC_TIMESTAMP":"4239813639252","_PID":"1","MESSAGE_ID":"39f53479d3a045ac8e11786248231fbf","__REALTIME_TIMESTAMP":"1790418506630706","UNIT":"panely-olcum-coken.service","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=177c43;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db2895fc54;t=65c604b164632;x=d005e3fb79c8e472","__SEQNUM":"1539139","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65"}'
+GERCEK='{"UNIT_RESULT":"signal","__SEQNUM":"1539133","UNIT":"kadran-olcum-coken.service","_PID":"1","MESSAGE_ID":"d9b373ed55a64feb8242e02dbe79a49c","__MONOTONIC_TIMESTAMP":"4239811578782","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=177c3d;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db28768b9e;t=65c604af6d57c;x=bb85dbbdeadcf4cc","__REALTIME_TIMESTAMP":"1790418504570236","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65"}'
+SAHTE='{"__SEQNUM":"1540102","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65","__REALTIME_TIMESTAMP":"1790419089987293","UNIT_RESULT":"signal","_PID":"542425","MESSAGE_ID":"d9b373ed55a64feb8242e02dbe79a49c","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=178006;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db4b5b4cff;t=65c606ddb96dd;x=c28734a1e20fe064","UNIT":"kadran-caddy.service","__MONOTONIC_TIMESTAMP":"4240396995839","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633"}'
+BASLADI='{"__MONOTONIC_TIMESTAMP":"4239813639252","_PID":"1","MESSAGE_ID":"39f53479d3a045ac8e11786248231fbf","__REALTIME_TIMESTAMP":"1790418506630706","UNIT":"kadran-olcum-coken.service","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=177c43;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db2895fc54;t=65c604b164632;x=d005e3fb79c8e472","__SEQNUM":"1539139","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65"}'
 KENDI='{"__MONOTONIC_TIMESTAMP":"4239805720889","__SEQNUM_ID":"cf474177a33247aab7ab0645a06d9e65","_BOOT_ID":"94c0a82e2a494db8b29d4e2dcd371633","_PID":"539751","__CURSOR":"s=cf474177a33247aab7ab0645a06d9e65;i=177c30;b=94c0a82e2a494db8b29d4e2dcd371633;m=3db281d2939;t=65c604a9d7318;x=62a03c68915ec7c7","__SEQNUM":"1539120","__REALTIME_TIMESTAMP":"1790418498712344"}'
 
 ayikla_dene() {
@@ -175,19 +175,19 @@ ayikla_dene() {
         fail=1
     fi
 }
-ayikla_dene "systemd'nin çöküş olayı"            "$GERCEK"  "panely-olcum-coken.service signal"
+ayikla_dene "systemd'nin çöküş olayı"            "$GERCEK"  "kadran-olcum-coken.service signal"
 ayikla_dene "sahte olay (_PID≠1) REDDEDİLİR"     "$SAHTE"   ""
 ayikla_dene "başka olay (Started) sayılmaz"      "$BASLADI" ""
 ayikla_dene "servisin kendi satırı sayılmaz"     "$KENDI"   ""
 ayikla_dene "karışık akış" "$KENDI"$'\n'"$GERCEK"$'\n'"$SAHTE"$'\n'"$BASLADI"$'\n'"$GERCEK" \
-    $'panely-olcum-coken.service signal\npanely-olcum-coken.service signal'
+    $'kadran-olcum-coken.service signal\nkadran-olcum-coken.service signal'
 
-# K-115: watchdog'un öldürdüğü panelyd. TÜRETİLMİŞ satır (gerçek çöküş
+# K-115: watchdog'un öldürdüğü kadrand. TÜRETİLMİŞ satır (gerçek çöküş
 # satırında UNIT ve UNIT_RESULT değiştirildi); systemd'nin gerçek
 # watchdog satırı CI'daki systemd deneyinde aynı ayıklayıcıdan geçiyor.
 WATCHDOG="${GERCEK/\"UNIT_RESULT\":\"signal\"/\"UNIT_RESULT\":\"watchdog\"}"
-WATCHDOG="${WATCHDOG/panely-olcum-coken.service/panelyd.service}"
-ayikla_dene "watchdog öldürmesi (K-115)"         "$WATCHDOG" "panelyd.service watchdog"
+WATCHDOG="${WATCHDOG/kadran-olcum-coken.service/kadrand.service}"
+ayikla_dene "watchdog öldürmesi (K-115)"         "$WATCHDOG" "kadrand.service watchdog"
 
 echo "== Servis mesaj satırı (K-110) =="
 
@@ -201,17 +201,17 @@ satir_dene() {
         fail=1
     fi
 }
-satir_dene "çöktü, geri geldi" '🟠 ÇÖKTÜ — panelyd.service: 1 kez (signal), systemd yeniden başlattı' \
-    coktu panelyd.service 1 signal 1
-satir_dene "çöktü, kalkmadı" '🟠 ÇÖKTÜ — panelyd.service: 2 kez (exit-code), şu an ÇALIŞMIYOR' \
-    coktu panelyd.service 2 exit-code 0
-satir_dene "watchdog öldürdü (K-115)" '🟠 ÇÖKTÜ — panelyd.service: 1 kez (watchdog), systemd yeniden başlattı' \
-    coktu panelyd.service 1 watchdog 1
-satir_dene "döngü" '🔴 ÇÖKME DÖNGÜSÜ — panely-exec.service: son kontrolden beri 26 kez daha (exit-code)' \
-    dongu panely-exec.service 26 exit-code 1
-satir_dene "çalışmıyor" '🔴 ÇALIŞMIYOR — panely-caddy.service' calismiyor panely-caddy.service 0 "" 0
-satir_dene "toparlandı" '✅ TOPARLANDI — panelyd.service: son kontrolden beri çökmedi' duzeldi panelyd.service 0 "" 1
-satir_dene "geri geldi" '✅ YENİDEN ÇALIŞIYOR — panely-caddy.service' geri_geldi panely-caddy.service 0 "" 1
+satir_dene "çöktü, geri geldi" '🟠 ÇÖKTÜ — kadrand.service: 1 kez (signal), systemd yeniden başlattı' \
+    coktu kadrand.service 1 signal 1
+satir_dene "çöktü, kalkmadı" '🟠 ÇÖKTÜ — kadrand.service: 2 kez (exit-code), şu an ÇALIŞMIYOR' \
+    coktu kadrand.service 2 exit-code 0
+satir_dene "watchdog öldürdü (K-115)" '🟠 ÇÖKTÜ — kadrand.service: 1 kez (watchdog), systemd yeniden başlattı' \
+    coktu kadrand.service 1 watchdog 1
+satir_dene "döngü" '🔴 ÇÖKME DÖNGÜSÜ — kadran-exec.service: son kontrolden beri 26 kez daha (exit-code)' \
+    dongu kadran-exec.service 26 exit-code 1
+satir_dene "çalışmıyor" '🔴 ÇALIŞMIYOR — kadran-caddy.service' calismiyor kadran-caddy.service 0 "" 0
+satir_dene "toparlandı" '✅ TOPARLANDI — kadrand.service: son kontrolden beri çökmedi' duzeldi kadrand.service 0 "" 1
+satir_dene "geri geldi" '✅ YENİDEN ÇALIŞIYOR — kadran-caddy.service' geri_geldi kadran-caddy.service 0 "" 1
 
 echo "== Servis turu, uçtan uca sahte ortamda (K-110) =="
 
@@ -243,7 +243,7 @@ tur_kos() {
 SAHTE_KOK="$(mktemp -d)"
 export STATE_DIRECTORY="$SAHTE_KOK/durum"; mkdir -p "$STATE_DIRECTORY"
 CEKIRDEK_JSON="$SAHTE_KOK/olay.json"
-sed 's/panely-olcum-coken\.service/panelyd.service/' <<< "$GERCEK" > "$CEKIRDEK_JSON"
+sed 's/kadran-olcum-coken\.service/kadrand.service/' <<< "$GERCEK" > "$CEKIRDEK_JSON"
 : > "$SAHTE_KOK/bos.json"
 
 tur_dene() {
@@ -254,19 +254,19 @@ rm -f "$SAHTE_KOK/giden"
 tur_kos "$CEKIRDEK_JSON" 0
 tur_dene "ilk koşu geçmişi GÖNDERMEZ" '[[ ! -e $SAHTE_KOK/giden && -s $STATE_DIRECTORY/servis-imlec ]]'
 tur_kos "$CEKIRDEK_JSON" 0
-tur_dene "çöküş gönderildi" 'grep -q "ÇÖKTÜ — panelyd.service: 1 kez (signal)" $SAHTE_KOK/giden'
-tur_dene "durum kaydedildi" 'grep -q "^panelyd.service coktu 0$" $STATE_DIRECTORY/servisler'
+tur_dene "çöküş gönderildi" 'grep -q "ÇÖKTÜ — kadrand.service: 1 kez (signal)" $SAHTE_KOK/giden'
+tur_dene "durum kaydedildi" 'grep -q "^kadrand.service coktu 0$" $STATE_DIRECTORY/servisler'
 cp "$STATE_DIRECTORY/servisler" "$SAHTE_KOK/onceki"; rm -f "$SAHTE_KOK/giden"
-tur_kos "$SAHTE_KOK/bos.json" 1 panely-caddy.service
-tur_kos "$SAHTE_KOK/bos.json" 1 panely-caddy.service
+tur_kos "$SAHTE_KOK/bos.json" 1 kadran-caddy.service
+tur_kos "$SAHTE_KOK/bos.json" 1 kadran-caddy.service
 tur_dene "gönderim başarısız → durum İLERLEMEDİ" 'cmp -s $SAHTE_KOK/onceki $STATE_DIRECTORY/servisler'
-tur_kos "$SAHTE_KOK/bos.json" 0 panely-caddy.service
-tur_dene "tekrar denemede panelyd toparlandı" 'grep -q "TOPARLANDI — panelyd.service" $SAHTE_KOK/giden'
+tur_kos "$SAHTE_KOK/bos.json" 0 kadran-caddy.service
+tur_dene "tekrar denemede kadrand toparlandı" 'grep -q "TOPARLANDI — kadrand.service" $SAHTE_KOK/giden'
 tur_dene "caddy bir tur kapalı → henüz sessiz" '[[ -s $SAHTE_KOK/giden ]] && ! grep -q "caddy" $SAHTE_KOK/giden'
-tur_kos "$SAHTE_KOK/bos.json" 0 panely-caddy.service
-tur_dene "iki tur kapalı → ÇALIŞMIYOR" 'grep -q "ÇALIŞMIYOR — panely-caddy.service" $SAHTE_KOK/giden'
+tur_kos "$SAHTE_KOK/bos.json" 0 kadran-caddy.service
+tur_dene "iki tur kapalı → ÇALIŞMIYOR" 'grep -q "ÇALIŞMIYOR — kadran-caddy.service" $SAHTE_KOK/giden'
 rm -f "$SAHTE_KOK/giden"
-tur_kos "$SAHTE_KOK/bos.json" 0 panely-caddy.service
+tur_kos "$SAHTE_KOK/bos.json" 0 kadran-caddy.service
 tur_dene "kapalı sürüyor → mesaj YOK" '[[ ! -e $SAHTE_KOK/giden ]]'
 rm -rf "$SAHTE_KOK"
 

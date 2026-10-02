@@ -99,7 +99,7 @@ func TestCollectFailsClosedOnAMissingLicense(t *testing.T) {
 	})
 	usage := map[module][]string{
 		{Path: "a/lisansli", Version: "v1", Dir: filepath.Join(root, "lisansli")}:   {"kadran"},
-		{Path: "b/lisanssiz", Version: "v2", Dir: filepath.Join(root, "lisanssiz")}: {"panelyd"},
+		{Path: "b/lisanssiz", Version: "v2", Dir: filepath.Join(root, "lisanssiz")}: {"kadrand"},
 	}
 	_, err := collect(usage, filepath.Join(root, "goroot"), "go1.25.13")
 	var missing *missingLicenseError
@@ -120,8 +120,8 @@ func TestRenderIsDeterministicAndComplete(t *testing.T) {
 		"goroot/LICENSE": "Go lisansı",
 	})
 	usage := map[module][]string{
-		{Path: "z/mod", Version: "v1.0.0", Dir: filepath.Join(root, "z")}: {"panelyd", "kadran"},
-		{Path: "a/mod", Version: "v0.1.0", Dir: filepath.Join(root, "a")}: {"panely-caddy"},
+		{Path: "z/mod", Version: "v1.0.0", Dir: filepath.Join(root, "z")}: {"kadrand", "kadran"},
+		{Path: "a/mod", Version: "v0.1.0", Dir: filepath.Join(root, "a")}: {"kadran-caddy"},
 	}
 
 	var first []byte
@@ -145,7 +145,7 @@ func TestRenderIsDeterministicAndComplete(t *testing.T) {
 
 	s := string(first)
 	for _, want := range []string{"Go standard library go1.25.13", "Go lisansı", "a/mod v0.1.0", "A lisansı",
-		"z/mod v1.0.0", "Z lisansı", "Z notu", "Used by: kadran, panelyd", "Used by: panely-caddy"} {
+		"z/mod v1.0.0", "Z lisansı", "Z notu", "Used by: kadran, kadrand", "Used by: kadran-caddy"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("çıktıda %q yok", want)
 		}
@@ -168,8 +168,8 @@ func TestSameModuleTwoVersionsHasAFixedOrder(t *testing.T) {
 	})
 	usage := map[module][]string{
 		{Path: "golang.org/x/net", Version: "v0.58.0", Dir: filepath.Join(root, "a")}: {"kadran"},
-		{Path: "golang.org/x/net", Version: "v0.55.0", Dir: filepath.Join(root, "b")}: {"panely-caddy"},
-		{Path: "golang.org/x/net", Version: "v0.9.0", Dir: filepath.Join(root, "c")}:  {"panelyd"},
+		{Path: "golang.org/x/net", Version: "v0.55.0", Dir: filepath.Join(root, "b")}: {"kadran-caddy"},
+		{Path: "golang.org/x/net", Version: "v0.9.0", Dir: filepath.Join(root, "c")}:  {"kadrand"},
 	}
 	for i := 0; i < 50; i++ {
 		entries, err := collect(usage, filepath.Join(root, "goroot"), "go1")
@@ -209,14 +209,14 @@ func TestShippedTargetsMatchTheBuildScripts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(release), "SERVER_BINARIES=(panelyd panely-exec panely-connect)") {
+	if !strings.Contains(string(release), "SERVER_BINARIES=(kadrand kadran-exec kadran-connect)") {
 		t.Fatal("build-release.sh'in sunucu ikili listesi değişti — targets'ı güncelleyin")
 	}
 	names := map[string]bool{}
 	for _, tg := range targets {
 		names[tg.Name] = true
 	}
-	for _, n := range []string{"kadran", "panelyd", "panely-exec", "panely-connect", "panely-caddy"} {
+	for _, n := range []string{"kadran", "kadrand", "kadran-exec", "kadran-connect", "kadran-caddy"} {
 		if !names[n] {
 			t.Errorf("%s taranmıyor", n)
 		}

@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // fakeStream, akış uçlarını test etmek için asgari bir sunucu akışı.
@@ -36,18 +36,18 @@ func (f *fakeStream[T]) Send(m *T) error {
 	return nil
 }
 
-func newBuildStream() *fakeStream[panelyv1.ImageBuildResponse] {
-	return &fakeStream[panelyv1.ImageBuildResponse]{ctx: context.Background()}
+func newBuildStream() *fakeStream[kadranv1.ImageBuildResponse] {
+	return &fakeStream[kadranv1.ImageBuildResponse]{ctx: context.Background()}
 }
 
-func newLogStream() *fakeStream[panelyv1.ContainerLogsResponse] {
-	return &fakeStream[panelyv1.ContainerLogsResponse]{ctx: context.Background()}
+func newLogStream() *fakeStream[kadranv1.ContainerLogsResponse] {
+	return &fakeStream[kadranv1.ContainerLogsResponse]{ctx: context.Background()}
 }
 
 const testSHA = "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
 
-func validGitSource() *panelyv1.GitSource {
-	return &panelyv1.GitSource{
+func validGitSource() *kadranv1.GitSource {
+	return &kadranv1.GitSource{
 		Host:      "github.com",
 		Owner:     "octocat",
 		Repo:      "Hello-World",
@@ -55,9 +55,9 @@ func validGitSource() *panelyv1.GitSource {
 	}
 }
 
-func validBuildRequest() *panelyv1.ImageBuildRequest {
-	return &panelyv1.ImageBuildRequest{
-		Release: &panelyv1.ReleaseRef{AppId: "blog", ReleaseId: "r1"},
+func validBuildRequest() *kadranv1.ImageBuildRequest {
+	return &kadranv1.ImageBuildRequest{
+		Release: &kadranv1.ReleaseRef{AppId: "blog", ReleaseId: "r1"},
 		Source:  validGitSource(),
 	}
 }
@@ -74,7 +74,7 @@ func TestValidBuildRequestIsAccepted(t *testing.T) {
 
 // TestGitHostWhitelistIsEnforced, beyaz listenin gerçekten uygulandığını
 // doğrular. Liste executor'ın bayrağından gelir; ele geçirilmiş bir
-// panelyd ona ekleme yapamamalı.
+// kadrand ona ekleme yapamamalı.
 func TestGitHostWhitelistIsEnforced(t *testing.T) {
 	src := validGitSource()
 	src.Host = "evil.example.com"
@@ -348,7 +348,7 @@ func TestImageBuildRecordsDeniedRequests(t *testing.T) {
 func TestRepoAllowlistBlocksTheCredentialFromReachingOtherRepos(t *testing.T) {
 	allowed := []string{"erkanrzgc/portfolio", "erkanrzgc/retain-io"}
 
-	src := &panelyv1.GitSource{
+	src := &kadranv1.GitSource{
 		Host:      "github.com",
 		Owner:     "baskasi",
 		Repo:      "ozel-depo",

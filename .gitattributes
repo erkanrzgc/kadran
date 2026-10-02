@@ -1,4 +1,4 @@
-# Panely Windows iş istasyonundan geliştirilip Linux sunucuya dağıtılır.
+# Kadran Windows iş istasyonundan geliştirilip Linux sunucuya dağıtılır.
 # Satır sonları bu yüzden yapılandırma değil, DOĞRULUK meselesidir:
 #
 #   - CRLF'li bir systemd unit dosyası sessizce çalışmaz

@@ -6,7 +6,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -20,16 +20,16 @@ import (
 // gözlemi. İkisini karıştırmak, "kim ne yaptı" sorusunu makine
 // gürültüsüyle doldururdu.
 func (s *Server) ListAlarms(
-	ctx context.Context, _ *panelyv1.ListAlarmsRequest,
-) (*panelyv1.ListAlarmsResponse, error) {
+	ctx context.Context, _ *kadranv1.ListAlarmsRequest,
+) (*kadranv1.ListAlarmsResponse, error) {
 	alarms, err := s.store.ListAlarms(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "alarmlar okunamadı: %v", err)
 	}
 
-	out := make([]*panelyv1.AlarmInfo, 0, len(alarms))
+	out := make([]*kadranv1.AlarmInfo, 0, len(alarms))
 	for _, a := range alarms {
-		out = append(out, &panelyv1.AlarmInfo{
+		out = append(out, &kadranv1.AlarmInfo{
 			Id:        a.ID,
 			Kind:      a.Kind,
 			Target:    a.Target,
@@ -38,9 +38,9 @@ func (s *Server) ListAlarms(
 			Detail:    a.Detail,
 		})
 	}
-	return &panelyv1.ListAlarmsResponse{
+	return &kadranv1.ListAlarmsResponse{
 		Alarms: out,
-		// Sabit true. Teslimat yolu yok: panelyd'nin systemd birimi
+		// Sabit true. Teslimat yolu yok: kadrand'nin systemd birimi
 		// IPAddressDeny=any taşıyor ve dışarı çıkamıyor (ölçüldü).
 		DeliveryIsLocalOnly: true,
 	}, nil
@@ -51,13 +51,13 @@ func (s *Server) ListAlarms(
 // Bilinmeyen değer UNSPECIFIED'a düşüyor, sessizce "uyari" sayılmıyor:
 // tanınmayan bir ciddiyeti daha düşük bir seviyeye indirmek, gerçekten
 // kritik bir koşulu görünmez kılabilirdi.
-func severityToProto(s string) panelyv1.AlarmSeverity {
+func severityToProto(s string) kadranv1.AlarmSeverity {
 	switch s {
 	case store.SeverityCritical:
-		return panelyv1.AlarmSeverity_ALARM_SEVERITY_CRITICAL
+		return kadranv1.AlarmSeverity_ALARM_SEVERITY_CRITICAL
 	case store.SeverityWarning:
-		return panelyv1.AlarmSeverity_ALARM_SEVERITY_WARNING
+		return kadranv1.AlarmSeverity_ALARM_SEVERITY_WARNING
 	default:
-		return panelyv1.AlarmSeverity_ALARM_SEVERITY_UNSPECIFIED
+		return kadranv1.AlarmSeverity_ALARM_SEVERITY_UNSPECIFIED
 	}
 }

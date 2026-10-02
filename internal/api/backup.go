@@ -8,7 +8,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -25,10 +25,10 @@ import (
 // geçiren geçmişi de görür. Bu, yedeklerin 0700 bir dizinde durmasının
 // sebebi (snapshot.go).
 func (s *Server) CreateBackup(
-	ctx context.Context, _ *panelyv1.CreateBackupRequest,
-) (*panelyv1.CreateBackupResponse, error) {
+	ctx context.Context, _ *kadranv1.CreateBackupRequest,
+) (*kadranv1.CreateBackupResponse, error) {
 	const action = "backup.create"
-	const target = "panely.db"
+	const target = "kadran.db"
 
 	snap, err := s.store.Snapshot(ctx)
 	if err != nil {
@@ -48,7 +48,7 @@ func (s *Server) CreateBackup(
 		return nil, err
 	}
 
-	return &panelyv1.CreateBackupResponse{
+	return &kadranv1.CreateBackupResponse{
 		Backup: snapshotToProto(snap),
 		// Sabit true. Gerekçe api.proto'daki alan yorumunda: kullanıcı
 		// "yedek aldım" deyince her şeyin yedeklendiğini varsayar.
@@ -61,25 +61,25 @@ func (s *Server) CreateBackup(
 // Salt okunur; zincire girmiyor (record.go'daki gerekçe: durum okuma
 // gürültüsü, durum değiştiren işlemleri görünmez kılardı).
 func (s *Server) ListBackups(
-	_ context.Context, _ *panelyv1.ListBackupsRequest,
-) (*panelyv1.ListBackupsResponse, error) {
+	_ context.Context, _ *kadranv1.ListBackupsRequest,
+) (*kadranv1.ListBackupsResponse, error) {
 	snaps, err := s.store.ListSnapshots()
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "yedekler listelenemedi: %v", err)
 	}
 
-	out := make([]*panelyv1.BackupInfo, 0, len(snaps))
+	out := make([]*kadranv1.BackupInfo, 0, len(snaps))
 	for _, sn := range snaps {
 		out = append(out, snapshotToProto(sn))
 	}
-	return &panelyv1.ListBackupsResponse{
+	return &kadranv1.ListBackupsResponse{
 		Backups: out,
 		Keep:    store.SnapshotKeep,
 	}, nil
 }
 
-func snapshotToProto(sn store.SnapshotInfo) *panelyv1.BackupInfo {
-	return &panelyv1.BackupInfo{
+func snapshotToProto(sn store.SnapshotInfo) *kadranv1.BackupInfo {
+	return &kadranv1.BackupInfo{
 		Path:      sn.Path,
 		Bytes:     sn.Bytes,
 		TakenUnix: sn.Taken.Unix(),

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -20,7 +20,7 @@ import (
 func newDeleteServer(t *testing.T, exec *fakeExec) (*Server, *store.Store) {
 	t.Helper()
 
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestDeleteRemovesContainersThenRecords(t *testing.T) {
 	srv, db := newDeleteServer(t, exec)
 	seedDeletableApp(t, db, "blog")
 
-	resp, err := srv.DeleteApp(context.Background(), &panelyv1.DeleteAppRequest{AppId: "blog"})
+	resp, err := srv.DeleteApp(context.Background(), &kadranv1.DeleteAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("silme başarısız: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestDeleteRemovesContainersThenRecords(t *testing.T) {
 // Konteyner adları `app_id`/`release_id`'den türüyor, yani veritabanı
 // satırı o konteynerlere ulaşmanın TEK yolu. Kayıtlar önce silinse ve
 // kaldırma yarıda kalsa, geriye kimsenin adını bilemediği çalışan
-// konteynerler kalırdı — ne panely görebilir, ne bir sonraki deneme
+// konteynerler kalırdı — ne kadran görebilir, ne bir sonraki deneme
 // bulabilir.
 func TestDeleteKeepsRecordsWhenContainerRemovalFails(t *testing.T) {
 	exec := &fakeExec{
@@ -108,7 +108,7 @@ func TestDeleteKeepsRecordsWhenContainerRemovalFails(t *testing.T) {
 	srv, db := newDeleteServer(t, exec)
 	seedDeletableApp(t, db, "blog")
 
-	if _, err := srv.DeleteApp(context.Background(), &panelyv1.DeleteAppRequest{AppId: "blog"}); err == nil {
+	if _, err := srv.DeleteApp(context.Background(), &kadranv1.DeleteAppRequest{AppId: "blog"}); err == nil {
 		t.Fatal("konteyner kaldırılamadı ama silme BAŞARILI döndü")
 	}
 
@@ -130,12 +130,12 @@ func TestDeleteIsRepeatableAfterPartialFailure(t *testing.T) {
 	seedDeletableApp(t, db, "blog")
 	ctx := context.Background()
 
-	if _, err := srv.DeleteApp(ctx, &panelyv1.DeleteAppRequest{AppId: "blog"}); err == nil {
+	if _, err := srv.DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: "blog"}); err == nil {
 		t.Fatal("ilk denemenin başarısız olması bekleniyordu")
 	}
 
 	exec.rmErr = nil // arıza geçti
-	if _, err := srv.DeleteApp(ctx, &panelyv1.DeleteAppRequest{AppId: "blog"}); err != nil {
+	if _, err := srv.DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: "blog"}); err != nil {
 		t.Fatalf("ikinci deneme tamamlanamadı: %v", err)
 	}
 	if _, err := db.GetApp(ctx, "blog"); !errors.Is(err, store.ErrAppNotFound) {
@@ -157,7 +157,7 @@ func TestDeleteRefusesLiveApp(t *testing.T) {
 		t.Fatalf("aktif sürüm yazılamadı: %v", err)
 	}
 
-	_, err := srv.DeleteApp(ctx, &panelyv1.DeleteAppRequest{AppId: "blog"})
+	_, err := srv.DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: "blog"})
 	if err == nil {
 		t.Fatal("canlı uygulama silindi")
 	}
@@ -189,7 +189,7 @@ func TestDeleteWritesAuditRecord(t *testing.T) {
 	seedDeletableApp(t, db, "blog")
 	ctx := context.Background()
 
-	if _, err := srv.DeleteApp(ctx, &panelyv1.DeleteAppRequest{AppId: "blog"}); err != nil {
+	if _, err := srv.DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: "blog"}); err != nil {
 		t.Fatalf("silme başarısız: %v", err)
 	}
 
@@ -220,7 +220,7 @@ func TestDeleteReportsMissingApp(t *testing.T) {
 	srv, _ := newDeleteServer(t, exec)
 
 	if _, err := srv.DeleteApp(context.Background(),
-		&panelyv1.DeleteAppRequest{AppId: "yok"}); err == nil {
+		&kadranv1.DeleteAppRequest{AppId: "yok"}); err == nil {
 		t.Fatal("olmayan uygulama silindi")
 	}
 	if len(exec.rmCalls) != 0 {

@@ -10,7 +10,7 @@
 //
 // Bu aynı zamanda K-055'in doğurduğu yükümlülüğü karşılıyor: ters vekil
 // `--resume` kullanmıyor, yani her yeniden başlatmada rotasız bir
-// yapılandırmaya dönüyor. Uzlaştırma panelyd açılışında da çağrılmalı.
+// yapılandırmaya dönüyor. Uzlaştırma kadrand açılışında da çağrılmalı.
 package deploy
 
 import (
@@ -67,7 +67,7 @@ type Reconciler struct {
 // New, uzlaştırıcıyı kurar.
 //
 // Admin bloğu ZORUNLU ve burada da kontrol ediliyor: admin'siz bir
-// yapılandırma yüklenirse Caddy varsayılan TCP :2019'a döner ve panelyd
+// yapılandırma yüklenirse Caddy varsayılan TCP :2019'a döner ve kadrand
 // unix soketinden bir daha ULAŞAMAZ — yani sistem kendini kalıcı olarak
 // kilitler. proxydrv.BuildConfig de aynı kontrolü yapıyor; bu, hatanın
 // yükleme anında değil kurulum anında görülmesi için.
@@ -78,7 +78,7 @@ func New(d Deployments, r Replicas, p Proxy, admin proxydrv.Admin) (*Reconciler,
 	if admin.Listen == "" {
 		return nil, errors.New(
 			"deploy: admin bloğu zorunlu — onsuz yüklenen yapılandırma " +
-				"panelyd'yi Caddy'den kalıcı olarak kilitler")
+				"kadrand'yi Caddy'den kalıcı olarak kilitler")
 	}
 	return &Reconciler{deployments: d, replicas: r, proxy: p, admin: admin}, nil
 }
@@ -148,7 +148,7 @@ type RepairResult struct {
 // başlayınca rotasız açılıyor. "Açılışta uzlaştır" yapılmıştı, "ters
 // vekil yeniden başladığında uzlaştır" HİÇ yapılmamıştı. Taze sunucu
 // testinde (K-112) yalnızca Caddy yeniden başlatıldı ve site 40
-// saniyenin 40'ında da kapalı kaldı; panelyd hiçbir şey fark etmedi.
+// saniyenin 40'ında da kapalı kaldı; kadrand hiçbir şey fark etmedi.
 //
 // ── İyileştirme davranışı DEĞİŞMİYOR ────────────────────────────────
 //

@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // LogSink, günlük satırlarının tüketicisidir.
@@ -49,9 +49,9 @@ type LogOptions struct {
 func (c *Client) ContainerLogs(
 	ctx context.Context, opts LogOptions, sink LogSink,
 ) error {
-	req := &panelyv1.ContainerLogsRequest{
-		Ref: &panelyv1.ContainerRef{
-			Release: &panelyv1.ReleaseRef{
+	req := &kadranv1.ContainerLogsRequest{
+		Ref: &kadranv1.ContainerRef{
+			Release: &kadranv1.ReleaseRef{
 				AppId:     opts.AppID,
 				ReleaseId: opts.ReleaseID,
 			},

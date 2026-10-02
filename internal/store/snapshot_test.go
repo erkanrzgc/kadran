@@ -18,7 +18,7 @@ import (
 // söylemezdi.
 func newSnapshotStore(t *testing.T) (*Store, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 	s, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("depo açılamadı: %v", err)
@@ -175,7 +175,7 @@ func TestListSnapshotsReadsTimeFromName(t *testing.T) {
 // TestListSnapshotsOnMissingDirIsEmpty, hiç yedek alınmamış olmanın bir
 // arıza OLMADIĞINI doğrular.
 func TestListSnapshotsOnMissingDirIsEmpty(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 	got, err := ListSnapshots(path)
 	if err != nil {
 		t.Fatalf("dizin yokken hata döndü: %v", err)

@@ -1,4 +1,4 @@
-// Package sockets, Panely'nin unix soketi dinleyicilerini tutarlı ve
+// Package sockets, Kadran'ın unix soketi dinleyicilerini tutarlı ve
 // güvenli biçimde oluşturur.
 package sockets
 
@@ -28,7 +28,7 @@ type ListenOptions struct {
 // Soket izinleri tek başına yeterli değildir ve buradaki kod bunu
 // varsaymaz. Erişim üç bağımsız katmanla kısıtlanır:
 //
-//  1. DİZİN izinleri — /run/panely-exec 0750 root:panely'dir. Dizini
+//  1. DİZİN izinleri — /run/kadran-exec 0750 root:kadran'dır. Dizini
 //     traverse edemeyen bir süreç içindeki sokete hiç ulaşamaz. Asıl
 //     kapı budur ve systemd-tmpfiles tarafından kurulur.
 //

@@ -11,7 +11,7 @@ var Version = "dev"
 // Commit, derlemenin yapıldığı git commit'i. ldflags ile doldurulur.
 var Commit = "unknown"
 
-// Protocol, istemci ↔ panelyd ↔ executor arasındaki sözleşme sürümüdür.
+// Protocol, istemci ↔ kadrand ↔ executor arasındaki sözleşme sürümüdür.
 //
 // Üç binary aynı anda güncellenmeyebilir: bootstrap sunucuyu günceller ama
 // iş istasyonundaki CLI eski kalabilir. Uyumsuz sürümler sessizce yanlış

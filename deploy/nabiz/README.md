@@ -5,7 +5,7 @@ sunucu tamamen kapanırsa bunu bildirecek bir şey sunucuda kalmaz. Bu Worker
 sunucudan 15 dakika haber alamazsa Telegram'a yazar. Ayrıntı: K-109.
 
 ```
-sunucu  panely-notify (dakikada bir)  ──POST /ping, ~5 dk'da bir──►  Worker ─► KV
+sunucu  kadran-notify (dakikada bir)  ──POST /ping, ~5 dk'da bir──►  Worker ─► KV
 Worker  5 dk'da bir kontrol: son nabız > 15 dk?  ──►  Telegram
 ```
 
@@ -26,7 +26,7 @@ npx wrangler deploy
 
 `deploy`, KV ad alanını kendisi oluşturur ve kimliğini `wrangler.jsonc`'a
 yazar. **Bu değişikliği commit etme** — kimlik senin hesabına özel.
-Çıktıdaki adresi not al: `https://panely-nabiz.<alt-alan>.workers.dev`.
+Çıktıdaki adresi not al: `https://kadran-nabiz.<alt-alan>.workers.dev`.
 
 ### 2. Gizli değerler
 
@@ -46,10 +46,10 @@ npx wrangler secret put TELEGRAM_CHAT_ID    # sohbet kimliği
 
 ### 3. Sunucuya nabız ayarı (root)
 
-`/etc/panely/notify.conf`'a iki satır ekle:
+`/etc/kadran/notify.conf`'a iki satır ekle:
 
 ```ini
-HEARTBEAT_URL=https://panely-nabiz.<alt-alan>.workers.dev/ping
+HEARTBEAT_URL=https://kadran-nabiz.<alt-alan>.workers.dev/ping
 HEARTBEAT_TOKEN=<aynı PING_TOKEN>
 ```
 
@@ -62,9 +62,9 @@ edebildiğini kanıtlamaz.
 
 1. **Sessizlik:** gönderici çalışırken en az bir kontrol turu (5 dk)
    boyunca mesaj GELMEMELİ.
-2. **Alarm:** `systemctl stop panely-notify.timer` → en geç ~20 dk içinde
+2. **Alarm:** `systemctl stop kadran-notify.timer` → en geç ~20 dk içinde
    "🔴 NABIZ YOK" gelmeli.
-3. **Düzelme:** `systemctl start panely-notify.timer` → "✅ NABIZ GERİ GELDİ".
+3. **Düzelme:** `systemctl start kadran-notify.timer` → "✅ NABIZ GERİ GELDİ".
 
 Ölçülen (25 Eyl, K-109): son nabızdan 17 dk sonra 🔴, zamanlayıcı açıldıktan
 sonraki ilk turda ✅. Her durum değişiminde tek mesaj geldi, eşiğin altındaki

@@ -23,9 +23,9 @@ Good: "Reverted the path.Clean check; TestMountPathRejectsEscapeAttempts failed 
 ## Privileged surface
 
 <!-- Delete this section if you did not touch exec.proto, internal/exec,
-     cmd/panely-exec, or deploy/systemd. -->
+     cmd/kadran-exec, or deploy/systemd. -->
 
-- [ ] Threat rationale written: if `panelyd` were fully compromised, what would it
+- [ ] Threat rationale written: if `kadrand` were fully compromised, what would it
       do with this? →
 - [ ] Escape-attempt tests added, not just happy-path
 - [ ] `scripts/check-exec-surface.sh` passes and stays under the 2500-line budget

@@ -6,7 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runBackup, `backup` alt komutlarını dağıtır.
@@ -49,7 +49,7 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().CreateBackup(ctx, &panelyv1.CreateBackupRequest{})
+	resp, err := conn.RPC().CreateBackup(ctx, &kadranv1.CreateBackupRequest{})
 	if err != nil {
 		return c.fail(fmt.Errorf("backup create: %w", err))
 	}
@@ -95,7 +95,7 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().ListBackups(ctx, &panelyv1.ListBackupsRequest{})
+	resp, err := conn.RPC().ListBackups(ctx, &kadranv1.ListBackupsRequest{})
 	if err != nil {
 		return c.fail(fmt.Errorf("backup list: %w", err))
 	}
@@ -135,9 +135,9 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 	printVolumeScopeWarning(c, true)
 	fmt.Fprintln(c.stdout,
 		"geri yükleme sunucuda, daemon KAPALIYKEN:\n"+
-			"  systemctl stop panelyd\n"+
-			"  sudo -u panely /usr/local/lib/panely/panelyd --restore <yol>\n"+
-			"  systemctl start panelyd")
+			"  systemctl stop kadrand\n"+
+			"  sudo -u kadran /usr/local/lib/kadran/kadrand --restore <yol>\n"+
+			"  systemctl start kadrand")
 	return exitOK
 }
 

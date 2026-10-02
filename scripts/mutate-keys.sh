@@ -7,7 +7,7 @@
 #
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
-# authorized_keys'e kısıtsız bir satır düşmesi: panely-client'a kabuk.
+# authorized_keys'e kısıtsız bir satır düşmesi: kadran-client'a kabuk.
 # Hemen arkasından aynı anahtarın iki satırda olması (sshd İLK eşleşeni
 # kullanır, rol satır sırasına kalır) ve son yönetici satırının silinmesi.
 #

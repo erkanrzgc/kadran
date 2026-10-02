@@ -36,7 +36,7 @@ func (c *Client) NetworkEnsure(ctx context.Context, appID string) (string, error
 	body := networkBody{
 		Name:     name,
 		Internal: false,
-		// Öksüz ağları bulabilmek için Panely işareti.
+		// Öksüz ağları bulabilmek için Kadran işareti.
 		Labels: map[string]string{labelAppID: appID},
 	}
 

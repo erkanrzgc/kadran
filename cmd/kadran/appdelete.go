@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runAppDelete, uygulamayı ve izlerini kaldırır.
@@ -42,7 +42,7 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().DeleteApp(ctx, &panelyv1.DeleteAppRequest{AppId: fs.Arg(0)})
+	resp, err := conn.RPC().DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: fs.Arg(0)})
 	if err != nil {
 		return c.fail(fmt.Errorf("app delete: %w", err))
 	}
@@ -70,12 +70,12 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 	// farkına varmadan yer tüketir.
 	//
 	// Mesaj yolu ADLANDIRMIYOR: hacim kökü executor'ın yapılandırması ve
-	// panelyd onu bilmiyor. Bilmediği bir yolu yazmak, doğrulanmamış bir
+	// kadrand onu bilmiyor. Bilmediği bir yolu yazmak, doğrulanmamış bir
 	// iddia olurdu.
 	if kept := resp.GetVolumesKept(); len(kept) > 0 {
 		fmt.Fprintf(c.stdout,
 			"\n⚠ %d hacmin VERİSİ DİSKTE DURUYOR (silinmedi): %s\n"+
-				"  Panely kalıcı diski kendiliğinden yok etmez. Yer açmak "+
+				"  Kadran kalıcı diski kendiliğinden yok etmez. Yer açmak "+
 				"isterseniz sunucudaki hacim dizinini elle kaldırın.\n",
 			len(kept), strings.Join(kept, ", "))
 	}

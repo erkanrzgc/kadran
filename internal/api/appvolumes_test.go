@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
-func protoVolumes() []*panelyv1.AppVolume {
-	return []*panelyv1.AppVolume{
+func protoVolumes() []*kadranv1.AppVolume {
+	return []*kadranv1.AppVolume{
 		{Name: "data", MountPath: "/var/lib/app"},
 		{Name: "sablonlar", MountPath: "/etc/app/templates", ReadOnly: true},
 	}
@@ -20,7 +20,7 @@ func protoVolumes() []*panelyv1.AppVolume {
 // Çevrimler elle yazılmış alan listeleri; eksik alan derleme hatası
 // vermez, Go'nun sıfır değerine düşer.
 func TestAppVolumesRoundTripThroughProto(t *testing.T) {
-	spec := &panelyv1.AppSpec{AppId: "blog", Volumes: protoVolumes()}
+	spec := &kadranv1.AppSpec{AppId: "blog", Volumes: protoVolumes()}
 
 	app := appFromProto(spec)
 	if len(app.Volumes) != 2 {
@@ -65,7 +65,7 @@ func TestValidateVolumesRejectsBadNames(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateVolumes([]*panelyv1.AppVolume{
+			err := validateVolumes([]*kadranv1.AppVolume{
 				{Name: tc.vol, MountPath: "/data"},
 			})
 			if err == nil {
@@ -95,7 +95,7 @@ func TestValidateVolumesRejectsBadMountPaths(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateVolumes([]*panelyv1.AppVolume{
+			err := validateVolumes([]*kadranv1.AppVolume{
 				{Name: "data", MountPath: tc.path},
 			})
 			if err == nil {
@@ -111,7 +111,7 @@ func TestValidateVolumesRejectsBadMountPaths(t *testing.T) {
 // Hangi hacmin görüneceği bağlama SIRASINA kalırdı — güvenlik sınırında
 // belirsiz davranış kabul edilemez.
 func TestValidateVolumesRejectsOverlap(t *testing.T) {
-	err := validateVolumes([]*panelyv1.AppVolume{
+	err := validateVolumes([]*kadranv1.AppVolume{
 		{Name: "dis", MountPath: "/var/lib/app"},
 		{Name: "ic", MountPath: "/var/lib/app/data"},
 	})
@@ -129,7 +129,7 @@ func TestValidateVolumesRejectsOverlap(t *testing.T) {
 // İkisi de diskte AYNI dizini gösterirdi; hangisinin bağlama noktasının
 // geçerli olduğu belirsiz kalırdı.
 func TestValidateVolumesRejectsDuplicateNames(t *testing.T) {
-	err := validateVolumes([]*panelyv1.AppVolume{
+	err := validateVolumes([]*kadranv1.AppVolume{
 		{Name: "data", MountPath: "/bir"},
 		{Name: "data", MountPath: "/iki"},
 	})
@@ -140,7 +140,7 @@ func TestValidateVolumesRejectsDuplicateNames(t *testing.T) {
 
 // TestValidateVolumesAcceptsRealistic, KONTROL GRUBUdur.
 func TestValidateVolumesAcceptsRealistic(t *testing.T) {
-	err := validateVolumes([]*panelyv1.AppVolume{
+	err := validateVolumes([]*kadranv1.AppVolume{
 		{Name: "data", MountPath: "/var/lib/app"},
 		{Name: "uploads", MountPath: "/srv/uploads"},
 		{Name: "config-ro", MountPath: "/etc/app", ReadOnly: true},
@@ -152,9 +152,9 @@ func TestValidateVolumesAcceptsRealistic(t *testing.T) {
 
 // TestValidateVolumesEnforcesCount, üst sınırı doğrular.
 func TestValidateVolumesEnforcesCount(t *testing.T) {
-	many := make([]*panelyv1.AppVolume, 0, maxVolumes+1)
+	many := make([]*kadranv1.AppVolume, 0, maxVolumes+1)
 	for i := range maxVolumes + 1 {
-		many = append(many, &panelyv1.AppVolume{
+		many = append(many, &kadranv1.AppVolume{
 			Name:      "v" + string(rune('a'+i%26)) + string(rune('a'+i/26)),
 			MountPath: "/m" + string(rune('a'+i%26)) + string(rune('a'+i/26)),
 		})
@@ -168,7 +168,7 @@ func TestValidateVolumesEnforcesCount(t *testing.T) {
 // eklenip hem ayrılmasını doğrular.
 func TestValidateVolumeRemoveRejectsContradiction(t *testing.T) {
 	err := validateVolumeRemove(
-		[]*panelyv1.AppVolume{{Name: "data", MountPath: "/d"}},
+		[]*kadranv1.AppVolume{{Name: "data", MountPath: "/d"}},
 		[]string{"data"},
 	)
 	if err == nil {
@@ -186,14 +186,14 @@ func TestValidateVolumeRemoveRejectsContradiction(t *testing.T) {
 // sorusu denetlenebilir kalmalı. Ama host yolu hiçbir yerde geçmemeli:
 // kayıtta görünmesi, onun istekten geldiği izlenimini yaratırdı.
 func TestVolumeAuditParamsCarryNamesNotPaths(t *testing.T) {
-	spec := &panelyv1.AppSpec{AppId: "blog", Volumes: protoVolumes()}
+	spec := &kadranv1.AppSpec{AppId: "blog", Volumes: protoVolumes()}
 	params := appAuditParams(spec)
 
 	if params["volume.data"] == "" {
 		t.Errorf("hacim denetime yazılmadı: %+v", params)
 	}
 	for k, v := range params {
-		if strings.Contains(v, "/var/lib/panely/volumes") {
+		if strings.Contains(v, "/var/lib/kadran/volumes") {
 			t.Errorf("denetime HOST YOLU yazıldı (%s=%q) — yol istekten "+
 				"gelmiyor, executor kuruyor", k, v)
 		}
@@ -208,9 +208,9 @@ func TestUpdateAppRejectsContradictoryVolumes(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	_, err := srv.UpdateApp(t.Context(), &panelyv1.UpdateAppRequest{
+	_, err := srv.UpdateApp(t.Context(), &kadranv1.UpdateAppRequest{
 		AppId:        "blog",
-		Volumes:      []*panelyv1.AppVolume{{Name: "data", MountPath: "/d"}},
+		Volumes:      []*kadranv1.AppVolume{{Name: "data", MountPath: "/d"}},
 		VolumeRemove: []string{"data"},
 	})
 	if err == nil {
@@ -228,9 +228,9 @@ func TestUpdateAppWarnsVolumesNeedRedeploy(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	resp := update(t, srv, &panelyv1.UpdateAppRequest{
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId:   "blog",
-		Volumes: []*panelyv1.AppVolume{{Name: "data", MountPath: "/var/lib/app"}},
+		Volumes: []*kadranv1.AppVolume{{Name: "data", MountPath: "/var/lib/app"}},
 	})
 
 	detail := resp.GetVolumeDetail()
@@ -252,9 +252,9 @@ func TestUpdateAppVolumesActuallyPersist(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	update(t, srv, &panelyv1.UpdateAppRequest{
+	update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId:   "blog",
-		Volumes: []*panelyv1.AppVolume{{Name: "data", MountPath: "/var/lib/app"}},
+		Volumes: []*kadranv1.AppVolume{{Name: "data", MountPath: "/var/lib/app"}},
 	})
 
 	got := mustGetSpec(t, srv, "blog")
@@ -269,10 +269,10 @@ func TestCreateAppRejectsInvalidVolume(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 
 	spec := testSpec()
-	spec.Volumes = []*panelyv1.AppVolume{{Name: "data", MountPath: "goreli/yol"}}
+	spec.Volumes = []*kadranv1.AppVolume{{Name: "data", MountPath: "goreli/yol"}}
 
 	if _, err := srv.CreateApp(t.Context(),
-		&panelyv1.CreateAppRequest{Spec: spec}); err == nil {
+		&kadranv1.CreateAppRequest{Spec: spec}); err == nil {
 		t.Fatal("göreli bağlama noktası kabul edildi")
 	}
 }

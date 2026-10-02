@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // TestAppEnvRoundTripsThroughProto, env'in proto ↔ depo çevrimlerinde
@@ -16,7 +16,7 @@ import (
 // tel tuzağı burada ateşlenmiyor — o tuzak yeni RPC'ler için kurulu, alan
 // eklemek derlemeyi kırmaz. Yani bu katmanda tek koruma bu test.
 func TestAppEnvRoundTripsThroughProto(t *testing.T) {
-	spec := &panelyv1.AppSpec{
+	spec := &kadranv1.AppSpec{
 		AppId: "blog",
 		Env:   map[string]string{"DATABASE_URL": "postgres://db/blog"},
 	}
@@ -44,7 +44,7 @@ func TestAppEnvRoundTripsThroughProto(t *testing.T) {
 // denetlenebilir kalmalı. Sızan şey değer olurdu.
 func TestAppAuditParamsNeverCarryEnvValues(t *testing.T) {
 	const secret = "postgres://user:SUPERGIZLI@db:5432/blog"
-	spec := &panelyv1.AppSpec{
+	spec := &kadranv1.AppSpec{
 		AppId: "blog",
 		Env:   map[string]string{"DATABASE_URL": secret, "LOG_LEVEL": "debug"},
 	}
@@ -73,7 +73,7 @@ func TestAppAuditParamsNeverCarryEnvValues(t *testing.T) {
 // diğerini unutma sınıfı.
 func TestUpdateAuditParamsNeverCarryEnvValues(t *testing.T) {
 	const secret = "postgres://user:SUPERGIZLI@db:5432/blog"
-	req := &panelyv1.UpdateAppRequest{
+	req := &kadranv1.UpdateAppRequest{
 		AppId:     "blog",
 		Env:       map[string]string{"DATABASE_URL": secret},
 		EnvRemove: []string{"ESKI"},
@@ -240,7 +240,7 @@ func TestUpdateAppRejectsContradictoryEnv(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	_, err := srv.UpdateApp(t.Context(), &panelyv1.UpdateAppRequest{
+	_, err := srv.UpdateApp(t.Context(), &kadranv1.UpdateAppRequest{
 		AppId:     "blog",
 		Env:       map[string]string{"DATABASE_URL": "x"},
 		EnvRemove: []string{"DATABASE_URL"},
@@ -268,7 +268,7 @@ func TestUpdateAppWarnsEnvNeedsRedeploy(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	resp := update(t, srv, &panelyv1.UpdateAppRequest{
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId: "blog",
 		Env:   map[string]string{"DATABASE_URL": "postgres://db/blog"},
 	})
@@ -296,7 +296,7 @@ func TestUpdateAppEnvActuallyPersists(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	update(t, srv, &panelyv1.UpdateAppRequest{
+	update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId: "blog",
 		Env:   map[string]string{"DATABASE_URL": "postgres://db/blog"},
 	})
@@ -323,7 +323,7 @@ func TestCreateAppRejectsInvalidEnv(t *testing.T) {
 	spec := testSpec()
 	spec.Env = map[string]string{"GECERSIZ-AD": "x"}
 
-	_, err := srv.CreateApp(t.Context(), &panelyv1.CreateAppRequest{Spec: spec})
+	_, err := srv.CreateApp(t.Context(), &kadranv1.CreateAppRequest{Spec: spec})
 	if err == nil {
 		t.Fatal("gecersiz env anahtari kabul edildi -- executor bunu " +
 			"dagitimda reddeder ve kullanici sebebini goremez")
@@ -343,7 +343,7 @@ func TestUpdateAppRejectsInvalidEnv(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	_, err := srv.UpdateApp(t.Context(), &panelyv1.UpdateAppRequest{
+	_, err := srv.UpdateApp(t.Context(), &kadranv1.UpdateAppRequest{
 		AppId: "blog",
 		Env:   map[string]string{"1RAKAMLA": "x"},
 	})

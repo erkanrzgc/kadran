@@ -11,7 +11,7 @@
 //
 // Bu paket alarmın NE ZAMAN çalacağına karar veriyor; nereye
 // gideceğine değil. Teslimat ayrı bir karar ve ayrı bir engeli var:
-// panelyd'nin systemd birimi `IPAddressDeny=any` taşıyor ve dışarı
+// kadrand'nin systemd birimi `IPAddressDeny=any` taşıyor ve dışarı
 // çıkamıyor (ÖLÇÜLDÜ — kısıtlı ortamda curl DNS bile çözemedi,
 // kontrol grubunda aynı istek 302 döndü). Telegram/webhook için ya o
 // politika gevşetilmeli ya ayrı bir gönderici süreç gerekli.
@@ -94,7 +94,7 @@ func New(s Store, sink Sink) *Manager {
 // Her gözetim turunda çağrılmak ÜZERE tasarlandı: ikinci ve sonraki
 // çağrılar sessizdir. Çağıran tarafın "daha önce haber verdim mi?"
 // diye durum tutması GEREKMİYOR — o soru burada, veritabanında
-// cevaplanıyor ve cevabı panelyd'nin ömründen uzun yaşıyor.
+// cevaplanıyor ve cevabı kadrand'nin ömründen uzun yaşıyor.
 func (m *Manager) Raise(ctx context.Context, a store.Alarm) {
 	fresh, err := m.store.RaiseAlarm(ctx, a)
 	if err != nil {
@@ -148,7 +148,7 @@ func (m *Manager) Clear(ctx context.Context, id string) {
 // ── Neden ilk uygulama bu ───────────────────────────────────────────
 //
 // Teslimat kararı verilene kadar alarmların kaybolmaması gerekiyor.
-// journal zaten toplanıyor, döndürülüyor ve `journalctl -u panelyd`
+// journal zaten toplanıyor, döndürülüyor ve `journalctl -u kadrand`
 // ile okunabiliyor — yani sıfır ek altyapıyla çalışan bir hedef.
 //
 // Seviye ciddiyete göre seçiliyor: `-p err` ile süzen bir operatör

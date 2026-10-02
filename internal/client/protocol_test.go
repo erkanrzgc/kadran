@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -16,14 +16,14 @@ import (
 // çağrılırsa test panikle düşer — CheckProtocol'ün başka bir şeye
 // dokunmadığını da böylece doğruluyor.
 type sahtePing struct {
-	panelyv1.PanelyServiceClient
+	kadranv1.KadranServiceClient
 	protokol uint32
 	gelen    string
 }
 
-func (s *sahtePing) Ping(_ context.Context, in *panelyv1.PingRequest, _ ...grpc.CallOption) (*panelyv1.PingResponse, error) {
+func (s *sahtePing) Ping(_ context.Context, in *kadranv1.PingRequest, _ ...grpc.CallOption) (*kadranv1.PingResponse, error) {
 	s.gelen = in.GetClientVersion()
-	return &panelyv1.PingResponse{ProtocolVersion: s.protokol}, nil
+	return &kadranv1.PingResponse{ProtocolVersion: s.protokol}, nil
 }
 
 // TestCheckProtocolRejectsAMismatch: her CLI bağlantısı bu kontrolden

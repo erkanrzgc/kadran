@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -29,8 +29,8 @@ import (
 // adı ortaya çıkamaz. Bu, SetActiveRelease'in belgelediği sıranın
 // aynısı — önce kontrol düzlemindeki gerçek, sonra ona uyum.
 func (s *Server) UpdateApp(
-	ctx context.Context, req *panelyv1.UpdateAppRequest,
-) (*panelyv1.UpdateAppResponse, error) {
+	ctx context.Context, req *kadranv1.UpdateAppRequest,
+) (*kadranv1.UpdateAppResponse, error) {
 	const action = "app.update"
 
 	appID := req.GetAppId()
@@ -98,7 +98,7 @@ func (s *Server) UpdateApp(
 		return nil, appError(err)
 	}
 
-	resp := &panelyv1.UpdateAppResponse{App: appToProto(app)}
+	resp := &kadranv1.UpdateAppResponse{App: appToProto(app)}
 	if domainMoved || replicasChanged {
 		detail, err := s.moveTraffic(ctx, appID, current.Domain, app.Domain)
 		if err != nil {
@@ -144,7 +144,7 @@ func envNeedsRedeploy(appID string) string {
 //
 // ── Neden dağıtım beklemiyoruz? ─────────────────────────────────────
 //
-// Uzlaştırma yalnızca İKİ yerden çağrılıyordu: panelyd açılışı ve
+// Uzlaştırma yalnızca İKİ yerden çağrılıyordu: kadrand açılışı ve
 // dağıtım. Yani `app update -domain` tek başına trafiği taşımazdı; alan
 // adı veritabanında değişir, canlıda hiçbir şey olmazdı ve kullanıcı
 // komut "başarılı" dediği için taşındığını sanırdı. Bu işin var olma
@@ -162,7 +162,7 @@ func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (strin
 		return "", status.Errorf(codes.Unavailable,
 			"alan adı %q → %q olarak KAYDEDİLDİ, ama ters vekil "+
 				"güncellenemedi: trafik hâlâ eski rotada. Uzlaştırma bir "+
-				"sonraki dağıtımda veya panelyd yeniden başlatıldığında "+
+				"sonraki dağıtımda veya kadrand yeniden başlatıldığında "+
 				"tekrar denenir. Sebep: %v", from, to, err)
 	}
 
@@ -184,7 +184,7 @@ func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (strin
 //
 // İşaretçiler KOPYALANIYOR, proto'nunkiler paylaşılmıyor: istek nesnesi
 // çağrı bittikten sonra gRPC tarafından yeniden kullanılabilir.
-func updateFromProto(req *panelyv1.UpdateAppRequest) store.AppUpdate {
+func updateFromProto(req *kadranv1.UpdateAppRequest) store.AppUpdate {
 	var upd store.AppUpdate
 	if req.Domain != nil {
 		v := req.GetDomain()
@@ -230,7 +230,7 @@ func updateFromProto(req *panelyv1.UpdateAppRequest) store.AppUpdate {
 // Belirtilmeyen alanı boş değeriyle yazmak, kaydı okuyan birine
 // "health_path boşaltıldı" dedirtirdi — oysa ona hiç dokunulmadı.
 // Zincir ekle-sadece: bir kez yazılan yanlış bilgi düzeltilemez.
-func updateAuditParams(req *panelyv1.UpdateAppRequest) map[string]string {
+func updateAuditParams(req *kadranv1.UpdateAppRequest) map[string]string {
 	params := map[string]string{}
 	if req.Domain != nil {
 		params["domain"] = req.GetDomain()

@@ -16,7 +16,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Test altyapısı ───────────────────────────────────────────────────
@@ -54,7 +54,7 @@ func (l *singleConnListener) Close() error {
 
 func (l *singleConnListener) Addr() net.Addr { return pipeAddr{network: "pipe", address: "test"} }
 
-// stubService, PanelyServiceServer'ın en küçük uygulaması.
+// stubService, KadranServiceServer'ın en küçük uygulaması.
 //
 // require_unimplemented_servers=false olduğu için dört metodun da
 // yazılması gerekiyor — bu kasıtlı bir tasarım (docs/decisions.md K-011).
@@ -67,15 +67,15 @@ type stubService struct {
 // Boş bir gövde "akış çalışıyor" izlenimi verirdi; bu paketin sınadığı
 // şey taşıma katmanı, günlük akışı değil.
 func (s *stubService) StreamLogs(
-	*panelyv1.StreamLogsRequest,
-	grpc.ServerStreamingServer[panelyv1.StreamLogsResponse],
+	*kadranv1.StreamLogsRequest,
+	grpc.ServerStreamingServer[kadranv1.StreamLogsResponse],
 ) error {
 	return errors.New("stubService: StreamLogs beklenmiyordu")
 }
 
 func (s *stubService) DeleteApp(
-	context.Context, *panelyv1.DeleteAppRequest,
-) (*panelyv1.DeleteAppResponse, error) {
+	context.Context, *kadranv1.DeleteAppRequest,
+) (*kadranv1.DeleteAppResponse, error) {
 	return nil, errors.New("stubService: DeleteApp beklenmiyordu")
 }
 
@@ -83,46 +83,46 @@ func (s *stubService) DeleteApp(
 // sınıyor; bir RPC'yi "çalışıyor" gösterip hiçbir şey yapmamak,
 // K-011'in önlemek için var olduğu sessiz boşluğun ta kendisi olurdu.
 func (s *stubService) PruneApp(
-	context.Context, *panelyv1.PruneAppRequest,
-) (*panelyv1.PruneAppResponse, error) {
+	context.Context, *kadranv1.PruneAppRequest,
+) (*kadranv1.PruneAppResponse, error) {
 	return nil, errors.New("stubService: PruneApp beklenmiyordu")
 }
 
 // Alarm RPC'si de sessizce başarı dönmüyor; gerekçe PruneApp'ta.
 func (s *stubService) ListAlarms(
-	context.Context, *panelyv1.ListAlarmsRequest,
-) (*panelyv1.ListAlarmsResponse, error) {
+	context.Context, *kadranv1.ListAlarmsRequest,
+) (*kadranv1.ListAlarmsResponse, error) {
 	return nil, errors.New("stubService: ListAlarms beklenmiyordu")
 }
 
 // Yedekleme RPC'leri de sessizce başarı dönmüyor; gerekçe PruneApp'ta.
 func (s *stubService) CreateBackup(
-	context.Context, *panelyv1.CreateBackupRequest,
-) (*panelyv1.CreateBackupResponse, error) {
+	context.Context, *kadranv1.CreateBackupRequest,
+) (*kadranv1.CreateBackupResponse, error) {
 	return nil, errors.New("stubService: CreateBackup beklenmiyordu")
 }
 
 func (s *stubService) ListBackups(
-	context.Context, *panelyv1.ListBackupsRequest,
-) (*panelyv1.ListBackupsResponse, error) {
+	context.Context, *kadranv1.ListBackupsRequest,
+) (*kadranv1.ListBackupsResponse, error) {
 	return nil, errors.New("stubService: ListBackups beklenmiyordu")
 }
 
-func (s *stubService) Ping(context.Context, *panelyv1.PingRequest) (*panelyv1.PingResponse, error) {
+func (s *stubService) Ping(context.Context, *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
 	s.pingCalls++
-	return &panelyv1.PingResponse{
+	return &kadranv1.PingResponse{
 		DaemonVersion:   "test",
 		ProtocolVersion: 1,
 		ServerTime:      timestamppb.Now(),
 	}, nil
 }
 
-func (s *stubService) GetSystemInfo(context.Context, *panelyv1.GetSystemInfoRequest) (*panelyv1.GetSystemInfoResponse, error) {
-	return &panelyv1.GetSystemInfoResponse{DaemonVersion: "test", Hostname: "stub"}, nil
+func (s *stubService) GetSystemInfo(context.Context, *kadranv1.GetSystemInfoRequest) (*kadranv1.GetSystemInfoResponse, error) {
+	return &kadranv1.GetSystemInfoResponse{DaemonVersion: "test", Hostname: "stub"}, nil
 }
 
-func (s *stubService) ListAuditRecords(context.Context, *panelyv1.ListAuditRecordsRequest) (*panelyv1.ListAuditRecordsResponse, error) {
-	return &panelyv1.ListAuditRecordsResponse{}, nil
+func (s *stubService) ListAuditRecords(context.Context, *kadranv1.ListAuditRecordsRequest) (*kadranv1.ListAuditRecordsResponse, error) {
+	return &kadranv1.ListAuditRecordsResponse{}, nil
 }
 
 // ── Faz 1 uygulama RPC'leri ─────────────────────────────────────────
@@ -131,38 +131,38 @@ func (s *stubService) ListAuditRecords(context.Context, *panelyv1.ListAuditRecor
 // katmanını sınıyor (önsöz + gRPC aynı bağlantıda), iş mantığını değil.
 //
 // Var olma sebepleri buf.gen.yaml'daki `require_unimplemented_servers=false`:
-// UnimplementedPanelyServiceServer gömülmediği için şemaya eklenen her yeni
+// UnimplementedKadranServiceServer gömülmediği için şemaya eklenen her yeni
 // RPC DERLEMEYİ KIRAR. Kırıldı — tam da tasarlandığı gibi. Gömüp geçmek,
 // tripwire'ı bu paket için kalıcı olarak devre dışı bırakırdı.
 
-func (s *stubService) CreateApp(context.Context, *panelyv1.CreateAppRequest) (*panelyv1.CreateAppResponse, error) {
-	return &panelyv1.CreateAppResponse{}, nil
+func (s *stubService) CreateApp(context.Context, *kadranv1.CreateAppRequest) (*kadranv1.CreateAppResponse, error) {
+	return &kadranv1.CreateAppResponse{}, nil
 }
 
-func (s *stubService) UpdateApp(context.Context, *panelyv1.UpdateAppRequest) (*panelyv1.UpdateAppResponse, error) {
-	return &panelyv1.UpdateAppResponse{}, nil
+func (s *stubService) UpdateApp(context.Context, *kadranv1.UpdateAppRequest) (*kadranv1.UpdateAppResponse, error) {
+	return &kadranv1.UpdateAppResponse{}, nil
 }
 
-func (s *stubService) ListApps(context.Context, *panelyv1.ListAppsRequest) (*panelyv1.ListAppsResponse, error) {
-	return &panelyv1.ListAppsResponse{}, nil
+func (s *stubService) ListApps(context.Context, *kadranv1.ListAppsRequest) (*kadranv1.ListAppsResponse, error) {
+	return &kadranv1.ListAppsResponse{}, nil
 }
 
-func (s *stubService) GetApp(context.Context, *panelyv1.GetAppRequest) (*panelyv1.GetAppResponse, error) {
-	return &panelyv1.GetAppResponse{}, nil
+func (s *stubService) GetApp(context.Context, *kadranv1.GetAppRequest) (*kadranv1.GetAppResponse, error) {
+	return &kadranv1.GetAppResponse{}, nil
 }
 
-func (s *stubService) Deploy(*panelyv1.DeployRequest, grpc.ServerStreamingServer[panelyv1.DeployResponse]) error {
+func (s *stubService) Deploy(*kadranv1.DeployRequest, grpc.ServerStreamingServer[kadranv1.DeployResponse]) error {
 	return status.Error(codes.Unimplemented, "saplama dağıtım yapmaz")
 }
 
-func (s *stubService) Rollback(context.Context, *panelyv1.RollbackRequest) (*panelyv1.RollbackResponse, error) {
+func (s *stubService) Rollback(context.Context, *kadranv1.RollbackRequest) (*kadranv1.RollbackResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "saplama geri alma yapmaz")
 }
 
-func (s *stubService) VerifyAuditChain(context.Context, *panelyv1.VerifyAuditChainRequest) (*panelyv1.VerifyAuditChainResponse, error) {
-	return &panelyv1.VerifyAuditChainResponse{
-		DaemonStatus:   panelyv1.ChainStatus_CHAIN_STATUS_VALID,
-		ExecutorStatus: panelyv1.ChainStatus_CHAIN_STATUS_VALID,
+func (s *stubService) VerifyAuditChain(context.Context, *kadranv1.VerifyAuditChainRequest) (*kadranv1.VerifyAuditChainResponse, error) {
+	return &kadranv1.VerifyAuditChainResponse{
+		DaemonStatus:   kadranv1.ChainStatus_CHAIN_STATUS_VALID,
+		ExecutorStatus: kadranv1.ChainStatus_CHAIN_STATUS_VALID,
 		Detail:         "stub",
 	}, nil
 }
@@ -195,7 +195,7 @@ func TestGRPCWorksOverPipeConn(t *testing.T) {
 
 	stub := &stubService{}
 	server := grpc.NewServer()
-	panelyv1.RegisterPanelyServiceServer(server, stub)
+	kadranv1.RegisterKadranServiceServer(server, stub)
 
 	listener := newSingleConnListener(serverSide)
 	serverDone := make(chan struct{})
@@ -223,7 +223,7 @@ func TestGRPCWorksOverPipeConn(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	resp, err := panelyv1.NewPanelyServiceClient(conn).Ping(ctx, &panelyv1.PingRequest{
+	resp, err := kadranv1.NewKadranServiceClient(conn).Ping(ctx, &kadranv1.PingRequest{
 		ClientVersion: "test-client",
 	})
 	if err != nil {
@@ -244,7 +244,7 @@ func TestGRPCSurvivesMultipleCallsOverPipeConn(t *testing.T) {
 	clientSide, serverSide := connectedPipes()
 
 	server := grpc.NewServer()
-	panelyv1.RegisterPanelyServiceServer(server, &stubService{})
+	kadranv1.RegisterKadranServiceServer(server, &stubService{})
 
 	listener := newSingleConnListener(serverSide)
 	serverDone := make(chan struct{})
@@ -269,20 +269,20 @@ func TestGRPCSurvivesMultipleCallsOverPipeConn(t *testing.T) {
 	}
 	defer func() { _ = conn.Close() }()
 
-	client := panelyv1.NewPanelyServiceClient(conn)
+	client := kadranv1.NewKadranServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	for i := range 5 {
-		if _, err := client.Ping(ctx, &panelyv1.PingRequest{}); err != nil {
+		if _, err := client.Ping(ctx, &kadranv1.PingRequest{}); err != nil {
 			t.Fatalf("%d. çağrı başarısız: %v", i+1, err)
 		}
 	}
 
-	if _, err := client.GetSystemInfo(ctx, &panelyv1.GetSystemInfoRequest{}); err != nil {
+	if _, err := client.GetSystemInfo(ctx, &kadranv1.GetSystemInfoRequest{}); err != nil {
 		t.Fatalf("farklı metot çağrısı başarısız: %v", err)
 	}
-	if _, err := client.VerifyAuditChain(ctx, &panelyv1.VerifyAuditChainRequest{}); err != nil {
+	if _, err := client.VerifyAuditChain(ctx, &kadranv1.VerifyAuditChainRequest{}); err != nil {
 		t.Fatalf("doğrulama çağrısı başarısız: %v", err)
 	}
 }

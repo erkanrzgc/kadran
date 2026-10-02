@@ -8,7 +8,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
@@ -16,7 +16,7 @@ import (
 func newTestServer(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
 
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestNewServerRequiresStore(t *testing.T) {
 }
 
 func TestNewServerRequiresExecutor(t *testing.T) {
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestNewServerRequiresExecutor(t *testing.T) {
 func TestPingReportsVersionAndProtocol(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	resp, err := srv.Ping(context.Background(), &panelyv1.PingRequest{})
+	resp, err := srv.Ping(context.Background(), &kadranv1.PingRequest{})
 	if err != nil {
 		t.Fatalf("ping başarısız: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestPingReportsVersionAndProtocol(t *testing.T) {
 func TestPingWarnsOnVersionMismatch(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	resp, err := srv.Ping(context.Background(), &panelyv1.PingRequest{
+	resp, err := srv.Ping(context.Background(), &kadranv1.PingRequest{
 		ClientVersion: "v0.0.1-eski",
 	})
 	if err != nil {
@@ -115,7 +115,7 @@ func TestPingWarnsOnVersionMismatch(t *testing.T) {
 func TestPingDoesNotRejectVersionMismatch(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	if _, err := srv.Ping(context.Background(), &panelyv1.PingRequest{
+	if _, err := srv.Ping(context.Background(), &kadranv1.PingRequest{
 		ClientVersion: "v99.0.0",
 	}); err != nil {
 		t.Fatalf("sürüm farkı bağlantıyı kesti: %v", err)
@@ -126,7 +126,7 @@ func TestGetSystemInfoReportsUnreachableExecutor(t *testing.T) {
 	srv, _ := newTestServer(t)
 
 	// Executor yok; yanıt hata DÖNDÜRMEMELİ, durumu bildirmeli.
-	resp, err := srv.GetSystemInfo(context.Background(), &panelyv1.GetSystemInfoRequest{})
+	resp, err := srv.GetSystemInfo(context.Background(), &kadranv1.GetSystemInfoRequest{})
 	if err != nil {
 		t.Fatalf("executor erişilemezken hata döndü: %v", err)
 	}
@@ -156,7 +156,7 @@ func TestListAuditRecordsReturnsChain(t *testing.T) {
 		}
 	}
 
-	resp, err := srv.ListAuditRecords(ctx, &panelyv1.ListAuditRecordsRequest{})
+	resp, err := srv.ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{})
 	if err != nil {
 		t.Fatalf("kayıtlar okunamadı: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestListAuditRecordsRespectsAfterSeq(t *testing.T) {
 		}
 	}
 
-	resp, err := srv.ListAuditRecords(ctx, &panelyv1.ListAuditRecordsRequest{AfterSeq: 3})
+	resp, err := srv.ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{AfterSeq: 3})
 	if err != nil {
 		t.Fatalf("kayıtlar okunamadı: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestListAuditRecordsRespectsAfterSeq(t *testing.T) {
 //
 // Daemon zinciri geçerli, executor'a ulaşılamıyor: sonuç "daemon geçerli,
 // executor okunamadı" olmalı. İkisini tek bir boolean'da birleştirmek,
-// panelyd'nin kendi zincirini doğrulayıp executor'ınkini atlamasını
+// kadrand'nin kendi zincirini doğrulayıp executor'ınkini atlamasını
 // gizlerdi — oysa modelin tamamı ikisinin ayrı olmasına dayanıyor.
 func TestVerifyAuditChainSeparatesTwoChains(t *testing.T) {
 	srv, db := newTestServer(t)
@@ -215,12 +215,12 @@ func TestVerifyAuditChainSeparatesTwoChains(t *testing.T) {
 		t.Fatalf("kayıt eklenemedi: %v", err)
 	}
 
-	resp, err := srv.VerifyAuditChain(ctx, &panelyv1.VerifyAuditChainRequest{})
+	resp, err := srv.VerifyAuditChain(ctx, &kadranv1.VerifyAuditChainRequest{})
 	if err != nil {
 		t.Fatalf("doğrulama başarısız: %v", err)
 	}
 
-	if got := resp.GetDaemonStatus(); got != panelyv1.ChainStatus_CHAIN_STATUS_VALID {
+	if got := resp.GetDaemonStatus(); got != kadranv1.ChainStatus_CHAIN_STATUS_VALID {
 		t.Errorf("daemon durumu = %v, beklenen VALID: %s", got, resp.GetDetail())
 	}
 	if resp.GetRecordsChecked() != 1 {
@@ -232,7 +232,7 @@ func TestVerifyAuditChainSeparatesTwoChains(t *testing.T) {
 	// Ve UNREACHABLE olmalı, INVALID DEĞİL: erişilemeyen bir executor
 	// kurcalama kanıtı değildir. İkisini karıştırmak, executor'ın kapalı
 	// olduğu her an sahte bir güvenlik alarmı üretirdi.
-	if got := resp.GetExecutorStatus(); got != panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE {
+	if got := resp.GetExecutorStatus(); got != kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE {
 		t.Errorf("erişilemeyen executor durumu = %v, beklenen UNREACHABLE", got)
 	}
 	if resp.GetExecutorDetail() == "" {
@@ -243,11 +243,11 @@ func TestVerifyAuditChainSeparatesTwoChains(t *testing.T) {
 func TestVerifyAuditChainOnEmptyDatabase(t *testing.T) {
 	srv, _ := newTestServer(t)
 
-	resp, err := srv.VerifyAuditChain(context.Background(), &panelyv1.VerifyAuditChainRequest{})
+	resp, err := srv.VerifyAuditChain(context.Background(), &kadranv1.VerifyAuditChainRequest{})
 	if err != nil {
 		t.Fatalf("doğrulama başarısız: %v", err)
 	}
-	if got := resp.GetDaemonStatus(); got != panelyv1.ChainStatus_CHAIN_STATUS_VALID {
+	if got := resp.GetDaemonStatus(); got != kadranv1.ChainStatus_CHAIN_STATUS_VALID {
 		t.Errorf("boş zincir durumu = %v, beklenen VALID", got)
 	}
 	if resp.GetRecordsChecked() != 0 {

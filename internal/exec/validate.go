@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // Şema ne kadar dar olursa olsun, tellerden geçen bayt dizisi keyfîdir.
@@ -31,7 +31,7 @@ const (
 	maxMountPath = 4096 // PATH_MAX
 
 	// maxStopTimeoutSeconds, SIGTERM ile SIGKILL arasındaki en uzun
-	// bekleme. Sınırsız bırakılsaydı panelyd, executor'ın bir işleyicisini
+	// bekleme. Sınırsız bırakılsaydı kadrand, executor'ın bir işleyicisini
 	// istediği kadar meşgul tutabilirdi — yavaş bir kaynak tüketimi yolu.
 	maxStopTimeoutSeconds = 300
 	maxEnvEntries         = 200
@@ -77,7 +77,7 @@ func validateAppID(appID string) error {
 	return nil
 }
 
-func validateReleaseRef(ref *panelyv1.ReleaseRef) error {
+func validateReleaseRef(ref *kadranv1.ReleaseRef) error {
 	if ref == nil {
 		return errors.New("release referansı zorunludur")
 	}
@@ -91,7 +91,7 @@ func validateReleaseRef(ref *panelyv1.ReleaseRef) error {
 	return nil
 }
 
-func validateContainerRef(ref *panelyv1.ContainerRef) error {
+func validateContainerRef(ref *kadranv1.ContainerRef) error {
 	if ref == nil {
 		return errors.New("konteyner referansı zorunludur")
 	}
@@ -104,7 +104,7 @@ func validateContainerRef(ref *panelyv1.ContainerRef) error {
 	return nil
 }
 
-func validateSelector(sel *panelyv1.ContainerSelector) error {
+func validateSelector(sel *kadranv1.ContainerSelector) error {
 	if sel == nil {
 		return errors.New("seçici zorunludur")
 	}
@@ -129,7 +129,7 @@ func validateStopTimeout(seconds uint32) error {
 
 // ── Konteyner oluşturma ──────────────────────────────────────────────
 
-func validateCreate(req *panelyv1.ContainerCreateRequest) error {
+func validateCreate(req *kadranv1.ContainerCreateRequest) error {
 	if req == nil {
 		return errors.New("istek boş")
 	}
@@ -180,9 +180,9 @@ func validateEnv(env map[string]string) error {
 	return nil
 }
 
-func validateLimits(l *panelyv1.ResourceLimits) error {
+func validateLimits(l *kadranv1.ResourceLimits) error {
 	// Limitsiz konteyner yoktur: tek sunucuda kaynak tüketen bir uygulama
-	// panelyd dahil her şeyi düşürebilir.
+	// kadrand dahil her şeyi düşürebilir.
 	if l == nil {
 		return errors.New("kaynak limitleri zorunludur")
 	}
@@ -201,7 +201,7 @@ func validateLimits(l *panelyv1.ResourceLimits) error {
 	return nil
 }
 
-func validateVolumes(vols []*panelyv1.VolumeMount) error {
+func validateVolumes(vols []*kadranv1.VolumeMount) error {
 	if len(vols) > maxVolumes {
 		return fmt.Errorf("%d hacim, üst sınır %d", len(vols), maxVolumes)
 	}

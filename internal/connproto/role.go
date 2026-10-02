@@ -13,14 +13,14 @@ import (
 // Rol, anahtarın authorized_keys satırında, zorlanmış komutun argümanı
 // olarak yazılıdır:
 //
-//	command="/usr/local/lib/panely/panely-connect -deploy=web,api",restrict ssh-ed25519 AAAA...
+//	command="/usr/local/lib/kadran/kadran-connect -deploy=web,api",restrict ssh-ed25519 AAAA...
 //
 // Argüman yoksa anahtar yöneticidir; bugüne kadar kurulan her satır böyle
 // ve değişmeden çalışmaya devam eder.
 //
-// # Rol neden panelyd'nin veritabanında değil?
+// # Rol neden kadrand'nin veritabanında değil?
 //
-// Anahtarı authorized_keys'e eklemek root ister (panelyd panely-client'ın
+// Anahtarı authorized_keys'e eklemek root ister (kadrand kadran-client'ın
 // ev dizinine yazamaz, executor'ın bütçesinde yer yok). Anahtar zaten o
 // satırda; rolü de oraya koymak, anahtarla yetkisini TEK satırda tutar.
 // İkinci bir depo, ikisinin birbirinden kayması demekti: silinen anahtarın
@@ -29,7 +29,7 @@ import (
 // # Rol neden güvenilir?
 //
 // Zorlanmış komut, istemcinin istediği komutu YOK SAYAR; argümanlar
-// istemcinin değil, authorized_keys'i yazanın (root) sözüdür. panely-connect
+// istemcinin değil, authorized_keys'i yazanın (root) sözüdür. kadran-connect
 // rolü önsöze yazar ve önsöz, istemcinin tek baytı okunmadan gönderilir.
 // Parmak izinin güvenilirliği hangi varsayıma dayanıyorsa bu da ona dayanır.
 
@@ -86,7 +86,7 @@ func ParseDeployScope(s string) ([]string, error) {
 // CheckRole, rolün ve kapsamın tutarlı olduğunu doğrular.
 //
 // Bilinmeyen ya da BOŞ rol geçersizdir. Boş rolü yönetici saymak "eski
-// panely-connect"e uyum sağlardı ama bedeli, rolü yazmayı unutan her kod
+// kadran-connect"e uyum sağlardı ama bedeli, rolü yazmayı unutan her kod
 // yolunun sessizce tam yetki vermesi olurdu.
 func (id Identity) CheckRole() error {
 	switch id.Role {

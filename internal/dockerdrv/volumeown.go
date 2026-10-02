@@ -22,7 +22,7 @@ import (
 //	  sh -c 'echo x > /veri/test.txt'
 //	→ sh: can't create /veri/test.txt: Permission denied
 //
-// Panely'nin sertleştirilmiş imajları (nginx-unprivileged vb.) uid 101
+// Kadran'ın sertleştirilmiş imajları (nginx-unprivileged vb.) uid 101
 // ile koşuyor. Yani dizini Docker'a bıraktığımızda hacim bağlanır,
 // konteyner başlar, ve uygulama kendi kalıcı diskine YAZAMAZ. Hata
 // dağıtımdan sonra, uygulamanın kendi günlüğünde ortaya çıkar.

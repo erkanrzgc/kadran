@@ -12,7 +12,7 @@ func envFunc(pairs map[string]string) func(string) string {
 // TestDefaultIsInfo, ayrıntılı günlüğün VARSAYILAN OLARAK KAPALI olduğunu
 // doğrular.
 //
-// Bu testin varlık sebebi güvenliktir, üslup değil: panelyd ve executor
+// Bu testin varlık sebebi güvenliktir, üslup değil: kadrand ve executor
 // konteyner ortam değişkenlerini ve çağıran kimliklerini işliyor. Debug
 // varsayılan açık olsaydı bunlar systemd journal'ına düşer ve
 // `journalctl` okuyabilen herkes görürdü.
@@ -42,7 +42,7 @@ func TestEnvVarEnablesDebug(t *testing.T) {
 // TestUnrecognisedEnvValueStaysOff, tanınmayan değerin KAPALI sayıldığını
 // doğrular.
 //
-// `PANELY_DEBUG=hayir` yazan biri kapalı bekler. "Boş değilse aç"
+// `KADRAN_DEBUG=hayir` yazan biri kapalı bekler. "Boş değilse aç"
 // mantığı bunu sessizce açardı.
 func TestUnrecognisedEnvValueStaysOff(t *testing.T) {
 	for _, v := range []string{"", "0", "false", "FALSE", "no", "off", "hayir", "kapali", "  "} {
@@ -53,7 +53,7 @@ func TestUnrecognisedEnvValueStaysOff(t *testing.T) {
 	}
 }
 
-// TestOtherEnvVarsAreIgnored, yalnızca PANELY_DEBUG'a bakıldığını doğrular.
+// TestOtherEnvVarsAreIgnored, yalnızca KADRAN_DEBUG'a bakıldığını doğrular.
 func TestOtherEnvVarsAreIgnored(t *testing.T) {
 	got := Level(false, envFunc(map[string]string{"DEBUG": "1", "VERBOSE": "1"}))
 	if got != slog.LevelInfo {

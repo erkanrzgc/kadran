@@ -1,4 +1,4 @@
-// Package proxydrv, Panely'nin ters vekilini (panely-caddy) yönetir.
+// Package proxydrv, Kadran'ın ters vekilini (kadran-caddy) yönetir.
 //
 // Yapılandırma SQLite'taki durumdan ÜRETİLİR ve Caddy'nin admin API'sine
 // bütün olarak yüklenir. Caddy tarafında kısmi güncelleme yapılmıyor:
@@ -25,7 +25,7 @@ import (
 // Caddy modülünü ve seçeneğini yazabilirdi — oysa bu paketin var olma
 // sebeplerinden biri, üretilebilecek yapılandırmayı KAPALI bir kümeye
 // hapsetmek. (İkinci savunma katmanı binary'nin kendisi: dosya servis
-// eden modüller panely-caddy'de hiç yok, bkz. K-050.)
+// eden modüller kadran-caddy'de hiç yok, bkz. K-050.)
 
 // Config, Caddy'ye yüklenen kök nesnedir.
 type Config struct {
@@ -38,7 +38,7 @@ type Config struct {
 //
 // ⚠ HER yapılandırmada BULUNMALIDIR. Caddy `POST /load` ile kök nesnenin
 // TAMAMINI değiştiriyor; admin bloğu olmayan bir yapılandırma yüklenirse
-// Caddy varsayılana (localhost:2019 TCP) döner ve panelyd unix soketi
+// Caddy varsayılana (localhost:2019 TCP) döner ve kadrand unix soketi
 // üzerinden bir daha ULAŞAMAZ — yani sistem kendini kilitler.
 // buildConfig bunu zorunlu kılıyor.
 type Admin struct {
@@ -122,10 +122,10 @@ type Handler struct {
 // Upstream, vekilin bağlanacağı arka uçtur.
 //
 // ⚠ `Dial` ÇAĞIRANDAN ALINMAZ; NewUpstream tarafından KURULUR.
-// Serbest bir dize olsaydı, ele geçirilmiş bir panelyd oraya
-// `unix//run/panely-exec/exec.sock` yazıp ayrıcalıklı executor'ı
+// Serbest bir dize olsaydı, ele geçirilmiş bir kadrand oraya
+// `unix//run/kadran-exec/exec.sock` yazıp ayrıcalıklı executor'ı
 // internete açabilirdi. (Bugün ayrıca dosya izinleri de engelliyor —
-// Caddy `panely` grubunda değil — ama iki savunma bir savunmadan iyi ve
+// Caddy `kadran` grubunda değil — ama iki savunma bir savunmadan iyi ve
 // bu, K-050'nin yazılı yükümlülüğü.)
 type Upstream struct {
 	Dial string `json:"dial"`
@@ -174,7 +174,7 @@ type BuildOptions struct {
 }
 
 var errNoAdmin = errors.New(
-	"admin bloğu zorunlu — onsuz yüklenen yapılandırma panelyd'yi Caddy'den kalıcı olarak kilitler")
+	"admin bloğu zorunlu — onsuz yüklenen yapılandırma kadrand'yi Caddy'den kalıcı olarak kilitler")
 
 // BuildConfig, uygulama tanımlarından tam Caddy yapılandırmasını üretir.
 //
@@ -277,7 +277,7 @@ func BuildConfig(opts BuildOptions) (*Config, error) {
 //
 // brotli YOK: stok Caddy'de bulunmuyor, eklenti gerektiriyor. zstd
 // muadili sıkıştırma oranı veriyor ve derlememizde MEVCUT (ölçüldü:
-// `panely-caddy list-modules` → http.encoders.gzip, http.encoders.zstd).
+// `kadran-caddy list-modules` → http.encoders.gzip, http.encoders.zstd).
 //
 // `prefer` sırası belirlenimli: aksi hâlde aynı istemciye iki farklı
 // kodlama dönebilir ve ara önbellekler Vary hesabını şaşırırdı.
@@ -293,7 +293,7 @@ func encodeHandler() Handler {
 //
 // Sabit: ad üretilebilir olsaydı, iki yükleme arasında sunucu adı değişip
 // eski sunucu ortada kalabilirdi.
-const serverName = "panely"
+const serverName = "kadran"
 
 func portOr(v, fallback uint32) uint32 {
 	if v == 0 {

@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/client"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Alan adı önkontrolü (K-128) ──────────────────────────────────────
@@ -41,7 +41,7 @@ func dnsTestCLI(res cliResolver) (c *cli, stdout, stderr *bytes.Buffer, dials *i
 	n := 0
 	c.resolver = res
 	c.sshHostname = func(_ context.Context, host string) (string, error) { return host, nil }
-	c.dial = func(context.Context, string) (*client.Client, *panelyv1.PingResponse, error) {
+	c.dial = func(context.Context, string) (*client.Client, *kadranv1.PingResponse, error) {
 		n++
 		return nil, nil, errDialedForTest
 	}

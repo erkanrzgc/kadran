@@ -3,7 +3,7 @@
 //
 // ── Daemon'ın var olma sebebi ───────────────────────────────────────
 //
-// Panely'nin geri kalanı istek-cevap: bir komut gelir, bir şey olur,
+// Kadran'ın geri kalanı istek-cevap: bir komut gelir, bir şey olur,
 // cevap döner. Bu paket farklı — istemci bağlı olmasa da, kimse
 // bakmıyorken de çalışır. Faz 1 ölçütü #3 tam olarak bunu ölçüyor:
 // `docker kill` sonrası uygulama 30 saniye içinde geri gelmeli.
@@ -55,7 +55,7 @@ type Auditor interface {
 // "her şey yolunda" demek aynı şey değil — art arda başarısız
 // iyileştirme, operatörün bilmesi gereken bir durumdur.
 //
-// Alarm mantığı burada DEĞİL çünkü kenar tetikleme durumu panelyd'nin
+// Alarm mantığı burada DEĞİL çünkü kenar tetikleme durumu kadrand'nin
 // ömründen uzun yaşamak zorunda; gözetmenin kendi durumu ise bilerek
 // bellekte ve süreçle birlikte ölüyor.
 type Alarms interface {
@@ -124,7 +124,7 @@ type Options struct {
 	// başarısız olması gerektiği.
 	HealsBeforeAlarm int
 	// Progress, gözetmen ilerledikçe çağrılır: her turun başında ve her
-	// uygulama ziyaretinden sonra (nil olabilir). panelyd'nin watchdog'u
+	// uygulama ziyaretinden sonra (nil olabilir). kadrand'nin watchdog'u
 	// buna bakıyor (K-115).
 	//
 	// Tur sonunda DEĞİL ziyaret başına: iyileştirme turun içinde, uygulama
@@ -163,7 +163,7 @@ var DefaultOptions = Options{
 
 // appState, tek bir uygulamanın gözetim durumudur.
 //
-// ⚠ BELLEKTE tutuluyor, diske yazılmıyor: panelyd yeniden başlayınca
+// ⚠ BELLEKTE tutuluyor, diske yazılmıyor: kadrand yeniden başlayınca
 // sayaçlar sıfırlanır ve sürekli çöken bir uygulama geri çekilmesini
 // kaybeder. Kabul edilen bir ödünç — kalıcılaştırmak her yoklamada yazma
 // demekti ve gözetmenin kendisi bir sorun kaynağına dönüşürdü.
@@ -214,7 +214,7 @@ func New(
 
 // Run, bağlam iptal edilene kadar döngüyü sürdürür.
 //
-// Önce BEKLİYOR, sonra ölçüyor: panelyd açılışta zaten uzlaştırma
+// Önce BEKLİYOR, sonra ölçüyor: kadrand açılışta zaten uzlaştırma
 // yapıyor ve konteynerler o sırada ayağa kalkıyor. Hemen ölçseydik,
 // açılışın normal geçiş anını "çökmüş" diye okuyup gereksiz bir
 // iyileştirme tetiklerdik.
@@ -335,7 +335,7 @@ func (s *Supervisor) markHealthy(ctx context.Context, appID string, st *appState
 
 	// Alarm KOŞULSUZ kapatılıyor — `st.unhealthy` kontrolünün dışında.
 	//
-	// Gerekçe yeniden başlatma: panelyd çöküp kalktığında bellekteki
+	// Gerekçe yeniden başlatma: kadrand çöküp kalktığında bellekteki
 	// `st` sıfırlanır ama alarm satırı diskte DURUR. Kapatmayı
 	// `st.unhealthy`'ye bağlasaydık, yeniden başlatmadan sonra sağlıklı
 	// dönen bir uygulamanın alarmı sonsuza kadar açık kalırdı — ve

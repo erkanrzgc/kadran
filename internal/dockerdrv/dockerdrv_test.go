@@ -124,7 +124,7 @@ func hardenedRoot(t *testing.T, opts string) string {
 	t.Helper()
 	// ⚠ Kök GEÇİCİ dizin, üretim yolu DEĞİL.
 	//
-	// Eskiden burada "/var/lib/panely/volumes" sabiti duruyordu ve
+	// Eskiden burada "/var/lib/kadran/volumes" sabiti duruyordu ve
 	// zararsızdı: sürücü yalnızca bir bind DİZESİ üretiyordu, diske
 	// dokunmuyordu. Hacim sahipliği eklenince sürücü artık dizini
 	// GERÇEKTEN oluşturuyor — sabit yol, testin geliştirme makinesinde
@@ -173,10 +173,10 @@ func TestCreateSendsExpectedBody(t *testing.T) {
 	if err := json.Unmarshal(op.Body, &body); err != nil {
 		t.Fatalf("gövde çözümlenemedi: %v", err)
 	}
-	if got := body["Image"]; got != "panely/blog:7fd1a60b01f91b314f59955a4e4d4e80d8edf11d" {
+	if got := body["Image"]; got != "kadran/blog:7fd1a60b01f91b314f59955a4e4d4e80d8edf11d" {
 		t.Errorf("Image %v", got)
 	}
-	if !strings.Contains(op.Query, "panely_blog_r1_0") {
+	if !strings.Contains(op.Query, "kadran_blog_r1_0") {
 		t.Errorf("konteyner adı beklenen biçimde değil: %s", op.Query)
 	}
 }
@@ -242,7 +242,7 @@ func TestCreatePinsSecurityOpt(t *testing.T) {
 	if strings.Contains(strings.Join(hc.SecurityOpt, ","), "seccomp") {
 		t.Error("SecurityOpt seccomp'a dokunuyor — varsayılan profil değiştirilmemeli")
 	}
-	if hc.NetworkMode != "panely-blog" {
+	if hc.NetworkMode != "kadran-blog" {
 		t.Errorf("NetworkMode %q — app_id'den türetilmeli", hc.NetworkMode)
 	}
 	if hc.RestartPolicy.Name != "no" {
@@ -493,7 +493,7 @@ func TestVolumeRootMustBeItsOwnMount(t *testing.T) {
 	mountinfoPath = f
 	t.Cleanup(func() { mountinfoPath = old })
 
-	c := &Client{volumeRoot: "/var/lib/panely/volumes"}
+	c := &Client{volumeRoot: "/var/lib/kadran/volumes"}
 	err := c.checkVolumeRootHardened()
 	if err == nil {
 		t.Fatal("hacim kökü ayrı mount olmadığı hâlde kontrol geçti")
@@ -510,7 +510,7 @@ func TestVolumeRootMustBeItsOwnMount(t *testing.T) {
 // etkin olan ikincisidir; ilkini okumak korumayı olduğundan iyi gösterir.
 func TestLastMountWins(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "mountinfo")
-	root := "/var/lib/panely/volumes"
+	root := "/var/lib/kadran/volumes"
 	data := "415 406 8:1 /a " + root + " rw,nosuid,nodev,relatime - ext4 /dev/sda1 rw\n" +
 		"416 406 8:1 /b " + root + " rw,relatime - ext4 /dev/sda1 rw\n"
 	if err := os.WriteFile(f, []byte(data), 0o600); err != nil {
@@ -528,23 +528,23 @@ func TestLastMountWins(t *testing.T) {
 
 // ── Etiket disiplini ─────────────────────────────────────────────────
 
-// TestListIgnoresContainersWithoutPanelyLabels, daemon'ın döndürdüğü ama
-// Panely etiketi TAŞIMAYAN kayıtların elendiğini doğrular.
+// TestListIgnoresContainersWithoutKadranLabels, daemon'ın döndürdüğü ama
+// Kadran etiketi TAŞIMAYAN kayıtların elendiğini doğrular.
 //
 // Filtreyi daemon uyguluyor. Bir güvenlik özelliğini uzak tarafın doğru
 // davranmasına bağlamak ona güvenmek demektir; oysa bu sürücünün var olma
 // sebebi güvenmemek. Burada daemon KASTEN yabancı kayıt döndürüyor.
-func TestListIgnoresContainersWithoutPanelyLabels(t *testing.T) {
+func TestListIgnoresContainersWithoutKadranLabels(t *testing.T) {
 	f := newFakeDocker(t)
 	f.containers = []listEntry{
 		{ID: "yabanci", State: "running", Labels: map[string]string{"com.example": "db"}},
 		{ID: "etiketsiz", State: "running"},
-		{ID: "eksik", State: "running", Labels: map[string]string{"panely.app_id": "blog"}},
+		{ID: "eksik", State: "running", Labels: map[string]string{"kadran.app_id": "blog"}},
 		{ID: "bizim", State: "running", Labels: map[string]string{
-			"panely.app_id": "blog", "panely.release_id": "r1", "panely.replica": "0",
+			"kadran.app_id": "blog", "kadran.release_id": "r1", "kadran.replica": "0",
 		}},
 	}
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	got, err := c.ContainerList(context.Background(), "")
 	if err != nil {
@@ -559,14 +559,14 @@ func TestListIgnoresContainersWithoutPanelyLabels(t *testing.T) {
 // konteynere ASLA ulaşmadığını doğrular.
 //
 // Yıkıcı uçların (stop/remove) kimliği yalnızca KENDİ listemizden alması
-// bu yüzden önemli: dışarıdan kimlik alınsaydı ele geçirilmiş bir panelyd
+// bu yüzden önemli: dışarıdan kimlik alınsaydı ele geçirilmiş bir kadrand
 // veritabanı konteynerini silebilirdi.
 func TestSelectorNeverTouchesForeignContainers(t *testing.T) {
 	f := newFakeDocker(t)
 	f.containers = []listEntry{
 		{ID: "veritabani", State: "running", Labels: map[string]string{"com.example": "postgres"}},
 	}
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	n, err := c.ContainerRemove(context.Background(), Selector{AppID: "blog", ReleaseID: "r1"})
 	if err != nil {
@@ -588,11 +588,11 @@ func TestSelectorNarrowsToReplica(t *testing.T) {
 	f := newFakeDocker(t)
 	f.containers = []listEntry{
 		{ID: "c0", State: "running", Labels: map[string]string{
-			"panely.app_id": "blog", "panely.release_id": "r1", "panely.replica": "0"}},
+			"kadran.app_id": "blog", "kadran.release_id": "r1", "kadran.replica": "0"}},
 		{ID: "c1", State: "running", Labels: map[string]string{
-			"panely.app_id": "blog", "panely.release_id": "r1", "panely.replica": "1"}},
+			"kadran.app_id": "blog", "kadran.release_id": "r1", "kadran.replica": "1"}},
 	}
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	all, err := c.ContainerStart(context.Background(), Selector{AppID: "blog", ReleaseID: "r1"})
 	if err != nil || all != 2 {
@@ -620,9 +620,9 @@ func TestRemoveKeepsVolumes(t *testing.T) {
 	f := newFakeDocker(t)
 	f.containers = []listEntry{
 		{ID: "c0", State: "exited", Labels: map[string]string{
-			"panely.app_id": "blog", "panely.release_id": "r1", "panely.replica": "0"}},
+			"kadran.app_id": "blog", "kadran.release_id": "r1", "kadran.replica": "0"}},
 	}
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	if _, err := c.ContainerRemove(context.Background(), Selector{AppID: "blog", ReleaseID: "r1"}); err != nil {
 		t.Fatal(err)
@@ -649,13 +649,13 @@ func TestRemoveKeepsVolumes(t *testing.T) {
 func TestNetworkEnsureTreatsConflictAsSuccess(t *testing.T) {
 	f := newFakeDocker(t)
 	f.status = http.StatusConflict
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	name, err := c.NetworkEnsure(context.Background(), "blog")
 	if err != nil {
 		t.Fatalf("409 hata sayıldı: %v", err)
 	}
-	if name != "panely-blog" {
+	if name != "kadran-blog" {
 		t.Errorf("ağ adı %q", name)
 	}
 }
@@ -668,7 +668,7 @@ func TestNetworkEnsureTreatsConflictAsSuccess(t *testing.T) {
 func TestNetworkEnsurePropagatesRealErrors(t *testing.T) {
 	f := newFakeDocker(t)
 	f.status = http.StatusInternalServerError
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	if _, err := c.NetworkEnsure(context.Background(), "blog"); err == nil {
 		t.Fatal("500 yutuldu")
@@ -677,10 +677,10 @@ func TestNetworkEnsurePropagatesRealErrors(t *testing.T) {
 
 // TestNetworkNameIsDerived, ağ adının app_id'den türetildiğini doğrular.
 func TestNetworkNameIsDerived(t *testing.T) {
-	if got := NetworkName("blog"); got != "panely-blog" {
+	if got := NetworkName("blog"); got != "kadran-blog" {
 		t.Errorf("NetworkName = %q", got)
 	}
-	if got := ImageTag("blog", "abc123"); got != "panely/blog:abc123" {
+	if got := ImageTag("blog", "abc123"); got != "kadran/blog:abc123" {
 		t.Errorf("ImageTag = %q", got)
 	}
 }
@@ -793,7 +793,7 @@ func TestNegotiationHappensBeforeAnyRequest(t *testing.T) {
 // çözülemediğini doğrular.
 //
 // app_id ve release_id tire içerebildiği için tireyle ayırmak
-// ("panely-a-b-c") belirsizlik yaratırdı: (app "a-b", release "c") ile
+// ("kadran-a-b-c") belirsizlik yaratırdı: (app "a-b", release "c") ile
 // (app "a", release "b-c") aynı ada düşerdi. Belirsiz adresleme, bir
 // sürümü durdururken başkasını durdurmak demektir.
 func TestContainerNamesCannotCollide(t *testing.T) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# CLI'ı gerçek bir panelyd'ye karşı uçtan uca doğrular. LINUX'TA ÇALIŞIR.
+# CLI'ı gerçek bir kadrand'ye karşı uçtan uca doğrular. LINUX'TA ÇALIŞIR.
 #
 # # Bu betik neden var?
 #
@@ -9,7 +9,7 @@
 # düzeltilen hata tam olarak bu boşlukta yaşıyordu.
 #
 # Root GEREKTİRMEZ. İstemci grubu olarak kullanıcının kendi birincil grubu
-# kullanılıyor; üretimde bu `panely-client` olur. Ayrıcalık izolasyonunun
+# kullanılıyor; üretimde bu `kadran-client` olur. Ayrıcalık izolasyonunun
 # root gerektiren doğrulaması ayrı bir betikte (scripts/e2e-executor.sh).
 #
 # Kullanım:
@@ -22,10 +22,10 @@ set -uo pipefail
 
 BIN="${1:?kullanım: e2e-cli-runner.sh <binary-dizini>}"
 
-WORK="$(mktemp -d /tmp/panely-e2e.XXXXXX)"
+WORK="$(mktemp -d /tmp/kadran-e2e.XXXXXX)"
 SOCK="$WORK/api.sock"
-DB="$WORK/panely.db"
-LOG="$WORK/panelyd.log"
+DB="$WORK/kadran.db"
+LOG="$WORK/kadrand.log"
 
 fail=0
 
@@ -69,12 +69,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-chmod +x "$BIN/panelyd" "$BIN/kadran" "$BIN/panely-connect"
+chmod +x "$BIN/kadrand" "$BIN/kadran" "$BIN/kadran-connect"
 
-echo "==> panelyd başlatılıyor (kullanıcı: $(id -un), grup: $(id -gn))"
+echo "==> kadrand başlatılıyor (kullanıcı: $(id -un), grup: $(id -gn))"
 # Executor soketi kasten YOK: erişilemeyen executor'ın DOĞRULANAMADI olarak
 # raporlandığını (GEÇERSİZ değil) burada sınıyoruz — K-013.
-"$BIN/panelyd" \
+"$BIN/kadrand" \
     -socket "$SOCK" \
     -db "$DB" \
     -client-group "$(id -gn)" \
@@ -87,7 +87,7 @@ for _ in $(seq 1 50); do
     sleep 0.1
 done
 if [[ ! -S "$SOCK" ]]; then
-    echo "panelyd soketi açmadı. Günlük:" >&2
+    echo "kadrand soketi açmadı. Günlük:" >&2
     cat "$LOG" >&2
     exit 1
 fi
@@ -98,8 +98,8 @@ out="$("$BIN/kadran" status "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 contains "daemon sürümü gösterildi" "Daemon" "$out"
 contains "executor erişilemiyor olarak raporlandı" "ERİŞİLEMİYOR" "$out"
-# panelyd root ile başlamayı reddediyor; ekranda da root görünmemeli.
-lacks "panelyd yetkisiz kullanıcı olarak çalışıyor" "KURULUM BOZUK" "$out"
+# kadrand root ile başlamayı reddediyor; ekranda da root görünmemeli.
+lacks "kadrand yetkisiz kullanıcı olarak çalışıyor" "KURULUM BOZUK" "$out"
 
 echo
 echo "==> kadran status --json"
@@ -112,7 +112,7 @@ echo
 echo "==> kadran audit list"
 out="$("$BIN/kadran" audit list "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
-# panelyd açılışta zincire bir daemon.start kaydı yazar.
+# kadrand açılışta zincire bir daemon.start kaydı yazar.
 contains "başlangıç kaydı zincirde" "daemon.start" "$out"
 contains "sonuç sütunu" "BAŞARILI" "$out"
 
@@ -129,9 +129,9 @@ lacks "erişilemeyen zincir kurcalama olarak raporlanmadı" "GEÇERSİZ" "$out"
 echo
 echo "==> kadran app show — canlı sürüm (K-112)"
 # Dağıtım Docker istiyor, burada yok; ama canlı sürüm alanının GERÇEK
-# panelyd'den tel üzerinden gelip basıldığı, dağıtılmamış bir uygulamada
+# kadrand'den tel üzerinden gelip basıldığı, dağıtılmamış bir uygulamada
 # da sınanabiliyor: "yok" demeli, boş satır ya da hata değil.
-out="$("$BIN/kadran" app create -repo github.com/panely-e2e/blog e2eblog "unix://$SOCK" 2>&1)"; code=$?
+out="$("$BIN/kadran" app create -repo github.com/kadran-e2e/blog e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app create çıkış kodu" 0 "$code"
 out="$("$BIN/kadran" app show e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app show çıkış kodu" 0 "$code"
@@ -151,14 +151,14 @@ contains "version yanıtı" '"protocol"' "$out"
 contains "status yanıtı gerçek sunucudan geldi" '"daemon_version"' "$out"
 
 echo
-echo "==> dağıtım anahtarı (K-131): gerçek panely-connect -deploy=e2eblog"
-# Birim testleri sunucuyu api.NewGRPCServer ile kuruyor; panelyd'nin
+echo "==> dağıtım anahtarı (K-131): gerçek kadran-connect -deploy=e2eblog"
+# Birim testleri sunucuyu api.NewGRPCServer ile kuruyor; kadrand'nin
 # main.go'su o kurucuyu kullanmayı bıraksa hepsi yeşil kalırdı. Burada
-# GERÇEK panelyd, GERÇEK panely-connect (argv ayrıştırması dahil) ve
+# GERÇEK kadrand, GERÇEK kadran-connect (argv ayrıştırması dahil) ve
 # GERÇEK SO_PEERCRED birlikte sınanıyor.
 #
 # sshd yerine sahte bir `ssh`: zorlanmış komut gibi istemcinin argümanlarını
-# YOK SAYIP panely-connect'i sshd'nin vereceği ortamla çalıştırıyor.
+# YOK SAYIP kadran-connect'i sshd'nin vereceği ortamla çalıştırıyor.
 # authorized_keys'ten sshd ve kabuk üzerinden geçen yol burada ölçülmüyor.
 FAKE="$WORK/sahte-ssh"
 mkdir -p "$FAKE"
@@ -169,32 +169,32 @@ cat > "$FAKE/ssh" <<EOF
 #!/usr/bin/env bash
 exec env SSH_CONNECTION="203.0.113.9 50000 198.51.100.1 22" \\
     SSH_USER_AUTH="$WORK/sshauth" \\
-    "$BIN/panely-connect" -socket "$SOCK" -deploy=e2eblog
+    "$BIN/kadran-connect" -socket "$SOCK" -deploy=e2eblog
 EOF
-chmod +x "$FAKE/ssh" "$BIN/panely-connect"
+chmod +x "$FAKE/ssh" "$BIN/kadran-connect"
 SHA="$(printf 'a%.0s' $(seq 40))"
 dk() { PATH="$FAKE:$PATH" "$BIN/kadran" "$@"; }
 
-out="$(dk status panely-client@ci-e2e 2>&1)"; code=$?
+out="$(dk status kadran-client@ci-e2e 2>&1)"; code=$?
 check "status reddedildi (çıkış kodu)" 1 "$code"
 contains "status: yetki reddi" "yalnızca dağıtım yapabilir" "$out"
 
-out="$(dk deploy e2eblog panely-client@ci-e2e 2>&1)"; code=$?
+out="$(dk deploy e2eblog kadran-client@ci-e2e 2>&1)"; code=$?
 check "-commit'siz dağıtım reddedildi" 1 "$code"
 contains "-commit ipucu" "-commit" "$out"
 
-out="$(dk deploy -commit "$SHA" baska panely-client@ci-e2e 2>&1)"; code=$?
+out="$(dk deploy -commit "$SHA" baska kadran-client@ci-e2e 2>&1)"; code=$?
 check "kapsam dışı dağıtım reddedildi" 1 "$code"
 contains "kapsam dışı: yetki reddi" "kapsamında değil" "$out"
 
 # Kapsam içi: yetkiyi geçip GERÇEK işleyiciye ulaşmalı. Executor yok, yani
 # derleme düşer; ölçülen, sürümün açılıp "derleme başlıyor"un gelmesi.
-out="$(dk deploy -commit "$SHA" e2eblog panely-client@ci-e2e 2>&1)"; code=$?
+out="$(dk deploy -commit "$SHA" e2eblog kadran-client@ci-e2e 2>&1)"; code=$?
 contains "kapsam içi dağıtım işleyiciye ulaştı" "derleme başlıyor" "$out"
 lacks "kapsam içi: yetki reddi yok" "kapsamında değil" "$out"
 lacks "kapsam içi: rol reddi yok" "yalnızca dağıtım yapabilir" "$out"
 
-contains "ret panelyd günlüğünde" "yetki reddedildi" "$(cat "$LOG")"
+contains "ret kadrand günlüğünde" "yetki reddedildi" "$(cat "$LOG")"
 contains "günlükte rol" "rol=deploy" "$(cat "$LOG")"
 # Hangi anahtarın denediği: parmak izi gerçekten taşınıyor mu (K-134;
 # canlıda 56 kaydın 0'ında yoktu).

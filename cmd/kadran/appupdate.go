@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // appUpdateFlags, `app update`'in kabul ettiği seçeneklerin değerleridir.
@@ -26,7 +26,7 @@ type appUpdateFlags struct {
 
 	// Hacimler de birlestirilir, ADA gore. Gerekce env ile ayni:
 	// proto3'te repeated alanlarin presence'i yok.
-	volumes      []*panelyv1.AppVolume
+	volumes      []*kadranv1.AppVolume
 	volumeRemove []string
 }
 
@@ -216,7 +216,7 @@ func sortedKeys(m map[string]string) []string {
 // yazıldıktan SONRA ters vekil güncellenemezse sunucu değişikliğin
 // KAYDEDİLDİĞİNİ bildiriyor. Ön ekle birlikte terminalde şu çıkıyordu:
 //
-//	panely: uygulama güncellenemedi: alan adı ... KAYDEDİLDİ, ama ...
+//	kadran: uygulama güncellenemedi: alan adı ... KAYDEDİLDİ, ama ...
 //
 // Operatör ilk üç kelimeyi okuyup tam ters sonuca varır — üstelik
 // sunucudaki mesajın var olma sebebi tam olarak bunu engellemekti.
@@ -238,8 +238,8 @@ func (c *cli) failUpdate(err error) int {
 // şartı: `set` haritasını doğrudan vermek, alan adının BOŞ VERİLMESİ ile
 // HİÇ VERİLMEMESİ durumlarını bir FlagSet kurmadan yan yana sınamayı
 // sağlıyor.
-func buildUpdateRequest(appID string, v appUpdateFlags, set map[string]bool) *panelyv1.UpdateAppRequest {
-	req := &panelyv1.UpdateAppRequest{AppId: appID}
+func buildUpdateRequest(appID string, v appUpdateFlags, set map[string]bool) *kadranv1.UpdateAppRequest {
+	req := &kadranv1.UpdateAppRequest{AppId: appID}
 	if set["domain"] {
 		req.Domain = &v.domain
 	}
@@ -274,7 +274,7 @@ func buildUpdateRequest(appID string, v appUpdateFlags, set map[string]bool) *pa
 	return req
 }
 
-func isEmptyUpdate(req *panelyv1.UpdateAppRequest) bool {
+func isEmptyUpdate(req *kadranv1.UpdateAppRequest) bool {
 	return req.Domain == nil && req.GitBranch == nil &&
 		req.HealthPath == nil && req.Replicas == nil &&
 		len(req.GetEnv()) == 0 && len(req.GetEnvRemove()) == 0 &&

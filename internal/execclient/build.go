@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // BuildSink, derleme çıktısının tüketicisidir.
@@ -35,7 +35,7 @@ type BuildSink func(data []byte, isStderr bool) error
 // bağlıdır. İstemci giderse akış zaten iptal olur.
 func (c *Client) ImageBuild(
 	ctx context.Context,
-	req *panelyv1.ImageBuildRequest,
+	req *kadranv1.ImageBuildRequest,
 	sink BuildSink,
 ) (string, error) {
 	stream, err := c.rpc.ImageBuild(ctx, req)

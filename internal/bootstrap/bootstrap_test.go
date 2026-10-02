@@ -18,7 +18,7 @@ import (
 // TestRejectsPrivateKey, kazara özel anahtar verilmesini yakalar.
 //
 // Bu kontrolün olmaması felaket olurdu: özel anahtar sunucuya yüklenir ve
-// authorized_keys'e yazılırdı. Panely'nin tüm güvenlik modeli anahtar
+// authorized_keys'e yazılırdı. Kadran'ın tüm güvenlik modeli anahtar
 // malzemesinin iş istasyonundan hiç çıkmamasına dayanıyor.
 func TestRejectsPrivateKey(t *testing.T) {
 	privateKeys := []string{
@@ -57,7 +57,7 @@ func TestAcceptsPublicKeyTypes(t *testing.T) {
 // TestRejectsMultipleKeys: install.sh satırı `command=...,restrict
 // $(cat client_key.pub)` diye kuruyor. İki satırlı bir dosyada İKİNCİ
 // satır authorized_keys'e ayrı ve KISITSIZ bir anahtar olarak düşer:
-// zorlanmış komut yok, panely-client'a kabuk açılır. GitHub'ın
+// zorlanmış komut yok, kadran-client'a kabuk açılır. GitHub'ın
 // `https://github.com/<kullanıcı>.keys` çıktısı tam olarak böyle bir dosya.
 func TestRejectsMultipleKeys(t *testing.T) {
 	for _, key := range []string{
@@ -125,16 +125,16 @@ func TestArchiveCarriesEverythingTheInstallerNeeds(t *testing.T) {
 	// install.sh bu adlarla okuyor; listeler ayrışırsa kurulum uzakta ölür.
 	required := []string{
 		"install.sh",
-		"panelyd", "panely-exec", "panely-connect",
-		"panelyd.service", "panely-exec.service", "panely-tmpfiles.conf",
+		"kadrand", "kadran-exec", "kadran-connect",
+		"kadrand.service", "kadran-exec.service", "kadran-tmpfiles.conf",
 		"client_key.pub",
 
 		// Ters vekil. Dağıtımın `caddy` paketine bağlanılmadığı için
 		// birim, soket, tmpfiles kuralı ve yapılandırma BURADAN gitmek
 		// zorunda; biri eksikse kurulum uzakta yarıda kalır.
-		"panely-caddy",
-		"panely-caddy.service", "panely-caddy-admin.socket",
-		"panely-caddy-tmpfiles.conf", "caddy.json",
+		"kadran-caddy",
+		"kadran-caddy.service", "kadran-caddy-admin.socket",
+		"kadran-caddy-tmpfiles.conf", "caddy.json",
 	}
 	for _, name := range required {
 		if _, ok := files[name]; !ok {
@@ -144,7 +144,7 @@ func TestArchiveCarriesEverythingTheInstallerNeeds(t *testing.T) {
 
 	// İş istasyonu aracı sunucuda işi olmayan bir binary: ayrıcalıklı
 	// makinedeki yüzeyi gereksiz büyütür.
-	if _, ok := files["panely"]; ok {
+	if _, ok := files["kadran"]; ok {
 		t.Error("iş istasyonu aracı sunucu paketine girmiş")
 	}
 }
@@ -168,8 +168,8 @@ func TestArchiveUsesMatchingArchitecture(t *testing.T) {
 		}
 
 		files := readArchive(t, archive)
-		want := "panelyd-" + arch
-		if got := strings.TrimSpace(string(files["panelyd"])); got != want {
+		want := "kadrand-" + arch
+		if got := strings.TrimSpace(string(files["kadrand"])); got != want {
 			t.Errorf("%s için yanlış binary: %q, beklenen %q", arch, got, want)
 		}
 	}
@@ -226,8 +226,8 @@ func TestUnitFilesAreNormalizedToLF(t *testing.T) {
 	repo := newFakeRepo(t)
 
 	// Birimi kasten CRLF ile yaz.
-	unit := filepath.Join(repo, "deploy", "systemd", "panelyd.service")
-	if err := os.WriteFile(unit, []byte("[Unit]\r\nDescription=Panely\r\n"), 0o644); err != nil {
+	unit := filepath.Join(repo, "deploy", "systemd", "kadrand.service")
+	if err := os.WriteFile(unit, []byte("[Unit]\r\nDescription=Kadran\r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -241,7 +241,7 @@ func TestUnitFilesAreNormalizedToLF(t *testing.T) {
 	}
 
 	files := readArchive(t, archive)
-	if bytes.Contains(files["panelyd.service"], []byte("\r")) {
+	if bytes.Contains(files["kadrand.service"], []byte("\r")) {
 		t.Error("systemd birimi CRLF taşıyor — Linux'ta sessizce bozulur")
 	}
 }
@@ -249,7 +249,7 @@ func TestUnitFilesAreNormalizedToLF(t *testing.T) {
 // TestInstallScriptKeepsPrimaryGroupInvariant, kurulum betiğinin
 // birincil grup değişmezini koruduğunu doğrular.
 //
-// `useradd -G panely-client` (ek grup) yazılırsa SO_PEERCRED grubu
+// `useradd -G kadran-client` (ek grup) yazılırsa SO_PEERCRED grubu
 // göremez ve HER bağlantı sessizce reddedilir — hata mesajı olmadan.
 // Bu, projedeki en pahalı sessiz hata adayı.
 func TestInstallScriptKeepsPrimaryGroupInvariant(t *testing.T) {
@@ -259,15 +259,15 @@ func TestInstallScriptKeepsPrimaryGroupInvariant(t *testing.T) {
 	}
 	text := string(script)
 
-	if !strings.Contains(text, "--gid panely-client") {
+	if !strings.Contains(text, "--gid kadran-client") {
 		t.Error("istemci kullanıcısı birincil grupla (--gid) oluşturulmuyor")
 	}
-	// -G / --groups ile panely-client vermek sessiz arızaya yol açar.
-	if strings.Contains(text, "--groups panely-client") || strings.Contains(text, "-G panely-client") {
-		t.Error("istemci kullanıcısına panely-client EK grup olarak verilmiş")
+	// -G / --groups ile kadran-client vermek sessiz arızaya yol açar.
+	if strings.Contains(text, "--groups kadran-client") || strings.Contains(text, "-G kadran-client") {
+		t.Error("istemci kullanıcısına kadran-client EK grup olarak verilmiş")
 	}
 	// Kurulum sonunda doğrulama yapmalı.
-	if !strings.Contains(text, "id -gn panely-client") {
+	if !strings.Contains(text, "id -gn kadran-client") {
 		t.Error("kurulum betiği birincil grubu doğrulamıyor")
 	}
 }
@@ -284,7 +284,7 @@ func TestInstallScriptForcesConnectCommand(t *testing.T) {
 	// Satırın kendisi yonetici_satiri_yaz'da ve davranışı
 	// scripts/check-install-sh.sh'ta GERÇEKTEN koşturuluyor; burada yalnızca
 	// kurulumun o fonksiyonu doğru dizinle çağırdığı.
-	if !strings.Contains(text, `"command=\"$lib_dir/panely-connect\",restrict $key"`) {
+	if !strings.Contains(text, `"command=\"$lib_dir/kadran-connect\",restrict $key"`) {
 		t.Error("authorized_keys satırı zorlanmış komut içermiyor")
 	}
 	if !strings.Contains(text, `yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR"`) {
@@ -306,7 +306,7 @@ func TestInstallScriptForcesConnectCommand(t *testing.T) {
 // TestSSHDDropInPinsUserEnvironment, denetim kimliğini taklit etmeye açan
 // ayarın kapatıldığını doğrular.
 //
-// panely-connect aktörün parmak izini SSH_USER_AUTH'ın gösterdiği dosyadan
+// kadran-connect aktörün parmak izini SSH_USER_AUTH'ın gösterdiği dosyadan
 // okur (K-134). authorized_keys'teki `environment="..."` seçeneği sshd'nin
 // kendi yazdığı değeri EZEBİLİR ("override other default environment
 // values" — sshd(8)) ve sahte bir dosyayı gösterebilir, yani açık kalırsa
@@ -392,7 +392,7 @@ func TestInstallScriptDoesNotUseNologinForClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	clientBlock := between(string(script), "--gid panely-client", "panely-client")
+	clientBlock := between(string(script), "--gid kadran-client", "kadran-client")
 	if strings.Contains(clientBlock, "NOLOGIN") {
 		t.Error("istemci kullanıcısına nologin verilmiş — zorlanmış komut çalışmaz")
 	}
@@ -401,12 +401,12 @@ func TestInstallScriptDoesNotUseNologinForClient(t *testing.T) {
 // ── Hacim kökünün sertleştirilmesi ───────────────────────────────────
 
 // volumeRoot, uygulama hacimlerinin altında toplandığı dizindir.
-const volumeRoot = "/var/lib/panely/volumes"
+const volumeRoot = "/var/lib/kadran/volumes"
 
 func readVolumeMountUnit(t *testing.T) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd",
-		"var-lib-panely-volumes.mount"))
+		"var-lib-kadran-volumes.mount"))
 	if err != nil {
 		t.Fatalf("hacim mount birimi okunamadı: %v", err)
 	}
@@ -449,7 +449,7 @@ func TestVolumeMountUnitCarriesHardeningFlags(t *testing.T) {
 // etkinleşmez — yani hacimler sessizce sertleştirilmeden kalır. Sessiz
 // olduğu için bu testin var olması gerekiyor.
 func TestVolumeMountUnitFileNameMatchesMountPoint(t *testing.T) {
-	// systemd-escape -p --suffix=mount /var/lib/panely/volumes
+	// systemd-escape -p --suffix=mount /var/lib/kadran/volumes
 	want := strings.TrimPrefix(volumeRoot, "/")
 	want = strings.ReplaceAll(want, "/", "-") + ".mount"
 
@@ -714,7 +714,7 @@ func TestRemoteTarLineExtractsTheRealArchive(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("%q gerçek pakette düştü: %v\n%s", line, err, out)
 	}
-	for _, name := range []string{"install.sh", "panelyd", "client_key.pub"} {
+	for _, name := range []string{"install.sh", "kadrand", "client_key.pub"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("%s açılmadı: %v", name, err)
 		}
@@ -846,7 +846,7 @@ func TestInstallScriptEnablesReverseProxyUnits(t *testing.T) {
 	}
 	text := string(script)
 
-	for _, unit := range []string{"panely-caddy-admin.socket", "panely-caddy.service"} {
+	for _, unit := range []string{"kadran-caddy-admin.socket", "kadran-caddy.service"} {
 		if !strings.Contains(text, "systemctl enable "+unit) {
 			t.Errorf("%s etkinleştirilmiyor — yeniden başlatmadan sonra geri gelmez", unit)
 		}
@@ -882,7 +882,7 @@ func TestInstallScriptVerifiesTheRunningProxyImage(t *testing.T) {
 }
 
 // TestInstallScriptRefusesToShareThePrivilegedGroup, ters vekil
-// kullanıcısının panely grubunda OLMADIĞININ sınandığını doğrular.
+// kullanıcısının kadran grubunda OLMADIĞININ sınandığını doğrular.
 func TestInstallScriptRefusesToShareThePrivilegedGroup(t *testing.T) {
 	script, err := installScript.ReadFile("install.sh")
 	if err != nil {
@@ -890,11 +890,11 @@ func TestInstallScriptRefusesToShareThePrivilegedGroup(t *testing.T) {
 	}
 	text := string(script)
 
-	if !strings.Contains(text, "id -nG panely-caddy") {
-		t.Fatal("panely-caddy'nin grup üyeliği hiç sınanmıyor")
+	if !strings.Contains(text, "id -nG kadran-caddy") {
+		t.Fatal("kadran-caddy'nin grup üyeliği hiç sınanmıyor")
 	}
 	// Kurulum, exec.sock'a erişemediğini de ÖLÇMELİ.
-	if !strings.Contains(text, "--reuid panely-caddy") {
+	if !strings.Contains(text, "--reuid kadran-caddy") {
 		t.Error("ters vekilin exec.sock'a erişemediği ölçülmüyor — " +
 			"yalnızca grup listesine bakmak, izinlerin gerçekte ne verdiğini söylemez")
 	}

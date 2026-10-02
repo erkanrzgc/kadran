@@ -221,14 +221,14 @@ func TestActiveDeploymentReportsAbsenceDistinctly(t *testing.T) {
 }
 
 // TestForeignKeysAreEnforcedOnTheRealConnection, yabancı anahtarların
-// panelyd'nin KULLANDIĞI bağlantıda etkin olduğunu doğrular.
+// kadrand'nin KULLANDIĞI bağlantıda etkin olduğunu doğrular.
 //
 // ── Bu test neden var? ──────────────────────────────────────────────
 //
 // SQLite'ta `foreign_keys` BAĞLANTI BAŞINA bir ayardır ve varsayılanı
 // KAPALI. DSN'e yazılmış olması yeterli görünüyordu; gerçek sunucuda
 // `sqlite3` CLI ile bakıldığında 0 döndü — ama o, CLI'ın kendi
-// bağlantısıydı, panelyd'ninki değil. Yani o ölçüm bu soruyu
+// bağlantısıydı, kadrand'ninki değil. Yani o ölçüm bu soruyu
 // yanıtlamıyordu.
 //
 // Ayrıca: deployments üzerindeki tetikleyiciler, INSERT/UPDATE yolunda

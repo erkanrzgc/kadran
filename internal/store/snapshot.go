@@ -18,7 +18,7 @@ import (
 // yazılıyor. Zamanlı yedekler aynı yere yazılsaydı iki ad uzayı iç içe
 // geçerdi ve budama globları birbirinin dosyalarını görürdü. Bu kuramsal
 // bir kaygı değil: aynı dizinde SQLite'ın kendi yan dosyaları da
-// (`panely.db-wal`, `panely.db-shm`) duruyor ve `panely.db*` gibi geniş
+// (`kadran.db-wal`, `kadran.db-shm`) duruyor ve `kadran.db*` gibi geniş
 // bir glob onları da yakalar — yani bir budama turu ÇALIŞAN veritabanının
 // WAL'ini silebilirdi.
 //
@@ -32,7 +32,7 @@ const snapshotDirName = "backups"
 // Geri yükleme öncesi güvenlik kopyaları KASTEN başka bir ön ek taşıyor
 // (restorePrefix): budama onları görmemeli.
 const (
-	snapshotPrefix = "panely-"
+	snapshotPrefix = "kadran-"
 	snapshotExt    = ".db"
 )
 

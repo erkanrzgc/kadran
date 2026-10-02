@@ -15,12 +15,12 @@
  */
 
 export const CHANNELS = {
-  version: "panely:version",
-  status: "panely:status",
-  auditList: "panely:audit-list",
-  auditVerify: "panely:audit-verify",
-  loadProfiles: "panely:profiles-load",
-  saveProfiles: "panely:profiles-save",
+  version: "kadran:version",
+  status: "kadran:status",
+  auditList: "kadran:audit-list",
+  auditVerify: "kadran:audit-verify",
+  loadProfiles: "kadran:profiles-load",
+  saveProfiles: "kadran:profiles-save",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

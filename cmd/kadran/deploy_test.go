@@ -10,7 +10,7 @@ import (
 // ── findRef: GERÇEK yanıt üzerinde ───────────────────────────────────
 //
 // testdata/github-info-refs.bin, GitHub'dan ÖLÇÜLEN bir yanıttır
-// (github.com/erkanrzgc/panely, 7 Ağustos 2026). Elle uydurulmuş bir
+// (github.com/erkanrzgc/kadran, 7 Ağustos 2026). Elle uydurulmuş bir
 // pkt-line akışı, ayrıştırıcının gerçek biçimi anlayıp anlamadığını
 // söylemezdi: kendi varsayımımı kendi varsayımıma karşı sınamış olurdum.
 
@@ -132,16 +132,16 @@ func pktLine(s string) string {
 // ── splitRepo ────────────────────────────────────────────────────────
 
 func TestSplitRepo(t *testing.T) {
-	host, owner, name, err := splitRepo("github.com/erkanrzgc/panely")
+	host, owner, name, err := splitRepo("github.com/erkanrzgc/kadran")
 	if err != nil {
 		t.Fatalf("ayrıştırılamadı: %v", err)
 	}
-	if host != "github.com" || owner != "erkanrzgc" || name != "panely" {
+	if host != "github.com" || owner != "erkanrzgc" || name != "kadran" {
 		t.Errorf("üçlü = %q/%q/%q", host, owner, name)
 	}
 
 	// ".git" soneki kırpılır: kopyala-yapıştır alışkanlığı.
-	if _, _, name, err = splitRepo("github.com/erkanrzgc/panely.git"); err != nil || name != "panely" {
+	if _, _, name, err = splitRepo("github.com/erkanrzgc/kadran.git"); err != nil || name != "kadran" {
 		t.Errorf(".git soneki kırpılmadı: %q (%v)", name, err)
 	}
 }

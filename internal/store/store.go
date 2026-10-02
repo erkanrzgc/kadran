@@ -1,11 +1,11 @@
-// Package store, Panely kontrol düzleminin kalıcı durumunu yönetir.
+// Package store, Kadran kontrol düzleminin kalıcı durumunu yönetir.
 //
 // # Neden SQLite?
 //
 // Kontrol düzleminde yüksek eşzamanlı yazma yoktur: bir avuç uygulama, tek
 // bir zamanlayıcı, seyrek dağıtımlar. Postgres bu iş yükü için ayrı bir
 // servis, ayrı bir yedekleme yolu ve bir tavuk-yumurta problemi getirirdi —
-// "Panely'nin veritabanını Panely mi yönetsin?"
+// "Kadran'ın veritabanını Kadran mi yönetsin?"
 //
 // SQLite bunların hepsini siler: gömülüdür, yedeği tek dosyadır ve Faz 5'te
 // Litestream ile R2'ye sürekli replike edilebilir.

@@ -46,7 +46,7 @@ func TestActorFromContextExtractsAllFields(t *testing.T) {
 // OKUNMADIĞINI doğrular.
 //
 // Bu, düzeltilen gerçek bir güvenlik hatasının regresyon testidir.
-// panely-connect bir bayt pompasıdır; gRPC metadata'sını yazan o değil,
+// kadran-connect bir bayt pompasıdır; gRPC metadata'sını yazan o değil,
 // SSH'ın diğer ucundaki uzak istemcidir. Metadata'dan okunsaydı istemci
 // kendi parmak izini uydurabilir ve denetim günlüğü "kim yaptı" alanında
 // yalan söylerdi.
@@ -60,8 +60,8 @@ func TestActorFromContextIgnoresGRPCMetadata(t *testing.T) {
 
 	// İstemci metadata ile başka biri gibi görünmeye çalışıyor.
 	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs(
-		"panely-key-fingerprint", "SHA256:SAHTE",
-		"panely-source-ip", "198.51.100.99",
+		"kadran-key-fingerprint", "SHA256:SAHTE",
+		"kadran-source-ip", "198.51.100.99",
 	))
 
 	actor := actorFromContext(ctx)
@@ -124,7 +124,7 @@ func TestCallerFromContextReportsUnixCred(t *testing.T) {
 	if info.Unix.UID != 1001 || info.Unix.GID != 1002 || info.Unix.PID != 42 {
 		t.Errorf("unix kimliği yanlış: %+v", info.Unix)
 	}
-	if info.AuthType() != "panely-caller" {
+	if info.AuthType() != "kadran-caller" {
 		t.Errorf("AuthType = %q", info.AuthType())
 	}
 }

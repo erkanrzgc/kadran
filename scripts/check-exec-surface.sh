@@ -46,7 +46,7 @@ forbidden_fields=(
     ipc_mode
     userns_mode
     cgroup_parent
-    # Serbest tutamaç: hostta Panely'nin yönetmediği nesnelere işaretçi
+    # Serbest tutamaç: hostta Kadran'ın yönetmediği nesnelere işaretçi
     container_id
     image
     host_path
@@ -57,7 +57,7 @@ if [[ "${1:-}" == "--list-forbidden" ]]; then
     exit 0
 fi
 
-SCHEMA="${1:-$REPO_ROOT/proto/panely/v1/exec.proto}"
+SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 
 # MAX_EXEC_LINES, ayrıcalıklı kodun üst sınırıdır.
 #
@@ -68,10 +68,10 @@ SCHEMA="${1:-$REPO_ROOT/proto/panely/v1/exec.proto}"
 #
 # ── Ölçüm KAPSAMI: sabit yol listesi değil, içe aktarma grafiği ──────
 #
-# Kapsam bir dönem `internal/exec` + `cmd/panely-exec` olarak
+# Kapsam bir dönem `internal/exec` + `cmd/kadran-exec` olarak
 # sabitlenmişti ve sayaç 1267 gösteriyordu. O sayı YANLIŞTI: root süreç
 # bunlardan fazlasını çalıştırıyor, yani bütçe sessizce dolanılabiliyordu
-# — bir paket yazıp panely-exec'ten içe aktarmak yeterliydi. Tam bu oldu:
+# — bir paket yazıp kadran-exec'ten içe aktarmak yeterliydi. Tam bu oldu:
 # `internal/logutil` root binary'ye girdi ve sayaç kıpırdamadı (K-034).
 #
 # Kapsam artık `go list -deps` ile DERLEYİCİDEN türetiliyor.
@@ -156,14 +156,14 @@ fi
 # yeni bir paket eklenince sessizce kapsam dışı kalıyordu). Orada çözüm
 # derleyiciden türetmekti; burada çözüm `import` satırlarından türetmek.
 #
-# Yerel import'lar (panely/v1/...) izleniyor; google/protobuf bizim
+# Yerel import'lar (kadran/v1/...) izleniyor; google/protobuf bizim
 # değişmezlerimizin konusu değil.
 collect_schemas() {
     local main="$1" dir
     dir="$(dirname "$main")"
     printf '%s\n' "$main"
-    grep -oE '^import "panely/v1/[a-z_]+\.proto"' "$main" 2>/dev/null |
-        sed -E 's|^import "panely/v1/||; s|"$||' |
+    grep -oE '^import "kadran/v1/[a-z_]+\.proto"' "$main" 2>/dev/null |
+        sed -E 's|^import "kadran/v1/||; s|"$||' |
         while read -r name; do
             [[ -f "$dir/$name" ]] && printf '%s\n' "$dir/$name"
         done
@@ -189,9 +189,9 @@ echo "==> Ayrıcalıklı kod boyutu"
 #
 # # Neden?
 #
-# Liste `internal/exec` + `cmd/panely-exec` olarak sabitlenmişti. Bu,
+# Liste `internal/exec` + `cmd/kadran-exec` olarak sabitlenmişti. Bu,
 # bütçenin sessizce dolanılabilmesi demekti: yeni bir paket yazıp
-# panely-exec'ten içe aktarmak, kodu ayrıcalıklı sürecin içine sokar ama
+# kadran-exec'ten içe aktarmak, kodu ayrıcalıklı sürecin içine sokar ama
 # sayaca hiç dokunmazdı. Tam olarak bu oldu — `internal/logutil` root
 # binary'ye girdi ve bütçe 1267'de kaldı.
 #
@@ -205,11 +205,11 @@ module_path="$(cd "$REPO_ROOT" && go list -m 2>/dev/null || echo "")"
 
 if [[ -n "$module_path" ]]; then
     # `go list -deps` HEDEF PAKETİ DE listeler; ayrıca eklemek onu iki kez
-    # saydırır. (İlk yazımda tam bu oldu: cmd/panely-exec 174 satır olarak
+    # saydırır. (İlk yazımda tam bu oldu: cmd/kadran-exec 174 satır olarak
     # iki kere toplandı.)
     mapfile -t priv_dirs < <(
         cd "$REPO_ROOT" &&
-        go list -deps ./cmd/panely-exec 2>/dev/null |
+        go list -deps ./cmd/kadran-exec 2>/dev/null |
             grep "^${module_path}/" |
             sed "s|^${module_path}/||"
     )
@@ -251,7 +251,7 @@ if [[ -n "$module_path" ]]; then
         total_lines=$((total_lines + ${raw// /}))
         counted=$((counted + 1))
     done
-    echo "    ($counted paket, panely-exec'in içe aktarma grafiğinden; üretilen kod hariç)"
+    echo "    ($counted paket, kadran-exec'in içe aktarma grafiğinden; üretilen kod hariç)"
     echo "    ham satır: $total_lines · yorum/boş hariç: $exec_lines"
 else
     # ÖLÇEMİYORSAK ONAYLAMAYIZ.
@@ -264,7 +264,7 @@ else
     # CI'da go daima var (.github/actions/setup). Yerelde yoksa doğru
     # yanıt "geçti" değil, "ölçemedim".
     note_failure "go bulunamadı — ayrıcalıklı yüzey ÖLÇÜLEMEDİ.
-  Bütçe, cmd/panely-exec'in içe aktarma grafiğinden türetiliyor ve bu
+  Bütçe, cmd/kadran-exec'in içe aktarma grafiğinden türetiliyor ve bu
   \`go list -deps\` gerektiriyor. Sabit yol listesine düşmek yüzeyin
   yaklaşık yarısını sayardı; eksik ölçüme dayalı bir onay vermiyoruz."
     exec_lines=""

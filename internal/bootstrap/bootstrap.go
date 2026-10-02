@@ -37,37 +37,37 @@ var installScript embed.FS
 
 // serverBinaries, sunucuya kurulan binary'lerdir.
 //
-// `panely` (iş istasyonu aracı) burada YOK: sunucuda işi olmayan bir
+// `kadran` (iş istasyonu aracı) burada YOK: sunucuda işi olmayan bir
 // binary'yi kurmak, ayrıcalıklı makinedeki yüzeyi gereksiz büyütür.
 //
-// `panely-caddy` AYRI bir Go modülünden geliyor (build/caddy/go.mod);
+// `kadran-caddy` AYRI bir Go modülünden geliyor (build/caddy/go.mod);
 // scripts/build-release.sh onu da aynı `bin/linux-<arch>/` dizinine
 // üretiyor, yani burada özel bir muamele gerekmiyor.
 var serverBinaries = []string{
-	"panelyd", "panely-exec", "panely-connect", "panely-caddy",
+	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy",
 }
 
 // unitFiles, depodan kopyalanan systemd varlıkları.
 //
 // Hepsi tar'a DÜZ isimlerle giriyor; alt dizin yok. Ters vekil bir
 // drop-in yerine KENDİ birimiyle geldiği için buna ihtiyaç da kalmadı
-// (gerekçe panely-caddy.service'in başında).
+// (gerekçe kadran-caddy.service'in başında).
 var unitFiles = map[string]string{
-	"panelyd.service":     "deploy/systemd/panelyd.service",
-	"panely-exec.service": "deploy/systemd/panely-exec.service",
+	"kadrand.service":     "deploy/systemd/kadrand.service",
+	"kadran-exec.service": "deploy/systemd/kadran-exec.service",
 
 	// Ters vekil: kendi birimi, kendi admin soketi, kendi tmpfiles
 	// kuralı ve yol açıcı yapılandırması.
-	"panely-caddy.service":       "deploy/systemd/panely-caddy.service",
-	"panely-caddy-admin.socket":  "deploy/systemd/panely-caddy-admin.socket",
-	"panely-caddy-tmpfiles.conf": "deploy/systemd/panely-caddy-tmpfiles.conf",
+	"kadran-caddy.service":       "deploy/systemd/kadran-caddy.service",
+	"kadran-caddy-admin.socket":  "deploy/systemd/kadran-caddy-admin.socket",
+	"kadran-caddy-tmpfiles.conf": "deploy/systemd/kadran-caddy-tmpfiles.conf",
 	"caddy.json":                 "deploy/caddy/config.json",
 	// Hacim kökünü nodev,nosuid ile bağlar. Adı systemd'nin mount birimi
 	// adlandırmasına UYMAK ZORUNDA (`systemd-escape -p --suffix=mount
-	// /var/lib/panely/volumes`); farklı bir ad verilirse systemd birimi
+	// /var/lib/kadran/volumes`); farklı bir ad verilirse systemd birimi
 	// bağlar ama Where= ile eşleştiremez ve birim asla etkin olmaz.
-	"var-lib-panely-volumes.mount": "deploy/systemd/var-lib-panely-volumes.mount",
-	"panely-tmpfiles.conf":         "deploy/systemd/panely-tmpfiles.conf",
+	"var-lib-kadran-volumes.mount": "deploy/systemd/var-lib-kadran-volumes.mount",
+	"kadran-tmpfiles.conf":         "deploy/systemd/kadran-tmpfiles.conf",
 }
 
 // Options, kurulum parametreleridir.
@@ -158,7 +158,7 @@ func validateTarget(host string) error {
 			"bootstrap: hedef `-` ile başlayamaz (%q) — "+
 				"ssh bunu seçenek olarak yorumlar", host)
 	}
-	// panely-client zorlanmış komutlu, yetkisiz istemci hesabı; kurulum
+	// kadran-client zorlanmış komutlu, yetkisiz istemci hesabı; kurulum
 	// hesabı OLAMAZ. Kullanıcı adı verilmeyen hedef ona düşüyor
 	// (client.DefaultSSHUser) ve kurulum anlaşılmaz biçimde zorlanmış
 	// komuta çarpardı. Sudo kipinde ayrıca: o hesaba sudo verilmemeli.
@@ -174,7 +174,7 @@ func validateTarget(host string) error {
 var archiveModTime = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 
 // clientUser, install.sh'in oluşturduğu yetkisiz istemci hesabı.
-const clientUser = "panely-client"
+const clientUser = "kadran-client"
 
 // checkPrivilege, paketi üretip yüklemeden ÖNCE uzakta root olunup
 // olunamayacağını, kurulumun koşacağı TAM biçimle sınar (K-122).
@@ -284,7 +284,7 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 	}
 
 	// Binary'ler mimariye göre alt dizinden okunur:
-	//   <BinaryDir>/linux-arm64/panelyd
+	//   <BinaryDir>/linux-arm64/kadrand
 	archDir := filepath.Join(opts.BinaryDir, "linux-"+arch)
 	for _, name := range serverBinaries {
 		path := filepath.Join(archDir, name)
@@ -352,7 +352,7 @@ func validatePublicKey(content []byte) error {
 
 	// TEK satır (K-131'de bulundu). install.sh satırı `command=...,restrict
 	// $(cat client_key.pub)` diye kuruyor: ikinci bir satır authorized_keys'e
-	// AYRI ve KISITSIZ bir anahtar olarak düşer, panely-client'a kabuk açar.
+	// AYRI ve KISITSIZ bir anahtar olarak düşer, kadran-client'a kabuk açar.
 	// `https://github.com/<kullanıcı>.keys` tam olarak böyle bir dosya verir.
 	// Sondaki satır sonu TrimSpace'le gitti; içeride kalan her satır sonu ret.
 	if strings.ContainsAny(text, "\r\n") {

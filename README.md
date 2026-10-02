@@ -23,10 +23,8 @@
 > CLI's messages are currently **Turkish only**, and several gaps listed under
 > [Known gaps](#known-gaps) matter for production use. Read them before you rely on it.
 >
-> **Naming.** The project was called Panely until October 2026. The command-line
-> tool is now `kadran`. Server-side names keep the `panely` prefix for now: the services
-> (`panelyd`, `panely-exec`, `panely-caddy`), the `panely` and `panely-client` users and
-> `/var/lib/panely`. Existing installs keep working unchanged (K-130).
+> **Naming.** The project was called Panely until October 2026. v0.4.0 renames the
+> server side too: `bootstrap` migrates an existing install in place (K-136).
 
 ---
 
@@ -65,13 +63,13 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Automatic HTTPS** | Let's Encrypt certificates via a custom Caddy build that contains no file server. Config reloads are atomic. If the proxy restarts or crashes, the daemon notices within 10 s and restores the routes (measured: sites back after 3 s on a restart, 7 s on a crash; without the watcher they stayed down) |
 | **Live logs** | `kadran logs -f <app>`; container logs are capped at 3 × 10 MiB |
 | **Health supervisor** | Restarts failed releases with backoff, and keeps running when no client is connected. After a reboot it starts the apps again (measured: sites answer ~19 s after the kernel boots) |
-| **Hang detection** | If panelyd's background loops stop making progress or its database pool runs dry, it stops pinging systemd's watchdog (`WatchdogSec=60s`). systemd then restarts it, and a goroutine dump lands in the journal. Measured under real systemd in CI: a frozen daemon was killed and brought back, and a normal run caused no restarts (K-115) |
+| **Hang detection** | If kadrand's background loops stop making progress or its database pool runs dry, it stops pinging systemd's watchdog (`WatchdogSec=60s`). systemd then restarts it, and a goroutine dump lands in the journal. Measured under real systemd in CI: a frozen daemon was killed and brought back, and a normal run caused no restarts (K-115) |
 | **Scaling, env vars, volumes** | `app update -replicas/-env/-volume`. Volumes are mounted `nodev,nosuid` |
 | **Pruning** | Removes old releases' containers, always keeping the rollback target |
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
 | **Volume backups (optional)** | A separate unit archives app volumes nightly and encrypts them before anything leaves it. It can read every volume but has no network and no sockets, so the daemon still cannot read app data. Measured: an archive restored from R2, decrypted on another machine, matched the original file for file (owner, mode, checksum) |
 | **Alarm detection** | Four failure conditions (heal exhausted, backup failed, proxy not reconciled, low disk), edge-triggered and persisted so that a restart does not fire them again. Shown by `kadran alarms` and in the journal |
-| **Alarm delivery (optional)** | A separate unit forwards alarms, offsite-backup failures, and crashes or stops of the core services (panelyd, panely-exec, panely-caddy) to Telegram ([`deploy/notify`](deploy/notify/README.md)). The daemon still has no network access and cannot read the bot token. Measured: a real alarm reached Telegram within 34 s, its recovery too; a killed panelyd was reported in 69 s and its recovery a minute later, while the site answered 937 of 937 requests; failed sends are retried, not lost |
+| **Alarm delivery (optional)** | A separate unit forwards alarms, offsite-backup failures, and crashes or stops of the core services (kadrand, kadran-exec, kadran-caddy) to Telegram ([`deploy/notify`](deploy/notify/README.md)). The daemon still has no network access and cannot read the bot token. Measured: a real alarm reached Telegram within 34 s, its recovery too; a killed kadrand was reported in 69 s and its recovery a minute later, while the site answered 937 of 937 requests; failed sends are retried, not lost |
 | **Heartbeat (optional)** | A Cloudflare Worker on the free tier ([`deploy/nabiz`](deploy/nabiz/README.md)) tells you on Telegram when the alarm sender goes silent for 15 minutes, meaning the sender or the whole server is down. Measured: the alarm came 17 minutes after the last heartbeat, recovery on the next check, one message per change of state |
 | **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `kadran audit verify` checks both |
 
@@ -94,11 +92,11 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
   use `kadran bootstrap -sudo user@server` with a user that has passwordless sudo.
   Root SSH stays closed; see step 2. Open 80/443 in the provider's firewall; on GCP,
   use a rule with a target tag so that only this machine is exposed.
-- **GCP: never add `panely-client` to instance or project SSH metadata.** The guest
+- **GCP: never add `kadran-client` to instance or project SSH metadata.** The guest
   agent manages the keys of every metadata user and puts them in the `docker` and
-  `google-sudoers` groups. `panely-client` would lose its forced command and gain
+  `google-sudoers` groups. `kadran-client` would lose its forced command and gain
   root. Unrelated metadata users, an agent restart and a reboot were measured
-  not to touch `panely-client` (K-121).
+  not to touch `kadran-client` (K-121).
 
 ### 1. Build
 
@@ -124,7 +122,7 @@ bin/kadran bootstrap -sudo you@your-server     # or: passwordless sudo, root SSH
 ```
 
 This copies the binaries and systemd units, creates the unprivileged users, installs
-your public key for the `panely-client` user **bound to a forced command**, and
+your public key for the `kadran-client` user **bound to a forced command**, and
 checks its own work, for example by confirming that the daemon's user cannot reach
 Docker. It is idempotent and safe to run again, and the same command upgrades an
 existing install. After this, you never need root for day-to-day work.
@@ -140,11 +138,11 @@ the exact form it will use.
   stayed refused before and after, and sites answered throughout (K-122).
 
 A dropped connection does not restart the install (K-127).
-- The package goes to `~/.panely-upload` on the server, named by its SHA-256. After
+- The package goes to `~/.kadran-upload` on the server, named by its SHA-256. After
   a drop, only the missing part is sent. The server checks the SHA-256 before it
   installs anything.
 - The install runs detached from the SSH session and logs to
-  `~/.panely-upload/<sha256>.log`. The CLI follows that log and reconnects if the link
+  `~/.kadran-upload/<sha256>.log`. The CLI follows that log and reconnects if the link
   drops. If the install process dies before it finishes, the CLI says so instead of
   waiting.
 
@@ -162,14 +160,14 @@ arm64 builds and tests run on real ARM hardware in CI.
 
 Optional hardening: restrict builds to specific repositories with the executor's
 `--allow-repo owner/name,…` flag (see the comment at the top of
-[`deploy/systemd/panely-exec.service`](deploy/systemd/panely-exec.service)).
+[`deploy/systemd/kadran-exec.service`](deploy/systemd/kadran-exec.service)).
 
 ### 3. Deploy an app
 
 ```bash
-bin/kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site panely-client@your-server
-bin/kadran deploy site panely-client@your-server
-bin/kadran status panely-client@your-server
+bin/kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site kadran-client@your-server
+bin/kadran deploy site kadran-client@your-server
+bin/kadran status kadran-client@your-server
 ```
 
 Point the domain's DNS at the server before deploying, so that Let's Encrypt can
@@ -187,7 +185,7 @@ server (K-128).
   Pass `-skip-dns-check` in that case.
 
 If a certificate still doesn't arrive, `kadran domain check site.example.com
-panely-client@your-server` checks each step from your machine and exits non-zero on
+kadran-client@your-server` checks each step from your machine and exits non-zero on
 a problem. When the DNS points elsewhere, it says that the port and certificate
 lines describe that other host.
 
@@ -212,7 +210,7 @@ lines describe that other host.
 | `key add\|list\|remove root@server` | Manage deploy-only keys for CI (root path, like `bootstrap`) |
 
 Targets: empty means the local socket; `user@host[:port]` or `host` means SSH, with
-`panely-client` as the default user.
+`kadran-client` as the default user.
 Exit codes: `0` success · `1` error · `2` usage · `3` **audit chain broken**.
 `alarms` also exits `1` when alarms are active.
 
@@ -223,27 +221,27 @@ Exit codes: `0` success · `1` error · `2` usage · `3` **audit chain broken**.
 ```
 ┌─ WORKSTATION ─────────────────┐        ┌─ SERVER ──────────────────────────────────────┐
 │                               │        │                                               │
-│  Electron GUI (read-only)     │        │  panelyd            user: panely              │
+│  Electron GUI (read-only)     │        │  kadrand            user: kadran              │
 │      ↕ stdio JSON-RPC         │        │    • business logic, supervisor, SQLite       │
-│  panely (Go CLI / sidecar) ───┼──SSH───┼──► • api.sock (0660, group panely-client)     │
+│  kadran (Go CLI / sidecar) ───┼──SSH───┼──► • api.sock (0660, group kadran-client)     │
 │                               │        │    • CANNOT reach Docker, no network access   │
 └───────────────────────────────┘        │          ↕ exec.sock — typed gRPC             │
-                                         │  panely-exec        user: root                │
+                                         │  kadran-exec        user: root                │
                                          │    • whitelisted schemas only                 │
                                          │    • Docker + constrained filesystem writes   │
                                          │                                               │
-                                         │  panely-caddy       user: panely-caddy        │
+                                         │  kadran-caddy       user: kadran-caddy        │
                                          │    • :80/:443 for deployed apps               │
-                                         │    • configured by panelyd over a unix socket │
+                                         │    • configured by kadrand over a unix socket │
                                          └───────────────────────────────────────────────┘
 ```
 
 | Binary | Runs as | Privilege | Responsibility |
 |---|---|---|---|
-| `panelyd` | `panely` | Not in the `docker` group, empty capability set, `IPAddressDeny=any` | Business logic, SQLite, supervisor, alarms, backups, audit chain |
-| `panely-exec` | `root` | Privileged, but accepts **only** typed schemas | Docker Engine API, constrained filesystem writes |
-| `panely-caddy` | `panely-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME for deployed apps |
-| `panely-connect` | `panely-client` | None. ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
+| `kadrand` | `kadran` | Not in the `docker` group, empty capability set, `IPAddressDeny=any` | Business logic, SQLite, supervisor, alarms, backups, audit chain |
+| `kadran-exec` | `root` | Privileged, but accepts **only** typed schemas | Docker Engine API, constrained filesystem writes |
+| `kadran-caddy` | `kadran-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME for deployed apps |
+| `kadran-connect` | `kadran-client` | None. ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
 | `kadran` | workstation | — | CLI, and sidecar for the Electron GUI |
 
 ### The schema *is* the whitelist
@@ -252,23 +250,23 @@ Dangerous container options are not validated and rejected. They are **not
 representable**. There is no `privileged` field, no `cap_add`, no `host_network`,
 no `devices`, no free-form `argv`, and no host path anywhere in the protocol.
 
-A compromised `panelyd` cannot ask for them, because the request cannot be encoded.
+A compromised `kadrand` cannot ask for them, because the request cannot be encoded.
 
 ```protobuf
-// proto/panely/v1/exec.proto — this file is the security boundary.
+// proto/kadran/v1/exec.proto — this file is the security boundary.
 //
 // Before adding a field, the question is:
-//   "If panelyd were fully compromised, what would it do with this field?"
+//   "If kadrand were fully compromised, what would it do with this field?"
 ```
 
 Enforced invariants, each covered by a test that has been verified to fail when the
 protection is removed:
 
 - **No container handle.** RPCs address containers as `(app_id, release_id[, replica])`.
-  The executor resolves that against its own `panely.app_id=` labels and touches
+  The executor resolves that against its own `kadran.app_id=` labels and touches
   nothing else. A free container ID would be a root-level pointer to *any* container
   on the host.
-- **No image reference.** The tag `panely/<app>:<commit_sha>` is *constructed* by the
+- **No image reference.** The tag `kadran/<app>:<commit_sha>` is *constructed* by the
   executor from validated inputs. Otherwise an arbitrary image could be pulled and run.
 - **No host path, ever.** A mount takes an app-scoped *volume name*; the executor
   builds the path. Validating a supplied path is TOCTOU-prone — a symlink can change
@@ -285,7 +283,7 @@ protection is removed:
 - **Every container is confined** — empty capability bounding set, `no-new-privileges`,
   a PID limit, and memory/CPU/IO limits from the app definition.
 - **Privileged code is size-capped** at 2500 lines of code, measured from the *actual
-  import graph* of `cmd/panely-exec` rather than a hand-maintained path list — otherwise
+  import graph* of `cmd/kadran-exec` rather than a hand-maintained path list — otherwise
   the budget is walked around by putting code in a new package and importing it.
   Comments are excluded so the budget never rewards deleting the explanations that make
   the surface auditable. CI fails the build otherwise, because a least-privilege
@@ -303,7 +301,7 @@ hash = SHA256(canonical(seq, ts, actor, source_ip, ssh_fingerprint,
 `kadran audit verify` walks both chains and exits `3` if either is broken. Environment
 values and build arguments are written as `[REDACTED]`.
 
-The executor's journal lives in a root-only directory (`/var/lib/panely-exec`, `0700`);
+The executor's journal lives in a root-only directory (`/var/lib/kadran-exec`, `0700`);
 the daemon can neither read nor replace it, and asks the executor for it over RPC.
 It used to sit in the daemon's own directory, where the daemon could not write the
 root-owned file but *could* delete it and put its own chain in its place — a directory
@@ -311,14 +309,14 @@ write permission covers unlinking. That was found by measurement and fixed
 ([K-100, K-102](docs/decisions.md)).
 
 Identity is the client's **SSH public-key fingerprint**, transmitted in a connection
-preamble written by `panely-connect` before any remote byte is read — not in gRPC
+preamble written by `kadran-connect` before any remote byte is read — not in gRPC
 metadata, which the remote client controls and could forge. Servers running v0.2.0
 or earlier record only the source IP: they read the fingerprint from a variable
 OpenSSH never passes to the session, so that field stayed empty. Records written
 after the upgrade carry it (K-134).
 
 **What the audit log does not do yet:** the two chains are verified *separately*. No
-code compares them, so a compromised `panelyd` that drops its own records produces
+code compares them, so a compromised `kadrand` that drops its own records produces
 two chains that both verify. Closing this needs the executor to return its record
 hash to the daemon — see [Known gaps](#known-gaps).
 
@@ -330,9 +328,9 @@ hash to the daemon — see [Known gaps](#known-gaps).
 
 | Surface | Listens on |
 |---|---|
-| panelyd API | `/run/panely/api.sock` (unix socket) |
-| Executor | `/run/panely-exec/exec.sock` (unix socket, directory `0750 root:panely`) |
-| Reverse proxy admin | `/run/panely-caddy/admin.sock` (unix socket) |
+| kadrand API | `/run/kadran/api.sock` (unix socket) |
+| Executor | `/run/kadran-exec/exec.sock` (unix socket, directory `0750 root:kadran`) |
+| Reverse proxy admin | `/run/kadran-caddy/admin.sock` (unix socket) |
 | GUI ↔ sidecar | stdio (process pipes) |
 
 On the live server the only listening TCP ports are 22 (sshd) and 80/443 (the reverse
@@ -349,11 +347,11 @@ Bootstrap creates a separate unprivileged SSH user whose key is bound to a force
 command:
 
 ```
-command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA... panely-client
+command="/usr/local/lib/kadran/kadran-connect",restrict ssh-ed25519 AAAA... kadran-client
 ```
 
 `restrict` disables port, agent and X11 forwarding, PTY allocation, and `~/.ssh/rc`.
-The key can only execute `panely-connect`, which does nothing but connect to
+The key can only execute `kadran-connect`, which does nothing but connect to
 `api.sock` and shuttle bytes.
 
 It does **not** disable environment processing — a common and load-bearing
@@ -373,7 +371,7 @@ A key for CI can be limited to deploying named apps. The role lives in the same
 line as the key, so there is no second list to drift out of sync:
 
 ```
-command="/usr/local/lib/panely/panely-connect -deploy=site,api",restrict ssh-ed25519 AAAA... ci
+command="/usr/local/lib/kadran/kadran-connect -deploy=site,api",restrict ssh-ed25519 AAAA... ci
 ```
 
 Such a key can call `Ping` and `Deploy` for `site` and `api`, nothing else. It
@@ -395,7 +393,7 @@ bin/kadran key remove SHA256:... root@your-server
 `key add` refuses a key that already has a line (sshd uses the first matching line,
 so one key on two lines would get whichever role comes first). `key remove` refuses
 to delete the last admin key. `key list` exits non-zero if any line is not forced to
-`panely-connect`.
+`kadran-connect`.
 
 In GitHub Actions, store the private key as a secret and deploy the exact commit
 that triggered the run. Trigger it only on pushes to your own branch (and by hand),
@@ -443,7 +441,7 @@ jobs:
 
       - name: Deploy
         env:
-          TARGET: ${{ secrets.KADRAN_TARGET }}       # panely-client@your-server
+          TARGET: ${{ secrets.KADRAN_TARGET }}       # kadran-client@your-server
         run: |
           "$RUNNER_TEMP/kadran" deploy -commit "$GITHUB_SHA" site "$TARGET"
 ```
@@ -452,7 +450,7 @@ This deploys whatever lands on `main`; it does not run your tests. If you want o
 tested commits to go live, run the tests in an earlier job and add `needs:` to
 `deploy`. Keeping the target in a secret keeps the server address out of a public
 repository. The CLI must come from the same release as your server.
-Deploy-only keys need a server upgraded past v0.2.0: an older `panely-connect` does
+Deploy-only keys need a server upgraded past v0.2.0: an older `kadran-connect` does
 not know `-deploy`, refuses to start, and the key simply cannot connect. It fails
 closed and never falls back to admin rights.
 
@@ -486,7 +484,7 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 - **The last link is unwatched.** The heartbeat Worker reports a dead alarm sender
   or server, but if the Worker itself stops (Cloudflare outage, account problem),
   nobody is told.
-- **Hang detection covers what is watched.** panelyd pings systemd's watchdog only
+- **Hang detection covers what is watched.** kadrand pings systemd's watchdog only
   while its four background loops make progress and its database pool can hand out
   a connection. An RPC handler stuck on something no loop or probe touches still
   goes unnoticed. The thresholds (15 minutes, 3 hours for backups) are derived from
@@ -522,7 +520,7 @@ Tracked in the open rather than hidden. Each one is a real limitation today.
 | 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarm detection, Telegram delivery, core-service crash notices and an external heartbeat done |
 | 4 | Webhook receiver, deploy-on-push, cron manager | ⏳ |
 | 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots and volume backups done |
-| 6 | Multi-node: `panelyd --mode=agent`, mTLS gRPC | ⏳ |
+| 6 | Multi-node: `kadrand --mode=agent`, mTLS gRPC | ⏳ |
 | 7 | Octópus integration (local security LLM) | ⏸ on hold (running cost) |
 
 Deliberately **not** planned: a web panel. The management interface stays behind
@@ -533,10 +531,10 @@ SSH, so there is no browser-facing attack surface and no session cookie to steal
 ## Repository layout
 
 ```
-proto/panely/v1/     Single source of contract (api, exec)
-cmd/panelyd/         Server daemon
-cmd/panely-exec/     Privileged executor — deliberately small
-cmd/panely-connect/  Forced-command stdio proxy
+proto/kadran/v1/     Single source of contract (api, exec)
+cmd/kadrand/         Server daemon
+cmd/kadran-exec/     Privileged executor — deliberately small
+cmd/kadran-connect/  Forced-command stdio proxy
 cmd/kadran/          Workstation CLI + `kadran sidecar`
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
@@ -572,23 +570,23 @@ Run against a live server. Measured results from the current deployment:
 
 | Check | Expected | Measured |
 |---|---|---|
-| `sudo -u panely docker ps` | permission denied | ✅ denied (root sees the containers) |
-| `kadran` CLI as `root` or as the `panely` user on the server | connection refused | ✅ reset by peer; `panely-client` succeeds |
-| `ssh panely-client@server <anything>` | no shell | ✅ only gRPC protocol bytes come back — the forced command ignores the requested command |
-| `systemd-analyze security <unit>` | low exposure | panelyd **1.3**, panely-caddy 1.6, panely-offsite 1.5, panely-exec 2.4 |
+| `sudo -u kadran docker ps` | permission denied | ✅ denied (root sees the containers) |
+| `kadran` CLI as `root` or as the `kadran` user on the server | connection refused | ✅ reset by peer; `kadran-client` succeeds |
+| `ssh kadran-client@server <anything>` | no shell | ✅ only gRPC protocol bytes come back — the forced command ignores the requested command |
+| `systemd-analyze security <unit>` | low exposure | kadrand **1.3**, kadran-caddy 1.6, kadran-offsite 1.5, kadran-exec 2.4 |
 
 ### Verbose logging
 
-`panelyd` and `panely-exec` take `-debug`, or read `PANELY_DEBUG=1`. The environment
+`kadrand` and `kadran-exec` take `-debug`, or read `KADRAN_DEBUG=1`. The environment
 variable exists because they are started by systemd, where
 adding a flag means editing a unit and reloading:
 
 ```bash
-sudo systemctl set-environment PANELY_DEBUG=1 && sudo systemctl restart panelyd
+sudo systemctl set-environment KADRAN_DEBUG=1 && sudo systemctl restart kadrand
 ```
 
 **It is off by default and should stay that way outside of diagnosis.**
-`panelyd` and the executor handle container environment variables, request
+`kadrand` and the executor handle container environment variables, request
 parameters, and caller identities. At debug level those reach the systemd
 journal, where anyone who can read `journalctl` can see them — outside the
 boundary [SECURITY.md](SECURITY.md) draws.
@@ -617,7 +615,7 @@ Starring the repository and reporting real-world findings help just as much.
 ## Contributing
 
 Contributions are welcome — please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
-Anything touching `proto/panely/v1/exec.proto` or `internal/exec` is held to a
+Anything touching `proto/kadran/v1/exec.proto` or `internal/exec` is held to a
 higher bar: new privileged surface needs a written threat rationale and a test that
 has been **observed to fail** when the protection is removed.
 
@@ -635,4 +633,4 @@ releases stay MIT. Later releases are Apache-2.0 (K-132).
 
 Releases after v0.2.0 also carry `THIRD_PARTY_LICENSES.txt`: the license of every module
 compiled into the shipped binaries, including the Go standard library and, for
-`panely-caddy`, Caddy.
+`kadran-caddy`, Caddy.

@@ -1,4 +1,4 @@
--- Panely kontrol düzlemi şeması — göç 0002: uygulamalar ve sürümler
+-- Kadran kontrol düzlemi şeması — göç 0002: uygulamalar ve sürümler
 --
 -- 0001 KASTEN değiştirilmedi. Kendi yorumu bu tabloların "Faz 1'de kendi
 -- göçleriyle" geleceğini yazıyor; uygulanmış bir göçü sonradan düzenlemek,
@@ -33,7 +33,7 @@ CREATE TABLE apps (
     git_repo        TEXT NOT NULL,
 
     -- Dal YALNIZCA istemcinin sha çözümü için saklanır. Sunucu tarafında
-    -- hiçbir yere geçirilmez: panelyd'nin systemd birimi
+    -- hiçbir yere geçirilmez: kadrand'nin systemd birimi
     -- RestrictAddressFamilies=AF_UNIX ile çalışıyor ve ağa çıkamaz.
     git_branch      TEXT NOT NULL,
 
@@ -98,7 +98,7 @@ CREATE TABLE releases (
     --
     -- `id` = 'r' || seq olarak üretiliyor, yani teoride türetilebilir.
     -- Ama bu değer HOST TARAFINDAKİ kimliktir: konteynerler
-    -- `panely.release_id=<id>` etiketiyle işaretleniyor ve executor
+    -- `kadran.release_id=<id>` etiketiyle işaretleniyor ve executor
     -- YALNIZCA bu etiketle adresleniyor. Adlandırma şeması bir gün
     -- değişirse, türetilmiş bir kimlik hostta duran gerçek konteynerleri
     -- göstermeyi bırakırdı. Saklanan kimlik bunu imkânsız kılar.
@@ -113,7 +113,7 @@ CREATE TABLE releases (
     -- TAM 40 haneli küçük harf onaltılık.
     commit_sha  TEXT NOT NULL,
 
-    -- 1=BUILDING, 2=BUILT, 3=FAILED (panelyv1.ReleaseStatus ile aynı).
+    -- 1=BUILDING, 2=BUILT, 3=FAILED (kadranv1.ReleaseStatus ile aynı).
     status      INTEGER NOT NULL,
 
     -- Docker'ın aux karesinden gelen imaj kimliği.
@@ -160,7 +160,7 @@ CREATE UNIQUE INDEX idx_releases_app_seq ON releases (app_id, seq);
 -- "Bu uygulamanın en yeni sürümleri" birincil sorgu.
 CREATE INDEX idx_releases_app_recent ON releases (app_id, seq DESC);
 
--- Yarıda kalmış derlemeler ayrı sorgulanabilmeli: panelyd yeniden
+-- Yarıda kalmış derlemeler ayrı sorgulanabilmeli: kadrand yeniden
 -- başlatıldığında BUILDING'de asılı kalmış satırlar vardır ve bunlar
 -- hostta öksüz imaj bırakmış OLABİLİR.
 CREATE INDEX idx_releases_building ON releases (app_id, seq) WHERE status = 1;

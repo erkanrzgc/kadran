@@ -29,15 +29,15 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 const CHANNELS = {
-  version: "panely:version",
-  status: "panely:status",
-  auditList: "panely:audit-list",
-  auditVerify: "panely:audit-verify",
-  loadProfiles: "panely:profiles-load",
-  saveProfiles: "panely:profiles-save",
+  version: "kadran:version",
+  status: "kadran:status",
+  auditList: "kadran:audit-list",
+  auditVerify: "kadran:audit-verify",
+  loadProfiles: "kadran:profiles-load",
+  saveProfiles: "kadran:profiles-save",
 };
 
-contextBridge.exposeInMainWorld("panely", {
+contextBridge.exposeInMainWorld("kadran", {
   /** Sidecar'ın sürüm ve protokol bilgisi. Sunucuya dokunmaz. */
   version: () => ipcRenderer.invoke(CHANNELS.version),
 
@@ -57,7 +57,7 @@ contextBridge.exposeInMainWorld("panely", {
   /**
    * Sunucu profillerini kaydeder.
    *
-   * Profil bir SIR DEĞİLDİR: yalnızca `panely-client@1.2.3.4` gibi bir
+   * Profil bir SIR DEĞİLDİR: yalnızca `kadran-client@1.2.3.4` gibi bir
    * hedef dizesi. Anahtar malzemesi ssh-agent'ta kalır ve bu uygulamaya
    * hiç girmez — bu yüzden işletim sistemi anahtarlığı kullanılmıyor.
    */

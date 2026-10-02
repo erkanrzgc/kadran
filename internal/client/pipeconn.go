@@ -10,10 +10,10 @@ import (
 
 // pipeConn, bir okuyucu/yazıcı çiftini net.Conn arayüzüne uydurur.
 //
-// Panely'de istemci sunucuya SSH üzerinden bağlanır: `ssh -T user@host`
+// Kadran'da istemci sunucuya SSH üzerinden bağlanır: `ssh -T user@host`
 // alt süreç olarak çalıştırılır ve onun stdin/stdout boruları gRPC'nin
 // taşıması olur. Sunucu tarafında sshd bu boruları zorlanmış komuta
-// (panely-connect) bağlar, o da api.sock'a taşır.
+// (kadran-connect) bağlar, o da api.sock'a taşır.
 //
 // Böylece gRPC uçtan uca çalışır ve arada hiçbir yerde açık bir ağ portu
 // bulunmaz — şartnamedeki "gerçek IP'yi gizle" gereksinimi, gizlenecek bir

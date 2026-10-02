@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -54,8 +54,8 @@ const pruneGrace = 10 * time.Second
 // sürüme ait, yani korunuyorlar. Onları kapatan şey `ensureReplicas`;
 // iki mekanizmanın aynı konteyneri hedeflemesi yarış demekti.
 func (s *Server) PruneApp(
-	ctx context.Context, req *panelyv1.PruneAppRequest,
-) (*panelyv1.PruneAppResponse, error) {
+	ctx context.Context, req *kadranv1.PruneAppRequest,
+) (*kadranv1.PruneAppResponse, error) {
 	const action = "app.prune"
 
 	appID := req.GetAppId()
@@ -111,7 +111,7 @@ func (s *Server) PruneApp(
 	if err := s.completed(ctx, action, tgt, params, nil); err != nil {
 		return nil, err
 	}
-	return &panelyv1.PruneAppResponse{
+	return &kadranv1.PruneAppResponse{
 		AppId:             appID,
 		KeptReleases:      keptLabels(keep),
 		PrunedReleases:    stale,
@@ -178,7 +178,7 @@ func keepSet(ctx context.Context, d deploymentReader, appID string) (map[string]
 // üst sınırla kısıtlı ve sürüm sayısı sınırı aşan bir uygulamada bazı
 // konteynerler atlanırdı.
 //
-// ⚠ `ListReplicas` `panely.app_id` ETİKETİYLE süzüyor. Panely'nin
+// ⚠ `ListReplicas` `kadran.app_id` ETİKETİYLE süzüyor. Kadran'ın
 // yaratmadığı konteynerler (elle kurulmuş bir veritabanı, başka bir
 // kullanıcının işi) bu şemayla adreslenemez ve budama onları GÖREMEZ.
 func (s *Server) staleReleases(

@@ -1,9 +1,9 @@
-// Command panely-caddy, Panely'nin ters vekilidir: Caddy'nin YALNIZCA
+// Command kadran-caddy, Kadran'ın ters vekilidir: Caddy'nin YALNIZCA
 // ihtiyaç duyulan modülleriyle derlenmiş hâli.
 //
 // ── NEDEN STOK CADDY DEĞİL ──────────────────────────────────────────
 //
-// panelyd, Caddy'nin admin soketine doğrudan yazıyor (docs/decisions.md
+// kadrand, Caddy'nin admin soketine doğrudan yazıyor (docs/decisions.md
 // K-050). Bu yetkinin ne anlama geldiği ÖLÇÜLDÜ, varsayılmadı:
 //
 //	POST /load ile şu yapılandırma yüklendi:
@@ -11,7 +11,7 @@
 //	ve Caddy'nin veri dizinindeki dosya düz HTTP üzerinden SERVİS EDİLDİ.
 //
 // O dizinde alan adlarının TLS ÖZEL ANAHTARLARI durur. Yani stok Caddy
-// ile "panelyd ters vekili yapılandırabilir" yetkisi, sessizce "panelyd
+// ile "kadrand ters vekili yapılandırabilir" yetkisi, sessizce "kadrand
 // ele geçirilirse alan adının özel anahtarı çalınabilir" demek oluyordu.
 //
 // Karşı önlem olarak veri dizinini kısıtlamak İŞE YARAMAZ: `file_server`
@@ -26,9 +26,9 @@
 //
 // ── Neden ayrı bir Go modülü? ───────────────────────────────────────
 //
-// Caddy'nin bağımlılık ağacı büyük. Ana modüle eklemek panely'nin
+// Caddy'nin bağımlılık ağacı büyük. Ana modüle eklemek kadran'ın
 // go.mod'unu ve `go test ./...` süresini gereksiz yere şişirirdi;
-// ayrıca bu binary panely'nin üç binary'siyle aynı sürüm döngüsünde
+// ayrıca bu binary kadran'ın üç binary'siyle aynı sürüm döngüsünde
 // DEĞİL.
 //
 // ⚠ Faz 2 notu: DNS-01 için `caddy-dns/cloudflare` eklentisi buraya
@@ -77,7 +77,7 @@ import (
 // ── KASTEN DIŞARIDA BIRAKILANLAR ────────────────────────────────────
 //
 // Bu liste bir "yapılacaklar" değil, bir GÜVENLİK SINIRIDIR. Buraya bir
-// modül eklemek, panelyd'nin yazabildiği yapılandırmanın yapabileceklerini
+// modül eklemek, kadrand'nin yazabildiği yapılandırmanın yapabileceklerini
 // genişletir; eklemeden önce yukarıdaki ölçüm tekrarlanmalıdır.
 //
 //	caddyhttp/fileserver  — file_server + browse. ÖLÇÜLDÜ: TLS özel
@@ -87,12 +87,12 @@ import (
 //	                        okuyabiliyor; aynı sınıf.
 //	caddyfs               — dosya sistemi soyutlaması; yukarıdakileri
 //	                        besliyor.
-//	caddypki/acmeserver   — Panely bir ACME SUNUCUSU değil, istemcisi.
+//	caddypki/acmeserver   — Kadran bir ACME SUNUCUSU değil, istemcisi.
 //	                        Çalıştırmadığımız bir sunucuyu binary'de
 //	                        taşımak yalnızca yüzey ekler.
-//	reverseproxy/fastcgi  — PHP-FPM köprüsü; Panely konteynere HTTP ile
+//	reverseproxy/fastcgi  — PHP-FPM köprüsü; Kadran konteynere HTTP ile
 //	                        konuşur.
-//	caddyhttp/caddyauth   — kimlik doğrulama Panely'de SSH katmanında.
+//	caddyhttp/caddyauth   — kimlik doğrulama Kadran'da SSH katmanında.
 //	caddyhttp/push        — HTTP/2 server push, tarayıcılarca terk edildi.
 //	metrics, tracing      — Faz 3'ün işi; o zaman ölçülerek eklenir.
 func main() {

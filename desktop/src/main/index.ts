@@ -35,7 +35,7 @@ const repoRoot = resolve(here, "..", "..", "..");
  * elle bakmak CI'da tekrarlanamaz ve bu projede ölçülmeyen iddia
  * sayılmıyor.
  */
-const SMOKE_TEST = process.env.PANELY_SMOKE_TEST === "1";
+const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
 
 let client: SidecarClient | null = null;
 
@@ -110,7 +110,7 @@ function createWindow(): void {
  * Üç şey sınanıyor:
  *
  *  1. Renderer yükleniyor mu (CSP ihlali ya da eksik dosya yükü keser).
- *  2. Preload köprüsü yerinde mi — `window.panely` ve beklenen metotlar.
+ *  2. Preload köprüsü yerinde mi — `window.kadran` ve beklenen metotlar.
  *     Sandbox açıkken preload'un ESM olması bu adımı sessizce düşürür.
  *  3. Konsola hata düşüyor mu.
  *
@@ -142,7 +142,7 @@ async function runSmokeTest(window: BrowserWindow): Promise<void> {
   // süreçten bakmak preload'un gerçekten çalıştığını kanıtlamazdı.
   try {
     const surface = (await window.webContents.executeJavaScript(
-      "Object.keys(window.panely ?? {}).sort()",
+      "Object.keys(window.kadran ?? {}).sort()",
     )) as string[];
 
     const expected = [

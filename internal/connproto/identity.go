@@ -7,14 +7,14 @@
 // gelmesi kritiktir.
 //
 // İlk (yanlış) tasarımda çağıranın kimliği gRPC metadata'sından okunuyordu.
-// Bu delik bir tasarımdı: `panely-connect` bir bayt pompasıdır, gRPC
+// Bu delik bir tasarımdı: `kadran-connect` bir bayt pompasıdır, gRPC
 // metadata'sını yazan o değil, SSH'ın diğer ucundaki UZAK İSTEMCİDİR.
 // İstemci kendi parmak izini istediği gibi uydurabilir ve denetim günlüğü
 // "kim yaptı" alanında yalan söylerdi.
 //
 // Önsöz bu sorunu şöyle çözer:
 //
-//  1. panely-connect, api.sock'a bağlanır bağlanmaz — daha uzak istemciden
+//  1. kadran-connect, api.sock'a bağlanır bağlanmaz — daha uzak istemciden
 //     tek bayt okumadan — kimliği yazar.
 //  2. Kimliği sshd'nin kendi verdiğinden alır (SSH_CONNECTION ve
 //     SSH_USER_AUTH'ın gösterdiği dosya). Bunları sshd ayarlar; istemci
@@ -70,7 +70,7 @@ type Identity struct {
 
 	// Role, çağıranın yetkisi: RoleAdmin ya da RoleDeploy (K-131).
 	//
-	// Boş bırakılmaz: panelyd rolsüz önsözü el sıkışmada REDDEDER.
+	// Boş bırakılmaz: kadrand rolsüz önsözü el sıkışmada REDDEDER.
 	// Kaynağı authorized_keys satırındaki zorlanmış komutun argümanıdır;
 	// istemcinin gönderdiği hiçbir şeyden türetilmez (bkz. role.go).
 	Role string `json:"role,omitempty"`

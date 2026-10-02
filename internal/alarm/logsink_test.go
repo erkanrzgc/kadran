@@ -14,7 +14,7 @@ import (
 
 // ── Sözleşme: LogSink'in satırı ↔ Telegram göndericisi ───────────────
 //
-// deploy/notify/panely-notify.sh, panelyd'nin journal'ındaki `msg=ALARM`
+// deploy/notify/kadran-notify.sh, kadrand'nin journal'ındaki `msg=ALARM`
 // satırlarını AYRIŞTIRIYOR (K-108). Biçim iki tarafta yazılı:
 //   - burada, LogSink'in ürettiği satır,
 //   - scripts/check-notify-format.sh'ta, "canlıdan" kopyalanmış örnekler.
@@ -22,8 +22,8 @@ import (
 // geçer, Telegram teslimatı SESSİZCE dururdu. Bu test ikisini bağlıyor:
 // LogSink'in çıktısı, betik testindeki satırla BAYT BAYT aynı olmalı.
 
-// sinkCiktisi, LogSink'in satırını panelyd'nin kurduğu işleyicinin
-// aynısıyla üretir (cmd/panelyd/main.go: slog.NewTextHandler, Level Info).
+// sinkCiktisi, LogSink'in satırını kadrand'nin kurduğu işleyicinin
+// aynısıyla üretir (cmd/kadrand/main.go: slog.NewTextHandler, Level Info).
 func sinkCiktisi(t *testing.T, ev Event) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -81,7 +81,7 @@ func TestLogSinkLinesMatchTheNotifyScriptFixtures(t *testing.T) {
 		ev Event
 	}{
 		{"kritik açılış, tırnaklı ayrıntı", Event{State: Opened, Alarm: store.Alarm{
-			ID: "backup_failed:panely.db", Target: "panely.db", Severity: store.SeverityCritical,
+			ID: "backup_failed:kadran.db", Target: "kadran.db", Severity: store.SeverityCritical,
 			Detail: "zamanlı yedek alınamıyor — geri dönüş yolu YOK"}}},
 		{"uyarı açılış", Event{State: Opened, Alarm: store.Alarm{
 			ID: "disk_low:host", Target: "/", Severity: store.SeverityWarning,

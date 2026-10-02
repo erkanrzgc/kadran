@@ -44,7 +44,7 @@ COMMIT="$(git rev-parse --short=12 HEAD)"
 MOD="$(go list -m)"
 LDFLAGS="-s -w -X $MOD/internal/version.Version=$V -X $MOD/internal/version.Commit=$COMMIT"
 
-PANELY_VERSION="$V" bash scripts/build-release.sh > /dev/null
+KADRAN_VERSION="$V" bash scripts/build-release.sh > /dev/null
 
 # Platform listesi tools/thirdparty'deki clientPlatforms ile aynı olmalı
 # (TestReleasePlatformsMatch).
@@ -71,5 +71,5 @@ done
 
 (cd "$OUT" && sha256sum -- * > SHA256SUMS)
 echo "commit: $COMMIT"
-echo "panely-caddy amd64 md5: $(md5sum bin/linux-amd64/panely-caddy | cut -c1-12)"
+echo "kadran-caddy amd64 md5: $(md5sum bin/linux-amd64/kadran-caddy | cut -c1-12)"
 cat "$OUT/SHA256SUMS"

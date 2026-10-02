@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# panely-caddy'yi derler. scripts/build-release.sh ve CI AYNI komutu
+# kadran-caddy'yi derler. scripts/build-release.sh ve CI AYNI komutu
 # kullanıyor; ikisi ayrı ayrı yazıldığında biri çürüyordu.
 #
 # Kullanım: scripts/build-caddy.sh <arch> <çıktı yolu (mutlak)>

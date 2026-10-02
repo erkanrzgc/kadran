@@ -9061,6 +9061,11 @@ başlığında `[skip ci]`), uçta işaretsiz commit (`df4482c`). Koşu OLUŞTU
 atla" kuralı bugün geçerli değil; changelog'un cümlesi eski ya da yanlış.
 Kalan iki aday: "yalnız uca bak" ya da "hepsi işaretliyse atla".
 
+**Ölçüm 2 (ters sıra):** önce işaretsiz commit (ölçüm 1'in kaydı), uçta
+işaretli commit (bu paragraf, başlığında `[skip ci]`). Koşu oluşursa kural
+"hepsi işaretliyse atla"dır; oluşmazsa "yalnız uca bak"tır ve K-129'un A/B
+tuzağı GitHub'da gerçektir.
+
 ## K-131 — Yalnızca dağıtım yapabilen anahtar: yetki ayrımı
 
 **Tarih:** 2 Ekim 2026

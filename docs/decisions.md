@@ -9031,6 +9031,30 @@ sonraki işaretsiz push'a kadar canlıda eski kod kalır.
 1. K-125 seçildiğinde bu kural da gelsin mi?
 2. `[skip deploy]` eklensin mi, yoksa yalnız yaygın dört işaret mi?
 
+### Güncelleme (2 Ekim): K-125 C seçildi, işareti GitHub uyguluyor
+
+Seçilen yol C (K-135): dağıtımı panelyd değil GitHub Actions tetikliyor.
+Bu kuralın uygulanacağı yer panelyd'de artık YOK; push iş akışını
+tetiklemezse dağıtım da olmaz. GitHub `push` için `[skip ci]`, `[ci skip]`,
+`[no ci]`, `[skip actions]`, `[actions skip]` işaretlerini ve
+`skip-checks: true` satırını kendisi tanıyor. Elle tetikleme
+(`workflow_dispatch`) işarete bakmaz: yukarıdaki "elle dağıtım işarete
+bakmaz" kuralıyla aynı.
+
+Asıl soru yine çoklu commit. GitHub'ın iki resmî kaynağı (2 Ekim'de
+okundu) farklı şey söylüyor:
+
+- Belge ("Skipping workflow runs"): işaret "the commit message in a push"
+  içindeyse iş akışı tetiklenmez. Birden çok commit olunca hangisine
+  bakıldığı yazmıyor.
+- 2021 changelog'u: "If any commit message in your push … contains" —
+  push'taki HERHANGİ bir commit.
+
+Changelog doğruysa durum K-129'un korktuğundan da kötü: işaretli TEK bir
+belge commit'i, aynı push'taki kod commit'lerinin dağıtımını da düşürür.
+Hangi kuralın geçerli olduğu bu depoda iki push'la ölçülüyor (yalnız
+belge commit'leriyle; atlanan bir CI sonraki push'ta koşar).
+
 ## K-131 — Yalnızca dağıtım yapabilen anahtar: yetki ayrımı
 
 **Tarih:** 2 Ekim 2026

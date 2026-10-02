@@ -5,6 +5,20 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### Renamed to Kadran
+
+The project is now **Kadran** (from the Turkish word for a dial or gauge face). The
+repository moved to `github.com/erkanrzgc/kadran`; GitHub redirects the old address.
+- The command-line tool is `kadran` (was `panely`), built from `cmd/kadran`. The Go
+  module path is `github.com/erkanrzgc/kadran`.
+- Server-side names are unchanged: the services (`panelyd`, `panely-exec`,
+  `panely-caddy`, `panely-connect`), the `panely` and `panely-client` users, the
+  directories, container labels, image names, and backup file prefixes. Existing
+  installs need nothing, and you keep connecting as `panely-client@server`.
+- The systemd unit files and the reverse proxy's module are deliberately untouched.
+  Changing them would have restarted the reverse proxy on the next upgrade (K-130).
+- Environment variables keep their `PANELY_` names.
+
 ### CLI
 
 - **DNS check before setting a domain.** `app create -domain` and

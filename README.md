@@ -1,12 +1,12 @@
 <div align="center">
 
-# Panely
+# Kadran
 
 **A self-hosted deployment platform whose control panel never runs as root.**
 
-[![CI](https://github.com/erkanrzgc/panely/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/panely/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/erkanrzgc/panely.svg)](https://pkg.go.dev/github.com/erkanrzgc/panely)
-[![Go Report Card](https://goreportcard.com/badge/github.com/erkanrzgc/panely)](https://goreportcard.com/report/github.com/erkanrzgc/panely)
+[![CI](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/erkanrzgc/kadran.svg)](https://pkg.go.dev/github.com/erkanrzgc/kadran)
+[![Go Report Card](https://goreportcard.com/badge/github.com/erkanrzgc/kadran)](https://goreportcard.com/report/github.com/erkanrzgc/kadran)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen.svg)](SECURITY.md)
@@ -22,13 +22,18 @@
 > site on a live server. It is maintained by one person, the
 > CLI's messages are currently **Turkish only**, and several gaps listed under
 > [Known gaps](#known-gaps) matter for production use. Read them before you rely on it.
+>
+> **Naming.** The project was called Panely until October 2026. The command-line
+> tool is now `kadran`. Server-side names keep the `panely` prefix for now: the services
+> (`panelyd`, `panely-exec`, `panely-caddy`), the `panely` and `panely-client` users and
+> `/var/lib/panely`. Existing installs keep working unchanged (K-130).
 
 ---
 
 ## Why another panel?
 
-Coolify, Dokploy, CapRover and friends do their job well. Panely exists because of
-a single design decision they all share and Panely rejects:
+Coolify, Dokploy, CapRover and friends do their job well. Kadran exists because of
+a single design decision they all share and Kadran rejects:
 
 **Every mainstream self-hosted panel gives itself the Docker socket.**
 
@@ -38,7 +43,7 @@ to the host filesystem as uid 0. That means **any remote code execution bug in t
 panel is a full host compromise**, including a bug in a template, a webhook parser, or
 a transitive npm dependency.
 
-Panely takes the opposite approach. The panel daemon is unprivileged and cannot reach
+Kadran takes the opposite approach. The panel daemon is unprivileged and cannot reach
 Docker at all. Everything privileged happens in a separate, deliberately small binary
 that accepts only typed, schema-whitelisted requests — and that binary's size is
 enforced by CI as a hard budget.
@@ -58,17 +63,17 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 | **Blue-green releases with a health gate** | Traffic moves only after the new release answers its HTTP health check |
 | **Rollback** | Back to the previous release without rebuilding. Measured: ~18 s end to end, 55 of 55 probes returned `200` during the switch |
 | **Automatic HTTPS** | Let's Encrypt certificates via a custom Caddy build that contains no file server. Config reloads are atomic. If the proxy restarts or crashes, the daemon notices within 10 s and restores the routes (measured: sites back after 3 s on a restart, 7 s on a crash; without the watcher they stayed down) |
-| **Live logs** | `panely logs -f <app>`; container logs are capped at 3 × 10 MiB |
+| **Live logs** | `kadran logs -f <app>`; container logs are capped at 3 × 10 MiB |
 | **Health supervisor** | Restarts failed releases with backoff, and keeps running when no client is connected. After a reboot it starts the apps again (measured: sites answer ~19 s after the kernel boots) |
 | **Hang detection** | If panelyd's background loops stop making progress or its database pool runs dry, it stops pinging systemd's watchdog (`WatchdogSec=60s`). systemd then restarts it, and a goroutine dump lands in the journal. Measured under real systemd in CI: a frozen daemon was killed and brought back, and a normal run caused no restarts (K-115) |
 | **Scaling, env vars, volumes** | `app update -replicas/-env/-volume`. Volumes are mounted `nodev,nosuid` |
 | **Pruning** | Removes old releases' containers, always keeping the rollback target |
 | **Backups** | Hourly SQLite snapshots with a tested restore path. Optional **encrypted offsite copy** ([`deploy/offsite`](deploy/offsite/README.md)): `age` public-key encryption, so the server cannot decrypt its own past backups |
 | **Volume backups (optional)** | A separate unit archives app volumes nightly and encrypts them before anything leaves it. It can read every volume but has no network and no sockets, so the daemon still cannot read app data. Measured: an archive restored from R2, decrypted on another machine, matched the original file for file (owner, mode, checksum) |
-| **Alarm detection** | Four failure conditions (heal exhausted, backup failed, proxy not reconciled, low disk), edge-triggered and persisted so that a restart does not fire them again. Shown by `panely alarms` and in the journal |
+| **Alarm detection** | Four failure conditions (heal exhausted, backup failed, proxy not reconciled, low disk), edge-triggered and persisted so that a restart does not fire them again. Shown by `kadran alarms` and in the journal |
 | **Alarm delivery (optional)** | A separate unit forwards alarms, offsite-backup failures, and crashes or stops of the core services (panelyd, panely-exec, panely-caddy) to Telegram ([`deploy/notify`](deploy/notify/README.md)). The daemon still has no network access and cannot read the bot token. Measured: a real alarm reached Telegram within 34 s, its recovery too; a killed panelyd was reported in 69 s and its recovery a minute later, while the site answered 937 of 937 requests; failed sends are retried, not lost |
 | **Heartbeat (optional)** | A Cloudflare Worker on the free tier ([`deploy/nabiz`](deploy/nabiz/README.md)) tells you on Telegram when the alarm sender goes silent for 15 minutes, meaning the sender or the whole server is down. Measured: the alarm came 17 minutes after the last heartbeat, recovery on the next check, one message per change of state |
-| **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `panely audit verify` checks both |
+| **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `kadran audit verify` checks both |
 
 ---
 
@@ -86,7 +91,7 @@ each lives in [`docs/decisions.md`](docs/decisions.md).
 - Ports 80 and 443 must be free on the server. The installer stops if a `caddy`,
   `nginx`, `apache2`, `httpd` or `lighttpd` service is running.
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`):
-  use `panely bootstrap -sudo user@server` with a user that has passwordless sudo.
+  use `kadran bootstrap -sudo user@server` with a user that has passwordless sudo.
   Root SSH stays closed; see step 2. Open 80/443 in the provider's firewall; on GCP,
   use a rule with a target tag so that only this machine is exposed.
 - **GCP: never add `panely-client` to instance or project SSH metadata.** The guest
@@ -106,16 +111,16 @@ go install github.com/bufbuild/buf/cmd/buf@v1.47.2      # the version CI pins
 go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.4
 go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.5.1
 
-git clone https://github.com/erkanrzgc/panely && cd panely
+git clone https://github.com/erkanrzgc/kadran && cd kadran
 buf generate
-scripts/build-release.sh          # bin/linux-{amd64,arm64}/… and bin/panely
+scripts/build-release.sh          # bin/linux-{amd64,arm64}/… and bin/kadran
 ```
 
 ### 2. Bootstrap the server
 
 ```bash
-bin/panely bootstrap root@your-server          # root SSH with a key
-bin/panely bootstrap -sudo you@your-server     # or: passwordless sudo, root SSH stays closed
+bin/kadran bootstrap root@your-server          # root SSH with a key
+bin/kadran bootstrap -sudo you@your-server     # or: passwordless sudo, root SSH stays closed
 ```
 
 This copies the binaries and systemd units, creates the unprivileged users, installs
@@ -162,9 +167,9 @@ Optional hardening: restrict builds to specific repositories with the executor's
 ### 3. Deploy an app
 
 ```bash
-bin/panely app create -repo github.com/you/site -domain site.example.com -port 8080 site panely-client@your-server
-bin/panely deploy site panely-client@your-server
-bin/panely status panely-client@your-server
+bin/kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site panely-client@your-server
+bin/kadran deploy site panely-client@your-server
+bin/kadran status panely-client@your-server
 ```
 
 Point the domain's DNS at the server before deploying, so that Let's Encrypt can
@@ -181,13 +186,13 @@ server (K-128).
 - Behind a proxy such as Cloudflare the records show the proxy, not the server.
   Pass `-skip-dns-check` in that case.
 
-If a certificate still doesn't arrive, `panely domain check site.example.com
+If a certificate still doesn't arrive, `kadran domain check site.example.com
 panely-client@your-server` checks each step from your machine and exits non-zero on
 a problem. When the DNS points elsewhere, it says that the port and certificate
 lines describe that other host.
 
 > Flags go **after the command and before positional arguments** (Go's `flag`
-> package stops at the first positional one): `panely app update -replicas 2 site host`.
+> package stops at the first positional one): `kadran app update -replicas 2 site host`.
 
 ### Commands
 
@@ -238,7 +243,7 @@ Exit codes: `0` success · `1` error · `2` usage · `3` **audit chain broken**.
 | `panely-exec` | `root` | Privileged, but accepts **only** typed schemas | Docker Engine API, constrained filesystem writes |
 | `panely-caddy` | `panely-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME for deployed apps |
 | `panely-connect` | `panely-client` | None. ~90 lines, forced command | Byte pump between sshd and `api.sock` |
-| `panely` | workstation | — | CLI, and sidecar for the Electron GUI |
+| `kadran` | workstation | — | CLI, and sidecar for the Electron GUI |
 
 ### The schema *is* the whitelist
 
@@ -294,7 +299,7 @@ hash = SHA256(canonical(seq, ts, actor, source_ip, ssh_fingerprint,
                         action, target, params, outcome) ‖ prev_hash)
 ```
 
-`panely audit verify` walks both chains and exits `3` if either is broken. Environment
+`kadran audit verify` walks both chains and exits `3` if either is broken. Environment
 values and build arguments are written as `[REDACTED]`.
 
 The executor's journal lives in a root-only directory (`/var/lib/panely-exec`, `0700`);
@@ -332,7 +337,7 @@ no management endpoint to firewall and no bearer token to leak.
 
 ### The client is not root either
 
-`panely bootstrap root@server` is a **one-time** setup command. Day-to-day, the
+`kadran bootstrap root@server` is a **one-time** setup command. Day-to-day, the
 client never connects as root — if it did, the operator's own shell could run
 `docker run --privileged` and the executor split would be decorative.
 
@@ -434,7 +439,7 @@ proto/panely/v1/     Single source of contract (api, exec)
 cmd/panelyd/         Server daemon
 cmd/panely-exec/     Privileged executor — deliberately small
 cmd/panely-connect/  Forced-command stdio proxy
-cmd/panely/          Workstation CLI + `panely sidecar`
+cmd/kadran/          Workstation CLI + `kadran sidecar`
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
 desktop/             Electron + React
@@ -470,7 +475,7 @@ Run against a live server. Measured results from the current deployment:
 | Check | Expected | Measured |
 |---|---|---|
 | `sudo -u panely docker ps` | permission denied | ✅ denied (root sees the containers) |
-| `panely` CLI as `root` or as `panely` on the server | connection refused | ✅ reset by peer; `panely-client` succeeds |
+| `kadran` CLI as `root` or as the `panely` user on the server | connection refused | ✅ reset by peer; `panely-client` succeeds |
 | `ssh panely-client@server <anything>` | no shell | ✅ only gRPC protocol bytes come back — the forced command ignores the requested command |
 | `systemd-analyze security <unit>` | low exposure | panelyd **1.3**, panely-caddy 1.6, panely-offsite 1.5, panely-exec 2.4 |
 
@@ -500,7 +505,7 @@ hash-chained log.
 
 ## Support this project
 
-Panely is developed in the open by one person. If it is useful to you, or you just
+Kadran is developed in the open by one person. If it is useful to you, or you just
 want the privilege-separation model to exist in this space:
 
 <a href="https://ko-fi.com/erkanrzgc">

@@ -8864,6 +8864,90 @@ karşılaştırma bunu doğruladı.
   - kapalı port yalnızca uyarıyor;
   - not basılmıyor.
 
+## K-130 — Ad değişikliği: Panely → Kadran (marka katmanı)
+
+**Tarih:** 2 Ekim 2026
+**Durum:** UYGULANDI. Depo yeniden adlandırıldı; CI'da doğrulanacak.
+
+### Karar
+
+- Kullanıcı iki ad arasında kalıp kararı bana bıraktı: Kadran mı, Kadren mi.
+  Seçilen **Kadran**:
+  - "gösterge/kadran" anlamı bir panelin yaptığı işi anlatıyor;
+  - `kadran.sh` boş görünüyor.
+- Kadren'in artısı aranabilirlikti: depo yok, `.dev/.io/.app` boş
+  görünüyor. Ama anlamsız bir kelime.
+- Ölçülen (yalnız DNS kaydına bakılarak; kesinlik kayıt firmasında):
+  - `kadran.com/.dev/.io/.app` kayıtlı;
+  - aynı adlı 5 küçük GitHub deposu var (en çok 2 yıldız).
+- Kapsamı kullanıcı seçti: **önce marka katmanı.**
+
+### Değişen
+
+- **Depo:** `erkanrzgc/panely` → `erkanrzgc/kadran`.
+  - 2 yıldız ve 1 fork korundu.
+  - Eski adres 301 ile yönlendiriyor (ölçüldü).
+- **Go modülü:** `github.com/erkanrzgc/kadran`; import yolları ve proto
+  `go_package`.
+- **CLI:** `cmd/panely` → `cmd/kadran`.
+  - Ad tek sabitte (`progName`): hata öneki, kullanım ve sürüm satırı.
+  - `panely <alt komut>` ipuçları her yerde `kadran ...` oldu.
+- **Derleme ve CI:** `-X` sürüm yolu artık `go list -m`'den türetiliyor.
+  Yanlış bir `-X` yolu HATASIZ yok sayılır ve ikili `dev` der; elle
+  yazılan yol bir gün yine kayardı.
+- **Masaüstü:** sidecar ikilisinin adı ve pencere başlığı.
+- **Belgeler:** ürün adı. Geçmiş K kayıtları ve CHANGELOG'un eski
+  bölümleri değiştirilmedi.
+
+### Bilerek değişmeyen ve nedeni
+
+- **systemd birim dosyaları, yorumları dahil.**
+  - Kurulum betiği vekilin "değişti mi" kararını
+    (`vekil_parmak_izi`) birim dosyalarının TÜM içeriğinden veriyor.
+  - Dönüşüm, Caddy biriminin bir yorumundaki `panely status` ipucunu da
+    değiştirmişti. Bir sonraki yükseltmede vekil gereksiz yere yeniden
+    başlardı (~1,5 sn, K-118).
+  - Commit'ten önce yakalandı ve geri alındı.
+  - Birimlerdeki `Documentation=` adresi de eski kaldı; yönlendirme
+    çalışıyor.
+- **`build/caddy` modül yolu.** Caddy ikilisine gömülü; değişseydi
+  ikilinin hash'i ve yine vekil yeniden başlatması.
+- **Protokolün paket adı `panely.v1`.** Kablodaki servis adı; değişseydi
+  yeni CLI eski sunucuyla konuşamazdı.
+- **Çalışma zamanı adları:** `panelyd`, `panely-exec`, `panely-connect`,
+  `panely-caddy`; `panely` ve `panely-client` kullanıcıları; dizinler;
+  konteyner etiketleri (`panely.app_id`); imaj adları (`panely/<uygulama>`);
+  `panely.db`; yedek ve R2 önekleri (30 günlük kilit ve silme kuralları bu
+  öneke bağlı). Değiştirmek iki canlı sunucuda bir göç işi; ayrı bir K.
+- **Electron `package.json` `name`.** Electron kullanıcı verisi dizinini
+  ondan türetiyor (`productName` yok, eklenmedi); kayıtlı sunucu
+  profilleri orada. Değişseydi sessizce kaybolurlardı.
+- **Ortam değişkenleri `PANELY_*`.** `PANELY_BINARY_DIR`,
+  `PANELY_SIDECAR_COMMAND`, `PANELY_SMOKE_TEST`; geriye uyum için.
+- **`window.panely` köprü adı.** İç API, kullanıcıya görünmüyor.
+
+### Doğrulama
+
+- **Kapı (danışmanın önerisi):** sunucu tarafı dizinlerde eklenen her
+  satır ya import yolu (199) ya komut ipucu (37) ya da `cmd` yolu (1)
+  olmalıydı. Beklenmeyen: 0. Kaybolan 37 çıplak `panely`'nin 37'si de
+  ipucuydu.
+  - Bu kapı birim dosyası yorumunu "ipucu" diye geçirdi. Kural, içeriği
+    parmak izine giren dosyalar için yetersizdi. O dosyalar ayrıca
+    denetlendi.
+- **Yüzey bütçesi 2498/2500, değişmedi.** Betik modül yolunu `go list -m`
+  ile buluyor. Modül önekiyle süzüp 0 sayarak yeşil geçme ihtimali
+  önceden ve sonradan ölçülerek dışlandı.
+- **Sürüm enjeksiyonu:** `kadran v9.9.9-olcum (abc)` ve
+  `panelyd v9.9.9-olcum`.
+- **Testler:** Windows'ta bütün testler, vet ve lint geçti; lint Linux
+  için de koşuldu. Masaüstü 18/18. `mutate-appshow` yeni `cmd/kadran`
+  yollarıyla tamam.
+- **Sonraki yükseltmede:** `panelyd`, `panely-exec` ve `panely-connect`
+  ikililerinin hash'i değişecek (modül yolu gömülü; zaten yeniden
+  başlıyorlar). `panely-caddy` değişmeyecek.
+- **Yayın dosyalarının adı** bir sonraki sürümden itibaren `kadran-…`.
+
 ## K-129 — Commit mesajıyla otomatik dağıtımı atlama (`[skip ci]`): K-125'e ek taslak
 
 **Tarih:** 1 Ekim 2026

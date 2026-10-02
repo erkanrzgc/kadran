@@ -91,4 +91,4 @@ sudo systemctl enable --now panely-notify.timer
   kilitlenen bir panelyd'nin süreci durur ama yaşar, "çalışıyor" görünür.
 - Bakım için bir çekirdek servisi iki dakikadan uzun durdurmak da
   "🔴 ÇALIŞMIYOR" mesajı üretir. Bu doğru: servis gerçekten çalışmıyor.
-- Bu kurulum `panely bootstrap` tarafından yapılmıyor (uzak yedek gibi).
+- Bu kurulum `kadran bootstrap` tarafından yapılmıyor (uzak yedek gibi).

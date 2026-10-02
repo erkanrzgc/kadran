@@ -1,4 +1,4 @@
-# Contributing to Panely
+# Contributing to Kadran
 
 Thanks for considering it. This document is short on ceremony and specific about
 the one thing that matters most in this codebase: **the privileged surface**.
@@ -107,7 +107,7 @@ open an issue** — see [SECURITY.md](SECURITY.md).
 
 ## Scope
 
-Panely deliberately does not have a web panel. The management interface stays
+Kadran deliberately does not have a web panel. The management interface stays
 behind SSH — the CLI today, the desktop app as it grows; adding a browser-facing
 control surface would reintroduce exactly the attack surface the architecture removes. PRs adding one will be declined regardless of quality.
 

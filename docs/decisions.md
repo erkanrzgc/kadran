@@ -9225,3 +9225,43 @@ yönetici anahtarı olurdu.
     zaten önce listede arıyor); mutant ve test düzeltildi.
 - README'de GitHub Actions örneği.
 - ⚠ Gerçek sunucuda (sshd + sudo) HENÜZ ölçülmedi.
+## K-132 — Lisans: MIT → Apache-2.0; yayınlara üçüncü taraf lisansları
+
+**Tarih:** 2 Ekim 2026
+**Durum:** UYGULANDI (lisans). Üçüncü taraf lisansları aynı kayıtta,
+aşağıda.
+
+### Karar (kullanıcının)
+
+- Proje Apache License 2.0'a geçti. Kullanıcı sordu, öneri Apache-2.0'dı,
+  kullanıcı onayladı.
+- **Neden şimdi:** kodun tamamı tek yazarın. Ölçüldü: `git log`'da tek
+  yazar adresi, contributors API'de tek hesap (188 commit), hiç PR yok
+  (açık ya da kapalı). Katkı geldikten sonra yeniden lisanslamak her
+  katkıcının onayını isterdi.
+- **Neden Apache-2.0:**
+  - açık patent izni ve patent davası açanın izninin düşmesi (§3);
+  - katkıların aynı koşullarla gelmesi (§5);
+  - marka hakkı vermediğini açıkça yazması (§6): "Kadran" adı;
+  - kullanılan altyapı aynı lisansta: Caddy, gRPC, genproto.
+- **Zorunluluk değildi:** Coolify'dan (Apache-2.0) kod alınmadı, yalnız
+  fikir; K-128'in DNS önkontrolü sıfırdan yazıldı.
+- **Geçmiş sürümler MIT kalır:** v0.1.0 ve v0.2.0 MIT ile yayınlandı; o
+  izin geri alınamaz. Mevcut 1 fork, aldığı sürümü MIT ile kullanmaya
+  devam edebilir.
+
+### Değişen
+
+- `LICENSE`: resmî Apache-2.0 metni, değiştirilmeden. Kaynak seçilirken
+  ölçüldü: gRPC, Caddy ve genproto'nun LICENSE dosyaları bayt bayt aynı
+  (SHA-256 `cfc7749b…3d30`); LICENSE bunlardan kopyalandı. Ek bölümdeki
+  `[yyyy] [name of copyright owner]` şablonu metnin parçası, doldurulmadı;
+  telif satırı `NOTICE`'ta.
+- `NOTICE`: yalnız ad ve telif. Apache-2.0'da NOTICE yeniden dağıtanların
+  taşıması gereken metindir; gereksiz satır onlara yük olur.
+- README rozeti ve lisans bölümü; CONTRIBUTING'de katkının lisansı (§5,
+  §3) ve başka bir Apache projesinden kod getirilirse NOTICE'ın
+  taşınması (§4d).
+- Masaüstü `package.json`'a `"license": "Apache-2.0"`; kilit dosyasının
+  kök kaydı elle güncellendi, `npm install --package-lock-only` aynı
+  dosyayı üretti (ölçüldü).

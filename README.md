@@ -7,7 +7,7 @@
 [![CI](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/erkanrzgc/kadran.svg)](https://pkg.go.dev/github.com/erkanrzgc/kadran)
 [![Go Report Card](https://goreportcard.com/badge/github.com/erkanrzgc/kadran)](https://goreportcard.com/report/github.com/erkanrzgc/kadran)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 [![Security Policy](https://img.shields.io/badge/security-policy-brightgreen.svg)](SECURITY.md)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-support-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/erkanrzgc)
@@ -579,4 +579,12 @@ Security issues: **do not open a public issue.** See [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT](LICENSE) © [erkanrzgc](https://github.com/erkanrzgc)
+[Apache License 2.0](LICENSE) © [erkanrzgc](https://github.com/erkanrzgc). See
+[NOTICE](NOTICE).
+
+Releases up to and including v0.2.0 were published under the MIT License, and those
+releases stay MIT. Later releases are Apache-2.0 (K-132).
+
+Releases after v0.2.0 also carry `THIRD_PARTY_LICENSES.txt`: the license of every module
+compiled into the shipped binaries, including the Go standard library and, for
+`panely-caddy`, Caddy.

@@ -113,5 +113,12 @@ control surface would reintroduce exactly the attack surface the architecture re
 
 ## License
 
-By contributing you agree that your contributions are licensed under the
-[MIT License](LICENSE).
+Kadran is licensed under the [Apache License 2.0](LICENSE). Under its section 5, a
+contribution you submit is licensed under the same terms unless you state
+otherwise, and section 3 gives users a patent license for it. Do not submit code
+you cannot license this way, for example code copied from a project under an
+incompatible license.
+
+If you bring in code from another Apache-2.0 project, keep its copyright notice
+in the file and say where it came from in the pull request: its `NOTICE`, if it
+has one, may have to be carried into ours.

@@ -5,6 +5,13 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### License: Apache-2.0
+
+Kadran is now licensed under the Apache License 2.0 (was MIT). v0.1.0 and v0.2.0
+were released under MIT and remain available under it. The change adds an explicit
+patent grant and spells out that contributions come under the same terms; see
+`NOTICE` and K-132.
+
 ### Renamed to Kadran
 
 The project is now **Kadran** (from the Turkish word for a dial or gauge face). The

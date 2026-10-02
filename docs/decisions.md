@@ -9421,6 +9421,19 @@ K-131'in GCP ölçümünde panelyd journal'ı dağıtım anahtarının retlerini
   veriyor ve journal'da `anahtar=SHA256:` görmeyi şart koşuyor.
 - `mutate-authz.sh`'a 4 mutant (değişkeni eskisine çevir, panely-connect
   dosyayı okumasın, açık anahtar dışı satır, boyut sınırı): 29/29.
-- Gerçek sunucuda (GCP) yükseltme sonrası yönetici işleminin kaydında
-  parmak izinin yönetici anahtarınınkiyle (`ssh-keygen -lf`) aynı
-  olduğu ölçülecek.
+- **Gerçek sunucuda ölçüldü (GCP, bu commit'e `bootstrap -sudo`):**
+  yükseltmeden sonraki ilk yönetici işleminin (`backup.create`, seq 33)
+  kaydında `ssh_key_fingerprint` = `SHA256:iVvT7…`, iş istasyonundaki
+  anahtarın `ssh-keygen -lf` çıktısıyla birebir. Aynı sunucuda önceki 7
+  SSH kaydı boş: önce/sonra kontrol grubu.
+  - Teşhis sırasında çalışan panely-connect'in ortamı `/proc/<pid>/environ`
+    üzerinden okundu: `SSH_USER_AUTH=/tmp/sshauth.…`, dosya panely-client'a
+    ait 0600, içerik `publickey ssh-ed25519 …`; `SSH_AUTH_INFO_0` YOK.
+- ⚠ **Ölçüm hatam:** ilk sayımı (`56/0`) yanlış JSON alan adıyla
+  (`key_fingerprint`; doğrusu `ssh_key_fingerprint`) yaptım; o sayım
+  sonucu ne olursa olsun 0 verirdi, yani hiçbir şey ölçmüyordu.
+  Düzeltmeden sonra GCP'de de "hâlâ boş" gördüm ve ancak ham JSON'a
+  bakınca anladım. Doğru alanla yeniden ölçüldü: Hetzner 152 kayıt, 56'sı
+  SSH kökenli, 0'ında parmak izi — iddia bu kez gerçekten ölçülmüş
+  hâliyle duruyor. Ölçüm aracının kendisi de bir kontrol grubu ister
+  ([[security-probe-must-prove-it-measured]]).

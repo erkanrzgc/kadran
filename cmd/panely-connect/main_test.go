@@ -2,6 +2,8 @@ package main
 
 import (
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -57,9 +59,14 @@ func TestBadArgumentsAreRejected(t *testing.T) {
 }
 
 func TestIdentityCarriesRole(t *testing.T) {
+	// sshd'nin ExposeAuthInfo ile yaptığı: dosya + SSH_USER_AUTH (K-134).
+	auth := filepath.Join(t.TempDir(), "sshauth")
+	if err := os.WriteFile(auth, []byte("publickey ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	env := map[string]string{
-		"SSH_CONNECTION":  "203.0.113.7 51000 198.51.100.1 22",
-		"SSH_AUTH_INFO_0": "publickey ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+		"SSH_CONNECTION": "203.0.113.7 51000 198.51.100.1 22",
+		"SSH_USER_AUTH":  auth,
 	}
 	opts := options{role: connproto.RoleDeploy, apps: []string{"web"}}
 

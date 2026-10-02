@@ -353,6 +353,19 @@ command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA... pane
 The key can only execute `panely-connect`, which does nothing but connect to
 `api.sock` and shuttle bytes.
 
+It does **not** disable environment processing — a common and load-bearing
+misreading. The audit trail records which key acted: with `ExposeAuthInfo yes`,
+sshd writes the authenticating key to a file and passes its path in
+`SSH_USER_AUTH`. An `environment=` entry in `authorized_keys` would override
+sshd's own value and point it at a forged file, letting a caller forge who did
+what. That is closed by `PermitUserEnvironment no`, pinned explicitly in the sshd
+drop-in rather than left to a distribution default.
+
+> **Measured, not assumed.** Until K-134 the code read `SSH_AUTH_INFO_0`, a PAM-internal
+> variable OpenSSH deliberately keeps out of the session. Tests set it themselves,
+> so they passed; the live server's audit log showed 56 SSH records and not one
+> fingerprint. It was found by reading the real server's log, not by a test.
+
 A key for CI can be limited to deploying named apps. The role lives in the same
 line as the key, so there is no second list to drift out of sync:
 
@@ -401,12 +414,6 @@ The workflow needs the `kadran` CLI for Linux from the same release as your serv
 Deploy-only keys need a server upgraded past v0.2.0: an older `panely-connect` does
 not know `-deploy`, refuses to start, and the key simply cannot connect. It fails
 closed and never falls back to admin rights.
-
-It does **not** disable environment processing — a common and load-bearing
-misreading. The audit trail's actor identity comes from `SSH_AUTH_INFO_0`, and an
-`environment=` entry in `authorized_keys` would override sshd's own value, letting
-a caller forge who did what. That is closed by `PermitUserEnvironment no`, pinned
-explicitly in the sshd drop-in rather than left to a distribution default.
 
 > **Design note.** An earlier draft allowed unix-socket forwarding via
 > `direct-streamlocal`. The forced command is both simpler and stricter: socket

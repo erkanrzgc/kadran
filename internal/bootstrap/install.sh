@@ -437,22 +437,25 @@ chmod 0600 "$auth_file"
 
 # sshd drop-in.
 #
-# ExposeAuthInfo, kimlik doğrulamada kullanılan anahtarın parmak izini
-# SSH_AUTH_INFO_0'a yazar. panely-connect denetim kaydının aktör kimliğini
-# ORADAN okuyor; kapalıysa parmak izi sessizce boş kalır ve denetim izi
-# "kim yaptı" sorusunu yanıtlayamaz.
+# ExposeAuthInfo, kimlik doğrulamada kullanılan anahtarı geçici bir dosyaya
+# yazar ve yolunu oturuma SSH_USER_AUTH ile verir. panely-connect denetim
+# kaydının aktör kimliğini ORADAN okuyor; kapalıysa parmak izi sessizce boş
+# kalır ve denetim izi "kim yaptı" sorusunu yanıtlayamaz. (Kod eskiden
+# SSH_AUTH_INFO_0'ı okuyordu: PAM'in iç değişkeni, oturuma gelmiyor; canlıda
+# parmak izi hiç kaydedilmemişti — K-134.)
 if [ -d /etc/ssh/sshd_config.d ] && grep -qE '^\s*Include\s+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config; then
     cat > "$SSHD_DROPIN" <<'SSHD'
 # Panely tarafından yönetiliyor. Elle düzenlemeyin.
 
 # ── Denetim kimliğinin taklit edilmesini engelleyen satır ────────────
 #
-# panely-connect, aktörün SSH parmak izini SSH_AUTH_INFO_0'dan okur.
-# O değişkeni istemci belirleyebilirse denetim izi yalan söyler.
+# panely-connect, aktörün SSH parmak izini SSH_USER_AUTH'ın gösterdiği
+# dosyadan okur. O değişkeni istemci belirleyebilirse denetim izi yalan
+# söyler.
 #
 # authorized_keys'teki `environment="AD=deger"` seçeneği tam olarak bunu
 # yapardı: sshd(8) bu seçenek için "override other default environment
-# values" diyor — yani sshd'nin KENDİ yazdığı SSH_AUTH_INFO_0'ı ezerdi.
+# values" diyor — yani SSH_USER_AUTH sahte bir dosyayı gösterebilirdi.
 # Kapatan ayar PermitUserEnvironment'tır.
 #
 # İKİ İNCE NOKTA:

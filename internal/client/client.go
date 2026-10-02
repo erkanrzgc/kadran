@@ -313,7 +313,7 @@ func dialLocal(ctx context.Context, path string) (net.Conn, error) {
 //
 // Hayır — çünkü uydurma zaten mümkündü ve bu kod onu kolaylaştırmıyor.
 // Önsözün bütünlüğü "api.sock'a yalnızca panely-connect yazabilir"
-// varsayımına DAYANMAZ; "SSH_AUTH_INFO_0'ı yalnızca sshd ayarlayabilir"
+// varsayımına DAYANMAZ; "SSH_USER_AUTH'ı yalnızca sshd ayarlayabilir"
 // varsayımına dayanır. İstemci kullanıcısı olarak rastgele kod
 // çalıştırabilen biri panely-connect'i düzmece bir ortamla çağırıp
 // istediği kimliği zaten yazdırabilir; yerel yol yeni bir yüzey açmıyor.

@@ -56,6 +56,12 @@ repository moved to `github.com/erkanrzgc/kadran`; GitHub redirects the old addr
     `key add` refuses a key that already has a line, `key remove` refuses the
     last admin key, and `key list` exits non-zero on any line that is not forced
     to `panely-connect`. The server re-checks every line it is asked to write.
+- **Fixed: the audit log never recorded which SSH key acted.** The actor's key
+  fingerprint was read from `SSH_AUTH_INFO_0`, a PAM-internal variable OpenSSH
+  keeps out of the session, so it was always empty: on the live server, 0 of 56
+  SSH audit records carried one. It is now read from the file sshd names in
+  `SSH_USER_AUTH`, the documented `ExposeAuthInfo` interface. Records written
+  before the upgrade stay without a fingerprint (K-134).
 - **Fixed: a multi-line public key file opened a shell.** `bootstrap` wrote the
   admin line as `command=...,restrict <file contents>`. With two keys in the file
   (for example `https://github.com/<user>.keys`), the second one landed in

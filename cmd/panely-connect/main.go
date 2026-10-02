@@ -158,7 +158,7 @@ func run() error {
 // Rol her iki yolda da argümandan gelir.
 func resolveIdentity(getenv func(string) string, opts options) connproto.Identity {
 	id := connproto.Identity{Origin: "local", Role: opts.role, Apps: opts.apps}
-	sshID, err := sshenv.Parse(getenv)
+	sshID, err := sshenv.Parse(getenv, os.ReadFile)
 	if err != nil {
 		return id
 	}

@@ -9137,11 +9137,25 @@ yönetici anahtarı olurdu.
   - Kontrol grubu ölçüldü: `main.go` eski kurucuya (yalnız tekli günlük
     önleyicisi) döndürülünce 11 kontrolden 7'si kızardı. Kapsam dışı
     dağıtım yetkiyi geçip `NotFound`'a kadar ilerledi.
-- **sshd üzerinden HENÜZ ölçülmedi.** `-deploy=` satırının authorized_keys
-  → sshd → kullanıcının kabuğu (`-c`) yolu gerçek bir sunucuda
-  koşturulmadı. Virgül ve `=` kabukta özel değil, risk düşük; ama
-  gerçek sunucu testlerin göremediğini bulur (K-121). `kadran key add`
-  gelince test sunucusunda ölçülecek.
+- **sshd üzerinden ÖLÇÜLDÜ (GCP, Debian 13, OpenSSH 10.0p2, 2 Eki;
+  kullanıcı onayıyla).**
+  - Önce iki sunucuda salt okunur: `authorized_keys`'te tek satır,
+    zorlanmış ve restrict'li. Çok satırlı anahtar açığı canlıda yok.
+  - GCP `bootstrap -sudo` ile HEAD'e yükseltildi. Sıkılaşan kurulum
+    sonrası denetim ("her satırı zorlanmış komutlu") gerçek sunucuda ✓;
+    ters vekil yeniden başlamadı.
+  - `kadran key add -sudo -deploy hello`: eklendi, parmak izi
+    `ssh-keygen -lf` ile aynı; aynı anahtar ikinci kez reddedildi.
+  - Temiz bir Linux kapsayıcısından (CI taklidi: yalnız dağıtım anahtarı
+    ve host anahtarı) gerçek sshd ve kullanıcının kabuğu üzerinden:
+    `status` PermissionDenied, `-commit`'siz deploy ipucu, `portfolio`
+    (kapsam dışı) PermissionDenied, `hello` canlı commit'le → r2 canlıda
+    (aynı imaj).
+  - Son yönetici anahtarının silinmesi reddedildi; test anahtarı
+    kaldırıldı, dosya ilk hâline (152 bayt, 0600, sahiplik) döndü.
+  - Bütün süre boyunca `hello` saniyede bir yoklandı: 98/98 200.
+  - Bu ölçüm, denetim kaydındaki parmak izinin HİÇ yazılmadığını ortaya
+    çıkardı (K-134).
 - Linux'ta (WSL, root) dört paketin test ikilisi koşturuldu: geçti.
   E2E Debian kapsayıcısında root OLMAYAN kullanıcıyla koşturuldu: geçti.
 - `scripts/mutate-authz.sh`: 25 mutant, 25'i yakalandı. Aralarında: akış
@@ -9349,3 +9363,64 @@ dizgisi, K-131 `validateTarget` iğnesi).
     değiştirilince kapı ateşledi.
 - CI artık her betikte üç kapının da varlığını şart koşuyor (derleme,
   tek eşleşme, taban); kapısız eklenen yeni bir betik kırmızı olur.
+## K-134 — Denetim kaydı anahtar parmak izini hiç yazmıyordu
+
+**Tarih:** 2 Ekim 2026
+**Durum:** DÜZELTİLDİ (kod). Canlıya bir sonraki yükseltmeyle gelir.
+
+### Nasıl bulundu
+
+K-131'in GCP ölçümünde panelyd journal'ı dağıtım anahtarının retlerini
+`anahtar=bilinmiyor` diye yazdı. Bakınca:
+
+- GCP'de SSH kökenli bütün denetim kayıtlarında parmak izi boş; yönetici
+  işlemleri (`backup.create`, `app.deploy`) dahil.
+- **Hetzner'da (canlı) SSH kökenli 56 kaydın 0'ında parmak izi var**
+  (salt okunur, `kadran audit list --json`). Yani denetim izi "hangi
+  anahtar yaptı" sorusunu baştan beri yanıtlamıyordu; yalnız IP ve
+  "ssh" kökeni kayıtlıydı.
+- sshd ayarı doğru: `sshd -T -C user=panely-client` → `exposeauthinfo
+  yes` (iki sunucuda da).
+
+### Kök neden
+
+- `internal/sshenv` parmak izini `SSH_AUTH_INFO_0` ortam değişkeninden
+  okuyordu. O değişken sshd'nin PAM modüllerine verdiği İÇ değişken.
+  OpenSSH onu oturuma bilerek geçirmiyor: openssh-portable `session.c`
+  `PAM_ENV_DENYLIST "SSH_AUTH_INFO*,SSH_CONNECTION*"` (kaynaktan okundu).
+- `ExposeAuthInfo`'nun belgelenmiş arayüzü bir DOSYA: sshd kullanılan
+  yöntemleri ve anahtarı geçici bir dosyaya yazar, yolunu `SSH_USER_AUTH`
+  ile verir (sunucudaki sshd_config(5) okundu; session.c aynı).
+- Testler değişkeni kendileri koyduğu için hiçbiri kızarmadı; E2E de
+  aynı değişkeni sahte ssh'ta koyuyordu. Hata ancak GERÇEK sunucunun
+  denetim kaydına bakılınca görüldü. [[real-server-finds-what-tests-cannot]]
+  sınıfının yeni bir örneği.
+
+### Düzeltme
+
+- `sshenv.Parse(getenv, readFile)`: `SSH_USER_AUTH`'ın gösterdiği dosyayı
+  okuyor, ilk `publickey` satırından parmak izini çıkarıyor (birden fazla
+  yöntemde diğer satırlar atlanıyor). Dosya yoksa, okunamıyorsa, 64 KB'tan
+  büyükse ya da açık anahtar satırı yoksa parmak izi BOŞ kalır, bağlantı
+  reddedilmez (eski davranışla aynı ilke: "bilinmiyor" dürüst).
+- `SSH_AUTH_INFO_0` artık hiç okunmuyor: tek mekanizma, belgelenmiş olan.
+- Güven aynı varsayıma dayanıyor: değişkeni sshd ayarlıyor,
+  `environment=` seçeneğini `PermitUserEnvironment no` kapatıyor, istemci
+  AcceptEnv ile gönderemiyor; dosyayı değiştirmek için sunucuda kod
+  çalıştırmak gerekir, zorlanmış komut buna izin vermiyor.
+- Yanlış mekanizmayı anlatan yorumlar (install.sh'in sshd drop-in'i
+  dahil, README, connproto, client, test yorumları) düzeltildi.
+
+### Ölçüm
+
+- Eski davranış kırmızı: yeni testler önce imza değiştiği için derlenmedi
+  (bu bir davranış kırmızısı DEĞİL). Davranışın kanıtı mutant: eski
+  davranışı (`SSH_AUTH_INFO_0`'dan okumak) geri getiren mutant testlerde
+  kızarıyor.
+- E2E'nin sahte ssh'ı artık sshd gibi dosya yazıp `SSH_USER_AUTH`
+  veriyor ve journal'da `anahtar=SHA256:` görmeyi şart koşuyor.
+- `mutate-authz.sh`'a 4 mutant (değişkeni eskisine çevir, panely-connect
+  dosyayı okumasın, açık anahtar dışı satır, boyut sınırı): 29/29.
+- Gerçek sunucuda (GCP) yükseltme sonrası yönetici işleminin kaydında
+  parmak izinin yönetici anahtarınınkiyle (`ssh-keygen -lf`) aynı
+  olduğu ölçülecek.

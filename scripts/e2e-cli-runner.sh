@@ -162,10 +162,13 @@ echo "==> dağıtım anahtarı (K-131): gerçek panely-connect -deploy=e2eblog"
 # authorized_keys'ten sshd ve kabuk üzerinden geçen yol burada ölçülmüyor.
 FAKE="$WORK/sahte-ssh"
 mkdir -p "$FAKE"
+# sshd'nin ExposeAuthInfo ile yaptığı: kullanılan anahtarı bir dosyaya
+# yazar, yolunu SSH_USER_AUTH ile verir (K-134).
+printf 'publickey ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl\n' > "$WORK/sshauth"
 cat > "$FAKE/ssh" <<EOF
 #!/usr/bin/env bash
 exec env SSH_CONNECTION="203.0.113.9 50000 198.51.100.1 22" \\
-    SSH_AUTH_INFO_0="publickey ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" \\
+    SSH_USER_AUTH="$WORK/sshauth" \\
     "$BIN/panely-connect" -socket "$SOCK" -deploy=e2eblog
 EOF
 chmod +x "$FAKE/ssh" "$BIN/panely-connect"
@@ -193,6 +196,9 @@ lacks "kapsam içi: rol reddi yok" "yalnızca dağıtım yapabilir" "$out"
 
 contains "ret panelyd günlüğünde" "yetki reddedildi" "$(cat "$LOG")"
 contains "günlükte rol" "rol=deploy" "$(cat "$LOG")"
+# Hangi anahtarın denediği: parmak izi gerçekten taşınıyor mu (K-134;
+# canlıda 56 kaydın 0'ında yoktu).
+contains "günlükte anahtar parmak izi" "anahtar=SHA256:" "$(cat "$LOG")"
 
 echo
 echo "==> soket izinleri"

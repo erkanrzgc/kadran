@@ -19,9 +19,10 @@ ROLE=internal/connproto/role.go
 CONN=cmd/panely-connect/main.go
 LOCAL=internal/client/client.go
 DEPLOY=cmd/kadran/deploy.go
-PKGS=(./internal/api/ ./internal/connproto/ ./cmd/panely-connect/ ./internal/client/ ./cmd/kadran/)
-TESTS='TestDeployKey|TestAdminReaches|TestDeployAllowlist|TestInvalidRole|TestInterceptorRejects|TestUnaryScope|TestAppIDPatternMatches|TestParseDeployScope|TestCheckRole|TestCanDeploy|TestRoleRoundTrips|TestNoFlagMeansAdmin|TestDeployFlagSetsScope|TestBadArguments|TestIdentityCarriesRole|TestLocalIdentityIsAdmin'
-FILES=("$AUTHZ" "$CRED" "$ROLE" "$CONN" "$LOCAL" "$DEPLOY")
+SSHENV=internal/sshenv/sshenv.go
+PKGS=(./internal/api/ ./internal/connproto/ ./cmd/panely-connect/ ./internal/client/ ./cmd/kadran/ ./internal/sshenv/)
+TESTS='TestDeployKey|TestAdminReaches|TestDeployAllowlist|TestInvalidRole|TestInterceptorRejects|TestUnaryScope|TestAppIDPatternMatches|TestParseDeployScope|TestCheckRole|TestCanDeploy|TestRoleRoundTrips|TestNoFlagMeansAdmin|TestDeployFlagSetsScope|TestBadArguments|TestIdentityCarriesRole|TestLocalIdentityIsAdmin|TestParseReadsSSHUserAuthFile|TestFirstPublickeyLineWins|TestMalformedAuthInfo|TestMissingAuthInfo'
+FILES=("$AUTHZ" "$CRED" "$ROLE" "$CONN" "$LOCAL" "$DEPLOY" "$SSHENV")
 
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -175,6 +176,21 @@ mutate_in "$LOCAL" "yerel kimlik rolsüz" \
 
 mutate_in "$DEPLOY" "dağıtım anahtarına -commit ipucu verilmiyor" \
     "s=s.replace('if status.Code(err) == codes.PermissionDenied {','if false && status.Code(err) == codes.PermissionDenied {',1)"
+
+echo "== Anahtar parmak izi (K-134: canlıda 56 kaydın 0'ında yoktu) =="
+
+# Eski hata: oturuma hiç gelmeyen PAM değişkenini okumak.
+mutate_in "$SSHENV" "parmak izi SSH_AUTH_INFO_0'dan okunuyor" \
+    "s=s.replace('authFileKey(getenv(\"SSH_USER_AUTH\"), readFile)','authFileKey(getenv(\"SSH_AUTH_INFO_0\"), readFile)',1)"
+
+mutate_in "$CONN" "panely-connect kimlik dosyasını okumuyor" \
+    "s=s.replace('sshenv.Parse(getenv, os.ReadFile)','sshenv.Parse(getenv, func(string) ([]byte, error) { return nil, os.ErrNotExist })',1)"
+
+mutate_in "$SSHENV" "açık anahtar dışı satır da çözülüyor" \
+    "s=s.replace('\t\tif !strings.HasPrefix(line, \"publickey \") {','\t\tif false && !strings.HasPrefix(line, \"publickey \") {',1)"
+
+mutate_in "$SSHENV" "kimlik dosyasının boyut sınırı yok" \
+    "s=s.replace('if err != nil || len(content) > maxAuthFile {','if err != nil {',1)"
 
 echo
 if [[ "$fail" -ne 0 ]]; then

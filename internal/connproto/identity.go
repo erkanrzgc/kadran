@@ -16,8 +16,9 @@
 //
 //  1. panely-connect, api.sock'a bağlanır bağlanmaz — daha uzak istemciden
 //     tek bayt okumadan — kimliği yazar.
-//  2. Kimliği sshd'nin kendi ortam değişkenlerinden alır (SSH_CONNECTION,
-//     SSH_AUTH_INFO_0). Bunları sshd ayarlar; istemci ayarlayamaz.
+//  2. Kimliği sshd'nin kendi verdiğinden alır (SSH_CONNECTION ve
+//     SSH_USER_AUTH'ın gösterdiği dosya). Bunları sshd ayarlar; istemci
+//     ayarlayamaz.
 //  3. Ancak ondan sonra bayt pompası başlar.
 //
 // Uzak istemcinin baytları önsözden SONRA geldiği için kimliği geriye
@@ -54,7 +55,8 @@ var ErrPreambleTooLarge = errors.New("connproto: önsöz çok büyük")
 // istemci tarafından belirlenemez.
 type Identity struct {
 	// Fingerprint, kimlik doğrulamada kullanılan SSH açık anahtarının
-	// parmak izi ("SHA256:..."). SSH_AUTH_INFO_0'dan türetilir.
+	// parmak izi ("SHA256:..."). sshd'nin SSH_USER_AUTH dosyasından
+	// türetilir (internal/sshenv).
 	Fingerprint string `json:"fp,omitempty"`
 
 	// SourceIP, bağlantının geldiği IP. SSH_CONNECTION'dan türetilir.

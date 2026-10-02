@@ -306,10 +306,11 @@ func TestInstallScriptForcesConnectCommand(t *testing.T) {
 // TestSSHDDropInPinsUserEnvironment, denetim kimliğini taklit etmeye açan
 // ayarın kapatıldığını doğrular.
 //
-// panely-connect aktörün parmak izini SSH_AUTH_INFO_0'dan okur.
-// authorized_keys'teki `environment="..."` seçeneği sshd'nin kendi yazdığı
-// değeri EZEBİLİR ("override other default environment values" — sshd(8)),
-// yani açık kalırsa denetim izi taklit edilebilir. Kapatan ayar
+// panely-connect aktörün parmak izini SSH_USER_AUTH'ın gösterdiği dosyadan
+// okur (K-134). authorized_keys'teki `environment="..."` seçeneği sshd'nin
+// kendi yazdığı değeri EZEBİLİR ("override other default environment
+// values" — sshd(8)) ve sahte bir dosyayı gösterebilir, yani açık kalırsa
+// denetim izi taklit edilebilir. Kapatan ayar
 // PermitUserEnvironment'tır; `restrict` DEĞİL (docs/decisions.md K-031).
 func TestSSHDDropInPinsUserEnvironment(t *testing.T) {
 	script, err := installScript.ReadFile("install.sh")

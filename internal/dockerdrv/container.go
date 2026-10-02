@@ -44,7 +44,7 @@ const defaultPidsLimit = 512
 // incelemeye yetiyor. Daha küçüğü hata ayıklamayı imkânsızlaştırır,
 // daha büyüğü tavanın anlamını azaltır.
 //
-// Rotasyonun `panely logs`'u KIRMADIĞI ölçüldü: 1 MiB × 3 ile koşan bir
+// Rotasyonun `kadran logs`'u KIRMADIĞI ölçüldü: 1 MiB × 3 ile koşan bir
 // konteynerde `docker logs` 15.022 satır döndürdü ve diskte üç dosya
 // vardı (.log, .log.1, .log.2) — yani okuma döndürülmüş dosyaları da
 // kapsıyor. Kontrol grubu (rotasyonsuz) 60.000 satır ve 9 MB gösterdi.
@@ -156,7 +156,7 @@ type hostConfig struct {
 	// varsayılan sürücüyü `journald` (ya da başka bir şey) yapmış olabilir
 	// ve o zaman `max-size` geçersiz bir seçenek olurdu. Üstelik
 	// ContainerLogs yalnızca json-file'ı okuyabiliyor — sürücüyü sabitlemek
-	// `panely logs`'un host yapılandırmasından BAĞIMSIZ çalışmasını
+	// `kadran logs`'un host yapılandırmasından BAĞIMSIZ çalışmasını
 	// garanti eden şey.
 	LogConfig struct {
 		Type   string            `json:"Type"`

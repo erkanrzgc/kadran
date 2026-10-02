@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // volumeApplication, hacim taşıyan bir uygulama üretir.

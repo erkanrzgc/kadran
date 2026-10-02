@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // runStatus, sunucunun ve daemon'ın durumunu gösterir.

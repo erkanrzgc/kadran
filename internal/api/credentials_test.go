@@ -11,7 +11,7 @@ import (
 
 	"google.golang.org/grpc/credentials"
 
-	"github.com/erkanrzgc/panely/internal/peercred"
+	"github.com/erkanrzgc/kadran/internal/peercred"
 )
 
 // retEdenPeer, iç el sıkışmayı peercred'in GERÇEK ret hatasıyla

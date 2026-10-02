@@ -6,7 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // runAlarms, etkin arıza koşullarını listeler.
@@ -25,7 +25,7 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("kullanım: panely alarms [hedef]")
+		return c.usageError("kullanım: kadran alarms [hedef]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -78,7 +78,7 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 				"sunucu journal'ı. Telegram/webhook teslimatı henüz yok.")
 	}
 
-	// Etkin alarm varken sıfır dönmek, `panely alarms && echo tamam`
+	// Etkin alarm varken sıfır dönmek, `kadran alarms && echo tamam`
 	// gibi bir kabuk zincirinde arızayı görünmez kılardı.
 	return exitError
 }

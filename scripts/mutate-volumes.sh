@@ -33,8 +33,8 @@ API_VAL=internal/api/volumevalidate.go
 API_SPEC=internal/api/appvalidate.go
 DRV_OWN=internal/dockerdrv/volumeown.go
 DRV_CNT=internal/dockerdrv/container.go
-CLI_UPD=cmd/panely/appupdate.go
-CLI_FLAG=cmd/panely/volumeflag.go
+CLI_UPD=cmd/kadran/appupdate.go
+CLI_FLAG=cmd/kadran/volumeflag.go
 
 FILES=("$ROLLOUT" "$STORE_APPS" "$STORE_UPD" "$API_APPS" "$API_UPD" "$API_VAL"
        "$API_SPEC" "$DRV_OWN" "$DRV_CNT" "$CLI_UPD" "$CLI_FLAG")
@@ -212,19 +212,19 @@ mutate "yeniden dagitim uyarisi susturuldu" "$API_UPD" \
 
 mutate "isEmptyUpdate hacimleri saymiyor" "$CLI_UPD" \
     "s=s.replace('len(req.GetVolumes()) == 0 && len(req.GetVolumeRemove()) == 0','true',1)" \
-    "./cmd/panely/" "TestVolumeOnlyUpdateIsNotEmptyCLI"
+    "./cmd/kadran/" "TestVolumeOnlyUpdateIsNotEmptyCLI"
 
 mutate "host yolu bicimi sessizce kabul ediliyor" "$CLI_FLAG" \
     "s=s.replace('\tif strings.HasPrefix(name, \"/\") || strings.HasPrefix(name, \".\") {','\tif false {',1)" \
-    "./cmd/panely/" "TestParseVolumeFlag"
+    "./cmd/kadran/" "TestParseVolumeFlag"
 
 mutate ":ro soneki yok sayiliyor" "$CLI_FLAG" \
     "s=s.replace('\t\t\tspec.readOnly = true','\t\t\tspec.readOnly = false',1)" \
-    "./cmd/panely/" "TestParseVolumeFlag|TestVolumeFlag"
+    "./cmd/kadran/" "TestParseVolumeFlag|TestVolumeFlag"
 
 mutate "bilinmeyen sonek kabul ediliyor" "$CLI_FLAG" \
     "s=s.replace('\t\tdefault:\n\t\t\treturn volumeSpec{}, fmt.Errorf(','\t\tdefault:\n\t\t\t_ = fmt.Sprintf(',1)" \
-    "./cmd/panely/" "TestParseVolumeFlag"
+    "./cmd/kadran/" "TestParseVolumeFlag"
 
 echo
 if [[ $fail -ne 0 ]]; then

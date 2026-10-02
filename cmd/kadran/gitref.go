@@ -61,7 +61,7 @@ func resolveRemoteBranch(ctx context.Context, host, owner, repo, branch string) 
 	if err != nil {
 		return "", fmt.Errorf("dal çözümü isteği kurulamadı: %w", err)
 	}
-	req.Header.Set("User-Agent", "git/2.0 (panely)")
+	req.Header.Set("User-Agent", "git/2.0 (kadran)")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

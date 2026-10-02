@@ -179,10 +179,13 @@ jobs:
         run: |
           mkdir -p dist
           version="${GITHUB_REF_NAME}"
+          # Modül yolu go.mod'dan: elle yazılan yanlış bir -X yolu HATASIZ
+          # yok sayılır ve ikili "dev" der (K-130).
+          mod="$(go list -m)"
           ldflags="-s -w"
-          ldflags="$ldflags -X github.com/erkanrzgc/panely/internal/version.Version=$version"
-          ldflags="$ldflags -X github.com/erkanrzgc/panely/internal/version.Commit=${GITHUB_SHA::12}"
-          for binary in panelyd panely-exec panely-connect panely; do
+          ldflags="$ldflags -X $mod/internal/version.Version=$version"
+          ldflags="$ldflags -X $mod/internal/version.Commit=${GITHUB_SHA::12}"
+          for binary in panelyd panely-exec panely-connect kadran; do
             go build -trimpath -ldflags "$ldflags" -o "dist/$binary" "./cmd/$binary"
           done
           ls -la dist/
@@ -248,7 +251,7 @@ jobs:
         run: |
           mkdir -p bin/linux
           go build -o bin/linux/panelyd ./cmd/panelyd
-          go build -o bin/linux/panely ./cmd/panely
+          go build -o bin/linux/kadran ./cmd/kadran
 
       - name: E2E CLI kontrolleri
         run: bash scripts/e2e-cli-runner.sh bin/linux

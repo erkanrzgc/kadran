@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/alarm"
-	"github.com/erkanrzgc/panely/internal/execclient"
-	"github.com/erkanrzgc/panely/internal/liveness"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/alarm"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/liveness"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // Disk eşikleri: boş alanın toplama oranı.
@@ -157,7 +157,7 @@ func diskAlarm(severity string, free float64, avail, total uint64) store.Alarm {
 
 // humanBytes, bayt sayısını okunur biçime çevirir.
 //
-// `cmd/panely`'deki ikizinin kopyası: iki binary ayrı ve aralarında
+// `cmd/kadran`'deki ikizinin kopyası: iki binary ayrı ve aralarında
 // on satırlık bir biçimlendirici için paket bağımlılığı kurmak,
 // kazandırdığından fazlasını maliyet olarak yazardı.
 func humanBytes(n uint64) string {
@@ -185,7 +185,7 @@ const defaultDiskInterval = 5 * time.Minute
 // ── Neden bu koşul en yüksek ciddiyette ─────────────────────────────
 //
 // Ters vekil uzlaştırılamadıysa systemd `active (running)` gösterir,
-// `panely status` sağlıklı der ve BÜTÜN SİTELER KAPALIDIR. Şimdiye
+// `kadran status` sağlıklı der ve BÜTÜN SİTELER KAPALIDIR. Şimdiye
 // kadar tek izi bir `slog.Error` satırı ve sdnotify STATUS metniydi —
 // yani operatör bakmayı akıl etmedikçe görünmezdi.
 //

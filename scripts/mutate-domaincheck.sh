@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Alan adı önkontrolünü koruyan testlerin GERÇEKTEN bir şey koruduğunu
-# sınar (K-128: önkontrol ve `panely domain check`).
+# sınar (K-128: önkontrol ve `kadran domain check`).
 #
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
@@ -17,16 +17,16 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 DC=internal/domaincheck/domaincheck.go
-CLI=cmd/panely/domaincheck.go
-APP=cmd/panely/app.go
-UPD=cmd/panely/appupdate.go
-DOM=cmd/panely/domain.go
-PKGS=(./internal/domaincheck/ ./cmd/panely/)
+CLI=cmd/kadran/domaincheck.go
+APP=cmd/kadran/app.go
+UPD=cmd/kadran/appupdate.go
+DOM=cmd/kadran/domain.go
+PKGS=(./internal/domaincheck/ ./cmd/kadran/)
 TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname'
 FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM")
 
 # ⚠ Yedek adı TAM YOLDAN türetiliyor: internal/domaincheck/domaincheck.go
-# ile cmd/panely/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
+# ile cmd/kadran/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
 # yedeği dosya adıyla tutuyordu; ikincisi birincinin yedeğini ezdi ve
 # geri yükleme paket dosyasını CLI dosyasıyla DEĞİŞTİRDİ.
 BAKDIR=$(mktemp -d)
@@ -146,7 +146,7 @@ mutate_in "$APP" "app create denetlemiyor" \
 mutate_in "$UPD" "app update denetlemiyor" \
     "s=s.replace('\tif req.Domain != nil {\n\t\tif err := c.checkDomain','\tif req.Domain != nil && false {\n\t\tif err := c.checkDomain',1)"
 
-echo "== panely domain check =="
+echo "== kadran domain check =="
 
 # Sorun bulunsa da çıkış 0 olursa betikler ve CI tanıyı göremez.
 mutate_in "$DOM" "sorun çıkış koduna yansımıyor" \

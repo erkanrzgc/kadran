@@ -8,9 +8,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/alarm"
-	"github.com/erkanrzgc/panely/internal/liveness"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/alarm"
+	"github.com/erkanrzgc/kadran/internal/liveness"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // defaultBackupInterval, zamanlı yedekler arasındaki süredir.
@@ -89,7 +89,7 @@ func runBackupScheduler(
 //
 // ── Zamanlı yedek denetim zincirine GİRMİYOR ────────────────────────
 //
-// Yalnızca `panely backup create` (yani bir İNSANIN isteği) zincire
+// Yalnızca `kadran backup create` (yani bir İNSANIN isteği) zincire
 // yazılıyor. Canlı sunucuda doğrulandı: açılıştaki yedek journal'da
 // var, zincirde YOK.
 //

@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/erkanrzgc/panely/internal/dockerdrv"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/dockerdrv"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // collectHostInfo, sunucunun çekirdek ve donanım bilgisini toplar.

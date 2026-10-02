@@ -4,7 +4,7 @@ package panely.v1;
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1";
+option go_package = "github.com/erkanrzgc/kadran/internal/pb/panely/v1;panelyv1";
 
 // Actor, bir eylemi kimin başlattığını tanımlar.
 //

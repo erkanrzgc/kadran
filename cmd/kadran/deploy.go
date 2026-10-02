@@ -7,7 +7,7 @@ import (
 	"io"
 	"regexp"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -38,7 +38,7 @@ func (c *cli) runDeploy(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely deploy [-commit sha | -branch dal] " +
+		return c.usageError("kullanım: kadran deploy [-commit sha | -branch dal] " +
 			"<uygulama> [hedef] — seçenekler uygulama adından ÖNCE gelir")
 	}
 	appID, target := fs.Arg(0), fs.Arg(1)
@@ -109,7 +109,7 @@ func (c *cli) consumeDeploy(stream panelyv1.PanelyService_DeployClient) int {
 			//
 			// Ayrım burada anlamlı değil: derleme çıktısının tamamı
 			// ilerleme bilgisidir ve stdout borulandığında
-			// (`panely deploy … | jq`) makine okunabilir çıktıyı bozmamalı.
+			// (`kadran deploy … | jq`) makine okunabilir çıktıyı bozmamalı.
 			// is_stderr bayrağı yine de taşınıyor; sürüm günlüğünü saklayan
 			// bir tüketici (GUI) iki akışı ayrı renklendirebilsin.
 			_, _ = c.stderr.Write(msg.GetOutput().GetData())

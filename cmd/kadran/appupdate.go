@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sort"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // appUpdateFlags, `app update`'in kabul ettiği seçeneklerin değerleridir.
@@ -56,7 +56,7 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely app update [seçenekler] <ad> [hedef] — " +
+		return c.usageError("kullanım: kadran app update [seçenekler] <ad> [hedef] — " +
 			"seçenekler addan ÖNCE gelir")
 	}
 

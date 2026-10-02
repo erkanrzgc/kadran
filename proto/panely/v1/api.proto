@@ -5,7 +5,7 @@ package panely.v1;
 import "google/protobuf/timestamp.proto";
 import "panely/v1/common.proto";
 
-option go_package = "github.com/erkanrzgc/panely/internal/pb/panely/v1;panelyv1";
+option go_package = "github.com/erkanrzgc/kadran/internal/pb/panely/v1;panelyv1";
 
 // PanelyService, iş istasyonu istemcisi (CLI / Electron sidecar) ile
 // sunucudaki panelyd arasındaki sözleşmedir.

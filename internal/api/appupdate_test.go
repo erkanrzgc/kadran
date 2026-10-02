@@ -10,10 +10,10 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	"github.com/erkanrzgc/panely/internal/deploy"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/deploy"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // fakeReconciler, uzlaştırmanın ÜÇ ayrı sonucunu taklit eder.
@@ -262,7 +262,7 @@ func TestUpdateAppWarnsWhenTrafficDidNotMove(t *testing.T) {
 	if !strings.Contains(detail, "TAŞINMADI") {
 		t.Errorf("trafiğin taşınmadığı söylenmiyor: %q", detail)
 	}
-	if !strings.Contains(detail, "panely deploy blog") {
+	if !strings.Contains(detail, "kadran deploy blog") {
 		t.Errorf("kullanıcıya ne yapacağı söylenmiyor: %q", detail)
 	}
 }

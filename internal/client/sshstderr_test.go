@@ -22,7 +22,7 @@ import (
 //
 // ssh'ın asıl mesajı yakalanıyordu, ama yalnızca bağlantı KAPANIRKEN
 // okunuyordu; gRPC o ana kadar EOF'u çoktan kendi mesajına çevirmiş
-// oluyordu. 30 Eylül'de gerçek CLI'da ölçüldü: `panely status
+// oluyordu. 30 Eylül'de gerçek CLI'da ölçüldü: `kadran status
 // panely-client@yok-boyle-bir-sunucu.invalid` bu mesajı verdi (K-120).
 //
 // "Host key verification failed" de aynı yoldan kayboluyordu. Kullanıcı

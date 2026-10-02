@@ -28,9 +28,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/connproto"
-	"github.com/erkanrzgc/panely/internal/sshenv"
-	"github.com/erkanrzgc/panely/internal/version"
+	"github.com/erkanrzgc/kadran/internal/connproto"
+	"github.com/erkanrzgc/kadran/internal/sshenv"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 const (

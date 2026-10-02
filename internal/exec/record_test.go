@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // records, günlüğün tamamını okur.

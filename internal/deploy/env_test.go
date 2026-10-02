@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // envApplication, ortam değişkeni taşıyan bir uygulama üretir.
@@ -26,7 +26,7 @@ func envApplication() store.App {
 // SESSİZCE ortamsız doğar.
 //
 // Sonuç tam olarak şu olurdu: göç iner, şema alanı taşır, `app create
-// -env DATABASE_URL=...` "başarılı" der, kayıt doğrudur, `panely app
+// -env DATABASE_URL=...` "başarılı" der, kayıt doğrudur, `kadran app
 // show` değişkeni gösterir — ve uygulama hiçbir zaman göremez. Bütün
 // katmanlar yeşil, gerçeklik boş.
 //

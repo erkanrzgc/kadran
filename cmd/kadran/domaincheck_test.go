@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/client"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/client"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // ── Alan adı önkontrolü (K-128) ──────────────────────────────────────

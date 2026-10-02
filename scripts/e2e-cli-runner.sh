@@ -69,7 +69,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-chmod +x "$BIN/panelyd" "$BIN/panely"
+chmod +x "$BIN/panelyd" "$BIN/kadran"
 
 echo "==> panelyd başlatılıyor (kullanıcı: $(id -un), grup: $(id -gn))"
 # Executor soketi kasten YOK: erişilemeyen executor'ın DOĞRULANAMADI olarak
@@ -93,8 +93,8 @@ if [[ ! -S "$SOCK" ]]; then
 fi
 
 echo
-echo "==> panely status"
-out="$("$BIN/panely" status "unix://$SOCK" 2>&1)"; code=$?
+echo "==> kadran status"
+out="$("$BIN/kadran" status "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 contains "daemon sürümü gösterildi" "Daemon" "$out"
 contains "executor erişilemiyor olarak raporlandı" "ERİŞİLEMİYOR" "$out"
@@ -102,23 +102,23 @@ contains "executor erişilemiyor olarak raporlandı" "ERİŞİLEMİYOR" "$out"
 lacks "panelyd yetkisiz kullanıcı olarak çalışıyor" "KURULUM BOZUK" "$out"
 
 echo
-echo "==> panely status --json"
-out="$("$BIN/panely" status --json "unix://$SOCK" 2>&1)"; code=$?
+echo "==> kadran status --json"
+out="$("$BIN/kadran" status --json "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 contains "JSON gövdesi" '"daemon_version"' "$out"
 contains "proto alan adları korundu" '"executor_reachable"' "$out"
 
 echo
-echo "==> panely audit list"
-out="$("$BIN/panely" audit list "unix://$SOCK" 2>&1)"; code=$?
+echo "==> kadran audit list"
+out="$("$BIN/kadran" audit list "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 # panelyd açılışta zincire bir daemon.start kaydı yazar.
 contains "başlangıç kaydı zincirde" "daemon.start" "$out"
 contains "sonuç sütunu" "BAŞARILI" "$out"
 
 echo
-echo "==> panely audit verify"
-out="$("$BIN/panely" audit verify "unix://$SOCK" 2>&1)"; code=$?
+echo "==> kadran audit verify"
+out="$("$BIN/kadran" audit verify "unix://$SOCK" 2>&1)"; code=$?
 # ASIL SORU: executor erişilemezken çıkış kodu 1 mi (doğrulanamadı), yoksa
 # 3 mü (kurcalama)? 3 dönerse her yeniden başlatma sahte alarm üretirdi.
 check "erişilemeyen executor çıkış kodu (1 = doğrulanamadı, 3 = kırık)" 1 "$code"
@@ -127,25 +127,25 @@ contains "executor zinciri doğrulanamadı" "DOĞRULANAMADI" "$out"
 lacks "erişilemeyen zincir kurcalama olarak raporlanmadı" "GEÇERSİZ" "$out"
 
 echo
-echo "==> panely app show — canlı sürüm (K-112)"
+echo "==> kadran app show — canlı sürüm (K-112)"
 # Dağıtım Docker istiyor, burada yok; ama canlı sürüm alanının GERÇEK
 # panelyd'den tel üzerinden gelip basıldığı, dağıtılmamış bir uygulamada
 # da sınanabiliyor: "yok" demeli, boş satır ya da hata değil.
-out="$("$BIN/panely" app create -repo github.com/panely-e2e/blog e2eblog "unix://$SOCK" 2>&1)"; code=$?
+out="$("$BIN/kadran" app create -repo github.com/panely-e2e/blog e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app create çıkış kodu" 0 "$code"
-out="$("$BIN/panely" app show e2eblog "unix://$SOCK" 2>&1)"; code=$?
+out="$("$BIN/kadran" app show e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app show çıkış kodu" 0 "$code"
 contains "canlı sürüm satırı" "Canlı    : yok" "$out"
-out="$("$BIN/panely" app show --json e2eblog "unix://$SOCK" 2>&1)"; code=$?
+out="$("$BIN/kadran" app show --json e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app show --json çıkış kodu" 0 "$code"
 contains "JSON'da canlı sürüm alanı" '"active_release_id"' "$out"
 
 echo
-echo "==> panely sidecar (stdio JSON-RPC)"
+echo "==> kadran sidecar (stdio JSON-RPC)"
 out="$(printf '%s\n%s\n' \
     '{"jsonrpc":"2.0","id":1,"method":"version"}' \
     "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"status\",\"params\":{\"target\":\"unix://$SOCK\"}}" \
-    | "$BIN/panely" sidecar 2>&1)"; code=$?
+    | "$BIN/kadran" sidecar 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 contains "version yanıtı" '"protocol"' "$out"
 contains "status yanıtı gerçek sunucudan geldi" '"daemon_version"' "$out"

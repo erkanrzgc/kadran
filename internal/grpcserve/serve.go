@@ -15,7 +15,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/erkanrzgc/panely/internal/sdnotify"
+	"github.com/erkanrzgc/kadran/internal/sdnotify"
 )
 
 // Run, sunucuyu SIGINT veya SIGTERM gelene kadar çalıştırır, sonra açık

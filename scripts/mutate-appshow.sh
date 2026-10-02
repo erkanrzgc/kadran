@@ -17,7 +17,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 API=internal/api/apps.go
-CLI=cmd/panely/app.go
+CLI=cmd/kadran/app.go
 
 BAK_API=$(mktemp); BAK_CLI=$(mktemp)
 cp "$API" "$BAK_API"; cp "$CLI" "$BAK_CLI"
@@ -86,21 +86,21 @@ mutate "aktif dağıtım yokluğu hata sayılıyor" "$API" ./internal/api/ \
 echo "== CLI: işaret =="
 
 # EN PAHALI: yanlış satır.
-mutate "ilk satır canlı işaretleniyor" "$CLI" ./cmd/panely/ \
+mutate "ilk satır canlı işaretleniyor" "$CLI" ./cmd/kadran/ \
     "s=s.replace('\t\tcase r.GetReleaseId() == active:','\t\tcase r == releases[0]:',1)"
 
-mutate "her satır canlı işaretleniyor" "$CLI" ./cmd/panely/ \
+mutate "her satır canlı işaretleniyor" "$CLI" ./cmd/kadran/ \
     "s=s.replace('\t\tcase r.GetReleaseId() == active:','\t\tcase true:',1)"
 
-mutate "hiçbir satır işaretlenmiyor" "$CLI" ./cmd/panely/ \
+mutate "hiçbir satır işaretlenmiyor" "$CLI" ./cmd/kadran/ \
     "s=s.replace('\t\tcase r.GetReleaseId() == active:','\t\tcase false:',1)"
 
 # Geri almadan sonra canlı sürüm kesilmiş listenin dışında kalabilir;
 # o zaman bu satır onu gösteren TEK yer.
-mutate "listenin dışındaki canlı sürüm söylenmiyor" "$CLI" ./cmd/panely/ \
+mutate "listenin dışındaki canlı sürüm söylenmiyor" "$CLI" ./cmd/kadran/ \
     "s=s.replace('\tcase !slices.ContainsFunc(','\tcase false && !slices.ContainsFunc(',1)"
 
-mutate "canlı sürüm yokken susuyor" "$CLI" ./cmd/panely/ \
+mutate "canlı sürüm yokken susuyor" "$CLI" ./cmd/kadran/ \
     "s=s.replace('\tcase active == \"\":','\tcase false:',1)"
 
 echo "== Eski sunucu: alanın yokluğu (danışman incelemesi) =="
@@ -108,7 +108,7 @@ echo "== Eski sunucu: alanın yokluğu (danışman incelemesi) =="
 # Alan eklemek protokol sürümünü artırmıyor; yeni CLI eski sunucuyla
 # konuşabilir. Yokluğu "boş" okumak, trafik akarken "yönlendirilmiyor"
 # demek.
-mutate "eski sunucu 'canlı sürüm yok' sayılıyor" "$CLI" ./cmd/panely/ \
+mutate "eski sunucu 'canlı sürüm yok' sayılıyor" "$CLI" ./cmd/kadran/ \
     "s=s.replace('\tknown := resp.ActiveReleaseId != nil\n','\tknown := true\n',1)"
 
 mutate "sunucu alanı boşken göndermiyor" "$API" ./internal/api/ \

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/liveness"
-	"github.com/erkanrzgc/panely/internal/sdnotify"
+	"github.com/erkanrzgc/kadran/internal/liveness"
+	"github.com/erkanrzgc/kadran/internal/sdnotify"
 )
 
 // ── Askıda kalma tespiti (K-115) ─────────────────────────────────────

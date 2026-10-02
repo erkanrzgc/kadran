@@ -386,7 +386,7 @@ func TestEmptyDomainsDoNotCollide(t *testing.T) {
 //
 // Başarısız göç `schema_migrations`'a yazılmaz (applyMigration tek
 // transaction), yani panelyd HER AÇILIŞTA aynı yerde ölür. Ve onarım
-// aracı — `panely app update` — o panelyd'nin içinde. Yani bu, aracın
+// aracı — `kadran app update` — o panelyd'nin içinde. Yani bu, aracın
 // kendisini kilitlediği bir kilitlenmedir; kurtarma yolu hostta elle
 // sqlite3.
 //

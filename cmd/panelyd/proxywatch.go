@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/alarm"
-	"github.com/erkanrzgc/panely/internal/deploy"
-	"github.com/erkanrzgc/panely/internal/liveness"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/alarm"
+	"github.com/erkanrzgc/kadran/internal/deploy"
+	"github.com/erkanrzgc/kadran/internal/liveness"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // ── Vekil izleyicisi: K-055'in ikinci yarısı ─────────────────────────

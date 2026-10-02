@@ -10,9 +10,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // seedReleases, uygulamayı ve n adet MÜHÜRLENMİŞ sürümü kurar.
@@ -383,7 +383,7 @@ func (s stubDeployments) PreviousActiveRelease(
 //
 // Yutulduğunda ne olurdu: geçici bir okuma hatasında saklama kümesi
 // {aktif} olarak kalır, geri alma hedefi "eski sürüm" sayılır ve
-// SİLİNİR. Sonraki `panely rollback` imajdan kurmak zorunda kalır —
+// SİLİNİR. Sonraki `kadran rollback` imajdan kurmak zorunda kalır —
 // yani K-061'in bütün gerekçesi, bir yutulmuş hata yüzünden çöker.
 //
 // `ErrNoPreviousDeployment` ile BEKLENMEDİK hata aynı kola konulamaz:

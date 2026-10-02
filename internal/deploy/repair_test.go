@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	"github.com/erkanrzgc/panely/internal/proxydrv"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/proxydrv"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // K-055: ters vekil `--resume` kullanmıyor ve "açılışta VE ters vekil

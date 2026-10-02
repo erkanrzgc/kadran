@@ -25,9 +25,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/erkanrzgc/panely/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/version"
+	"github.com/erkanrzgc/kadran/internal/connproto"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // DefaultSSHUser, bootstrap'in oluşturduğu yetkisiz istemci kullanıcısıdır.
@@ -82,7 +82,7 @@ func (t Target) String() string {
 //	kullanici@sunucu:2222       → SSH, özel port
 //	sunucu                      → SSH, varsayılan kullanıcı
 //
-// Boş dize yerel varsayılan sokete çözümlenir; sunucuda `panely status`
+// Boş dize yerel varsayılan sokete çözümlenir; sunucuda `kadran status`
 // yazmak yeterli olsun diye.
 func ParseTarget(s string) (Target, error) {
 	s = strings.TrimSpace(s)

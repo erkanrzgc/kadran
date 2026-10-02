@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/alarm"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/alarm"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // kayitSink, alarm olaylarını sırasıyla kaydeder.

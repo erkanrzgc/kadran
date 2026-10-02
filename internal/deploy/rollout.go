@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // Lifecycle, konteyner yaşam döngüsünü yürütür.

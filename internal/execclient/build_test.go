@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // fakeExecutor, yalnızca ImageBuild'i uygular.

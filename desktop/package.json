@@ -2,7 +2,7 @@
   "name": "panely-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Panely masaüstü kabuğu — panely sidecar'ını çocuk süreç olarak çalıştırır",
+  "description": "Kadran masaüstü kabuğu — kadran sidecar'ını çocuk süreç olarak çalıştırır",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // newTestCLI, çıktısı yakalanabilen bir cli üretir.
@@ -142,7 +142,7 @@ func TestBootstrapRequiresExactlyOneTarget(t *testing.T) {
 // TestBootstrapRejectsLocalTarget, kurulumun yerel sokete
 // yönlendirilemeyeceğini doğrular.
 //
-// `panely bootstrap /run/panely/api.sock` anlamsız: bootstrap SSH ile
+// `kadran bootstrap /run/panely/api.sock` anlamsız: bootstrap SSH ile
 // root olarak bağlanan tek komut.
 func TestBootstrapRejectsLocalTarget(t *testing.T) {
 	c, _, errOut := newTestCLI("")

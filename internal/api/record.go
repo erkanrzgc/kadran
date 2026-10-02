@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 // ── Daemon tarafı denetim kayıtları ──────────────────────────────────

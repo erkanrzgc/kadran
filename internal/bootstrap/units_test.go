@@ -21,7 +21,7 @@ import (
 //
 // Bu tam olarak gerçek sunucuda yaşandı: `BindReadOnlyPaths=` baştaki
 // `-` olmadan yazılmıştı ve taze bir makinede (Docker kurulu değil)
-// `panely bootstrap` kurulumu tamamlayamadı. Ne birim testleri ne WSL
+// `kadran bootstrap` kurulumu tamamlayamadı. Ne birim testleri ne WSL
 // ne de CI yakalayabilirdi — hiçbiri systemd ad alanı yalıtımını bu
 // biçimde kurmuyor.
 

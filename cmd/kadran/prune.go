@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/erkanrzgc/panely/internal/client"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/client"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // runPrune, eski sürümlerin konteynerlerini kaldırır.
@@ -24,7 +24,7 @@ import (
 // alınabilir; şemadaki bir belirsizlik değil.
 //
 // ⚠ Bayraklar uygulama adından ÖNCE gelir (Go'nun `flag` paketi ilk
-// positional'da durur): `panely prune -dry-run pfprobe`.
+// positional'da durur): `kadran prune -dry-run pfprobe`.
 func (c *cli) runPrune(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("prune")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
@@ -39,12 +39,12 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 	var appID, target string
 	switch {
 	case *all && fs.NArg() > 1:
-		return c.usageError("kullanım: panely prune -all [hedef]")
+		return c.usageError("kullanım: kadran prune -all [hedef]")
 	case *all:
 		target = fs.Arg(0)
 	case fs.NArg() < 1 || fs.NArg() > 2:
-		return c.usageError("kullanım: panely prune <uygulama> [hedef] " +
-			"ya da panely prune -all [hedef] — seçenekler uygulama adından ÖNCE gelir")
+		return c.usageError("kullanım: kadran prune <uygulama> [hedef] " +
+			"ya da kadran prune -all [hedef] — seçenekler uygulama adından ÖNCE gelir")
 	default:
 		appID, target = fs.Arg(0), fs.Arg(1)
 	}

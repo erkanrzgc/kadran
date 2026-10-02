@@ -157,7 +157,7 @@ func TestDialSSHPassesHostAsSinglePositionalArg(t *testing.T) {
 // Yeni bir girdi reddi eklerken asıl risk, yasakladığın şeyin meşru
 // varsayılanı da kapsaması. Bu projede aynı şekil bir kez yaşandı:
 // yerel bağlantı yolu kimlik önsözünü yazmıyordu ve argümansız
-// `panely status` — birincil kullanım — ölüyordu (K-012).
+// `kadran status` — birincil kullanım — ölüyordu (K-012).
 //
 // Yukarıdaki pozitif kontrol "panely-client" dizgisini ELLE yazıyor;
 // yani DefaultSSHUser değişse haberi olmazdı. Burada sabitlerin
@@ -167,7 +167,7 @@ func TestDefaultTargetsSurviveOptionCheck(t *testing.T) {
 	// uğramamalı.
 	yerel, err := ParseTarget("")
 	if err != nil {
-		t.Fatalf("boş hedef reddedildi — argümansız `panely status` kırık: %v", err)
+		t.Fatalf("boş hedef reddedildi — argümansız `kadran status` kırık: %v", err)
 	}
 	if !yerel.IsLocal() || yerel.SocketPath != DefaultSocketPath {
 		t.Errorf("boş hedef %+v, beklenen yerel soket %q", yerel, DefaultSocketPath)

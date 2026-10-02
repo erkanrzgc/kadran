@@ -3,7 +3,7 @@ package version
 
 // Version, derleme sırasında ldflags ile doldurulur:
 //
-//	go build -ldflags "-X github.com/erkanrzgc/panely/internal/version.Version=v0.1.0"
+//	go build -ldflags "-X github.com/erkanrzgc/kadran/internal/version.Version=v0.1.0"
 //
 // Doldurulmazsa geliştirme derlemesi olduğu belli olur.
 var Version = "dev"

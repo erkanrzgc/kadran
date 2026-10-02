@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Panely sunucu kurulumu. `panely bootstrap root@sunucu` tarafından
+# Panely sunucu kurulumu. `kadran bootstrap root@sunucu` tarafından
 # uzak makinede root olarak çalıştırılır.
 #
 # # Bu betik neyi kuruyor?
@@ -59,7 +59,7 @@ vekil_parmak_izi() {
 
 step "Ön koşullar"
 
-[ "$(id -u)" -eq 0 ] || die "bu betik root olarak çalışmalı (root'a SSH kapalıysa: panely bootstrap -sudo kullanıcı@sunucu)"
+[ "$(id -u)" -eq 0 ] || die "bu betik root olarak çalışmalı (root'a SSH kapalıysa: kadran bootstrap -sudo kullanıcı@sunucu)"
 command -v systemctl >/dev/null || die "systemd bulunamadı — desteklenmiyor"
 command -v sshd >/dev/null || command -v /usr/sbin/sshd >/dev/null \
     || die "sshd bulunamadı"
@@ -672,4 +672,4 @@ fi
 
 printf '\nKurulum tamamlandı.\n'
 printf 'Artık root erişimine gerek yok; bağlanmak için:\n'
-printf '  panely status panely-client@<sunucu>\n'
+printf '  kadran status panely-client@<sunucu>\n'

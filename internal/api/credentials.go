@@ -10,8 +10,8 @@ import (
 
 	"google.golang.org/grpc/credentials"
 
-	"github.com/erkanrzgc/panely/internal/connproto"
-	"github.com/erkanrzgc/panely/internal/peercred"
+	"github.com/erkanrzgc/kadran/internal/connproto"
+	"github.com/erkanrzgc/kadran/internal/peercred"
 )
 
 // PreambleTimeout, çağıranın kimlik önsözünü göndermesi için tanınan süre.

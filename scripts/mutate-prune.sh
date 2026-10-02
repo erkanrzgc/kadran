@@ -8,7 +8,7 @@
 #
 # Budama YIKICI. Yanlış bir saklama kümesi iki ayrı felakete yol açar:
 # aktif sürümü silerse siteyi düşürür, geri alma hedefini silerse
-# `panely rollback` imajdan kurmak zorunda kalır ve K-061'in bütün
+# `kadran rollback` imajdan kurmak zorunda kalır ve K-061'in bütün
 # gerekçesi çöker. İkisi de "budama başarılı" diyerek gerçekleşir.
 #
 # ── En önemli mutasyon ──────────────────────────────────────────────

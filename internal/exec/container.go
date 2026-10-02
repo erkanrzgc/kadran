@@ -10,9 +10,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	"github.com/erkanrzgc/panely/internal/dockerdrv"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/dockerdrv"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // Konteyner yaşam döngüsü uçları.

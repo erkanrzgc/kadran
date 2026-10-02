@@ -11,9 +11,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/version"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // Client, executor'a bağlı bir gRPC istemcisidir.

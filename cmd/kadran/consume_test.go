@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // ── consumeDeploy: istemci de POZİTİF ölçüt kullanıyor mu ────────────
@@ -91,7 +91,7 @@ func TestConsumeDeployReportsSuccess(t *testing.T) {
 	if !strings.Contains(out.String(), "r7") || !strings.Contains(out.String(), "abcdef012345") {
 		t.Errorf("stdout sürüm/imaj bildirmiyor: %q", out.String())
 	}
-	// Derleme çıktısı stdout'u KİRLETMEMELİ: `panely deploy … | jq`
+	// Derleme çıktısı stdout'u KİRLETMEMELİ: `kadran deploy … | jq`
 	// bozulmamalı.
 	if strings.Contains(out.String(), "Step 1/1") {
 		t.Errorf("derleme çıktısı stdout'a yazıldı: %q", out.String())
@@ -102,7 +102,7 @@ func TestConsumeDeployReportsSuccess(t *testing.T) {
 }
 
 // TestConsumeDeployNamesTheReleaseOnFailure, hata durumunda sürüm
-// kimliğinin kullanıcıya söylendiğini doğrular: `panely app show` ile
+// kimliğinin kullanıcıya söylendiğini doğrular: `kadran app show` ile
 // sebebe ulaşabilmesi buna bağlı.
 func TestConsumeDeployNamesTheReleaseOnFailure(t *testing.T) {
 	c, _, errBuf := newTestCLI("")

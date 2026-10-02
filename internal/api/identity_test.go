@@ -7,8 +7,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 
-	"github.com/erkanrzgc/panely/internal/connproto"
-	"github.com/erkanrzgc/panely/internal/peercred"
+	"github.com/erkanrzgc/kadran/internal/connproto"
+	"github.com/erkanrzgc/kadran/internal/peercred"
 )
 
 func ctxWithCaller(id connproto.Identity) context.Context {

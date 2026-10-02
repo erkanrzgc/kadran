@@ -21,9 +21,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	"github.com/erkanrzgc/panely/internal/proxydrv"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/proxydrv"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // Deployments, kontrol düzlemindeki dağıtım durumunu okur.

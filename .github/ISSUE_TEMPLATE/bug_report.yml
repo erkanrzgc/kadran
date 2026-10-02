@@ -29,7 +29,7 @@ body:
     id: version
     attributes:
       label: Version or commit SHA
-      placeholder: "bc1983f, or output of `panely version`"
+      placeholder: "bc1983f, or output of `kadran version`"
     validations:
       required: true
 
@@ -59,8 +59,8 @@ body:
     attributes:
       label: Steps to reproduce
       placeholder: |
-        1. panely bootstrap root@...
-        2. panely status panely-client@...
+        1. kadran bootstrap root@...
+        2. kadran status panely-client@...
         3. ...
     validations:
       required: true

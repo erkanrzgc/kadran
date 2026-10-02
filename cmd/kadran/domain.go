@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/domaincheck"
+	"github.com/erkanrzgc/kadran/internal/domaincheck"
 )
 
-// ── panely domain check (K-128 B) ────────────────────────────────────
+// ── kadran domain check (K-128 B) ────────────────────────────────────
 //
 // "Sertifika neden gelmiyor?" sorusunun tanısı, kullanıcının makinesinden:
 // DNS, 80 ve 443'e TCP, 80'de HTTP yanıtı ve 443'te sertifika. Sunucuya
@@ -47,7 +47,7 @@ func (r *domainReport) line(mark, label, detail string) {
 
 func (c *cli) runDomain(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "check" {
-		return c.usageError("kullanım: panely domain check <alan-adı> [hedef]")
+		return c.usageError("kullanım: kadran domain check <alan-adı> [hedef]")
 	}
 	return c.runDomainCheck(ctx, args[1:])
 }
@@ -59,7 +59,7 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely domain check <alan-adı> [hedef]")
+		return c.usageError("kullanım: kadran domain check <alan-adı> [hedef]")
 	}
 	domain := strings.TrimSuffix(strings.ToLower(fs.Arg(0)), ".")
 	if strings.ContainsAny(domain, "/: ") || domain == "" {

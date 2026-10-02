@@ -1,7 +1,7 @@
 /**
  * Electron ana süreci.
  *
- * `panely sidecar`'ı çocuk süreç olarak başlatır ve renderer'a yalnızca
+ * `kadran sidecar`'ı çocuk süreç olarak başlatır ve renderer'a yalnızca
  * dar bir salt okunur yüzey açar (bkz. src/preload/index.cjs).
  *
  * # Güvenlik duruşu
@@ -71,7 +71,7 @@ function createWindow(): void {
     minWidth: 720,
     minHeight: 520,
     backgroundColor: "#0d1117",
-    title: "Panely",
+    title: "Kadran",
     show: false,
     webPreferences: {
       preload: join(here, "..", "preload", "index.cjs"),

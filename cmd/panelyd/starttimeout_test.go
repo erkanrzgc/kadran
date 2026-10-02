@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/execclient"
 )
 
 // ── Açılış systemd'nin sınırına sığmalı (K-117) ──────────────────────
@@ -17,7 +17,7 @@ import (
 // uzlaştırıyor; ikisinin de süre sınırı var ve toplamları systemd'nin
 // varsayılan TimeoutStartSec'ini (90 sn) aşabiliyor. Aşarsa panelyd tam
 // READY göndermek üzereyken öldürülür, Restart=on-failure onu aynı duvara
-// geri gönderir ve `panely status` hiç cevap vermez. Açılış yolundaki
+// geri gönderir ve `kadran status` hiç cevap vermez. Açılış yolundaki
 // "ölümcül değil, görünür kıl" tasarımının tam tersi.
 //
 // Watchdog bu süreyi KAPSAMIYOR: systemd onu READY'den sonra kuruyor.

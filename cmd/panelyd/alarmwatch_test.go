@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // TestDiskDecisionThresholds, eşikleri TABLO HÂLİNDE sınar.

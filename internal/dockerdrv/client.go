@@ -179,7 +179,7 @@ func New(socketPath, volumeRoot string) *Client {
 			// okunabildi, sonra "Client.Timeout ... while reading body".
 			//
 			// Yani 60 sn'lik sınır iki şeyi sessizce bozardı:
-			//   • `panely logs -f` her dakika kopardı
+			//   • `kadran logs -f` her dakika kopardı
 			//   • 60 sn'den uzun süren HİÇBİR derleme başarılı olamazdı
 			//     — ki Faz 1'in var olma sebebi derleme yapmak.
 			//

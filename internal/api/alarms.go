@@ -6,8 +6,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // ListAlarms, etkin arıza koşullarını döndürür.

@@ -5,7 +5,7 @@ import (
 
 	"google.golang.org/grpc/peer"
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 // callerFromContext, bağlantıya bağlı doğrulanmış çağıran bilgisini çıkarır.

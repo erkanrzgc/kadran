@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Sunucu binary'lerini `panely bootstrap`'ın beklediği düzende derler.
+# Sunucu binary'lerini `kadran bootstrap`'ın beklediği düzende derler.
 #
 # Çıktı:
 #   bin/linux-amd64/{panelyd,panely-exec,panely-connect}
 #   bin/linux-arm64/{panelyd,panely-exec,panely-connect}
-#   bin/panely[.exe]                 — iş istasyonu aracı (yerel platform)
+#   bin/kadran[.exe]                 — iş istasyonu aracı (yerel platform)
 #
 # Kullanım:
 #   scripts/build-release.sh              # her iki mimari
@@ -23,8 +23,10 @@ VERSION="${PANELY_VERSION:-dev}"
 COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 
 LDFLAGS="-s -w"
-LDFLAGS="$LDFLAGS -X github.com/erkanrzgc/panely/internal/version.Version=$VERSION"
-LDFLAGS="$LDFLAGS -X github.com/erkanrzgc/panely/internal/version.Commit=$COMMIT"
+# Modül yolu go.mod'dan: yanlış bir -X yolu HATASIZ yok sayılır (K-130).
+MOD="$(go list -m)"
+LDFLAGS="$LDFLAGS -X $MOD/internal/version.Version=$VERSION"
+LDFLAGS="$LDFLAGS -X $MOD/internal/version.Commit=$COMMIT"
 
 SERVER_BINARIES=(panelyd panely-exec panely-connect)
 
@@ -58,8 +60,8 @@ done
 # İş istasyonu aracı yerel platforma derlenir: bootstrap'ı ve GUI'yi
 # çalıştıran makine bu.
 echo "==> yerel iş istasyonu aracı"
-go build -trimpath -ldflags "$LDFLAGS" -o "bin/panely$( [ "$(go env GOOS)" = windows ] && echo .exe )" ./cmd/panely
-printf '    bin/panely%s\n' "$( [ "$(go env GOOS)" = windows ] && echo .exe )"
+go build -trimpath -ldflags "$LDFLAGS" -o "bin/kadran$( [ "$(go env GOOS)" = windows ] && echo .exe )" ./cmd/kadran
+printf '    bin/kadran%s\n' "$( [ "$(go env GOOS)" = windows ] && echo .exe )"
 
 echo
 echo "Sürüm: $VERSION ($COMMIT)"

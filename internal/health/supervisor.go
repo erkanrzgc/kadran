@@ -16,9 +16,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/alarm"
-	"github.com/erkanrzgc/panely/internal/audit"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/alarm"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // Healer, sağlık ölçümünü ve iyileştirmeyi yapan orkestratördür.

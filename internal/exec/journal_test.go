@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 func newTestJournal(t *testing.T) (*Journal, string) {

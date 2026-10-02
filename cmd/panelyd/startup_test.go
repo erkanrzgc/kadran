@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/deploy"
+	"github.com/erkanrzgc/kadran/internal/deploy"
 )
 
 // fakeRec, uzlaştırmanın sonucunu senaryoya göre üretir.
@@ -34,7 +34,7 @@ func (f *fakeRec) Reconcile(context.Context) (deploy.Result, error) {
 // ── Neden önemli ────────────────────────────────────────────────────
 //
 // Sonuç yalnızca günlüğe yazılıp koşulsuz READY gönderildiğinde systemd
-// "active (running)" gösterir, `panely status` sağlıklı der ve BÜTÜN
+// "active (running)" gösterir, `kadran status` sağlıklı der ve BÜTÜN
 // SİTELER KAPALIDIR. Tek iz bir slog.Error satırıdır ve kimse ona bakmaz.
 func TestStartupReconcileReportsFailure(t *testing.T) {
 	rec := &fakeRec{

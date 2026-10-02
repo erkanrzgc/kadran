@@ -1,9 +1,9 @@
-// panely, Panely'nin iş istasyonu komut satırı aracıdır.
+// kadran, Kadran'ın iş istasyonu komut satırı aracıdır.
 //
 // Sunucuya iki yoldan bağlanır:
 //
-//   - SSH:   `panely status kullanici@sunucu` — `ssh` alt süreci üzerinden
-//   - Yerel: `panely status` — sunucunun kendisinde /run/panely/api.sock
+//   - SSH:   `kadran status kullanici@sunucu` — `ssh` alt süreci üzerinden
+//   - Yerel: `kadran status` — sunucunun kendisinde /run/panely/api.sock
 //
 // # Anahtar malzemesi bu programa girmez
 //
@@ -27,11 +27,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/bootstrap"
-	"github.com/erkanrzgc/panely/internal/client"
-	"github.com/erkanrzgc/panely/internal/domaincheck"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/version"
+	"github.com/erkanrzgc/kadran/internal/bootstrap"
+	"github.com/erkanrzgc/kadran/internal/client"
+	"github.com/erkanrzgc/kadran/internal/domaincheck"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // Çıkış kodları. Betikler ve cron bunlara bakar.
@@ -43,7 +43,7 @@ const (
 	// exitChainInvalid, denetim zincirinin KIRIK olduğunu bildirir.
 	//
 	// "Doğrulanamadı"dan (exitError) ayrı bir kod olması kasıtlıdır:
-	// cron'a konulan bir `panely audit verify`, executor'ın kapalı
+	// cron'a konulan bir `kadran audit verify`, executor'ın kapalı
 	// olduğu durumla kurcalama şüphesini karıştırmamalı.
 	exitChainInvalid = 3
 )
@@ -57,6 +57,11 @@ const defaultTimeout = 30 * time.Second
 
 // cli, giriş/çıkış akışlarını taşır. Testlerin çıktıyı yakalayabilmesi
 // için os.Stdout'a doğrudan yazılmıyor.
+// progName, iş istasyonu aracının adı: hata öneki, kullanım ve sürüm
+// satırı. Sunucu tarafındaki adlar (panelyd, panely-client, ...) AYRI ve
+// değişmedi (K-130).
+const progName = "kadran"
+
 type cli struct {
 	stdin  io.Reader
 	stdout io.Writer
@@ -125,16 +130,16 @@ func (c *cli) run(ctx context.Context, args []string) int {
 		}
 	}
 
-	fmt.Fprintf(c.stderr, "panely: bilinmeyen komut %q\n\n", name)
+	fmt.Fprintf(c.stderr, progName+": bilinmeyen komut %q\n\n", name)
 	c.usage()
 	return exitUsage
 }
 
 func (c *cli) usage() {
-	fmt.Fprintf(c.stderr, `panely %s — Panely iş istasyonu aracı
+	fmt.Fprintf(c.stderr, `kadran %s — Kadran iş istasyonu aracı
 
 Kullanım:
-  panely <komut> [seçenekler] [hedef]
+  kadran <komut> [seçenekler] [hedef]
 
 Komutlar:
 `, version.Version)
@@ -160,7 +165,7 @@ Hedef biçimleri:
   %d  denetim zinciri KIRIK — kurcalama şüphesi
 
 Seçenekler komuttan sonra, hedeften önce gelir:
-  panely audit list --limit 20 kullanici@sunucu
+  kadran audit list --limit 20 kullanici@sunucu
 `, client.DefaultSocketPath, client.DefaultSSHUser,
 		exitOK, exitError, exitUsage, exitChainInvalid)
 }
@@ -208,13 +213,13 @@ func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *p
 
 // fail, hatayı stderr'e yazar ve hata çıkış kodu döndürür.
 func (c *cli) fail(err error) int {
-	fmt.Fprintln(c.stderr, "panely:", err)
+	fmt.Fprintln(c.stderr, progName+":", err)
 	return exitError
 }
 
 // usageError, kullanım hatasını bildirir.
 func (c *cli) usageError(format string, args ...any) int {
-	fmt.Fprintf(c.stderr, "panely: "+format+"\n", args...)
+	fmt.Fprintf(c.stderr, progName+": "+format+"\n", args...)
 	return exitUsage
 }
 
@@ -222,7 +227,7 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 	if len(args) > 0 {
 		return c.usageError("`version` argüman almaz")
 	}
-	fmt.Fprintf(c.stdout, "panely %s (%s)\nprotokol %d\n",
+	fmt.Fprintf(c.stdout, progName+" %s (%s)\nprotokol %d\n",
 		version.Version, version.Commit, version.Protocol)
 	return exitOK
 }
@@ -249,7 +254,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() != 1 {
-		return c.usageError("kullanım: panely bootstrap [seçenekler] root@sunucu  |  panely bootstrap -sudo kullanıcı@sunucu")
+		return c.usageError("kullanım: kadran bootstrap [seçenekler] root@sunucu  |  kadran bootstrap -sudo kullanıcı@sunucu")
 	}
 
 	target, err := client.ParseTarget(fs.Arg(0))
@@ -284,7 +289,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return c.fail(err)
 	}
 
-	fmt.Fprintf(c.stdout, "\nDoğrulamak için:\n  panely status %s@%s\n",
+	fmt.Fprintf(c.stdout, "\nDoğrulamak için:\n  kadran status %s@%s\n",
 		client.DefaultSSHUser, target.SSHHost)
 	return exitOK
 }

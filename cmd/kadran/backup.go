@@ -6,7 +6,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // runBackup, `backup` alt komutlarını dağıtır.
@@ -37,7 +37,7 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("kullanım: panely backup create [hedef]")
+		return c.usageError("kullanım: kadran backup create [hedef]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -83,7 +83,7 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("kullanım: panely backup list [hedef]")
+		return c.usageError("kullanım: kadran backup list [hedef]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)

@@ -195,7 +195,7 @@ func TestUpdateRemovesEnvKeys(t *testing.T) {
 // TestEnvUpdateIsNotEmpty, yalnızca env taşıyan bir güncellemenin
 // "hiçbir alan belirtilmedi" sayılmadığını doğrular.
 //
-// IsEmpty'ye env eklenmezse API katmanı `panely app update -env ...`
+// IsEmpty'ye env eklenmezse API katmanı `kadran app update -env ...`
 // çağrısını işlemsizlik diye REDDEDER — mekanizma bağlanır, komut
 // çalışmaz.
 func TestEnvUpdateIsNotEmpty(t *testing.T) {

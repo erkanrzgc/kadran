@@ -1,5 +1,5 @@
 /**
- * `panely sidecar` alt sürecine JSON-RPC 2.0 istemcisi.
+ * `kadran sidecar` alt sürecine JSON-RPC 2.0 istemcisi.
  *
  * # Neden Electron'a bağımlı değil?
  *

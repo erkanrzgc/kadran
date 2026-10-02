@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // recorder, bildirilen olayları toplar.

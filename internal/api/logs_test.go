@@ -10,8 +10,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // logStream, akışa gönderilen kareleri toplar.
@@ -93,7 +93,7 @@ func TestStreamLogsForwardsFrames(t *testing.T) {
 		t.Error("stdout karesi stderr olarak işaretlendi")
 	}
 	// ⚠ stderr işareti KORUNMALI: istemci onu ayrı akıma yazıyor.
-	// Kaybolursa `panely logs blog > app.log` hata satırlarını da dosyaya
+	// Kaybolursa `kadran logs blog > app.log` hata satırlarını da dosyaya
 	// gömer ve terminalde hiçbir şey görünmez.
 	if !st.sent[1].GetIsStderr() {
 		t.Error("stderr karesi stdout olarak işaretlendi — istemci onu " +

@@ -1,4 +1,4 @@
-module github.com/erkanrzgc/panely
+module github.com/erkanrzgc/kadran
 
 go 1.25.0
 

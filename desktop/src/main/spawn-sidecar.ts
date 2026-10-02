@@ -1,11 +1,11 @@
 /**
- * `panely sidecar` alt sürecinin nasıl başlatılacağını çözer.
+ * `kadran sidecar` alt sürecinin nasıl başlatılacağını çözer.
  *
  * # Hangi binary?
  *
  * Masaüstü uygulaması KULLANICININ iş istasyonunda çalışır ve sunucuya SSH
  * ile bağlanır. Yani gereken binary iş istasyonunun kendi platformuna ait:
- * Windows'ta `panely.exe`, macOS/Linux'ta `panely`.
+ * Windows'ta `kadran.exe`, macOS/Linux'ta `kadran`.
  *
  * Bu, ilk taslaktaki bir yanlış varsayımı düzeltiyor. Go, Windows'ta unix
  * soketine BAĞLANAMIYOR (ölçüldü) — ama bu yalnızca YEREL soket yolunu
@@ -51,7 +51,7 @@ const COMMAND_OVERRIDE = "PANELY_SIDECAR_COMMAND";
 
 /** binaryName, platforma göre çalıştırılabilir adını verir. */
 export function binaryName(platform: NodeJS.Platform): string {
-  return platform === "win32" ? "panely.exe" : "panely";
+  return platform === "win32" ? "kadran.exe" : "kadran";
 }
 
 /**
@@ -90,6 +90,6 @@ export function resolveSidecarCommand(options: ResolveOptions): SidecarCommand {
   if (!options.repoRoot) {
     throw new Error("geliştirme kipinde repoRoot gerekli");
   }
-  // Geliştirmede binary `go build -o bin/<ad> ./cmd/panely` ile üretilir.
+  // Geliştirmede binary `go build -o bin/<ad> ./cmd/kadran` ile üretilir.
   return { command: join(options.repoRoot, "bin", name), args: ["sidecar"] };
 }

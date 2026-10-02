@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // ── Sahteler ─────────────────────────────────────────────────────────

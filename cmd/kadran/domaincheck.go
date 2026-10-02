@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/client"
-	"github.com/erkanrzgc/panely/internal/domaincheck"
+	"github.com/erkanrzgc/kadran/internal/client"
+	"github.com/erkanrzgc/kadran/internal/domaincheck"
 )
 
 // sshConfigTimeout, `ssh -G`'nin süre sınırı. Ağa çıkmıyor, yalnızca
@@ -93,7 +93,7 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		return nil
 	}
 	if skip {
-		fmt.Fprintf(c.stderr, "panely: DNS önkontrolü atlandı (-%s)\n", skipDNSCheckFlag)
+		fmt.Fprintf(c.stderr, progName+": DNS önkontrolü atlandı (-%s)\n", skipDNSCheckFlag)
 		return nil
 	}
 	server, ok := c.serverHostFor(ctx, rawTarget)
@@ -109,7 +109,7 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		return nil
 	case domaincheck.Skipped, domaincheck.Warn:
 		for _, r := range rep.Reasons {
-			fmt.Fprintf(c.stderr, "panely: uyarı: %s\n", r)
+			fmt.Fprintf(c.stderr, progName+": uyarı: %s\n", r)
 		}
 		return nil
 	}

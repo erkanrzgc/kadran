@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/deploy"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/deploy"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 type sahteOnarici struct {

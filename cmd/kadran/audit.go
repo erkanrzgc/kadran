@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"text/tabwriter"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // runAudit, `audit` alt komutlarını dağıtır.
@@ -95,7 +95,7 @@ func (c *cli) printAuditRecords(resp *panelyv1.ListAuditRecordsResponse) {
 	fmt.Fprintf(c.stdout, "\n%d kayıt gösterildi · zincirdeki son sıra: %d\n",
 		len(records), resp.GetLatestSeq())
 	if shown < resp.GetLatestSeq() {
-		fmt.Fprintf(c.stdout, "Devamı için: panely audit list --after %d\n", shown)
+		fmt.Fprintf(c.stdout, "Devamı için: kadran audit list --after %d\n", shown)
 	}
 }
 

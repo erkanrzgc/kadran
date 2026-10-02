@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // newRollbackHarness, geri alma düzeneğini HEDEF sürüme göre kurar.

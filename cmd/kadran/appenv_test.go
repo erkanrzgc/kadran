@@ -52,7 +52,7 @@ func TestBuildUpdateRequestLeavesEnvUnsetWhenNotGiven(t *testing.T) {
 // TestEnvOnlyUpdateIsNotEmpty, yalnızca env taşıyan komutun
 // reddedilmediğini doğrular.
 //
-// isEmptyUpdate'e env eklenmezse `panely app update -env X=1 blog`
+// isEmptyUpdate'e env eklenmezse `kadran app update -env X=1 blog`
 // istemci tarafında "değiştirilecek bir alan verilmedi" ile durur ve
 // sunucuya HİÇ gitmez. Mekanizma bağlanır, komut çalışmaz.
 func TestEnvOnlyUpdateIsNotEmpty(t *testing.T) {

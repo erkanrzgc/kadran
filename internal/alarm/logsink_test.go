@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // ── Sözleşme: LogSink'in satırı ↔ Telegram göndericisi ───────────────

@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	"github.com/erkanrzgc/panely/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
-	"github.com/erkanrzgc/panely/internal/version"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 func newTestServer(t *testing.T) (*Server, *store.Store) {

@@ -34,7 +34,7 @@ STORE_UPD=internal/store/appupdate.go
 API_APPS=internal/api/apps.go
 API_UPD=internal/api/appupdate.go
 API_VAL=internal/api/appvalidate.go
-CLI_UPD=cmd/panely/appupdate.go
+CLI_UPD=cmd/kadran/appupdate.go
 
 FILES=("$ROLLOUT" "$STORE_APPS" "$STORE_UPD" "$API_APPS" "$API_UPD" "$API_VAL" "$CLI_UPD")
 declare -A BAK
@@ -193,7 +193,7 @@ mutate "yeniden dagitim uyarisi susturuldu" "$API_UPD" \
 
 mutate "isEmptyUpdate env'i saymiyor (komut sunucuya hic gitmez)" "$CLI_UPD" \
     "s=s.replace('len(req.GetEnv()) == 0 && len(req.GetEnvRemove()) == 0','true',1)" \
-    "./cmd/panely/" "TestEnvOnlyUpdateIsNotEmpty"
+    "./cmd/kadran/" "TestEnvOnlyUpdateIsNotEmpty"
 
 # ── ELENEN MUTASYON: "set[\"env\"] kontrolunu kaldir" ────────────────
 #

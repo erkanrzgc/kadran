@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 // Journal, executor'ın kendi hash-zincirli denetim günlüğüdür.

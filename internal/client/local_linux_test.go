@@ -24,8 +24,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	"github.com/erkanrzgc/panely/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/connproto"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // tempSocketPath, unix soketi için yeterince kısa bir geçici yol üretir.

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/deploy"
-	"github.com/erkanrzgc/panely/internal/execclient"
-	"github.com/erkanrzgc/panely/internal/liveness"
+	"github.com/erkanrzgc/kadran/internal/deploy"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/liveness"
 )
 
 // Eşikler SABİTTEN okunmuyor: beklenti kendi kendine referans verseydi

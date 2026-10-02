@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // pruneGrace, budanan konteynere SIGTERM ile SIGKILL arasında verilen
@@ -31,7 +31,7 @@ const pruneGrace = 10 * time.Second
 // K-061 duran konteynerleri KASTEN biriktiriyor: duran bir konteyneri
 // başlatmak saniyeler, imajdan kurmak dakikalar sürüyor ve geri alma
 // bunun üstüne oturuyor. Dolayısıyla budama geri alma hedefine
-// dokunamaz — dokunursa K-061'in gerekçesi çöker ve `panely rollback`
+// dokunamaz — dokunursa K-061'in gerekçesi çöker ve `kadran rollback`
 // sessizce yavaşlar.
 //
 // ⚠ "Bir önceki" dağıtım GEÇMİŞİNDEN okunuyor, `releases.seq`'ten

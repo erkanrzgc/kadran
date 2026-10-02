@@ -12,14 +12,14 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/erkanrzgc/panely/internal/client"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/version"
+	"github.com/erkanrzgc/kadran/internal/client"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // # Sidecar neden stdio, neden yerel port değil?
 //
-// Electron kabuğu `panely sidecar`'ı çocuk süreç olarak başlatır ve
+// Electron kabuğu `kadran sidecar`'ı çocuk süreç olarak başlatır ve
 // stdin/stdout üzerinden satır-bazlı JSON-RPC 2.0 konuşur (LSP ve MCP'nin
 // deseni). Yerel bir TCP portu açmak üç sorun getirirdi: makinedeki her
 // süreç ona bağlanabilirdi, bir kimlik doğrulama katmanı icat etmek

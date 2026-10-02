@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // mustVolumes, test icin hacim listesi kurar.

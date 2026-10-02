@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // runApp, `app` alt komutlarını dağıtır.
@@ -62,7 +62,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		// ilk konumsal argümanda ayrıştırma durur. Kullanım metni bunu
 		// açıkça söylüyor, çünkü tersini deneyen biri "-repo zorunlu"
 		// hatası alır ve sebebini göremez.
-		return c.usageError("kullanım: panely app create -repo host/sahip/depo " +
+		return c.usageError("kullanım: kadran app create -repo host/sahip/depo " +
 			"[seçenekler] <ad> [hedef] — seçenekler addan ÖNCE gelir")
 	}
 
@@ -129,7 +129,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	fmt.Fprintf(c.stdout, "  Kaynak  : %s/%s/%s (%s)\n",
 		s.GetGitHost(), s.GetGitOwner(), s.GetGitRepo(), s.GetGitBranch())
 	fmt.Fprintf(c.stdout, "  Port    : %d · replika: %d\n", s.GetContainerPort(), s.GetReplicas())
-	fmt.Fprintf(c.stdout, "\nDağıtmak için: panely deploy %s\n", s.GetAppId())
+	fmt.Fprintf(c.stdout, "\nDağıtmak için: kadran deploy %s\n", s.GetAppId())
 	return exitOK
 }
 
@@ -167,7 +167,7 @@ func (c *cli) runAppList(ctx context.Context, args []string) int {
 	}
 
 	if len(resp.GetApps()) == 0 {
-		fmt.Fprintln(c.stdout, "Tanımlı uygulama yok. `panely app create` ile başlayın.")
+		fmt.Fprintln(c.stdout, "Tanımlı uygulama yok. `kadran app create` ile başlayın.")
 		return exitOK
 	}
 
@@ -192,7 +192,7 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely app show [seçenekler] <ad> [hedef]")
+		return c.usageError("kullanım: kadran app show [seçenekler] <ad> [hedef]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -293,7 +293,7 @@ func (c *cli) printApp(resp *panelyv1.GetAppResponse) {
 	}
 
 	if len(releases) == 0 {
-		fmt.Fprintf(c.stdout, "\nHenüz sürüm yok. `panely deploy %s` ile derleyin.\n", s.GetAppId())
+		fmt.Fprintf(c.stdout, "\nHenüz sürüm yok. `kadran deploy %s` ile derleyin.\n", s.GetAppId())
 		return
 	}
 

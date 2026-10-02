@@ -10,7 +10,7 @@ import (
 
 // # Bu dosya neden var?
 //
-// `panely status <kullanıcı>@<sunucu>` gerçek sunucuda şu hatayı
+// `kadran status <kullanıcı>@<sunucu>` gerçek sunucuda şu hatayı
 // veriyordu:
 //
 //	rpc error: code = Unavailable desc = connection error:

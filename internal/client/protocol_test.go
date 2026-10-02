@@ -8,8 +8,8 @@ import (
 
 	"google.golang.org/grpc"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/version"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // sahtePing, yalnızca Ping'i uygular; gömülü arayüz nil, başka bir RPC

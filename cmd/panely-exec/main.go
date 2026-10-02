@@ -24,14 +24,14 @@ import (
 
 	"google.golang.org/grpc"
 
-	panelyexec "github.com/erkanrzgc/panely/internal/exec"
-	"github.com/erkanrzgc/panely/internal/grpcserve"
-	"github.com/erkanrzgc/panely/internal/logutil"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/peercred"
-	"github.com/erkanrzgc/panely/internal/sdnotify"
-	"github.com/erkanrzgc/panely/internal/sockets"
-	"github.com/erkanrzgc/panely/internal/version"
+	panelyexec "github.com/erkanrzgc/kadran/internal/exec"
+	"github.com/erkanrzgc/kadran/internal/grpcserve"
+	"github.com/erkanrzgc/kadran/internal/logutil"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/peercred"
+	"github.com/erkanrzgc/kadran/internal/sdnotify"
+	"github.com/erkanrzgc/kadran/internal/sockets"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 const (
@@ -183,7 +183,7 @@ func lookupUID(name string) (uint32, error) {
 	u, err := user.Lookup(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%q kullanıcısı bulunamadı — `panely bootstrap` çalıştırıldı mı?: %w", name, err)
+			"%q kullanıcısı bulunamadı — `kadran bootstrap` çalıştırıldı mı?: %w", name, err)
 	}
 	id, err := strconv.ParseUint(u.Uid, 10, 32)
 	if err != nil {
@@ -196,7 +196,7 @@ func lookupGID(name string) (int, error) {
 	g, err := user.LookupGroup(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%q grubu bulunamadı — `panely bootstrap` çalıştırıldı mı?: %w", name, err)
+			"%q grubu bulunamadı — `kadran bootstrap` çalıştırıldı mı?: %w", name, err)
 	}
 	id, err := strconv.Atoi(g.Gid)
 	if err != nil {

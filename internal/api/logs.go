@@ -3,8 +3,8 @@ package api
 import (
 	"google.golang.org/grpc"
 
-	"github.com/erkanrzgc/panely/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/execclient"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // maxTailLines, geçmişten istenebilecek azami satır sayısıdır.

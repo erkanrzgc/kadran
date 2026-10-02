@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-// ── panely domain check (K-128 B) ────────────────────────────────────
+// ── kadran domain check (K-128 B) ────────────────────────────────────
 //
 // Gerçek bir yerel TLS sunucusu (httptest; sertifikası "example.com" adını
 // kapsıyor) ve gerçek bir HTTP sunucusu. Alan adının 80/443'ü bağlantı

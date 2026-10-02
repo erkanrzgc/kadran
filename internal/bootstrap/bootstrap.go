@@ -191,7 +191,7 @@ func checkPrivilege(ctx context.Context, opts Options) error {
 			return fmt.Errorf("bootstrap: sudo root'a geçmedi (uid %q)", uid)
 		}
 		return fmt.Errorf("bootstrap: %s root değil (uid %s) — root'a SSH kapalıysa "+
-			"`panely bootstrap -sudo kullanıcı@sunucu` kullanın", opts.Host, uid)
+			"`kadran bootstrap -sudo kullanıcı@sunucu` kullanın", opts.Host, uid)
 	}
 	return nil
 }

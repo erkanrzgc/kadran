@@ -4,7 +4,7 @@
 // alternatifi Type=simple'dır, ama o durumda systemd süreç doğar doğmaz
 // servisi hazır sayar — oysa panelyd o anda henüz veritabanını açmamış,
 // göçleri uygulamamış ve executor'a bağlanmamıştır. Bağımlı servisler ve
-// `panely bootstrap`'in sağlık kontrolü yanlış zamanda yeşil görürdü.
+// `kadran bootstrap`'in sağlık kontrolü yanlış zamanda yeşil görürdü.
 //
 // Protokol tek satırlık bir datagram olduğu için harici bağımlılık
 // gerekmez; go-systemd paketini çekmek bu kadarı için orantısızdır.

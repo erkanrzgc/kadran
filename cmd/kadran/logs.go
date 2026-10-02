@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // defaultTailLines, `-tail` verilmediğinde gösterilecek geçmiş satır
@@ -37,7 +37,7 @@ func (c *cli) runLogs(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: panely logs [-f] [-tail n] <uygulama> " +
+		return c.usageError("kullanım: kadran logs [-f] [-tail n] <uygulama> " +
 			"[hedef] — seçenekler uygulama adından ÖNCE gelir")
 	}
 
@@ -69,7 +69,7 @@ func (c *cli) runLogs(ctx context.Context, args []string) int {
 // ── stdout ve stderr AYRI tutuluyor ─────────────────────────────────
 //
 // Konteynerin stderr'i bizim stderr'imize gidiyor. Böylece
-// `panely logs blog > app.log` yalnızca uygulamanın stdout'unu dosyaya
+// `kadran logs blog > app.log` yalnızca uygulamanın stdout'unu dosyaya
 // yazar, hata satırları terminalde kalır — Docker'ın ayırdığı bilgiyi
 // birleştirip atmak, akışları ayırmanın bütün faydasını yok ederdi.
 func (c *cli) consumeLogs(

@@ -25,7 +25,7 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // Alarm türleri.

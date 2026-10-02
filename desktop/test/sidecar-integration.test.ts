@@ -1,5 +1,5 @@
 /**
- * SidecarClient'ı GERÇEK `panely sidecar` alt sürecine karşı çalıştırır.
+ * SidecarClient'ı GERÇEK `kadran sidecar` alt sürecine karşı çalıştırır.
  *
  * # Neden ayrı bir test?
  *
@@ -11,8 +11,8 @@
  *
  * Binary yoksa test ATLANIYOR, uydurma bir başarı üretmiyor. Üretmek için:
  *
- *   go build -o bin/panely.exe ./cmd/panely     (Windows)
- *   go build -o bin/panely ./cmd/panely         (Linux/macOS)
+ *   go build -o bin/kadran.exe ./cmd/kadran     (Windows)
+ *   go build -o bin/kadran ./cmd/kadran         (Linux/macOS)
  */
 
 import { test, describe } from "node:test";
@@ -32,7 +32,7 @@ const repoRoot = resolve(here, "..", "..");
 const command = resolveSidecarCommand({ isPackaged: false, repoRoot });
 const binaryExists = existsSync(command.command);
 
-describe("gerçek sidecar süreci", { skip: binaryExists ? false : "panely binary'si yok — `go build -o bin/panely.exe ./cmd/panely`" }, () => {
+describe("gerçek sidecar süreci", { skip: binaryExists ? false : "kadran binary'si yok — `go build -o bin/kadran.exe ./cmd/kadran`" }, () => {
   function newClient() {
     return new SidecarClient(
       () =>

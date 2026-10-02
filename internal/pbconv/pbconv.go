@@ -10,8 +10,8 @@ package pbconv
 import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 // AuditRecordToProto, iç denetim kaydını protobuf mesajına çevirir.

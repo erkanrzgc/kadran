@@ -12,7 +12,7 @@
 //
 // Sürücü olarak modernc.org/sqlite (saf Go) kullanılır. CGO'suz olması
 // Windows iş istasyonundan linux/amd64 ve linux/arm64 hedeflerine çapraz
-// derleme yapabilmemizi sağlar; `panely bootstrap`'in "tek komut kurulum"
+// derleme yapabilmemizi sağlar; `kadran bootstrap`'in "tek komut kurulum"
 // vaadi buna bağlıdır.
 package store
 
@@ -30,7 +30,7 @@ import (
 
 	_ "modernc.org/sqlite" // sqlite sürücüsü
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 //go:embed migrations/*.sql

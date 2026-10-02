@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 // Bu testler `internal/audit`'ten TAŞINDI. Sebebi redact.go'nun başında

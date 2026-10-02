@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // sahteSaat, elle ilerletilen bir saat.

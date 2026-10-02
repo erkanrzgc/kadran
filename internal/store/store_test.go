@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/erkanrzgc/panely/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 func newTestStore(t *testing.T) *Store {

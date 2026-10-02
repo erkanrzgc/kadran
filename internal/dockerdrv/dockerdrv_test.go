@@ -334,7 +334,7 @@ func TestPidsLimitIsBounded(t *testing.T) {
 //
 // `Type` ayrıca sınanıyor ve bu gereksiz değil: sürücü json-file
 // olmazsa `max-size` geçersiz bir seçenek olur VE ContainerLogs okuyamaz.
-// Yani tek bir eksik alan hem tavanı hem `panely logs`'u düşürür.
+// Yani tek bir eksik alan hem tavanı hem `kadran logs`'u düşürür.
 func TestCreatePinsLogRotation(t *testing.T) {
 	f := newFakeDocker(t)
 	c := f.client(hardenedRoot(t, "rw,nosuid,nodev,relatime"))

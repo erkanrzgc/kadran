@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
 func TestHumanBytes(t *testing.T) {

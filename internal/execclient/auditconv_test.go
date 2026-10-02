@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	"github.com/erkanrzgc/panely/internal/pbconv"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/pbconv"
 )
 
 // TestRoundTripPreservesChainIntegrity, çevirinin zinciri BOZMADIĞINI

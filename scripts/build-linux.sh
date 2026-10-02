@@ -17,8 +17,10 @@ version="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
 commit="$(git rev-parse HEAD | cut -c1-12)"
 
 ldflags="-s -w"
-ldflags="$ldflags -X github.com/erkanrzgc/panely/internal/version.Version=$version"
-ldflags="$ldflags -X github.com/erkanrzgc/panely/internal/version.Commit=$commit"
+# Modül yolu go.mod'dan: yanlış bir -X yolu HATASIZ yok sayılır (K-130).
+mod="$(go list -m)"
+ldflags="$ldflags -X $mod/internal/version.Version=$version"
+ldflags="$ldflags -X $mod/internal/version.Commit=$commit"
 
 for binary in panelyd panely-exec panely-connect panely; do
     GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$ldflags" \

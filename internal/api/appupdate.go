@@ -9,9 +9,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/erkanrzgc/panely/internal/audit"
-	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
-	"github.com/erkanrzgc/panely/internal/store"
+	"github.com/erkanrzgc/kadran/internal/audit"
+	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // UpdateApp, var olan bir uygulamanın değiştirilebilir alanlarını yazar.
@@ -137,7 +137,7 @@ func envNeedsRedeploy(appID string) string {
 	return fmt.Sprintf(
 		"⚠ env KAYDEDİLDİ ama ÇALIŞAN KONTEYNERLER hâlâ eski ortamla "+
 			"koşuyor — Docker çalışan bir konteynerin ortamını "+
-			"değiştiremez. Uygulayın: panely deploy %s", appID)
+			"değiştiremez. Uygulayın: kadran deploy %s", appID)
 }
 
 // moveTraffic, alan adı değişikliğini ters vekile yansıtır.
@@ -175,7 +175,7 @@ func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (strin
 		// alan adının canlıda cevap verdiğini sanması demekti.
 		return fmt.Sprintf(
 			"⚠ alan adı kaydedildi ama TRAFİK TAŞINMADI (%s) — "+
-				"uygulamayı dağıtın: panely deploy %s", why, appID), nil
+				"uygulamayı dağıtın: kadran deploy %s", why, appID), nil
 	}
 	return fmt.Sprintf("ters vekil güncellendi — %q artık bu uygulamaya gidiyor", to), nil
 }
@@ -280,5 +280,5 @@ func volumesNeedRedeploy(appID string) string {
 	return fmt.Sprintf(
 		"\u26a0 hacim tanimi KAYDEDILDI ama CALISAN KONTEYNERLER hâlâ eski "+
 			"baglamalarla kosuyor -- disk konteyner olusturulurken baglanir. "+
-			"Uygulayin: panely deploy %s", appID)
+			"Uygulayin: kadran deploy %s", appID)
 }

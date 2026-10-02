@@ -134,7 +134,7 @@ mutate_in "$CLI" "ssh takma adı çözülmüyor" \
 
 # Rapor stdout'a giderse -json çıktısı bozulur.
 mutate_in "$CLI" "uyarı stdout'a yazılıyor" \
-    "s=s.replace('fmt.Fprintf(c.stderr, \"panely: uyarı: %s','fmt.Fprintf(c.stdout, \"panely: uyarı: %s',1)"
+    "s=s.replace('fmt.Fprintf(c.stderr, progName+\": uyarı: %s','fmt.Fprintf(c.stdout, progName+\": uyarı: %s',1)"
 
 # Boş ad (vekilden çıkarma) denetlenirse kaldırma imkânsızlaşır.
 mutate_in "$CLI" "boş alan adı da denetleniyor" \

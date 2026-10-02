@@ -55,6 +55,46 @@ vekil_parmak_izi() {
         md5sum | cut -d' ' -f1
 }
 
+# yonetici_satiri_yaz <authorized_keys> <açık anahtar dosyası> <LIB_DIR>
+# — yönetici anahtarının zorlanmış komutlu satırını yazar.
+#
+# Anahtar dosyası TEK satır olmalı, yoksa 1 döner ve dosyaya dokunmaz:
+# satır `command=...,restrict $(cat …)` diye kuruluyor ve ikinci bir satır
+# authorized_keys'e AYRI ve KISITSIZ bir anahtar olarak düşerdi (K-131).
+# İstemci de denetliyor; bu ikinci kat, elle hazırlanmış bir paket için.
+#
+# İdempotanlık: aynı anahtar gövdesini (tip + base64) taşıyan satır
+# yenisiyle DEĞİŞTİRİLİR, yorum alanı değişebilir. Başka anahtarların
+# satırları — `kadran key` ile eklenen dağıtım anahtarları dahil —
+# KORUNUR. Tek-satır denetimi de sınanıyor: scripts/check-install-sh.sh.
+yonetici_satiri_yaz() {
+    local auth_file="$1" key_file="$2" lib_dir="$3" key key_body
+    [ "$(grep -c '' "$key_file")" -eq 1 ] || return 1
+    key="$(cat "$key_file")"
+    # CR denetimi Linux'ta anlamlı (kurulum ve CI orada). Git Bash hem
+    # grep'te hem `$(…)`'da CR'yi siliyor (ölçüldü); orada bu senaryo
+    # sınanamaz.
+    case "$key" in *$'\r'*) return 1 ;; esac
+    key_body="$(printf '%s' "$key" | awk '{print $1" "$2}')"
+    touch "$auth_file"
+    if [ -s "$auth_file" ] && grep -qF "$key_body" "$auth_file"; then
+        grep -vF "$key_body" "$auth_file" > "$auth_file.yeni" || true
+        mv "$auth_file.yeni" "$auth_file"
+    fi
+    printf '%s\n' "command=\"$lib_dir/panely-connect\",restrict $key" >> "$auth_file"
+}
+
+# kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — panely-connect'e
+# zorlanmamış ya da `restrict` taşımayan anahtar satırlarının sayısı.
+#
+# Tek bir böyle satır panely-client'a kabuk açar. Eski denetim "herhangi
+# bir satırda command= var mı" diye bakıyordu ve iki satırlı anahtar
+# dosyasının ürettiği kısıtsız ikinci satırı GEÇİRİRDİ (K-131).
+kisitsiz_satir_sayisi() {
+    { grep -vE '^[[:space:]]*(#|$)' "$1" || true; } |
+        { grep -cvE "^command=\"$2/panely-connect( -deploy=[a-z0-9,-]+)?\",restrict " || true; }
+}
+
 # ── Ön koşullar ──────────────────────────────────────────────────────
 
 step "Ön koşullar"
@@ -388,20 +428,9 @@ install -d -m 0700 -o panely-client -g panely-client "$CLIENT_HOME/.ssh"
 # docs/decisions.md K-003'te: unix soketi yönlendirmesini açmak
 # `port-forwarding` iznini gerektirir ve bu, istemciye sunucudaki HER TCP
 # portuna tünel açma yetkisi verirdi.
-client_key="$(cat "$STAGE/client_key.pub")"
-auth_line="command=\"$LIB_DIR/panely-connect\",restrict $client_key"
-
 auth_file="$CLIENT_HOME/.ssh/authorized_keys"
-touch "$auth_file"
-
-# İdempotanlık: aynı anahtar için satır varsa yenisiyle DEĞİŞTİRİLİR.
-# Anahtar gövdesi (tip + base64) eşleşme ölçütü; yorum alanı değişebilir.
-key_body="$(printf '%s' "$client_key" | awk '{print $1" "$2}')"
-if [ -s "$auth_file" ] && grep -qF "$key_body" "$auth_file"; then
-    grep -vF "$key_body" "$auth_file" > "$auth_file.yeni" || true
-    mv "$auth_file.yeni" "$auth_file"
-fi
-printf '%s\n' "$auth_line" >> "$auth_file"
+yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR" \
+    || die "istemci açık anahtarı tek satır olmalı — ikinci satır zorlanmış komutsuz bir anahtar olurdu"
 
 chown -R panely-client:panely-client "$CLIENT_HOME/.ssh"
 chmod 0600 "$auth_file"
@@ -578,11 +607,14 @@ else
     check_fail "çalışan executor $new_journal dosyasını açık tutmuyor"
 fi
 
-# 5. İstemci kullanıcısı kabuk ALMAMALI (zorlanmış komut).
-if grep -q 'command="' "$auth_file"; then
-    check_ok "authorized_keys zorlanmış komut içeriyor"
-else
+# 5. İstemci kullanıcısı kabuk ALMAMALI: HER satır zorlanmış komutlu.
+kisitsiz="$(kisitsiz_satir_sayisi "$auth_file" "$LIB_DIR")"
+if ! grep -q 'command="' "$auth_file"; then
     check_fail "authorized_keys'te zorlanmış komut yok — istemci kabuk alabilir"
+elif [ "$kisitsiz" != 0 ]; then
+    check_fail "authorized_keys'te $kisitsiz satır panely-connect'e zorlanmamış — istemci kabuk alabilir"
+else
+    check_ok "authorized_keys'in her satırı zorlanmış komutlu"
 fi
 
 # ── Ters vekil ──────────────────────────────────────────────────────

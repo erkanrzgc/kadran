@@ -54,6 +54,39 @@ func TestAcceptsPublicKeyTypes(t *testing.T) {
 	}
 }
 
+// TestRejectsMultipleKeys: install.sh satırı `command=...,restrict
+// $(cat client_key.pub)` diye kuruyor. İki satırlı bir dosyada İKİNCİ
+// satır authorized_keys'e ayrı ve KISITSIZ bir anahtar olarak düşer:
+// zorlanmış komut yok, panely-client'a kabuk açılır. GitHub'ın
+// `https://github.com/<kullanıcı>.keys` çıktısı tam olarak böyle bir dosya.
+func TestRejectsMultipleKeys(t *testing.T) {
+	for _, key := range []string{
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther b",
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\r\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther b\r\n",
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\n\nssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther b\n",
+		// İkinci satır anahtar bile olmasa authorized_keys'e satır olarak girer.
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\nmerhaba",
+		// Tek başına satır başı da sshd için satır sonu sayılmasa bile
+		// betiklerde satırı böler; kabul edilmiyor.
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\rssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOther b",
+	} {
+		if err := validatePublicKey([]byte(key)); err == nil {
+			t.Errorf("çok satırlı anahtar dosyası kabul edildi: %q", key)
+		}
+	}
+
+	// Kontrol grubu: tek anahtar ve sondaki satır sonu (dosyaların çoğu
+	// böyle) kabul edilmeli.
+	for _, key := range []string{
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\n",
+		"ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample a\r\n",
+	} {
+		if err := validatePublicKey([]byte(key)); err != nil {
+			t.Errorf("tek anahtar reddedildi (%q): %v", key, err)
+		}
+	}
+}
+
 func TestRejectsGarbage(t *testing.T) {
 	invalid := []string{
 		"",
@@ -142,6 +175,29 @@ func TestArchiveUsesMatchingArchitecture(t *testing.T) {
 	}
 }
 
+// TestArchiveCarriesTheKeyAsOneLine: install.sh anahtar dosyasının TAM
+// bir satır olmasını şart koşuyor (K-131). Go'nun kabul ettiği her dosya
+// (baştaki boş satır, CRLF) pakette tek satıra inmeli; yoksa kurulum
+// ikilileri kurduktan SONRA, SSH adımında yarıda kalırdı.
+func TestArchiveCarriesTheKeyAsOneLine(t *testing.T) {
+	repo := newFakeRepo(t)
+	key := filepath.Join(repo, "key.pub")
+	const line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExample erkan@dizustu"
+	if err := os.WriteFile(key, []byte("\r\n  "+line+"\r\n\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	archive, err := buildArchive(Options{
+		BinaryDir: filepath.Join(repo, "bin"), RepoRoot: repo, ClientKeyPath: key,
+	}, "arm64")
+	if err != nil {
+		t.Fatalf("paket üretilemedi: %v", err)
+	}
+	if got := string(readArchive(t, archive)["client_key.pub"]); got != line+"\n" {
+		t.Fatalf("paketteki anahtar = %q, beklenen tek satır %q", got, line+"\n")
+	}
+}
+
 func TestArchiveFailsClearlyOnMissingBinary(t *testing.T) {
 	repo := newFakeRepo(t)
 
@@ -225,8 +281,14 @@ func TestInstallScriptForcesConnectCommand(t *testing.T) {
 	}
 	text := string(script)
 
-	if !strings.Contains(text, `command=\"$LIB_DIR/panely-connect\"`) {
+	// Satırın kendisi yonetici_satiri_yaz'da ve davranışı
+	// scripts/check-install-sh.sh'ta GERÇEKTEN koşturuluyor; burada yalnızca
+	// kurulumun o fonksiyonu doğru dizinle çağırdığı.
+	if !strings.Contains(text, `"command=\"$lib_dir/panely-connect\",restrict $key"`) {
 		t.Error("authorized_keys satırı zorlanmış komut içermiyor")
+	}
+	if !strings.Contains(text, `yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR"`) {
+		t.Error("kurulum yönetici satırını yonetici_satiri_yaz ile yazmıyor")
 	}
 	if !strings.Contains(text, "restrict") {
 		t.Error("authorized_keys satırında `restrict` yok")

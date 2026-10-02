@@ -25,7 +25,7 @@ cd "$(dirname "$0")/.."
 BOOT=internal/bootstrap/bootstrap.go
 UPLOAD=internal/bootstrap/upload.go
 PKG=./internal/bootstrap/
-TESTS='TestSSHArgs|TestArchFromUname|OptionLikeHost|OrdinaryHost|TestRemoteExtractionMatchesTheArchiveFormat|TestArchiveCarriesEverythingTheInstallerNeeds|TestArchiveIsDeterministic|TestRemoteTarLine|TestSudo|TestRootMode|TestRootInstall|TestBootstrapRefusesTheClientUser|TestShellQuote|TestUpload|TestALonger|TestACorrupt|TestPersistent|TestFollow|TestInstallFailure|TestAnUnexpected|TestAnInstall|TestAnother|TestADead|TestAShort|TestRealScripts'
+TESTS='TestSSHArgs|TestArchFromUname|OptionLikeHost|OrdinaryHost|TestRemoteExtractionMatchesTheArchiveFormat|TestArchiveCarriesEverythingTheInstallerNeeds|TestArchiveIsDeterministic|TestRemoteTarLine|TestSudo|TestRootMode|TestRootInstall|TestBootstrapRefusesTheClientUser|TestShellQuote|TestUpload|TestALonger|TestACorrupt|TestPersistent|TestFollow|TestInstallFailure|TestAnUnexpected|TestAnInstall|TestAnother|TestADead|TestAShort|TestRealScripts|TestRejectsMultipleKeys|TestArchiveCarriesTheKeyAsOneLine'
 
 BAK_BOOT=$(mktemp)
 BAK_UPLOAD=$(mktemp)
@@ -238,6 +238,14 @@ mutate "birim sırası rastgele" \
 
 mutate "dosya zamanı sabit değil" \
     "s=s.replace('ModTime: archiveModTime,','ModTime: time.Unix(time.Now().UnixNano()%1000000, 0),',1)"
+
+echo "== Tek satır anahtar (K-131: ikinci satır kısıtsız anahtar olurdu) =="
+
+mutate "çok satırlı anahtar dosyası kabul ediliyor" \
+    "s=s.replace('\tif strings.ContainsAny(text, \"\\\\r\\\\n\") {','\tif false && strings.ContainsAny(text, \"\\\\r\\\\n\") {',1)"
+
+mutate "pakete anahtarın ham hâli gidiyor" \
+    "s=s.replace('key = []byte(strings.TrimSpace(string(key)) + \"\\\\n\")','key = normalizeLineEndings(key)',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

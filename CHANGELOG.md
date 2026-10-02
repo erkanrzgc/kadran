@@ -33,6 +33,16 @@ repository moved to `github.com/erkanrzgc/kadran`; GitHub redirects the old addr
     Before this they skipped the server's interceptor chain entirely.
   - Scope limits, including that a deploy key effectively owns the secrets of
     the apps it may deploy, are in `SECURITY.md` (K-131).
+- **Fixed: a multi-line public key file opened a shell.** `bootstrap` wrote the
+  admin line as `command=...,restrict <file contents>`. With two keys in the file
+  (for example `https://github.com/<user>.keys`), the second one landed in
+  `authorized_keys` as a separate line with no forced command and no `restrict`.
+  - `bootstrap` now refuses key files with more than one line and sends the
+    single validated line; `install.sh` refuses it again before writing.
+  - The post-install check used to pass if *any* line had a forced command. It
+    now requires every line to be forced to `panely-connect` with `restrict`.
+    If you added lines to `~panely-client/.ssh/authorized_keys` by hand, the next
+    upgrade will report them.
 
 ### CLI
 

@@ -9141,6 +9141,40 @@ yönetici anahtarı olurdu.
 - Ayrıcalıklı yüzey değişmedi: `connproto` ve `api`, `panely-exec`'in
   içe aktarma grafiğinde yok (`go list -deps ./cmd/panely-exec`).
 
+### Bu iş sırasında bulunan açık: çok satırlı anahtar dosyası
+
+- `install.sh` yönetici satırını `command="…/panely-connect",restrict
+  $(cat client_key.pub)` diye kuruyordu. `validatePublicKey` yalnız ilk
+  alanın türüne bakıyordu.
+- **İki satırlı bir `.pub` dosyasında ikinci satır authorized_keys'e AYRI
+  ve KISITSIZ bir anahtar olarak düşüyordu:** zorlanmış komut yok,
+  `restrict` yok, panely-client'a kabuk. `https://github.com/<kullanıcı>.keys`
+  tam olarak böyle bir dosya verir. SECURITY.md'deki 3. sınır ("panely-connect'i
+  atlatmak") bir kazayla aşılabiliyordu. Saldırgan girdisi değil, operatörün
+  kendi dosyası; ama sonucu aynı.
+- Kırmızı test önce yazıldı: beş çok satırlı biçimin beşi de kabul ediliyordu.
+- Düzeltme üç katlı:
+  1. `validatePublicKey` içeride satır sonu (`\n`, `\r`) taşıyan dosyayı
+     reddediyor. Pakete dosyanın ham hâli değil, doğrulanan TEK satır
+     gidiyor (baştaki boş satır Go'da geçip `install.sh`'te kurulumun
+     ortasında takılırdı).
+  2. `install.sh` satırı `yonetici_satiri_yaz` fonksiyonunda yazıyor;
+     fonksiyon tek satır olmayan ya da CR taşıyan dosyayı reddediyor ve
+     dosyaya dokunmuyor.
+  3. Kurulum sonrası denetim "herhangi bir satırda `command=` var mı"
+     diye bakıyordu ve kısıtsız ikinci satırı GEÇİRİRDİ. Artık her satırın
+     `panely-connect`'e zorlanmış ve `restrict`'li olması şart
+     (`kisitsiz_satir_sayisi`).
+- `scripts/check-install-sh.sh` ikisini Linux'ta gerçekten koşturuyor
+  (Debian kapsayıcısında ölçüldü): dağıtım satırı yeniden kurulumda
+  korunuyor, yönetici satırı tek kalıyor, iki satırlı ve CR'li anahtar
+  reddediliyor; kontrol gruplarıyla. Git Bash bu CR senaryosunu
+  sınayamıyor: hem grep'i hem `$(…)`'ı CR'yi siliyor (ölçüldü).
+- ⚠ **Bir sonraki yükseltmeden önce:** canlı sunucuların
+  `~panely-client/.ssh/authorized_keys` dosyasında elle eklenmiş ya da
+  eski biçimli bir satır varsa sıkılaşan denetim ✗ verir (kurulumu geri
+  almaz, rapor eder). İki sunucuda da salt okunur bakılmalı.
+
 ### Sonraki adım
 
 - `kadran key add|list|remove`: root SSH yolundan (bootstrap gibi)

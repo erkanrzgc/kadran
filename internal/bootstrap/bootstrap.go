@@ -311,7 +311,11 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 	if err := validatePublicKey(key); err != nil {
 		return nil, err
 	}
-	if err := add("client_key.pub", 0o644, normalizeLineEndings(key)); err != nil {
+	// Doğrulanan TEK satır gönderiliyor, dosyanın ham hâli değil: baştaki
+	// boş satır burada geçer ama install.sh'in tek-satır denetimine kurulumun
+	// ORTASINDA takılırdı.
+	key = []byte(strings.TrimSpace(string(key)) + "\n")
+	if err := add("client_key.pub", 0o644, key); err != nil {
 		return nil, err
 	}
 
@@ -335,6 +339,16 @@ func validatePublicKey(content []byte) error {
 	if strings.Contains(text, "PRIVATE KEY") {
 		return fmt.Errorf(
 			"bootstrap: verilen dosya bir ÖZEL anahtar — açık anahtar (.pub) bekleniyordu")
+	}
+
+	// TEK satır (K-131'de bulundu). install.sh satırı `command=...,restrict
+	// $(cat client_key.pub)` diye kuruyor: ikinci bir satır authorized_keys'e
+	// AYRI ve KISITSIZ bir anahtar olarak düşer, panely-client'a kabuk açar.
+	// `https://github.com/<kullanıcı>.keys` tam olarak böyle bir dosya verir.
+	// Sondaki satır sonu TrimSpace'le gitti; içeride kalan her satır sonu ret.
+	if strings.ContainsAny(text, "\r\n") {
+		return fmt.Errorf("bootstrap: anahtar dosyasında birden fazla satır var — " +
+			"tek bir açık anahtar verin (ikinci satır zorlanmış komutsuz bir anahtar olurdu)")
 	}
 
 	fields := strings.Fields(text)

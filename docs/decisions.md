@@ -8651,10 +8651,11 @@ Ardından yayın açıldı. GitHub'dan geri indirilen 7 dosyanın hepsi
 - İşaretin atomik yazımı (geçici dosya + `mv`) bir yarışı kapatıyor; yarış
   belirlenimci olarak üretilemediği için mutasyonla sınanmadı.
 
-## K-128 — Alan adı önkontrolü: tasarım taslağı
+## K-128 — Alan adı önkontrolü
 
-**Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda (aşağıda "Kararlar")
+**Tarih:** 1 Ekim 2026 (taslak), 2 Ekim 2026 (A uygulandı)
+**Durum:** A UYGULANDI ve gerçek çözücüyle ölçüldü (aşağıda "Uygulandı").
+B (`panely domain check`) sırada. C yapılmadı.
 
 Kaynak: Coolify'ın `CheckDomainDns` eylemi (1 Ekim'de okundu, HEAD
 `0ed423a`). Fikir alınıyor, kod değil (Apache-2.0, bkz. kopya kararı).
@@ -8760,6 +8761,69 @@ Ayrıca hiçbir komut sorunun ne olduğunu söylemiyor.
 3. Cloudflare gibi vekiller: adres listesi CLI'ya gömülsün mü (eskir),
    yoksa eşleşmeyen her adres "belirsiz: vekil olabilir" diye mi
    uyarılsın (öneri: ikincisi)?
+
+### Uygulandı: A (2 Ekim)
+
+Kullanıcı seçimi bana bıraktı ("sen geliştirmeye bak"). Aldığım kararlar
+geri alınabilir:
+- **Taslaktaki çelişki çözüldü.** Karar 2 "açıkça yanlışta dur" diyordu,
+  karar 3 "her eşleşmeyen adres 'vekil olabilir' diye uyarılsın". İkisi
+  birlikte olamaz. Seçilen: DUR. Mesaj vekilleri (ör. Cloudflare) ve
+  `-skip-dns-check`'i adıyla anıyor; CLI'ya adres listesi gömülmedi.
+- **Bir aile için yalnızca sunucunun o ailedeki adresi biliniyorsa
+  durulur.** IPv4 değişmeziyle bağlanılan bir sunucunun IPv6'sı bilinmez;
+  doğru bir AAAA kaydı reddedilirdi. O durum uyarı.
+- **"Kayıt yok" yalnızca iki aile de "bulunamadı" döndüğünde.** Zaman
+  aşımı ya da SERVFAIL yalnızca uyarır. Dalgalı DNS bir dağıtımı
+  engellemez.
+- **Genel adres değil sayılanlar:** özel ağlar, CGNAT/Tailscale
+  (100.64.0.0/10; `netip.IsPrivate` onu KAPSAMIYOR, ayrıca eklendi),
+  loopback, link-local. IPv4 eşlemeli IPv6 adresler çözülüyor.
+- **`.localhost` denetlenmiyor.** Canlıdaki `pf.localhost` ve
+  `hello.localhost` rotaları bu muafiyet olmadan güncellenemezdi.
+- **Sunucunun adresi** SSH hedefinden, `ssh -G` ile: ssh
+  yapılandırmasındaki `HostName` eşlemesi dahil (`prod` gibi takma ad).
+  `ssh -G` başarısızsa adın kendisi kullanılıyor.
+- **Rapor stderr'e gidiyor;** `-json` stdout'u temiz kalıyor.
+- Denetim BAĞLANMADAN önce koşuyor; duran komut sunucuya hiçbir istek
+  göndermiyor.
+
+**Windows'ta ölçüldü (Go çözücüsü, kod yazılmadan önce):**
+- olmayan ad: iki ailede de `IsNotFound=true`;
+- yalnızca A kaydı olan adın AAAA sorgusu boş liste DEĞİL, `IsNotFound`
+  dönüyor. "Kayıt yok" kuralı bu yüzden iki aileye birden bakıyor;
+- `hello.localhost` Windows'ta çözülmüyor (`IsNotFound`). Muafiyet
+  olmasa "kayıt yok" diye DURURDU.
+
+**Gerçek çözücüyle, derlenen CLI'dan ölçüldü (hepsi bağlanmadan, 0 sn):**
+- `yok-k128-12345.erkanrzgc.dev`, "olmayan" diye seçilmişti ama
+  ÇÖZÜLDÜ: alan adında joker (wildcard) kayıt var ve Vercel'in
+  adreslerini gösteriyor. Denetim "A kaydı 64.29.17.65, 216.198.79.1
+  gösteriyor, sunucu <canlının IP'si>" diye durdu. Bu, Caddy'nin sessizce
+  sertifika alamayacağı gerçek bir durum.
+- canlının adı GCP hedefiyle: "A kaydı <canlının IP'si> gösteriyor, sunucu
+  <GCP'nin IP'si>", durdu. (Sunucu adresleri depoya yazılmıyor.)
+- `yok-k128-12345.example.com`: "DNS kaydı yok", durdu.
+- `-json` ile duran komutta stdout 0 bayt.
+- Eşleşen ve uyarı veren yollar canlıda koşulmadı: başarılı bir
+  `app update -domain` rotaları yeniden yazar. Onlar birim testinde.
+
+**Test:** `internal/domaincheck` için 14 senaryoluk tablo (sahte çözücü;
+gerçek DNS CI'da dalgalı). CLI için: yanlış DNS'te bağlantı HİÇ
+denenmiyor, `-skip-dns-check` bağlantıya ulaşıyor, `-domain=""`
+denetlenmiyor, `.localhost` engellenmiyor, uyarı yalnızca stderr'de,
+`ssh -G` takma adı çözülüyor. Önce kırmızı: iskelet `OK` dönerken 12
+senaryo düştü; CLI'da bağlantı denendi, bayrak tanımsızdı.
+
+**`mutate-domaincheck.sh` 14/14.** Betiğin ilk koşusu bir kusur buldu:
+yedekler DOSYA ADIYLA tutuluyordu ve `internal/domaincheck/domaincheck.go`
+ile `cmd/panely/domaincheck.go`'nun adı aynı. İkincisinin yedeği
+birincininkini ezdi; geri yükleme paket dosyasını CLI dosyasıyla
+değiştirdi (dosyalar henüz git'te değildi). Yedek adı artık tam yoldan
+türetiliyor. Betik çıkışta her dosyanın yedeğiyle aynı olduğunu ve iki
+dosyanın aynı içeriğe düşmediğini doğruluyor. Paket dosyası elle geri
+yazıldı; testler, lint ve mutasyon koşusu sonrası güvenli kopyayla
+karşılaştırma bunu doğruladı.
 
 ## K-129 — Commit mesajıyla otomatik dağıtımı atlama (`[skip ci]`): K-125'e ek taslak
 

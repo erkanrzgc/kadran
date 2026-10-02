@@ -27,6 +27,7 @@ import (
 
 	"github.com/erkanrzgc/panely/internal/bootstrap"
 	"github.com/erkanrzgc/panely/internal/client"
+	"github.com/erkanrzgc/panely/internal/domaincheck"
 	panelyv1 "github.com/erkanrzgc/panely/internal/pb/panely/v1"
 	"github.com/erkanrzgc/panely/internal/version"
 )
@@ -58,6 +59,11 @@ type cli struct {
 	stdin  io.Reader
 	stdout io.Writer
 	stderr io.Writer
+
+	// Testlerin değiştirdiği bağımlılıklar; nil ise gerçekleri kullanılır.
+	resolver    domaincheck.Resolver
+	sshHostname func(ctx context.Context, host string) (string, error)
+	dial        func(ctx context.Context, rawTarget string) (*client.Client, *panelyv1.PingResponse, error)
 }
 
 func main() {
@@ -167,6 +173,9 @@ func (c *cli) newFlagSet(name string) *flag.FlagSet {
 // Protokol denetimi ilk iş olarak yapılır: uyumsuz sürümlerle konuşup
 // yarı anlaşılmış yanıtlar üretmektense hemen durmak daha güvenli.
 func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *panelyv1.PingResponse, error) {
+	if c.dial != nil {
+		return c.dial(ctx, rawTarget)
+	}
 	target, err := client.ParseTarget(rawTarget)
 	if err != nil {
 		return nil, nil, err

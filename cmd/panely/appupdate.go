@@ -49,6 +49,7 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		"kalıcı disk AD:/bağlama/noktası[:ro]; adı geçmeyen hacimlere DOKUNULMAZ")
 	volumeRemove := c.stringSliceFlag(fs, "volume-rm",
 		"ayırılacak hacim adı (VERİYİ SİLMEZ, yalnızca bağlamayı kaldırır)")
+	skipDNS := fs.Bool(skipDNSCheckFlag, false, "alan adının DNS'i sunucuyu göstermese de devam et (ör. Cloudflare vekili)")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
 	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
 	if err := fs.Parse(args); err != nil {
@@ -89,6 +90,14 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
+
+	// Yalnızca yeni bir alan adı verildiğinde; `-domain=""` vekilden
+	// çıkarır, denetlenecek ad yok (K-128).
+	if req.Domain != nil {
+		if err := c.checkDomain(ctx, req.GetDomain(), fs.Arg(1), *skipDNS); err != nil {
+			return c.fail(err)
+		}
+	}
 
 	conn, _, err := c.connect(ctx, fs.Arg(1))
 	if err != nil {

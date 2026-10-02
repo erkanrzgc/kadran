@@ -171,6 +171,16 @@ Point the domain's DNS at the server before deploying, so that Let's Encrypt can
 reach it. Without `-domain` the app is only reachable from the server's internal
 network.
 
+`app create` and `app update` check the domain's DNS before they contact the
+server (K-128).
+- They stop if the domain has no records, or if its A or AAAA records point
+  somewhere other than the server.
+- They warn and continue when they can't tell, for example when the server sits on
+  a private or Tailscale address, or when the DNS query itself fails.
+- `.localhost` names are not checked.
+- Behind a proxy such as Cloudflare the records show the proxy, not the server.
+  Pass `-skip-dns-check` in that case.
+
 > Flags go **after the command and before positional arguments** (Go's `flag`
 > package stops at the first positional one): `panely app update -replicas 2 site host`.
 

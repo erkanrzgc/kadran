@@ -41,6 +41,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	branch := fs.String("branch", "main", "varsayılan dal")
 	dockerfile := fs.String("dockerfile", "", "depo köküne göreli Dockerfile yolu")
 	domain := fs.String("domain", "", "yayınlanacak alan adı; boşsa uygulama yalnızca iç ağdan erişilir")
+	skipDNS := fs.Bool(skipDNSCheckFlag, false, "alan adının DNS'i sunucuyu göstermese de devam et (ör. Cloudflare vekili)")
 	port := fs.Uint("port", 8080, "uygulamanın konteyner içinde dinlediği port")
 	replicas := fs.Uint("replicas", 1, "replika sayısı")
 	health := fs.String("health-path", "/", "sağlık yoklaması yolu")
@@ -97,6 +98,12 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
+
+	// Bağlanmadan ÖNCE: yanlış DNS'le kaydedilen alan adı sertifika
+	// alamıyordu ve bunu söyleyen bir şey yoktu (K-128).
+	if err := c.checkDomain(ctx, *domain, fs.Arg(1), *skipDNS); err != nil {
+		return c.fail(err)
+	}
 
 	conn, _, err := c.connect(ctx, fs.Arg(1))
 	if err != nil {

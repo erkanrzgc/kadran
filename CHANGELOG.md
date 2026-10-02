@@ -3,6 +3,26 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### CLI
+
+- **DNS check before setting a domain.** `app create -domain` and
+  `app update -domain` compare the domain's A and AAAA records with the server's
+  address before they contact the server.
+  - They stop when the domain has no records or points somewhere else. The
+    command used to succeed, the certificate never came, and Caddy could wait up
+    to a day before retrying once the DNS was fixed.
+  - They warn and continue when the answer is unclear: a server on a private or
+    Tailscale address, an AAAA record when the server's IPv6 address is unknown,
+    or a failing DNS query.
+  - The server's address comes from the SSH target, including `HostName` from
+    your SSH config. `.localhost` names are skipped. `-skip-dns-check` bypasses
+    the check, for example behind Cloudflare's proxy.
+  - Measured with the real resolver: a wildcard record pointing elsewhere was
+    refused, as were a nonexistent name and a name that points at the other
+    server. The check refused all three before connecting (K-128).
+
 ## v0.2.0 — 2026-10-01
 
 Hang detection, a bounded start-up, installs without root SSH, and a second tested

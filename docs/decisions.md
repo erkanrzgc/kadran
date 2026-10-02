@@ -9018,3 +9018,119 @@ sonraki işaretsiz push'a kadar canlıda eski kod kalır.
 
 1. K-125 seçildiğinde bu kural da gelsin mi?
 2. `[skip deploy]` eklensin mi, yoksa yalnız yaygın dört işaret mi?
+
+## K-131 — Yalnızca dağıtım yapabilen anahtar: yetki ayrımı
+
+**Tarih:** 2 Ekim 2026
+**Durum:** UYGULANDI (sunucu tarafı). Anahtar ekleme komutu (`kadran key`)
+ayrı adım.
+
+K-125'in üç seçeneğinin ortak ön koşulu. Bugüne kadar `api.sock`'a bağlanan
+her istemci her RPC'yi çağırabiliyordu; CI'a verilecek bir anahtar
+yönetici anahtarı olurdu.
+
+### Karar
+
+- **Rol, anahtarın authorized_keys satırında:**
+
+  ```
+  command="/usr/local/lib/panely/panely-connect -deploy=web,api",restrict ssh-ed25519 AAAA... ci
+  ```
+
+  - Argümansız satır yöneticidir. Bugüne kadar kurulan her satır böyle;
+    hiçbiri değişmeden çalışıyor.
+  - panely-connect rolü önsöze yazıyor (`connproto.Identity.Role/Apps`).
+    Önsöz, uzak istemcinin tek baytı okunmadan gönderiliyor.
+- **Neden panelyd'nin veritabanında değil:**
+  - Anahtarı eklemek zaten root ister: panelyd panely-client'ın ev
+    dizinine yazamaz, executor bütçesinde (2498/2500) yer yok.
+  - Rolü anahtarın satırına koymak ikisini tek yerde tutuyor. İkinci bir
+    depo kayma demekti: silinen anahtarın rolü kalır, eklenen anahtar
+    rolsüz kalır.
+- **Dağıtım anahtarı yalnızca `Ping` ve `Deploy` çağırabilir;** `Deploy`
+  yalnızca kapsamındaki uygulamalar için.
+  - `GetApp` BİLEREK dışarıda: ortam değişkenlerinin ve derleme
+    argümanlarının DEĞERLERİNİ döndürüyor (`apps.go`). Dağıtım anahtarı
+    bu yüzden dalı çözemez; `kadran deploy -commit "$GITHUB_SHA"` ile
+    çalışır. CI'ın test ettiği commit'i dağıtmak zaten doğrusu.
+    `-commit` verilmezse CLI bunu söylüyor.
+  - İzin listesi varsayılan RET: sonradan eklenen her RPC kendiliğinden
+    yöneticiye kalıyor.
+- **Boş ya da bilinmeyen rol el sıkışmada reddediliyor** ve günlüğe
+  yazılıyor (K-095). Boş rolü yönetici saymak eski panely-connect'e uyum
+  sağlardı; bedeli, rolü yazmayı unutan her kod yolunun sessizce tam yetki
+  vermesiydi.
+  - Yükseltmede görülmez: `install.sh` ikilileri panelyd'yi yeniden
+    başlatmadan önce değiştiriyor.
+  - Geri dönüşte eski panely-connect `-deploy` bayrağını tanımıyor ve
+    çıkıyor: dağıtım anahtarı KAPALI kalır, yöneticiye düşmez.
+- **Kapsam denetimi** el sıkışmada (rol geçerli mi), önleyicide (yöntem
+  listede mi) ve akışın her mesajında (uygulama kapsamda mı).
+  - Akış önleyicisi YENİ: sunucu yalnızca tekli önleyici kuruyordu;
+    `Deploy` ve `StreamLogs` hiçbir önleyiciden geçmiyordu.
+  - Üretilen işleyici `RecvMsg`'i `srv.Deploy`'dan önce çağırıyor
+    (`api_grpc.pb.go`); kapsam dışı istekte Deploy'un tek satırı çalışmaz.
+- **Karakter kümesi:** kapsam, uygulama adı deseninden geçiyor
+  (`^[a-z][a-z0-9-]{0,31}$`). sshd zorlanmış komutu kullanıcının
+  kabuğuna `-c` ile verdiği için bu aynı zamanda kabuk enjeksiyonu
+  sınırı. Boş öğe, tekrar, joker ve 32'den fazla uygulama reddediliyor.
+  Desen api'deki kopyayla bir testle eşitleniyor.
+- Rol denetim kaydına (`audit.Actor`) EKLENMEDİ: zincir hash'ini
+  değiştirirdi. Parmak izi anahtarı zaten tanımlıyor; rol journal
+  satırında (`yetki reddedildi ... rol=`).
+
+### Kapsamın gerçek sınırı
+
+- **Dağıtım anahtarı, kapsamındaki uygulamanın sırlarına ve verisine
+  fiilen sahiptir.** Dağıttığı kod ortam değişkenlerini okur, hacme
+  yazar; Dockerfile derleme argümanlarını akan derleme çıktısına
+  yazdırabilir. Bu her "push ile dağıt" sisteminde böyle.
+- Kapsamın KORUDUĞU: diğer uygulamalar ve yönetim işlemleri (uygulama
+  oluşturma/güncelleme/silme, alan adı, yedek, denetim, geri alma,
+  günlük okuma). `GetApp`'in dışarıda olması sırrı okumak için GÜRÜLTÜLÜ
+  yolu (denetime yazılan, canlıyı değiştiren bir dağıtım) zorunlu kılıyor.
+- **Dal denetlenmiyor.** panelyd internete çıkmıyor; commit'in
+  yapılandırılmış dalda olduğunu doğrulayamaz. Ölçüldü: GitHub, fork'tan
+  açılmış bir PR'ın commit'ini ANA deponun adresinden SHA ile veriyor
+  (`git fetch --depth 1 <ana depo> <PR head sha>` → `commit`). Yani
+  dağıtım anahtarı, açık PR'lar dahil deponun sunduğu her commit'i
+  dağıtabilir. Ölçüm git istemcisiyle; executor'ın BuildKit yolu aynı
+  protokolü kullanıyor ama ayrıca ölçülmedi.
+  - Sonuç: anahtar yalnızca varsayılan dala push ile tetiklenen iş
+    akışında kullanılmalı; `pull_request_target` iş akışına ASLA
+    verilmemeli (orada sırlar fork kodunun yanında olur).
+- Güven varsayımı parmak iziyle aynı: `panely-client` grubundaki her
+  süreç önsöze istediği rolü yazabilir. O grupta yalnızca zorlanmış
+  komut çalışıyor; kabuk alan biri zaten yöneticidir.
+
+### Doğrulama
+
+- Testler KABLOLAMAYI sınıyor: sunucu `main.go`'nun kullandığı
+  `api.NewGRPCServer` ile kuruluyor, istekler gerçek gRPC'den ve gerçek
+  önsözle geçiyor; yalnızca SO_PEERCRED aşaması sahte.
+  - Servis tanımındaki HER yöntem çağrılıyor: dağıtım anahtarı Ping ve
+    Deploy dışında hepsinde PermissionDenied alıyor; yönetici hiçbirinde
+    almıyor (kontrol grubu). Sonradan eklenen RPC kendiliğinden kapsanıyor.
+  - Kapsam dışı ve boş uygulama adı reddediliyor; kapsam içi istek
+    yetkiyi geçiyor.
+- Linux'ta (WSL, root) dört paketin test ikilisi koşturuldu: geçti.
+- `scripts/mutate-authz.sh`: 25 mutant, 25'i yakalandı. Aralarında: akış
+  önleyicisi kaydedilmiyor, GetApp/StreamLogs listeye ekleniyor, boş rol
+  yönetici sayılıyor, desen denetlenmiyor, `-deploy` iki kez, konumsal
+  argüman, yerel kimlik rolsüz.
+  - Derleme kapısı bir mutantı yakaladı (`declared and not used`);
+    mutant derlenir hâle getirildi, sonra yakalandı.
+- Ayrıcalıklı yüzey değişmedi: `connproto` ve `api`, `panely-exec`'in
+  içe aktarma grafiğinde yok (`go list -deps ./cmd/panely-exec`).
+
+### Sonraki adım
+
+- `kadran key add|list|remove`: root SSH yolundan (bootstrap gibi)
+  authorized_keys'e satır ekler.
+  - Aynı anahtar gövdesi iki satırda olamaz: sshd İLK eşleşen satırı
+    kullanır; yönetici anahtarının dağıtım satırıyla gölgelenmesi ya da
+    tersi sessiz bir yetki değişikliği olurdu.
+  - `install.sh` yeniden koşunca dağıtım satırları korunmalı (bugün
+    yalnızca yönetici anahtarının satırını değiştiriyor; testle
+    sabitlenecek).
+- README'ye GitHub Actions örneği.

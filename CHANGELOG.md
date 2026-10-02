@@ -19,6 +19,21 @@ repository moved to `github.com/erkanrzgc/kadran`; GitHub redirects the old addr
   Changing them would have restarted the reverse proxy on the next upgrade (K-130).
 - Environment variables keep their `PANELY_` names.
 
+### Security
+
+- **Deploy-only keys.** An `authorized_keys` line with
+  `panely-connect -deploy=site,api` gives a key that can only deploy those apps:
+  `Ping` and `Deploy` for the listed apps, `PermissionDenied` for every other call.
+  Lines without the flag stay admin keys, so existing installs are unchanged.
+  - The key cannot read app definitions (they carry environment values). Pass the
+    commit with `kadran deploy -commit`; the CLI says so when it is missing.
+  - An empty, unknown, or malformed role is refused when the connection opens.
+    It never falls back to admin rights.
+  - Streaming calls (`Deploy`, `StreamLogs`) now go through an interceptor too.
+    Before this they skipped the server's interceptor chain entirely.
+  - Scope limits, including that a deploy key effectively owns the secrets of
+    the apps it may deploy, are in `SECURITY.md` (K-131).
+
 ### CLI
 
 - **DNS check before setting a domain.** `app create -domain` and

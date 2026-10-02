@@ -65,6 +65,16 @@ type Identity struct {
 
 	// Origin, bağlantıyı kuran bileşen: "ssh", "local".
 	Origin string `json:"origin"`
+
+	// Role, çağıranın yetkisi: RoleAdmin ya da RoleDeploy (K-131).
+	//
+	// Boş bırakılmaz: panelyd rolsüz önsözü el sıkışmada REDDEDER.
+	// Kaynağı authorized_keys satırındaki zorlanmış komutun argümanıdır;
+	// istemcinin gönderdiği hiçbir şeyden türetilmez (bkz. role.go).
+	Role string `json:"role,omitempty"`
+
+	// Apps, RoleDeploy'un dağıtabileceği uygulamalar. Yönetici için boş.
+	Apps []string `json:"apps,omitempty"`
 }
 
 // Write, kimliği uzunluk önekli olarak yazar.

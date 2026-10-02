@@ -10,6 +10,11 @@
 // kendi komutunu çalıştırmasını engeller. Bu anahtarla yapılabilecek tek
 // şey bu programı çalıştırmaktır.
 //
+// Argümansız satır yönetici anahtarıdır. Yalnızca dağıtım yapabilen bir
+// anahtar (ör. CI için) kapsamını argümanla taşır (docs/decisions.md K-131):
+//
+//	command="/usr/local/lib/panely/panely-connect -deploy=web,api",restrict ssh-ed25519 AAAA...
+//
 // # Neden soket yönlendirmesi değil?
 //
 // OpenSSH'ta unix soketi yönlendirmesini açmak `port-forwarding` iznini
@@ -49,14 +54,59 @@ func main() {
 	}
 }
 
-func run() error {
-	var (
-		socketPath  = flag.String("socket", defaultSocket, "panelyd api soketi")
-		showVersion = flag.Bool("version", false, "sürümü yazdır ve çık")
-	)
-	flag.Parse()
+// options, panely-connect'in argümanlarıdır.
+//
+// Argümanları authorized_keys'teki zorlanmış komut satırı verir, istemci
+// DEĞİL: istemcinin istediği komut (SSH_ORIGINAL_COMMAND) yok sayılıyor.
+type options struct {
+	socket  string
+	version bool
+	role    string
+	apps    []string
+}
 
-	if *showVersion {
+// parseArgs, argümanları ayrıştırır. Her belirsizlik HATADIR: hata
+// bağlantının hiç kurulmaması demek, yanlış yazılmış bir dağıtım satırının
+// yöneticiye düşmesi değil (K-131).
+func parseArgs(args []string, stderr io.Writer) (options, error) {
+	opts := options{role: connproto.RoleAdmin}
+
+	fs := flag.NewFlagSet("panely-connect", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.StringVar(&opts.socket, "socket", defaultSocket, "panelyd api soketi")
+	fs.BoolVar(&opts.version, "version", false, "sürümü yazdır ve çık")
+
+	deploySet := false
+	fs.Func("deploy", "yalnızca bu uygulamaları dağıtabilen anahtar (virgülle ayrılmış)",
+		func(v string) error {
+			if deploySet {
+				return errors.New("-deploy bir kez verilir")
+			}
+			deploySet = true
+			apps, err := connproto.ParseDeployScope(v)
+			if err != nil {
+				return err
+			}
+			opts.role, opts.apps = connproto.RoleDeploy, apps
+			return nil
+		})
+
+	if err := fs.Parse(args); err != nil {
+		return options{}, err
+	}
+	if fs.NArg() > 0 {
+		return options{}, fmt.Errorf("beklenmeyen argüman: %q", fs.Args())
+	}
+	return opts, nil
+}
+
+func run() error {
+	opts, err := parseArgs(os.Args[1:], os.Stderr)
+	if err != nil {
+		return err
+	}
+
+	if opts.version {
 		fmt.Fprintf(os.Stderr, "panely-connect %s (%s) protokol %d\n",
 			version.Version, version.Commit, version.Protocol)
 		return nil
@@ -66,7 +116,7 @@ func run() error {
 	// Kasıtlı olarak YOK SAYILIR — zorlanmış komutun tüm amacı budur.
 	// Okumak bile istemiyoruz ki ileride kazara kullanılmasın.
 
-	identity := resolveIdentity()
+	identity := resolveIdentity(os.Getenv, opts)
 
 	// # Neden zaman aşımlı bağlanılıyor?
 	//
@@ -82,9 +132,9 @@ func run() error {
 	defer cancel()
 
 	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "unix", *socketPath)
+	conn, err := dialer.DialContext(ctx, "unix", opts.socket)
 	if err != nil {
-		return fmt.Errorf("panelyd'ye bağlanılamadı (%s): %w", *socketPath, err)
+		return fmt.Errorf("panelyd'ye bağlanılamadı (%s): %w", opts.socket, err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -104,16 +154,16 @@ func run() error {
 // SSH ortamı yoksa (sunucuda elle çalıştırma) "local" kökenli, kimliksiz
 // bir kayıt üretilir. Uydurma bir kimlik yazmaktansa "bilinmiyor" demek
 // denetim izini dürüst tutar.
-func resolveIdentity() connproto.Identity {
-	sshID, err := sshenv.Parse(os.Getenv)
+//
+// Rol her iki yolda da argümandan gelir.
+func resolveIdentity(getenv func(string) string, opts options) connproto.Identity {
+	id := connproto.Identity{Origin: "local", Role: opts.role, Apps: opts.apps}
+	sshID, err := sshenv.Parse(getenv)
 	if err != nil {
-		return connproto.Identity{Origin: "local"}
+		return id
 	}
-	return connproto.Identity{
-		Fingerprint: sshID.Fingerprint,
-		SourceIP:    sshID.SourceIP,
-		Origin:      "ssh",
-	}
+	id.Fingerprint, id.SourceIP, id.Origin = sshID.Fingerprint, sshID.SourceIP, "ssh"
+	return id
 }
 
 // pump, stdin/stdout ile soket arasında çift yönlü bayt taşır.

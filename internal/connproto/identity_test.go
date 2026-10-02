@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -26,7 +27,7 @@ func TestRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("okunamadı: %v", err)
 	}
-	if got != want {
+	if !reflect.DeepEqual(got, want) {
 		t.Errorf("gidiş-dönüşte değişti:\nyazılan: %+v\nokunan:  %+v", want, got)
 	}
 }

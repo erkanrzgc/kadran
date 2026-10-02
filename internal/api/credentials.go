@@ -107,6 +107,15 @@ func (c *callerCreds) handshake(raw net.Conn) (net.Conn, credentials.AuthInfo, e
 		return nil, nil, fmt.Errorf("api: kimlik önsözü alınamadı: %w", err)
 	}
 
+	// Rol el sıkışmada doğrulanıyor: geçersiz ya da BOŞ rolle hiçbir RPC
+	// çağrılamaz. Boş rol eski bir panely-connect demek; kurulum
+	// panely-connect'i panelyd yeniden başlamadan önce değiştirdiği için
+	// normal bir yükseltmede görülmez (K-131).
+	if err := identity.CheckRole(); err != nil {
+		_ = conn.Close()
+		return nil, nil, fmt.Errorf("api: %w", err)
+	}
+
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
 		_ = conn.Close()
 		return nil, nil, fmt.Errorf("api: okuma süresi sıfırlanamadı: %w", err)

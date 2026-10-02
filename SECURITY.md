@@ -69,6 +69,10 @@ crosses one of these is in scope and will be treated as high severity:
    written as `[REDACTED]`) or from process memory.
 6. **Cross-application escape** — one deployed app reaching another app's volumes,
    network, or environment.
+7. **A deploy key exceeding its scope.** A key whose `authorized_keys` line carries
+   `panely-connect -deploy=<apps>` should reach only `Ping` and `Deploy`, and
+   `Deploy` only for those apps. Calling any other RPC, deploying an app outside
+   the list, or a malformed line falling back to admin rights is in scope (K-131).
 
 ## Explicitly out of scope
 
@@ -93,6 +97,14 @@ These are known and documented limitations, not undisclosed weaknesses:
   Membership must be the user's *primary* group — `SO_PEERCRED` reports
   only that, so adding a second admin with `usermod -aG` yields a silent
   denial rather than access.
+- **A deploy key controls the apps in its scope.** The code it deploys reads that
+  app's environment and volumes, and a Dockerfile can print build arguments into
+  the streamed build log. The scope protects other apps and administrative
+  actions, not the secrets of the apps the key may deploy. `panelyd` has no
+  outbound network, so it cannot check which branch a commit is on: a deploy key
+  can deploy any commit the configured repository serves, including commits from
+  open pull requests. Use it only in workflows triggered by pushes to your default
+  branch, never in `pull_request_target`.
 - **A malicious operator.** Kadran produces a tamper-evident audit trail; it does
   not prevent an authorized human from taking authorized destructive actions.
 - Denial of service by resource exhaustion from a legitimately deployed app.

@@ -320,8 +320,11 @@ func dialLocal(ctx context.Context, path string) (net.Conn, error) {
 //
 // Sabit tutmanın nedeni budur: kimlik uydurmak bir sömürü adımı olarak
 // kalmalı, hazır bir kod yolu haline gelmemeli.
+//
+// Rol yönetici: sokete yerelden ulaşabilen, panely-client grubunda bir
+// sunucu kullanıcısıdır. Rolsüz önsözü panelyd reddeder (K-131).
 func localIdentity() connproto.Identity {
-	return connproto.Identity{Origin: "local"}
+	return connproto.Identity{Origin: "local", Role: connproto.RoleAdmin}
 }
 
 // sshCommand, çalıştırılacak SSH istemcisinin adıdır.

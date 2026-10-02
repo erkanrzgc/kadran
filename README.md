@@ -242,7 +242,7 @@ Exit codes: `0` success · `1` error · `2` usage · `3` **audit chain broken**.
 | `panelyd` | `panely` | Not in the `docker` group, empty capability set, `IPAddressDeny=any` | Business logic, SQLite, supervisor, alarms, backups, audit chain |
 | `panely-exec` | `root` | Privileged, but accepts **only** typed schemas | Docker Engine API, constrained filesystem writes |
 | `panely-caddy` | `panely-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME for deployed apps |
-| `panely-connect` | `panely-client` | None. ~90 lines, forced command | Byte pump between sshd and `api.sock` |
+| `panely-connect` | `panely-client` | None. ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
 | `kadran` | workstation | — | CLI, and sidecar for the Electron GUI |
 
 ### The schema *is* the whitelist
@@ -351,6 +351,20 @@ command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA... pane
 `restrict` disables port, agent and X11 forwarding, PTY allocation, and `~/.ssh/rc`.
 The key can only execute `panely-connect`, which does nothing but connect to
 `api.sock` and shuttle bytes.
+
+A key for CI can be limited to deploying named apps. The role lives in the same
+line as the key, so there is no second list to drift out of sync:
+
+```
+command="/usr/local/lib/panely/panely-connect -deploy=site,api",restrict ssh-ed25519 AAAA... ci
+```
+
+Such a key can call `Ping` and `Deploy` for `site` and `api`, nothing else. It
+cannot read app definitions (they carry environment values), so CI passes the
+commit explicitly: `kadran deploy -commit "$GITHUB_SHA" site panely-client@server`.
+An empty, unknown, or malformed role is refused at connection time instead of
+falling back to admin. What the scope does and does not protect is in
+[SECURITY.md](SECURITY.md) (K-131).
 
 It does **not** disable environment processing — a common and load-bearing
 misreading. The audit trail's actor identity comes from `SSH_AUTH_INFO_0`, and an

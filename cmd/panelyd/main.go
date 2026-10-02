@@ -19,8 +19,6 @@ import (
 	"syscall"
 	"time"
 
-	"google.golang.org/grpc"
-
 	"github.com/erkanrzgc/kadran/internal/alarm"
 	"github.com/erkanrzgc/kadran/internal/api"
 	"github.com/erkanrzgc/kadran/internal/audit"
@@ -30,7 +28,6 @@ import (
 	"github.com/erkanrzgc/kadran/internal/health"
 	"github.com/erkanrzgc/kadran/internal/liveness"
 	"github.com/erkanrzgc/kadran/internal/logutil"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 	"github.com/erkanrzgc/kadran/internal/proxydrv"
 	"github.com/erkanrzgc/kadran/internal/sdnotify"
 	"github.com/erkanrzgc/kadran/internal/sockets"
@@ -216,11 +213,9 @@ func run() error {
 		return err
 	}
 
-	server := grpc.NewServer(
-		grpc.Creds(creds),
-		grpc.ChainUnaryInterceptor(api.LoggingInterceptor()),
-	)
-	panelyv1.RegisterPanelyServiceServer(server, service)
+	// Önleyiciler (günlük + yetki, tekli VE akış) kurucunun içinde:
+	// testler aynı kurucuyu kullanıyor (K-131).
+	server := api.NewGRPCServer(service, creds)
 
 	recordStartup(db)
 

@@ -7,6 +7,9 @@ import (
 	"io"
 	"regexp"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
 )
 
@@ -161,6 +164,12 @@ func (c *cli) resolveCommit(
 	// yazmıyor ve `app create`'te kaydedilen tanım tek gerçek kaynak
 	// olarak kalıyor.
 	resp, err := rpc.GetApp(ctx, &panelyv1.GetAppRequest{AppId: appID})
+	if status.Code(err) == codes.PermissionDenied {
+		// Dağıtım anahtarı uygulama tanımını okuyamaz: ortam
+		// değişkenlerinin değerlerini taşıyor (K-131). Dal çözülemez.
+		return "", fmt.Errorf("bu anahtar uygulama tanımını okuyamıyor, dal çözülemez: "+
+			"commit'i -commit ile verin (GitHub Actions'ta -commit \"$GITHUB_SHA\"): %w", err)
+	}
 	if err != nil {
 		return "", fmt.Errorf("uygulama tanımı alınamadı: %w", err)
 	}

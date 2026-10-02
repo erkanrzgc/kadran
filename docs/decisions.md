@@ -9228,8 +9228,10 @@ yönetici anahtarı olurdu.
 ## K-132 — Lisans: MIT → Apache-2.0; yayınlara üçüncü taraf lisansları
 
 **Tarih:** 2 Ekim 2026
-**Durum:** UYGULANDI (lisans). Üçüncü taraf lisansları aynı kayıtta,
-aşağıda.
+**Durum:** UYGULANDI, CI 10/10 yeşil (`9aa49c4`; yeni "Yayın paketi" işi
+ilk koşusunda geçti, lisans testi Windows/Linux/arm'da). GitHub lisansı
+`Apache-2.0` olarak tanıyor (API'den okundu). Üçüncü taraf lisansları aynı
+kayıtta, aşağıda. CI'ın gofmt adımı `tools/`'u görmüyordu; eklendi.
 
 ### Karar (kullanıcının)
 
@@ -9301,3 +9303,49 @@ aşağıda.
 - **CI'da "Yayın paketi" işi** betiği her push'ta uçtan uca koşuyor ve
   tar'ın İÇİNDEN okuyor: dosyalar var mı, THIRD_PARTY Caddy'yi içeriyor
   mu, LICENSE Apache mi.
+## K-133 — Mutasyon düzeneği: tek eşleşme ve yeşil taban bütün betiklerde
+
+**Tarih:** 2 Ekim 2026
+**Durum:** UYGULANDI.
+
+K-127'de yeni betiklere eklenen iki kapı 19 eski betikte yoktu. Bu oturumda
+o sınıf üç kez gerçek hata yakaladı (K-127 `conv=notrunc`, K-130 uyarı
+dizgisi, K-131 `validateTarget` iğnesi).
+
+### İki kapı ve neyi engelledikleri
+
+- **Tek eşleşme.** Eski kapı yalnız "hiç eşleşmedi"yi yakalıyordu. İğne
+  dosyada iki yerde geçiyorsa `replace(…,1)` İLKİNİ değiştirir; ilki
+  hedeflenen yer değilse mutant başka bir şeyi bozar ve başka bir test onu
+  "yakalar". Sonuç, hedeflenen özelliğin korunduğuna dair YANLIŞ bir güven.
+- **Yeşil taban.** Mutasyonsuz kodda düşen bir test her mutantı
+  "yakalandı" gösterir: SESSİZ sahte geçiş. Her betiğin `mutate()`'i artık
+  kendi test komutunu, ilk mutantından önce mutasyonsuz kodda bir kez
+  koşturuyor (`taban_yesil`); kırmızıysa betik durur.
+
+### Bulunan
+
+- **`mutate-env.sh` — "appSelect'ten env_json düşürüldü" hiçbir şey
+  ölçmüyordu.** Sütun listesi INSERT'te de geçiyor; eski kapı İLKİNİ,
+  yani INSERT'i değiştiriyordu. INSERT bozulunca testler düştü ve mutant
+  "yakalandı" sayıldı, ama hedeflediği SELECT'e hiç dokunmamıştı. İğne
+  appSelect'in girintisiyle tekilleştirildi; gerçek mutant (SELECT +
+  Scan + Unmarshal) da yakalanıyor (17/17).
+- Kalan 18 betiğin iğneleri zaten tekildi.
+
+### Ölçüm
+
+- Değişiklik mekanik: `_S.replace` kalıbı 19 dosyada birebir aynıydı,
+  her dosyada tam bir kez değiştirildi; `taban_yesil` her betiğin kendi
+  test satırından türetildi ve kullandığı değişkenlerin `restore`'dan
+  önce tanımlı olduğu denetlendi.
+- 19 betik Linux kapsayıcısında (golang:1.25-trixie, root) baştan sona
+  koşturuldu; geri yükleme kaynakla birebir karşılaştırıldı.
+- **Kontrol grubu:** kopyada `mutate-heal.sh`'ın süzgecine uyan, her
+  zaman düşen bir test eklendi. Betik "TABAN KIRMIZI" deyip 1 ile çıktı ve
+  0 mutant "yakalandı" saydı. Kapı olmasaydı 6'sı da sahte yakalanırdı.
+  - İlk kontrol denemesi bir şey ölçmüyordu: test adı betiğin `-run`
+    süzgecine uymuyordu, taban yeşil kalırdı. Ad süzgece uyacak biçimde
+    değiştirilince kapı ateşledi.
+- CI artık her betikte üç kapının da varlığını şart koşuyor (derleme,
+  tek eşleşme, taban); kapısız eklenen yeni bir betik kırmızı olur.

@@ -48,11 +48,11 @@ jobs:
 
       - name: gofmt
         run: |
-          unformatted="$(gofmt -l ./cmd ./internal)"
+          unformatted="$(gofmt -l ./cmd ./internal ./tools)"
           if [[ -n "$unformatted" ]]; then
             echo "Biçimlendirilmemiş dosyalar:" >&2
             echo "$unformatted" >&2
-            echo "Düzeltmek için: gofmt -w ./cmd ./internal" >&2
+            echo "Düzeltmek için: gofmt -w ./cmd ./internal ./tools" >&2
             exit 1
           fi
 
@@ -484,6 +484,18 @@ jobs:
           for s in "${scripts[@]}"; do
             if ! grep -q "MUTANT DERLENM" "$s"; then
               echo "::error::$s derleme kapısı taşımıyor — derlenmeyen mutantlar sahte 'yakalandı' üretir (bkz. K-096)" >&2
+              gate_missing=1
+            fi
+            # Tek eşleşme: iğne bir yorumda da geçiyorsa replace(…,1)
+            # yorumu değiştirir, kod mutasyonsuz ölçülür (K-127).
+            if ! grep -q "KEZ ESLESTI" "$s"; then
+              echo "::error::$s tek-eşleşme kapısı taşımıyor — iğne yanlış yeri mutasyona uğratabilir (bkz. K-127)" >&2
+              gate_missing=1
+            fi
+            # Taban: mutasyonsuz kodda düşen test her mutantı
+            # "yakalandı" gösterir — SESSİZ sahte geçiş.
+            if ! grep -q "TABAN KIRMIZI" "$s"; then
+              echo "::error::$s yeşil-taban kapısı taşımıyor — kırmızı taban her mutantı 'yakalandı' gösterir" >&2
               gate_missing=1
             fi
           done

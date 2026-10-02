@@ -47,19 +47,40 @@ trap restore EXIT
 
 fail=0
 
+# ── Taban YEŞİL olmalı ───────────────────────────────────────────────
+#
+# Mutasyonsuz kodda düşen bir test her mutantı "yakalandı" gösterirdi:
+# SESSİZ sahte geçiş. Her farklı test komutu, ilk mutantından önce bir kez
+# mutasyonsuz kodda koşturuluyor.
+declare -A TABAN=()
+taban_yesil() {
+    local key="$*"
+    [[ -n "${TABAN[$key]:-}" ]] && return 0
+    restore
+    if ! go test "$@" >/dev/null 2>&1; then
+        echo "!! TABAN KIRMIZI: mutasyonsuz kodda 'go test $*' düşüyor — ölçüm YAPILMADI"
+        exit 1
+    fi
+    TABAN[$key]=1
+}
+
 # mutate <ad> <dosya> <python-ifadesi> <paket> <test-deseni>
 mutate() {
     local name="$1" file="$2" expr="$3" pkg="$4" want="$5"
     restore
+    taban_yesil "$pkg" -run "$want" -count=1
     if ! python -c "
 import io,sys
 class _S(str):
     def replace(self,a,b,*r):
-        out=str.replace(self,a,b,*r)
-        if out==self:
-            sys.stderr.write('REPLACE ESLESMEDI: '+repr(a[:70])+chr(10))
+        # TEK eşleşme şart: aranan metin bir yorumda da geçiyorsa
+        # replace(…,1) İLKİNİ, yani yorumu değiştirir ve kod hiç mutasyona
+        # uğramadan ölçülür (K-127).
+        n=self.count(a)
+        if n!=1:
+            sys.stderr.write('REPLACE '+str(n)+' KEZ ESLESTI (1 olmali): '+repr(a[:70])+chr(10))
             sys.exit(8)
-        return _S(out)
+        return _S(str.replace(self,a,b,*r))
 p='$file'
 s=_S(io.open(p,encoding='utf-8').read())
 o=s
@@ -123,8 +144,12 @@ mutate "copyEnv referans paylasiyor (kopya degil)" "$ROLLOUT" \
 
 # ── Depo: yazma ve okuma yolları ─────────────────────────────────────
 
+# İğne appSelect'in girintisini taşıyor: aynı sütun listesi INSERT'te de
+# geçiyor ve eski kapı (yalnız "eşleşmedi" denetimi) İLKİNİ, yani INSERT'i
+# değiştiriyordu. Mutant hedeflediği SELECT'e hiç dokunmadan "yakalandı"
+# sayılıyordu (tek-eşleşme kapısı ekleyince bulundu).
 mutate "appSelect'ten env_json dusuruldu" "$STORE_APPS" \
-    "s=s.replace('dockerfile_path, build_args_json, env_json,','dockerfile_path, build_args_json,',1); s=s.replace('&app.DockerfilePath, &argsJSON, &envJSON,','&app.DockerfilePath, &argsJSON,',1); s=s.replace('\tif err := json.Unmarshal([]byte(envJSON), &app.Env); err != nil {\n\t\treturn App{}, fmt.Errorf(\"ortam değişkenleri çözümlenemedi: %w\", err)\n\t}','\t_ = envJSON',1)" \
+    "s=s.replace('       dockerfile_path, build_args_json, env_json,','       dockerfile_path, build_args_json,',1); s=s.replace('&app.DockerfilePath, &argsJSON, &envJSON,','&app.DockerfilePath, &argsJSON,',1); s=s.replace('\tif err := json.Unmarshal([]byte(envJSON), &app.Env); err != nil {\n\t\treturn App{}, fmt.Errorf(\"ortam değişkenleri çözümlenemedi: %w\", err)\n\t}','\t_ = envJSON',1)" \
     "./internal/store/" "Env"
 
 mutate "UPDATE cumlesi env_json yazmiyor" "$STORE_UPD" \

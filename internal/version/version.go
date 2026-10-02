@@ -28,4 +28,7 @@ var Commit = "unknown"
 //	    bool alanları kaldırıldı; yerlerine ChainStatus enum'u geldi.
 //	    Üç durumlu bir sonuç ("geçerli", "geçersiz", "doğrulanamadı")
 //	    iki bool ile temsil edilemiyordu.
-const Protocol uint32 = 2
+//	3 → Proto paketi `panely.v1` → `kadran.v1` (K-136). Kablodaki servis
+//	    adları değişti: eski bir istemci yeni sunucuya Ping bile atamaz
+//	    (gRPC Unimplemented). İstemci bu durumu ayrıca tanıyıp söylüyor.
+const Protocol uint32 = 3

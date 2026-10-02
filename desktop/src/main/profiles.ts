@@ -85,6 +85,54 @@ export async function saveProfiles(
   return clean;
 }
 
+/** Göçten önceki istemci kullanıcısı; sunucu göçü onu `kadran-client` yapar. */
+const LEGACY_CLIENT = "panely-client@";
+const CLIENT = "kadran-client@";
+
+/**
+ * migrateLegacyProfiles, eski adlı uygulamanın (`panely-desktop`)
+ * profillerini yeni kullanıcı verisi dizinine taşır (K-136).
+ *
+ * Electron dizini paket adından türetiyor; ad değişince profiller eski
+ * dizinde kalır ve uygulama boş açılırdı. Hedeflerdeki `panely-client@`
+ * de `kadran-client@` olur: sunucu göçünden sonra eski kullanıcı yok.
+ * Başka kullanıcı adlarına dokunulmaz.
+ *
+ * Yeni dizinde profil dosyası VARSA hiçbir şey yapılmaz (kullanıcının yeni
+ * profillerinin üstüne yazılmaz). Eski dosya silinmez. Taşınan profil
+ * sayısını döner.
+ */
+export async function migrateLegacyProfiles(
+  userDataDir: string,
+  legacyDir: string,
+  onWarning?: (message: string) => void,
+): Promise<number> {
+  try {
+    await readFile(profilesPath(userDataDir), "utf8");
+    return 0;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      onWarning?.(`profiller okunamadı: ${(err as Error).message}`);
+      return 0;
+    }
+  }
+
+  let warned = false;
+  const legacy = await loadProfiles(legacyDir, (msg) => {
+    warned = true;
+    onWarning?.(`eski profiller taşınamadı: ${msg}`);
+  });
+  if (warned || legacy.length === 0) return 0;
+
+  const moved = legacy.map((p) =>
+    p.target.startsWith(LEGACY_CLIENT)
+      ? { ...p, target: CLIENT + p.target.slice(LEGACY_CLIENT.length) }
+      : p,
+  );
+  const saved = await saveProfiles(userDataDir, moved);
+  return saved.length;
+}
+
 function isProfile(value: unknown): value is Profile {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;

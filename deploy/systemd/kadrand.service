@@ -140,8 +140,9 @@ RestrictAddressFamilies=AF_UNIX AF_INET
 #
 # 172.16.0.0/12 seçildi çünkü Docker'ın varsayılan yerel havuzu
 # 172.17.0.0/16 – 172.31.0.0/16 aralığında ve hepsi bunun içinde.
-# ÖLÇÜLDÜ (gerçek sunucu): kadran-web 172.18/16, kadran-pfprobe 172.19/16,
-# kadran-portfolio 172.20/16.
+# ÖLÇÜLDÜ (gerçek sunucu, ağlar o zaman panely-* adlıydı): web 172.18/16,
+# pfprobe 172.19/16, portfolio 172.20/16. Göç (K-136) eski ağlar dururken
+# yenilerini kurar; ağ sayısı geçici olarak iki katına çıkar.
 #
 # ⚠ 192.168.0.0/16 KASTEN AÇILMADI. Docker o havuzu ancak 172.x aralığı
 # tükendiğinde (≈15 ağ) kullanır; açsaydık kadrand, kalıcı sunucunun EV

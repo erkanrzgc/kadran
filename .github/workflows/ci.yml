@@ -91,6 +91,12 @@ jobs:
       - name: Kurulum betiği yardımcıları
         run: bash scripts/check-install-sh.sh
 
+      # panely → kadran göçünün dosya adımları (K-136): taşıma, önek,
+      # authorized_keys, rclone hedefi. Sahte kökte, root'suz. Kullanıcı
+      # adlandırma ve birimler gerçek sunucuda ölçüldü (GCP provası).
+      - name: Göç betiği (panely → kadran)
+        run: bash scripts/check-goc-sh.sh
+
       # Dış nabız Worker'ı (K-109): karar mantığı ve Worker, sahte KV ve
       # sahte fetch ile. Bağımlılık yok, yalnızca node:test.
       - name: Dış nabız Worker'ı

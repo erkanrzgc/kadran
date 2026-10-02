@@ -23,7 +23,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/connproto"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
@@ -32,6 +34,9 @@ import (
 
 // DefaultSSHUser, bootstrap'in oluşturduğu yetkisiz istemci kullanıcısıdır.
 const DefaultSSHUser = "kadran-client"
+
+// legacySSHUser, v0.4.0'dan önceki adı; göç (K-136) onu DefaultSSHUser yaptı.
+const legacySSHUser = "panely-client"
 
 // DefaultSocketPath, sunucudaki api soketidir.
 const DefaultSocketPath = "/run/kadran/api.sock"
@@ -120,6 +125,14 @@ func ParseTarget(s string) (Target, error) {
 	}
 	if err := rejectOptionLike(user, host); err != nil {
 		return Target{}, err
+	}
+	// v0.4.0'dan önceki istemci kullanıcısı. ssh'a gitseydi sebebini
+	// söylemeyen bir "Permission denied" görülürdü (K-136).
+	if user == legacySSHUser {
+		return Target{}, fmt.Errorf(
+			"client: v0.4.0'dan beri istemci kullanıcısı %s: %s@%s yazın "+
+				"(sunucu henüz eski sürümdeyse önce `kadran bootstrap` ile yükseltin)",
+			DefaultSSHUser, DefaultSSHUser, s[strings.Index(s, "@")+1:])
 	}
 	return Target{SSHUser: user, SSHHost: host, SSHPort: port}, nil
 }
@@ -481,6 +494,14 @@ func (b *syncBuffer) String() string {
 // konuşmak, sessizce yanlış davranmaktan iyidir.
 func (c *Client) CheckProtocol(ctx context.Context) (*kadranv1.PingResponse, error) {
 	resp, err := c.rpc.Ping(ctx, &kadranv1.PingRequest{ClientVersion: version.Version})
+	if status.Code(err) == codes.Unimplemented {
+		// v0.4.0'dan önceki sunucular `panely.v1` konuşuyor; `kadran.v1`
+		// servisini tanımıyorlar ve Ping'e bile cevap veremiyorlar (K-136).
+		return nil, fmt.Errorf(
+			"sunucu bu istemcinin servisini tanımıyor: büyük ihtimalle v0.4.0'dan "+
+				"eski (panely adlı) bir kurulum. Önce sunucuyu bu sürümle yükseltin: "+
+				"kadran bootstrap (eski kurulum yerinde taşınır). Ayrıntı: %w", err)
+	}
 	if err != nil {
 		return nil, err
 	}

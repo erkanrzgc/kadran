@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-//go:embed install.sh
+//go:embed install.sh goc.sh
 var installScript embed.FS
 
 // serverBinaries, sunucuya kurulan binary'lerdir.
@@ -68,6 +68,27 @@ var unitFiles = map[string]string{
 	// bağlar ama Where= ile eşleştiremez ve birim asla etkin olmaz.
 	"var-lib-kadran-volumes.mount": "deploy/systemd/var-lib-kadran-volumes.mount",
 	"kadran-tmpfiles.conf":         "deploy/systemd/kadran-tmpfiles.conf",
+}
+
+// migrationFiles, seçimli birimlerin (bildirim, uzak yedek, hacim yedeği)
+// dosyaları. Bu birimleri `bootstrap` KURMAZ; kullanıcı kendi kurar
+// (deploy/notify, deploy/offsite). Ama eski adlı bir kurulumda göç (K-136)
+// eski birimleri kaldırıyor ve etkin olanların yerine yenilerini koymak
+// ZORUNDA: yoksa zamanlayıcılar sessizce kaybolurdu. goc.sh yalnızca
+// göçten önce etkin olanları kuruyor.
+var migrationFiles = map[string]string{
+	"kadran-notify.service":          "deploy/systemd/kadran-notify.service",
+	"kadran-notify.timer":            "deploy/systemd/kadran-notify.timer",
+	"kadran-notify-failure@.service": "deploy/systemd/kadran-notify-failure@.service",
+	"kadran-notify.sh":               "deploy/notify/kadran-notify.sh",
+	"notify-README.md":               "deploy/notify/README.md",
+	"kadran-offsite.service":         "deploy/systemd/kadran-offsite.service",
+	"kadran-offsite.timer":           "deploy/systemd/kadran-offsite.timer",
+	"kadran-offsite.sh":              "deploy/offsite/kadran-offsite.sh",
+	"offsite-README.md":              "deploy/offsite/README.md",
+	"kadran-volume-backup.service":   "deploy/systemd/kadran-volume-backup.service",
+	"kadran-volume-backup.timer":     "deploy/systemd/kadran-volume-backup.timer",
+	"kadran-volume-backup.sh":        "deploy/offsite/kadran-volume-backup.sh",
 }
 
 // Options, kurulum parametreleridir.
@@ -275,12 +296,14 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 		return err
 	}
 
-	script, err := installScript.ReadFile("install.sh")
-	if err != nil {
-		return nil, fmt.Errorf("bootstrap: kurulum betiği okunamadı: %w", err)
-	}
-	if err := add("install.sh", 0o755, script); err != nil {
-		return nil, err
+	for _, name := range []string{"install.sh", "goc.sh"} {
+		script, err := installScript.ReadFile(name)
+		if err != nil {
+			return nil, fmt.Errorf("bootstrap: kurulum betiği okunamadı (%s): %w", name, err)
+		}
+		if err := add(name, 0o755, script); err != nil {
+			return nil, err
+		}
 	}
 
 	// Binary'ler mimariye göre alt dizinden okunur:
@@ -300,16 +323,18 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 		}
 	}
 
-	for _, name := range slices.Sorted(maps.Keys(unitFiles)) {
-		rel := unitFiles[name]
-		content, err := os.ReadFile(filepath.Join(opts.RepoRoot, filepath.FromSlash(rel)))
-		if err != nil {
-			return nil, fmt.Errorf("bootstrap: %s okunamadı: %w", rel, err)
-		}
-		// systemd ve kabuk dosyaları LF ister; Windows'ta üretilmiş bir
-		// CRLF sessizce bozulmaya yol açar.
-		if err := add(name, 0o644, normalizeLineEndings(content)); err != nil {
-			return nil, err
+	for _, files := range []map[string]string{unitFiles, migrationFiles} {
+		for _, name := range slices.Sorted(maps.Keys(files)) {
+			rel := files[name]
+			content, err := os.ReadFile(filepath.Join(opts.RepoRoot, filepath.FromSlash(rel)))
+			if err != nil {
+				return nil, fmt.Errorf("bootstrap: %s okunamadı: %w", rel, err)
+			}
+			// systemd ve kabuk dosyaları LF ister; Windows'ta üretilmiş bir
+			// CRLF sessizce bozulmaya yol açar.
+			if err := add(name, 0o644, normalizeLineEndings(content)); err != nil {
+				return nil, err
+			}
 		}
 	}
 

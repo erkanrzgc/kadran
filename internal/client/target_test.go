@@ -1,6 +1,9 @@
 package client
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseTargetLocalForms(t *testing.T) {
 	tests := []struct {
@@ -177,5 +180,26 @@ func TestDialLocalTargetDoesNotConnectEagerly(t *testing.T) {
 func TestDialRejectsEmptyTarget(t *testing.T) {
 	if _, err := Dial(Target{}); err == nil {
 		t.Fatal("boş hedefle bağlantı kuruldu")
+	}
+}
+
+// TestParseTargetExplainsTheRenamedClientUser: v0.4.0'da sunucudaki istemci
+// kullanıcısı panely-client → kadran-client oldu (K-136). Eski hedef ssh'a
+// gitseydi "Permission denied" görülürdü: sebebi söylemeyen bir hata.
+func TestParseTargetExplainsTheRenamedClientUser(t *testing.T) {
+	for _, in := range []string{"panely-client@sunucu", "panely-client@10.0.0.5:2222"} {
+		_, err := ParseTarget(in)
+		if err == nil {
+			t.Fatalf("%q kabul edildi", in)
+		}
+		if !strings.Contains(err.Error(), "kadran-client@") {
+			t.Errorf("%q: hata yeni hedefi söylemiyor: %v", in, err)
+		}
+	}
+	// Kontrol: yeni ad ve başka adlar etkilenmiyor.
+	for _, in := range []string{"kadran-client@sunucu", "panely@sunucu", "biri@sunucu"} {
+		if _, err := ParseTarget(in); err != nil {
+			t.Errorf("%q reddedildi: %v", in, err)
+		}
 	}
 }

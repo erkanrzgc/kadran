@@ -6,9 +6,11 @@ import (
 	"compress/gzip"
 	"errors"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -146,6 +148,51 @@ func TestArchiveCarriesEverythingTheInstallerNeeds(t *testing.T) {
 	// makinedeki yüzeyi gereksiz büyütür.
 	if _, ok := files["kadran"]; ok {
 		t.Error("iş istasyonu aracı sunucu paketine girmiş")
+	}
+}
+
+// TestArchiveCarriesEveryStageFileTheScriptsRead: kurulum betikleri
+// (install.sh ve göç için goc.sh, K-136) hazırlık dizininden `$STAGE/<ad>`
+// diye dosya okuyor. Elle tutulan bir liste o adlardan sessizce ayrışırdı;
+// bu test adları BETİKLERİN KENDİSİNDEN çıkarıp pakette arıyor.
+//
+// Göçün dosyaları (seçimli birimler, betikleri) yalnız eski kurulumda
+// okunuyor: eksik olsalar taze kurulum testleri hiçbir şey fark etmez,
+// hata ilk canlı göçün ortasında çıkardı.
+func TestArchiveCarriesEveryStageFileTheScriptsRead(t *testing.T) {
+	repo := newFakeRepo(t)
+	archive, err := buildArchive(Options{
+		BinaryDir:     filepath.Join(repo, "bin"),
+		RepoRoot:      repo,
+		ClientKeyPath: filepath.Join(repo, "key.pub"),
+	}, "amd64")
+	if err != nil {
+		t.Fatalf("paket üretilemedi: %v", err)
+	}
+	files := readArchive(t, archive)
+
+	// İkinci desen goc.sh'ın birim kurucusu: `goc_birim_kur <ad>` da
+	// $STAGE/<ad> okuyor.
+	ref := regexp.MustCompile(`(?:\$STAGE/|goc_birim_kur )([A-Za-z0-9@._-]+)`)
+	seen := 0
+	for _, script := range []string{"install.sh", "goc.sh"} {
+		text, err := installScript.ReadFile(script)
+		if err != nil {
+			t.Fatalf("%s gömülü değil: %v", script, err)
+		}
+		if _, ok := files[script]; !ok {
+			t.Errorf("pakette %q yok", script)
+		}
+		for _, m := range ref.FindAllStringSubmatch(string(text), -1) {
+			seen++
+			if _, ok := files[m[1]]; !ok {
+				t.Errorf("%s $STAGE/%s okuyor ama pakette yok", script, m[1])
+			}
+		}
+	}
+	// Ölçüm ölçebiliyor mu: hiç başvuru bulunamasaydı test boşuna geçerdi.
+	if seen < 20 {
+		t.Fatalf("betiklerde yalnız %d $STAGE başvurusu bulundu — desen bozuk olabilir", seen)
 	}
 }
 
@@ -609,7 +656,8 @@ func newFakeRepo(t *testing.T) string {
 	// bir dizinde değil (systemd birimleri deploy/systemd'de, ters vekilin
 	// yapılandırması deploy/caddy'de). Sabit yazılsaydı yeni bir dizin
 	// eklendiğinde fikstür üretimden sessizce ayrışırdı.
-	for _, rel := range unitFiles {
+	for _, rel := range slices.Concat(slices.Collect(maps.Values(unitFiles)),
+		slices.Collect(maps.Values(migrationFiles))) {
 		path := filepath.Join(root, filepath.FromSlash(rel))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)

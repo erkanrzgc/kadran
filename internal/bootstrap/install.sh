@@ -119,6 +119,17 @@ NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
 say "sistem uygun ($(uname -m), $( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo bilinmiyor ))"
 
+# ── Eski adlı kurulum (panely → kadran, K-136) ───────────────────────
+#
+# Göç kodu ayrı dosyada; kurulum paketinde install.sh'ın yanında gelir.
+# shellcheck source=goc.sh
+. "$STAGE/goc.sh"
+GOC=0
+if goc_gerekli; then
+    GOC=1
+    goc_1
+fi
+
 # ── Gruplar ve kullanıcılar ──────────────────────────────────────────
 
 step "Gruplar ve kullanıcılar"
@@ -294,118 +305,128 @@ say "hacim kökü sertleştirildi ($vol_opts)"
 # deploy/systemd/kadran-caddy.service'in başında. Kurulan her şey depodan
 # geliyor: birim, soket, tmpfiles kuralı ve yol açıcı yapılandırma.
 
-step "Ters vekil"
+# ters_vekil_kur — ters vekili kurar ya da yükseltir. Taze kurulum ve
+# yükseltmede yerinde çağrılır. Göçte (K-136) kontrol düzlemi yeni
+# konteynerleri kurduktan SONRA çağrılır: eski vekil o ana kadar siteyi
+# sunmaya devam eder (bkz. goc.sh).
+ters_vekil_kur() {
+    step "Ters vekil"
 
-getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
+    getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
 
-if ! id -u kadran-caddy >/dev/null 2>&1; then
-    useradd --system --gid kadran-caddy \
-        --home-dir /var/lib/kadran-caddy --no-create-home \
-        --shell "$NOLOGIN" \
-        --comment "Kadran ters vekili" kadran-caddy
-fi
+    if ! id -u kadran-caddy >/dev/null 2>&1; then
+        useradd --system --gid kadran-caddy \
+            --home-dir /var/lib/kadran-caddy --no-create-home \
+            --shell "$NOLOGIN" \
+            --comment "Kadran ters vekili" kadran-caddy
+    fi
 
-# Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
-#
-# Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
-# internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
-# admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
-# sağlanıyor.
-if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
-    die \
+    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
+    #
+    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
+    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
+    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
+    # sağlanıyor.
+    if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
+        die \
 "kadran-caddy kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
 ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
 Düzeltmek için:  gpasswd -d kadran-caddy kadran"
-fi
+    fi
 
-# ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
-#
-# Bu, kurulumun en önemli ölçümü. Sınır bir yapılandırmada değil,
-# BINARY'DE: kadrand admin soketine yazabildiği için, stok Caddy'de o
-# yetki "alan adının TLS özel anahtarını okuyabilme"yi de kapsıyordu
-# (ölçüldü, varsayılmadı).
-#
-# ⚠ ÖNCE POZİTİF KONTROL. Doğrudan "file_server var mı" diye sormak,
-# binary hiç çalışmasa bile "yok" cevabı üretirdi — cevapsızlığı istenen
-# cevap diye okumak bu projede üç kez yanlış sonuç ürettirdi (K-051).
-# Bu yüzden önce beklenen bir modülün VARLIĞI kanıtlanıyor.
-caddy_modules="$("$LIB_DIR/kadran-caddy" list-modules 2>/dev/null)" \
-    || die "kadran-caddy çalıştırılamadı — mimari uyuşmuyor olabilir"
+    # ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
+    #
+    # Bu, kurulumun en önemli ölçümü. Sınır bir yapılandırmada değil,
+    # BINARY'DE: kadrand admin soketine yazabildiği için, stok Caddy'de o
+    # yetki "alan adının TLS özel anahtarını okuyabilme"yi de kapsıyordu
+    # (ölçüldü, varsayılmadı).
+    #
+    # ⚠ ÖNCE POZİTİF KONTROL. Doğrudan "file_server var mı" diye sormak,
+    # binary hiç çalışmasa bile "yok" cevabı üretirdi — cevapsızlığı istenen
+    # cevap diye okumak bu projede üç kez yanlış sonuç ürettirdi (K-051).
+    # Bu yüzden önce beklenen bir modülün VARLIĞI kanıtlanıyor.
+    caddy_modules="$("$LIB_DIR/kadran-caddy" list-modules 2>/dev/null)" \
+        || die "kadran-caddy çalıştırılamadı — mimari uyuşmuyor olabilir"
 
-printf '%s\n' "$caddy_modules" | grep -qx 'http.handlers.reverse_proxy' || die \
+    printf '%s\n' "$caddy_modules" | grep -qx 'http.handlers.reverse_proxy' || die \
 "kadran-caddy modül listesinde reverse_proxy YOK. Ölçüm geçersiz: bu
 binary ya beklenen ikili değil ya da list-modules bir şey döndürmedi.
 Aşağıdaki dosya-servisi kontrolü bu hâliyle anlamsız olurdu."
 
-serving_modules="$(printf '%s\n' "$caddy_modules" \
-    | grep -E 'file_server|templates|caddyfs' || true)"
-[ -z "$serving_modules" ] || die \
+    serving_modules="$(printf '%s\n' "$caddy_modules" \
+        | grep -E 'file_server|templates|caddyfs' || true)"
+    [ -z "$serving_modules" ] || die \
 "kadran-caddy DOSYA SERVİS EDEN modüller içeriyor:
 $serving_modules
 Bu binary ile ters vekil, TLS özel anahtarlarının durduğu dizini
 servis edebilir. Derleme build/caddy/main.go'daki dışlama listesine
 uymuyor — K-050 sınırı ETKİSİZ."
 
-say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^') modül, dosya servisi yok)"
+    say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^') modül, dosya servisi yok)"
 
-# ── Yapılandırma ve birimler ────────────────────────────────────────
+    # ── Yapılandırma ve birimler ────────────────────────────────────────
 
-vekil_once="$(vekil_parmak_izi)"
+    vekil_once="$(vekil_parmak_izi)"
 
-install -d -m 0755 -o root -g root /etc/kadran
-install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/kadran/caddy.json
+    install -d -m 0755 -o root -g root /etc/kadran
+    install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/kadran/caddy.json
 
-install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
-    /etc/tmpfiles.d/kadran-caddy.conf
-systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
+        /etc/tmpfiles.d/kadran-caddy.conf
+    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
 
-install -m 0644 -o root -g root "$STAGE/kadran-caddy.service" \
-    /etc/systemd/system/kadran-caddy.service
-install -m 0644 -o root -g root "$STAGE/kadran-caddy-admin.socket" \
-    /etc/systemd/system/kadran-caddy-admin.socket
-systemctl daemon-reload
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy.service" \
+        /etc/systemd/system/kadran-caddy.service
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy-admin.socket" \
+        /etc/systemd/system/kadran-caddy-admin.socket
+    systemctl daemon-reload
 
-# ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
-#
-# Dağıtımın kendi caddy'si ya da bir nginx çalışıyorsa kadran-caddy
-# bağlanamaz ve "address already in use" ile ölür. Sebebi günlüğün
-# içinde kaybolmasın diye ÖNCEDEN ve açıkça söyleniyor.
-for other in caddy nginx apache2 httpd lighttpd; do
-    if systemctl is-active --quiet "$other.service" 2>/dev/null; then
-        die \
+    # ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
+    #
+    # Dağıtımın kendi caddy'si ya da bir nginx çalışıyorsa kadran-caddy
+    # bağlanamaz ve "address already in use" ile ölür. Sebebi günlüğün
+    # içinde kaybolmasın diye ÖNCEDEN ve açıkça söyleniyor.
+    for other in caddy nginx apache2 httpd lighttpd; do
+        if systemctl is-active --quiet "$other.service" 2>/dev/null; then
+            die \
 "$other.service çalışıyor ve 80/443 portlarını tutuyor olabilir.
 kadran-caddy bu portlara bağlanamaz. Devam etmek için:
   systemctl disable --now $other.service"
+        fi
+    done
+
+    # Soket ÖNCE: Caddy onu fd/3 olarak devralıyor.
+    #
+    # `enable` ile `start` AYRI şeyler — yalnızca başlatmak, birimi yeniden
+    # başlatmadan sonra geri getirmez. Bu ayrım gerçek bir kurulumda
+    # atlandı ve ancak reboot testinde ortaya çıktı; ikisi de yapılıyor ve
+    # ikisi de aşağıda DOĞRULANIYOR.
+    systemctl enable kadran-caddy-admin.socket
+    systemctl enable kadran-caddy.service
+
+    # Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
+    # Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
+    # başlattı ve Caddy rotasız açıldı; site kadrand yeniden başlayana kadar
+    # KAPALI kaldı (bir sonraki kurulumda kadrand yeniden başlayınca döndü).
+    # Rotaları geri getirmek kadrand'nin işi (K-055, vekil izleyicisi); ama
+    # gereksiz yeniden başlatma yine de kesinti demek. İkili, yapılandırma
+    # ya da birim değiştiyse yeniden başlatma şart. İkili commit'ten BAĞIMSIZ
+    # derleniyor (scripts/build-caddy.sh, -buildvcs=false); öyle olmasaydı
+    # Caddy'ye dokunmayan her yükseltme de onu "değişmiş" sayardı (ölçüldü).
+    if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
+            && systemctl is-active --quiet kadran-caddy-admin.socket \
+            && systemctl is-active --quiet kadran-caddy.service \
+            && calisan_ayni_mi kadran-caddy.service "$LIB_DIR/kadran-caddy"; then
+        say "ters vekil değişmedi — yeniden başlatılmadı, trafik kesilmedi"
+    else
+        systemctl stop kadran-caddy.service 2>/dev/null || true
+        systemctl restart kadran-caddy-admin.socket
+        systemctl restart kadran-caddy.service
     fi
-done
+}
 
-# Soket ÖNCE: Caddy onu fd/3 olarak devralıyor.
-#
-# `enable` ile `start` AYRI şeyler — yalnızca başlatmak, birimi yeniden
-# başlatmadan sonra geri getirmez. Bu ayrım gerçek bir kurulumda
-# atlandı ve ancak reboot testinde ortaya çıktı; ikisi de yapılıyor ve
-# ikisi de aşağıda DOĞRULANIYOR.
-systemctl enable kadran-caddy-admin.socket
-systemctl enable kadran-caddy.service
-
-# Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
-# Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
-# başlattı ve Caddy rotasız açıldı; site kadrand yeniden başlayana kadar
-# KAPALI kaldı (bir sonraki kurulumda kadrand yeniden başlayınca döndü).
-# Rotaları geri getirmek kadrand'nin işi (K-055, vekil izleyicisi); ama
-# gereksiz yeniden başlatma yine de kesinti demek. İkili, yapılandırma
-# ya da birim değiştiyse yeniden başlatma şart. İkili commit'ten BAĞIMSIZ
-# derleniyor (scripts/build-caddy.sh, -buildvcs=false); öyle olmasaydı
-# Caddy'ye dokunmayan her yükseltme de onu "değişmiş" sayardı (ölçüldü).
-if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
-        && systemctl is-active --quiet kadran-caddy-admin.socket \
-        && systemctl is-active --quiet kadran-caddy.service \
-        && calisan_ayni_mi kadran-caddy.service "$LIB_DIR/kadran-caddy"; then
-    say "ters vekil değişmedi — yeniden başlatılmadı, trafik kesilmedi"
-else
-    systemctl stop kadran-caddy.service 2>/dev/null || true
-    systemctl restart kadran-caddy-admin.socket
-    systemctl restart kadran-caddy.service
+if [ "$GOC" -eq 0 ]; then
+    ters_vekil_kur
 fi
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
@@ -535,6 +556,19 @@ systemctl is-active --quiet kadrand.service || {
 }
 
 say "kadran-exec ve kadrand çalışıyor"
+
+# ── Göçün ikinci yarısı (K-136) ─────────────────────────────────────
+#
+# Yeni kontrol düzlemi çalışıyor ve eski konteynerlerin karşılıklarını
+# kuruyor. Onlar ayağa kalkınca eski ters vekil yenisiyle değişir;
+# kesinti yalnız bu adımda.
+if [ "$GOC" -eq 1 ]; then
+    goc_bekle
+    goc_vekil
+    ters_vekil_kur
+    goc_secimli
+    goc_temizle
+fi
 
 # ── Kurulum sonrası doğrulama ────────────────────────────────────────
 #

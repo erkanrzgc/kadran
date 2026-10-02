@@ -3,6 +3,18 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Documentation
+
+- The README's GitHub Actions example is now a complete workflow: the one that
+  deploys the author's site on every push to `main`. It downloads the CLI and
+  checks it against `SHA256SUMS`, reads only repository contents, and queues
+  deploys instead of running them side by side (K-135).
+- The README no longer says the workflow deploys "the commit that was just
+  tested". The example runs no tests: it deploys whatever lands on `main`. To
+  deploy only tested commits, add a test job and `needs:` (K-135).
+
 ## v0.3.0 — 2026-10-02
 
 Deploy-only keys for CI, an audit log that finally records which key acted, the

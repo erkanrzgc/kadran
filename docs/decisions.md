@@ -9458,3 +9458,55 @@ K-131'in GCP ölçümünde panelyd journal'ı dağıtım anahtarının retlerini
   (scratchpad `rt/panely-0.2.0`, md5'ler canlının eskisiyle aynı).
 - Yayın açıldı (latest), yayımlanmış dosyalar yeniden indirilip
   `sha256sum -c` ile doğrulandı.
+
+## K-135 — Portfolio'da main'e her push canlıya dağıtılıyor (K-125 C)
+
+**Tarih:** 2 Ekim 2026
+**Durum:** CANLIDA. Kullanıcı kararı: "her main push + elle".
+
+### Kurulum
+
+- Canlıya (Hetzner, v0.3.0) yalnız dağıtım yapabilen bir anahtar eklendi:
+  `SHA256:KD9+FJp2jVO5HQXbWmHcA9mueZoCMTv2HE5HgDzn99g`, kapsam
+  `portfolio`, yorum `portfolio-ci@github`. Özel anahtar iş istasyonunda
+  üretildi, GitHub sırrına yazıldı, yereldeki kopyası silindi; şu an
+  yalnız GitHub sırrında duruyor.
+- erkanrzgc/portfolio sırları: `KADRAN_DEPLOY_KEY`, `KADRAN_HOST_KEY`
+  (sunucunun known_hosts satırları), `KADRAN_TARGET`. Sunucu adresi depoya
+  yazılmadı; bu kayıtta da yok.
+- `.github/workflows/deploy.yml` (portfolio `d96882f`, actionlint temiz):
+  `push` (yalnız main) ve `workflow_dispatch`; `permissions: contents:
+  read`; `concurrency` iptalsiz (dağıtımlar sıraya girer). v0.3.0 CLI'ı
+  `$RUNNER_TEMP`'e indiriyor, `SHA256SUMS` ile doğruluyor, sonra
+  `kadran deploy -commit "$GITHUB_SHA" portfolio`. Dağıtım anahtarı
+  uygulama tanımını okuyamadığı için commit açıkça veriliyor (K-131).
+  `pull_request_target` kullanılmıyor.
+
+### Ölçüm
+
+- İlk koşu 37057223406, başarılı. Günlükte `kadran-v0.3.0-linux-amd64:
+  OK`, `kadran v0.3.0 (8eb6971723eb)`, `Sürüm r8 · commit d96882f0424c`
+  → `Sürüm r8 canlıda`. Dağıt adımı 19:55:15–19:56:08 UTC (53 sn).
+- Denetim kaydı seq 156: `app.deploy`, parmak izi CI anahtarınınki. K-134
+  düzeltmesi olmasa bu kayıt "hangi anahtar" sorusunu yanıtlamazdı.
+- `sha256sum -c --ignore-missing`: indirme hiç gelmezse adım geçmez mi?
+  Ölçüldü: listedeki hiçbir dosya yoksa `no file was verified`, çıkış 1;
+  hem GNU coreutils 8.32'de hem 9.4'te (`ubuntu:24.04`, ubuntu-latest'in
+  sürümü).
+- Canlı site yarım saniyede bir yoklandı, 19:54:43–19:56:28 UTC
+  (iş istasyonu saati): 134 `200`, 3 `000`. Üç `000` 19:54:48, :49 ve
+  :53'te; koşu 19:55:10'da (GitHub saati) oluşturuldu. Yani hepsi koşu
+  var olmadan en az 17 sn önce. İki ayrı saat bu; ama 17 sn olağan
+  sapmanın çok üstünde. Dağıt adımının tamamı yoklamanın içinde ve orada
+  hiç hata yok. **`000`'ların nedeni ölçülmedi:** curl yanıt alamadı
+  (bağlantı, DNS, TLS ya da 5 sn zaman aşımı; betik ayrımı yazmıyordu).
+  Sunucu günlüğüne bakılmadı.
+
+### Bulgu: "test edilen commit" doğru değil
+
+README de iş akışının yorumu da "CI'ın test ettiği commit dağıtılır"
+diyordu. Portfolio'da tek iş akışı `deploy.yml` ve test koşmuyor; main
+korumasız (`branches/main/protection` → 404). Dağıtılan, main'e gelen
+commit'in kendisi; test edilmiş olması gerekmiyor. README düzeltildi
+(test isteyen `needs:` ile bağlasın). Portfolio'nun iş akışına
+dokunulmadı: oraya her push canlıya dağıtım demek, karar kullanıcıda.

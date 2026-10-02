@@ -397,23 +397,61 @@ so one key on two lines would get whichever role comes first). `key remove` refu
 to delete the last admin key. `key list` exits non-zero if any line is not forced to
 `panely-connect`.
 
-In GitHub Actions, store the private key as a secret and deploy the commit that was
-just tested. Use it only in workflows triggered by pushes, never in
-`pull_request_target`:
+In GitHub Actions, store the private key as a secret and deploy the exact commit
+that triggered the run. Trigger it only on pushes to your own branch (and by hand),
+never from `pull_request_target`, where secrets sit next to code from forks. This
+workflow deploys the author's own site on every push to `main` (K-135):
 
 ```yaml
-- name: Deploy
-  env:
-    KEY: ${{ secrets.KADRAN_DEPLOY_KEY }}
-    HOST_KEY: ${{ secrets.KADRAN_HOST_KEY }}   # output of: ssh-keyscan your-server
-  run: |
-    install -m 700 -d ~/.ssh
-    printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
-    printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts
-    ./kadran deploy -commit "$GITHUB_SHA" site panely-client@your-server
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:              # deploys queue up instead of running side by side
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      KADRAN_VERSION: v0.3.0   # the release your server runs
+    steps:
+      - name: Download and verify kadran
+        working-directory: ${{ runner.temp }}
+        run: |
+          base="https://github.com/erkanrzgc/kadran/releases/download/${KADRAN_VERSION}"
+          curl -fsSLO "$base/kadran-${KADRAN_VERSION}-linux-amd64"
+          curl -fsSLO "$base/SHA256SUMS"
+          sha256sum -c --ignore-missing SHA256SUMS   # fails if nothing was verified
+          install -m 755 "kadran-${KADRAN_VERSION}-linux-amd64" kadran
+
+      - name: SSH identity
+        env:
+          KEY: ${{ secrets.KADRAN_DEPLOY_KEY }}
+          HOST_KEY: ${{ secrets.KADRAN_HOST_KEY }}   # output of: ssh-keyscan your-server
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          TARGET: ${{ secrets.KADRAN_TARGET }}       # panely-client@your-server
+        run: |
+          "$RUNNER_TEMP/kadran" deploy -commit "$GITHUB_SHA" site "$TARGET"
 ```
 
-The workflow needs the `kadran` CLI for Linux from the same release as your server.
+This deploys whatever lands on `main`; it does not run your tests. If you want only
+tested commits to go live, run the tests in an earlier job and add `needs:` to
+`deploy`. Keeping the target in a secret keeps the server address out of a public
+repository. The CLI must come from the same release as your server.
 Deploy-only keys need a server upgraded past v0.2.0: an older `panely-connect` does
 not know `-deploy`, refuses to start, and the key simply cannot connect. It fails
 closed and never falls back to admin rights.

@@ -115,7 +115,7 @@ mutate "-T düştü" \
 echo "== Argüman enjeksiyonu =="
 
 mutate "- ile başlayan hedef kabul ediliyor" \
-    "s=s.replace('\tif strings.HasPrefix(opts.Host, \"-\") {','\tif false {',1)"
+    "s=s.replace('\tif strings.HasPrefix(host, \"-\") {','\tif false {',1)"
 
 echo "== Mimari eşlemesi =="
 

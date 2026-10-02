@@ -8867,7 +8867,19 @@ karşılaştırma bunu doğruladı.
 ## K-130 — Ad değişikliği: Panely → Kadran (marka katmanı)
 
 **Tarih:** 2 Ekim 2026
-**Durum:** UYGULANDI. Depo yeniden adlandırıldı; CI'da doğrulanacak.
+**Durum:** UYGULANDI. Depo yeniden adlandırıldı; CI yeşil (`e46976c`'den
+sonra). CI'ın bulduğu iki şey:
+
+- **Bayat lint önbelleği.** `e4fbfa8`'in koşusu depo adı değişmeden
+  başladı ve golangci-lint önbelleğine ESKİ yolla (`work/panely/panely`)
+  bulgu yazdı. Sonraki koşu aynı önbellek anahtarını aldı; dosyalar yeni
+  yolda olduğu için "üretilmiş kod" muafiyeti o yollara uygulanamadı ve
+  üretilmiş gRPC kodundan errcheck bulguları döküldü. Kod hatası değil:
+  `gh cache delete` ile önbellek silinince lint yeşile döndü (teşhis böyle
+  doğrulandı). Tek seferlik; adlandırma koşan bir CI'ın ortasında olmamalı.
+- **Mutasyon iğnesi.** `mutate-domaincheck.sh` CLI'daki `"panely: uyarı"`
+  dizgisini arıyordu; ad `progName+": uyarı"` olmuştu. Tam-bir-eşleşme
+  kapısı mutantı "yakalandı" saymadan kırmızı verdi (`e46976c`).
 
 ### Karar
 

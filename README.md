@@ -397,6 +397,11 @@ just tested. Use it only in workflows triggered by pushes, never in
     ./kadran deploy -commit "$GITHUB_SHA" site panely-client@your-server
 ```
 
+The workflow needs the `kadran` CLI for Linux from the same release as your server.
+Deploy-only keys need a server upgraded past v0.2.0: an older `panely-connect` does
+not know `-deploy`, refuses to start, and the key simply cannot connect. It fails
+closed and never falls back to admin rights.
+
 It does **not** disable environment processing — a common and load-bearing
 misreading. The audit trail's actor identity comes from `SSH_AUTH_INFO_0`, and an
 `environment=` entry in `authorized_keys` would override sshd's own value, letting

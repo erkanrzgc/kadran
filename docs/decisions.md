@@ -9440,3 +9440,21 @@ K-131'in GCP ölçümünde panelyd journal'ı dağıtım anahtarının retlerini
   SSH kökenli, 0'ında parmak izi — iddia bu kez gerçekten ölçülmüş
   hâliyle duruyor. Ölçüm aracının kendisi de bir kontrol grubu ister
   ([[security-probe-must-prove-it-measured]]).
+### Canlıda (v0.3.0, 2 Ekim, kullanıcı onayıyla)
+
+- v0.3.0 `8eb6971`'den iki ayrı LF klonda `scripts/package-release.sh` ile
+  paketlendi; iki paketin SHA256SUMS'ı aynı. Taslak yayına yüklenen
+  dosyalar geri indirilip doğrulandı; canlı bu dosyalardan kuruldu.
+- Hetzner `bootstrap root@`, v0.2.0'dan: 17/17 kurulum sonrası denetim
+  (sıkılaşan authorized_keys denetimi dahil); çalışan ikililer tar'la aynı
+  (panelyd `ca82f5a7b87a`, panely-exec `a3c1c1cf9f8b`); ters vekil
+  `bf8360893f0f`, aynı süreç (PID 771, 30 Eylül'den beri); NRestarts 0;
+  alarm yok; iki zincir geçerli. Canlı site yarım saniyede bir
+  yoklandı: 86/86 `200`.
+- **K-134 canlıda kapandı:** yükseltmeden hemen önceki `backup.create`
+  (seq 153) parmak izsiz, hemen sonraki (seq 155) yönetici anahtarının
+  parmak iziyle (`SHA256:iVvT7…`).
+- Önceki yedek: `panely-20261002T174923Z.db`; geri dönüş ağacı v0.2.0
+  (scratchpad `rt/panely-0.2.0`, md5'ler canlının eskisiyle aynı).
+- Yayın açıldı (latest), yayımlanmış dosyalar yeniden indirilip
+  `sha256sum -c` ile doğrulandı.

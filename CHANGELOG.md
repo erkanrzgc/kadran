@@ -33,6 +33,12 @@ repository moved to `github.com/erkanrzgc/kadran`; GitHub redirects the old addr
     Before this they skipped the server's interceptor chain entirely.
   - Scope limits, including that a deploy key effectively owns the secrets of
     the apps it may deploy, are in `SECURITY.md` (K-131).
+  - `kadran key add -deploy site,api ci.pub root@server` adds such a key;
+    `key list` shows every key with its role and fingerprint; `key remove`
+    deletes one. They use the same root path as `bootstrap` (`-sudo` works).
+    `key add` refuses a key that already has a line, `key remove` refuses the
+    last admin key, and `key list` exits non-zero on any line that is not forced
+    to `panely-connect`. The server re-checks every line it is asked to write.
 - **Fixed: a multi-line public key file opened a shell.** `bootstrap` wrote the
   admin line as `command=...,restrict <file contents>`. With two keys in the file
   (for example `https://github.com/<user>.keys`), the second one landed in

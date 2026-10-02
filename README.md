@@ -209,6 +209,7 @@ lines describe that other host.
 | `domain check <domain>` | Diagnose a missing certificate: DNS, ports 80/443, the HTTP redirect and the certificate, checked from your machine |
 | `audit list\|verify` | Read and verify both audit chains |
 | `bootstrap root@server` | One-time server install |
+| `key add\|list\|remove root@server` | Manage deploy-only keys for CI (root path, like `bootstrap`) |
 
 Targets: empty means the local socket; `user@host[:port]` or `host` means SSH, with
 `panely-client` as the default user.
@@ -361,10 +362,40 @@ command="/usr/local/lib/panely/panely-connect -deploy=site,api",restrict ssh-ed2
 
 Such a key can call `Ping` and `Deploy` for `site` and `api`, nothing else. It
 cannot read app definitions (they carry environment values), so CI passes the
-commit explicitly: `kadran deploy -commit "$GITHUB_SHA" site panely-client@server`.
-An empty, unknown, or malformed role is refused at connection time instead of
-falling back to admin. What the scope does and does not protect is in
-[SECURITY.md](SECURITY.md) (K-131).
+commit explicitly. An empty, unknown, or malformed role is refused at connection
+time instead of falling back to admin. What the scope does and does not protect is
+in [SECURITY.md](SECURITY.md) (K-131).
+
+Keys are managed over the same root path as `bootstrap`, because only root can
+write that file:
+
+```bash
+ssh-keygen -t ed25519 -N '' -C ci@github -f ci_deploy
+bin/kadran key add -deploy site ci_deploy.pub root@your-server   # or -sudo you@your-server
+bin/kadran key list root@your-server
+bin/kadran key remove SHA256:... root@your-server
+```
+
+`key add` refuses a key that already has a line (sshd uses the first matching line,
+so one key on two lines would get whichever role comes first). `key remove` refuses
+to delete the last admin key. `key list` exits non-zero if any line is not forced to
+`panely-connect`.
+
+In GitHub Actions, store the private key as a secret and deploy the commit that was
+just tested. Use it only in workflows triggered by pushes, never in
+`pull_request_target`:
+
+```yaml
+- name: Deploy
+  env:
+    KEY: ${{ secrets.KADRAN_DEPLOY_KEY }}
+    HOST_KEY: ${{ secrets.KADRAN_HOST_KEY }}   # output of: ssh-keyscan your-server
+  run: |
+    install -m 700 -d ~/.ssh
+    printf '%s\n' "$KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+    printf '%s\n' "$HOST_KEY" > ~/.ssh/known_hosts
+    ./kadran deploy -commit "$GITHUB_SHA" site panely-client@your-server
+```
 
 It does **not** disable environment processing — a common and load-bearing
 misreading. The audit trail's actor identity comes from `SSH_AUTH_INFO_0`, and an

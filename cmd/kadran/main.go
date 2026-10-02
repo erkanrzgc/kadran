@@ -75,6 +75,8 @@ type cli struct {
 	// (nil: sistemin kökleri).
 	dialNet  func(ctx context.Context, network, addr string) (net.Conn, error)
 	tlsRoots *x509.CertPool
+	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
+	keys keyManager
 }
 
 func main() {
@@ -108,6 +110,7 @@ func commands() []command {
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
 		{"bootstrap", "root@sunucu | -sudo kullanıcı@sunucu", "sunucuyu kurar ya da yükseltir", (*cli).runBootstrap},
+		{"key", "<list|add|remove> … root@sunucu", "yalnızca dağıtım yapabilen anahtarları yönetir", (*cli).runKey},
 		{"version", "", "sürüm bilgisini yazar", (*cli).runVersion},
 	}
 }
@@ -271,7 +274,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	fmt.Fprintf(c.stdout, "Panely kurulumu — %s\n", target.String())
+	fmt.Fprintf(c.stdout, "Kadran kurulumu — %s\n", target.String())
 	fmt.Fprintln(c.stdout,
 		"Parola veya özel anahtar istenmez; kimlik doğrulamayı `ssh` yapar.")
 

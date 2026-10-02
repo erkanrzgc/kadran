@@ -9175,14 +9175,41 @@ yönetici anahtarı olurdu.
   eski biçimli bir satır varsa sıkılaşan denetim ✗ verir (kurulumu geri
   almaz, rapor eder). İki sunucuda da salt okunur bakılmalı.
 
-### Sonraki adım
+### `kadran key add|list|remove`
 
-- `kadran key add|list|remove`: root SSH yolundan (bootstrap gibi)
-  authorized_keys'e satır ekler.
-  - Aynı anahtar gövdesi iki satırda olamaz: sshd İLK eşleşen satırı
-    kullanır; yönetici anahtarının dağıtım satırıyla gölgelenmesi ya da
-    tersi sessiz bir yetki değişikliği olurdu.
-  - `install.sh` yeniden koşunca dağıtım satırları korunmalı (bugün
-    yalnızca yönetici anahtarının satırını değiştiriyor; testle
-    sabitlenecek).
-- README'ye GitHub Actions örneği.
+- Root yolundan, bootstrap'la aynı (`root@sunucu` ya da `-sudo`).
+  panelyd dahil değil; `panely-client` hedefi reddediliyor.
+- **İş istasyonu:** anahtarı doğruluyor (tek satır, özel anahtar değil,
+  gövde gerçekten o türde ve TAM: uzunluk önekli alanlar gövdeyi
+  tüketmeli), kapsamı connproto'nun ayrıştırıcısından geçiriyor, satırı
+  kuruyor, listeyi ayrıştırıyor ve parmak izini `ssh-keygen -lf`
+  biçiminde hesaplıyor.
+- **Sunucu:** sabit bir bash betiği, istemciye GÜVENMİYOR:
+  - satırı desenle yeniden doğruluyor (satır sonu taşıyan satır
+    eşleşmez) ve satırın, yinelenme denetimine giden gövdeyi taşıdığına
+    bakıyor;
+  - aynı anahtar gövdesi zaten varsa eklemiyor. sshd İLK eşleşen satırı
+    kullanır; yönetici anahtarı dağıtım satırıyla gölgelenemez, tersi de;
+  - son yönetici satırının silinmesini reddediyor;
+  - dosyayı aynı dizinde geçici dosya + `mv` ile değiştiriyor, sahiplik
+    `--reference` ile korunuyor, izin 0600.
+  - Eşzamanlı iki işlem (ör. `key add` ile `bootstrap`) birinin
+    yazdığını kaybedebilir; kilit yok. Elle yapılan, nadir işlemler.
+- `key list` kısıtsız satırı `⚠ KISITSIZ` diye gösteriyor ve sıfırdan
+  farklı çıkıyor; sunucudan gelen yorumdaki denetim karakterleri
+  basılmadan önce `?` oluyor (terminal kaçış dizisi).
+- `install.sh` yeniden koşunca dağıtım satırları korunuyor
+  (`check-install-sh.sh`, Linux'ta).
+- Testler: uzak betik Linux'ta GERÇEK bash ile koşuyor; sahte ssh uzak
+  komutu gerçek kabuğa veriyor, yani tırnaklama da sınanıyor. Sudo
+  kipinde önek yoksa sahte ssh düşüyor.
+- `scripts/mutate-keys.sh`: 14 mutant, 14'ü yakalandı (Linux
+  kapsayıcısında; geri yükleme kaynakla birebir karşılaştırıldı).
+  - Bir mutant derlenmedi, düzeltildi. "-deploy zorunlu" mutantı ilk
+    koşuda YAŞADI: boş kapsamı ayrıştırıcı da reddettiği için açık
+    denetim yalnız mesaj içindi ve test mesaja bakmıyordu; test mesaja
+    bağlandı. "Kesik gövde" ve "silmede olmayan anahtar" mutantları ilk
+    yazıldıkları hâlde hiçbir şey ölçmeyecekti (eşdeğer mutant; istemci
+    zaten önce listede arıyor); mutant ve test düzeltildi.
+- README'de GitHub Actions örneği.
+- ⚠ Gerçek sunucuda (sshd + sudo) HENÜZ ölçülmedi.

@@ -122,28 +122,8 @@ func Run(ctx context.Context, opts Options) error {
 }
 
 func validate(opts *Options) error {
-	if opts.Host == "" {
-		return fmt.Errorf("bootstrap: hedef sunucu belirtilmedi")
-	}
-	// `-` ile başlayan hedef, ssh tarafından konumsal argüman değil
-	// SEÇENEK olarak okunur; `-oProxyCommand=<komut>` iş istasyonunda
-	// keyfî yerel komut çalıştırır. Kabuk kullanılmadığı için kabuk
-	// enjeksiyonu yok, ama argüman enjeksiyonu ayrı bir sınıf.
-	//
-	// `--` ile ayırmak yerine reddetmenin nedeni: `--` desteği OpenSSH
-	// sürümüne göre değişir. Meşru hiçbir hedef `-` ile başlamaz.
-	if strings.HasPrefix(opts.Host, "-") {
-		return fmt.Errorf(
-			"bootstrap: hedef `-` ile başlayamaz (%q) — "+
-				"ssh bunu seçenek olarak yorumlar", opts.Host)
-	}
-	// panely-client zorlanmış komutlu, yetkisiz istemci hesabı; kurulum
-	// hesabı OLAMAZ. Kullanıcı adı verilmeyen hedef ona düşüyor
-	// (client.DefaultSSHUser) ve kurulum anlaşılmaz biçimde zorlanmış
-	// komuta çarpardı. Sudo kipinde ayrıca: o hesaba sudo verilmemeli.
-	if user, _, ok := strings.Cut(opts.Host, "@"); ok && user == clientUser {
-		return fmt.Errorf("bootstrap: %s yetkisiz istemci hesabı, kurulum onunla yapılamaz — "+
-			"root@sunucu ya da -sudo kullanıcı@sunucu verin", clientUser)
+	if err := validateTarget(opts.Host); err != nil {
+		return err
 	}
 	if opts.Stdout == nil {
 		opts.Stdout = io.Discard
@@ -156,6 +136,35 @@ func validate(opts *Options) error {
 			"bootstrap: istemci açık anahtarı okunamadı (%s): %w\n"+
 				"--client-key ile başka bir anahtar belirtebilirsiniz",
 			opts.ClientKeyPath, err)
+	}
+	return nil
+}
+
+// validateTarget, root yetkisiyle kullanılacak SSH hedefini denetler:
+// bootstrap ve `kadran key` ortak.
+func validateTarget(host string) error {
+	if host == "" {
+		return fmt.Errorf("bootstrap: hedef sunucu belirtilmedi")
+	}
+	// `-` ile başlayan hedef, ssh tarafından konumsal argüman değil
+	// SEÇENEK olarak okunur; `-oProxyCommand=<komut>` iş istasyonunda
+	// keyfî yerel komut çalıştırır. Kabuk kullanılmadığı için kabuk
+	// enjeksiyonu yok, ama argüman enjeksiyonu ayrı bir sınıf.
+	//
+	// `--` ile ayırmak yerine reddetmenin nedeni: `--` desteği OpenSSH
+	// sürümüne göre değişir. Meşru hiçbir hedef `-` ile başlamaz.
+	if strings.HasPrefix(host, "-") {
+		return fmt.Errorf(
+			"bootstrap: hedef `-` ile başlayamaz (%q) — "+
+				"ssh bunu seçenek olarak yorumlar", host)
+	}
+	// panely-client zorlanmış komutlu, yetkisiz istemci hesabı; kurulum
+	// hesabı OLAMAZ. Kullanıcı adı verilmeyen hedef ona düşüyor
+	// (client.DefaultSSHUser) ve kurulum anlaşılmaz biçimde zorlanmış
+	// komuta çarpardı. Sudo kipinde ayrıca: o hesaba sudo verilmemeli.
+	if user, _, ok := strings.Cut(host, "@"); ok && user == clientUser {
+		return fmt.Errorf("bootstrap: %s yetkisiz istemci hesabı, bu işlem onunla yapılamaz — "+
+			"root@sunucu ya da -sudo kullanıcı@sunucu verin", clientUser)
 	}
 	return nil
 }

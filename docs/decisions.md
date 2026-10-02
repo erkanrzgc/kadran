@@ -9113,7 +9113,25 @@ yönetici anahtarı olurdu.
     almıyor (kontrol grubu). Sonradan eklenen RPC kendiliğinden kapsanıyor.
   - Kapsam dışı ve boş uygulama adı reddediliyor; kapsam içi istek
     yetkiyi geçiyor.
+- Birim testleri `main.go`'yu GÖREMEZ: panelyd `grpc.NewServer`'a dönse
+  hepsi yeşil kalırdı. Bunu E2E kapatıyor (`e2e-cli-runner.sh`, CI'ın
+  "Uçtan uca" işi):
+  - GERÇEK panelyd, GERÇEK `panely-connect -deploy=e2eblog` (argv
+    ayrıştırması dahil) ve GERÇEK SO_PEERCRED. sshd yerine argümanları
+    yok sayan sahte bir `ssh`, sshd'nin ortam değişkenleriyle.
+  - Ölçülen: `status` reddediliyor, `-commit`'siz dağıtım ipucu veriyor,
+    kapsam dışı dağıtım reddediliyor, kapsam içi dağıtım işleyiciye
+    ulaşıyor ("derleme başlıyor"), ret journal'da `rol=deploy` ile.
+  - Kontrol grubu ölçüldü: `main.go` eski kurucuya (yalnız tekli günlük
+    önleyicisi) döndürülünce 11 kontrolden 7'si kızardı. Kapsam dışı
+    dağıtım yetkiyi geçip `NotFound`'a kadar ilerledi.
+- **sshd üzerinden HENÜZ ölçülmedi.** `-deploy=` satırının authorized_keys
+  → sshd → kullanıcının kabuğu (`-c`) yolu gerçek bir sunucuda
+  koşturulmadı. Virgül ve `=` kabukta özel değil, risk düşük; ama
+  gerçek sunucu testlerin göremediğini bulur (K-121). `kadran key add`
+  gelince test sunucusunda ölçülecek.
 - Linux'ta (WSL, root) dört paketin test ikilisi koşturuldu: geçti.
+  E2E Debian kapsayıcısında root OLMAYAN kullanıcıyla koşturuldu: geçti.
 - `scripts/mutate-authz.sh`: 25 mutant, 25'i yakalandı. Aralarında: akış
   önleyicisi kaydedilmiyor, GetApp/StreamLogs listeye ekleniyor, boş rol
   yönetici sayılıyor, desen denetlenmiyor, `-deploy` iki kez, konumsal

@@ -69,7 +69,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-chmod +x "$BIN/panelyd" "$BIN/kadran"
+chmod +x "$BIN/panelyd" "$BIN/kadran" "$BIN/panely-connect"
 
 echo "==> panelyd başlatılıyor (kullanıcı: $(id -un), grup: $(id -gn))"
 # Executor soketi kasten YOK: erişilemeyen executor'ın DOĞRULANAMADI olarak
@@ -149,6 +149,50 @@ out="$(printf '%s\n%s\n' \
 check "çıkış kodu" 0 "$code"
 contains "version yanıtı" '"protocol"' "$out"
 contains "status yanıtı gerçek sunucudan geldi" '"daemon_version"' "$out"
+
+echo
+echo "==> dağıtım anahtarı (K-131): gerçek panely-connect -deploy=e2eblog"
+# Birim testleri sunucuyu api.NewGRPCServer ile kuruyor; panelyd'nin
+# main.go'su o kurucuyu kullanmayı bıraksa hepsi yeşil kalırdı. Burada
+# GERÇEK panelyd, GERÇEK panely-connect (argv ayrıştırması dahil) ve
+# GERÇEK SO_PEERCRED birlikte sınanıyor.
+#
+# sshd yerine sahte bir `ssh`: zorlanmış komut gibi istemcinin argümanlarını
+# YOK SAYIP panely-connect'i sshd'nin vereceği ortamla çalıştırıyor.
+# authorized_keys'ten sshd ve kabuk üzerinden geçen yol burada ölçülmüyor.
+FAKE="$WORK/sahte-ssh"
+mkdir -p "$FAKE"
+cat > "$FAKE/ssh" <<EOF
+#!/usr/bin/env bash
+exec env SSH_CONNECTION="203.0.113.9 50000 198.51.100.1 22" \\
+    SSH_AUTH_INFO_0="publickey ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" \\
+    "$BIN/panely-connect" -socket "$SOCK" -deploy=e2eblog
+EOF
+chmod +x "$FAKE/ssh" "$BIN/panely-connect"
+SHA="$(printf 'a%.0s' $(seq 40))"
+dk() { PATH="$FAKE:$PATH" "$BIN/kadran" "$@"; }
+
+out="$(dk status panely-client@ci-e2e 2>&1)"; code=$?
+check "status reddedildi (çıkış kodu)" 1 "$code"
+contains "status: yetki reddi" "yalnızca dağıtım yapabilir" "$out"
+
+out="$(dk deploy e2eblog panely-client@ci-e2e 2>&1)"; code=$?
+check "-commit'siz dağıtım reddedildi" 1 "$code"
+contains "-commit ipucu" "-commit" "$out"
+
+out="$(dk deploy -commit "$SHA" baska panely-client@ci-e2e 2>&1)"; code=$?
+check "kapsam dışı dağıtım reddedildi" 1 "$code"
+contains "kapsam dışı: yetki reddi" "kapsamında değil" "$out"
+
+# Kapsam içi: yetkiyi geçip GERÇEK işleyiciye ulaşmalı. Executor yok, yani
+# derleme düşer; ölçülen, sürümün açılıp "derleme başlıyor"un gelmesi.
+out="$(dk deploy -commit "$SHA" e2eblog panely-client@ci-e2e 2>&1)"; code=$?
+contains "kapsam içi dağıtım işleyiciye ulaştı" "derleme başlıyor" "$out"
+lacks "kapsam içi: yetki reddi yok" "kapsamında değil" "$out"
+lacks "kapsam içi: rol reddi yok" "yalnızca dağıtım yapabilir" "$out"
+
+contains "ret panelyd günlüğünde" "yetki reddedildi" "$(cat "$LOG")"
+contains "günlükte rol" "rol=deploy" "$(cat "$LOG")"
 
 echo
 echo "==> soket izinleri"

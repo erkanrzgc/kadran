@@ -19,6 +19,7 @@ echo "==> linux/amd64 binary'leri derleniyor"
 mkdir -p "$OUT_DIR"
 GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/panelyd" ./cmd/panelyd
 GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/kadran" ./cmd/kadran
+GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/panely-connect" ./cmd/panely-connect
 
 # Windows yolunu WSL'in gördüğü yola çevir: C:\x\y -> /mnt/c/x/y
 wsl_path() {

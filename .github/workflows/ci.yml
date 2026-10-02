@@ -252,6 +252,7 @@ jobs:
           mkdir -p bin/linux
           go build -o bin/linux/panelyd ./cmd/panelyd
           go build -o bin/linux/kadran ./cmd/kadran
+          go build -o bin/linux/panely-connect ./cmd/panely-connect
 
       - name: E2E CLI kontrolleri
         run: bash scripts/e2e-cli-runner.sh bin/linux

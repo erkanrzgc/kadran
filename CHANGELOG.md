@@ -3,7 +3,25 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.3.0 — 2026-10-02
+
+Deploy-only keys for CI, an audit log that finally records which key acted, the
+rename to Kadran, and the move to Apache-2.0.
+
+### Upgrading from v0.2.0
+
+Run `kadran bootstrap` with the v0.3.0 files, as `root@server` or `-sudo user@server`.
+The workstation tool is now called `kadran`; the server side keeps its names.
+- The reverse proxy does **not** restart: its binary and units are unchanged.
+  Measured twice on the Debian 13 test server (K-131, K-134).
+- The post-install check now requires every line in
+  `~panely-client/.ssh/authorized_keys` to be forced to `panely-connect`. If you
+  added lines by hand, it reports them.
+- Deploy-only keys need the server and the CLI both at v0.3.0. An older
+  `panely-connect` does not know `-deploy` and refuses such a key (it never falls
+  back to admin rights).
+- To roll back, remove any deploy-key lines (`kadran key remove`), then run
+  `bootstrap` from the v0.2.0 tree. Never swap a binary on its own.
 
 ### License: Apache-2.0
 
@@ -90,13 +108,23 @@ repository moved to `github.com/erkanrzgc/kadran`; GitHub redirects the old addr
   - Measured with the real resolver: a wildcard record pointing elsewhere was
     refused, as were a nonexistent name and a name that points at the other
     server. The check refused all three before connecting (K-128).
-- **`panely domain check <domain> [target]`** diagnoses a missing certificate from
+- **`kadran domain check <domain> [target]`** diagnoses a missing certificate from
   your machine: DNS against the server's address, TCP to ports 80 and 443, the
   HTTP redirect on port 80, and the certificate on 443 (trusted, which issuer,
   days left). It reports every step instead of stopping at the first problem, and
   exits 1 if any step fails. An untrusted certificate is described (subject,
   issuer, names). When the DNS points elsewhere, it says that the remaining lines
   measured that other host (K-128).
+
+### Known gaps
+
+- Audit records written before the upgrade carry no key fingerprint; only new
+  records do (K-134).
+- A deploy key can deploy any commit the configured repository serves, including
+  commits from open pull requests: `panelyd` has no outbound network to check the
+  branch. Use the key only in workflows triggered by pushes (K-131).
+- The two audit chains are still verified separately, not against each other, and
+  there is still no secret store (K-123, K-126 drafts).
 
 ## v0.2.0 — 2026-10-01
 

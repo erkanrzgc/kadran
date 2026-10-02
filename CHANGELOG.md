@@ -12,6 +12,16 @@ were released under MIT and remain available under it. The change adds an explic
 patent grant and spells out that contributions come under the same terms; see
 `NOTICE` and K-132.
 
+- **Release files now carry license texts.** Earlier releases shipped bare
+  binaries; the server archive held four binaries and no license file. The
+  binaries embed Caddy and gRPC (Apache-2.0) and SQLite and protobuf (BSD), whose
+  licenses must travel with them. Each release now includes `LICENSE`, `NOTICE`
+  and `THIRD_PARTY_LICENSES.txt`, both inside the server archives and as separate
+  files. The third-party file is generated from `go list -deps` for every shipped
+  binary and platform, and the build fails if any module has no license file.
+- Release files are named `kadran-<version>-<os>-<arch>` and
+  `kadran-server-<version>-linux-<arch>.tar.gz` (were `panely-…`).
+
 ### Renamed to Kadran
 
 The project is now **Kadran** (from the Turkish word for a dial or gauge face). The

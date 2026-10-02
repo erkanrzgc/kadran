@@ -233,6 +233,45 @@ jobs:
           path: dist/
           retention-days: 14
 
+  # Yayın paketleme betiği HER push'ta uçtan uca koşuyor (K-132): yalnız
+  # yayın gününde koşan bir betik, bozulduğunu da o gün söylerdi. Paketin
+  # lisans dosyalarını gerçekten taşıdığı tar'ın İÇİNDEN okunuyor.
+  package:
+    name: Yayın paketi (lisanslar dahil)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+
+      - name: Paketle
+        run: bash scripts/package-release.sh "$RUNNER_TEMP/rel" "ci-${GITHUB_SHA::12}"
+
+      - name: Paketin içeriği
+        working-directory: ${{ runner.temp }}/rel
+        run: |
+          sha256sum -c --quiet SHA256SUMS
+          for arch in amd64 arm64; do
+            t="kadran-server-ci-${GITHUB_SHA::12}-linux-$arch.tar.gz"
+            listed="$(tar -tzf "$t" | sort)"
+            for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
+                     "bin/linux-$arch/panelyd" "bin/linux-$arch/panely-exec" \
+                     "bin/linux-$arch/panely-connect" "bin/linux-$arch/panely-caddy"; do
+              grep -qxF "$f" <<<"$listed" || { echo "::error::$t içinde $f yok" >&2; exit 1; }
+            done
+            # Tar'daki lisans dosyası boş ya da yanlış olmamalı: içinden oku.
+            tar -xzOf "$t" THIRD_PARTY_LICENSES.txt | grep -q '^github.com/caddyserver/caddy/v2 ' \
+              || { echo "::error::$t lisans dosyası Caddy'yi içermiyor" >&2; exit 1; }
+            tar -xzOf "$t" LICENSE | grep -q 'Apache License' \
+              || { echo "::error::$t LICENSE Apache-2.0 değil" >&2; exit 1; }
+          done
+          for p in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64.exe; do
+            test -s "kadran-ci-${GITHUB_SHA::12}-$p" || { echo "::error::kadran-$p yok" >&2; exit 1; }
+          done
+          ls -la
+
   e2e:
     name: Uçtan uca (gerçek panelyd)
     runs-on: ubuntu-latest

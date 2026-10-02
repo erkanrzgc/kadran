@@ -9265,3 +9265,39 @@ aşağıda.
 - Masaüstü `package.json`'a `"license": "Apache-2.0"`; kilit dosyasının
   kök kaydı elle güncellendi, `npm install --package-lock-only` aynı
   dosyayı üretti (ölçüldü).
+### Üçüncü taraf lisansları: yayın paketleri hiçbirini taşımıyordu
+
+- **Ölçüldü:** v0.2.0'ın `panely-server-v0.2.0-linux-amd64.tar.gz`
+  dosyası indirilip listelendi: yalnız dört ikili, tek bir lisans dosyası
+  yok. CLI ikilileri de tek başına yayınlanıyordu.
+- İkililer Caddy ve gRPC (Apache-2.0), SQLite ve protobuf (BSD) gömüyor;
+  o lisanslar ikiliyle birlikte metinlerinin verilmesini şart koşuyor.
+  Bu yükümlülük Kadran'ın kendi lisansından BAĞIMSIZ; MIT'le de vardı.
+- **`tools/thirdparty`:** yayınlanan her ikiliyi (`kadran` 5 platform;
+  `panelyd`, `panely-exec`, `panely-connect`, `panely-caddy` linux
+  amd64/arm64) `go list -deps` ile CGO'suz tarıyor. Her modülün KÖK
+  dizinindeki LICENSE/COPYING/NOTICE/PATENTS dosyalarını ve Go standart
+  kütüphanesinin lisansını tek dosyada topluyor.
+  - Lisansı bulunamayan modül HATA (fail closed). Bugün 148 modül +
+    standart kütüphane, hepsinde lisans var.
+  - Alt dizindeki LICENSE (vendor'lanmış başka kod) ve `license.go` gibi
+    kaynak dosyaları alınmıyor; replace uygulanmış modülün kendi dizini
+    okunuyor; indirilmemiş modül (Dir boş) hata.
+  - **Bulunan hata:** kök modül ile `build/caddy` aynı modülün farklı
+    sürümlerini kullanıyor (`golang.org/x/net` v0.58.0 ve v0.55.0).
+    Sıralama yalnız yola bakıyordu ve kararsızdı; iki sürümün sırası
+    haritanın dolaşımına kalıyordu. Determinizm testi şans eseri
+    geçmişti. Önce kırmızı test (50 tekrar), sonra yol + sürüm sırası.
+    Gerçek çıktı iki koşuda bayt bayt aynı (ölçüldü).
+  - Taranan hedeflerin derleme betikleriyle aynı kaldığını iki test
+    denetliyor (sunucu ikili listesi, CLI platform listesi).
+- **`scripts/package-release.sh` depoya alındı** (önceden yalnız
+  yerel bir betikti) ve yayın adları `kadran-…` oldu:
+  - sunucu tar'ı: `bin/linux-<arch>/` + LICENSE, NOTICE,
+    THIRD_PARTY_LICENSES.txt (ikililer 0755, lisanslar 0644);
+  - aynı üç dosya tek başına yayın dosyası olarak da (CLI ikilileri için);
+  - kirli ağaç, CRLF klon, dolu çıktı dizini ve var olan `bin/` reddediliyor;
+    betik hiçbir dizini kendisi silmiyor.
+- **CI'da "Yayın paketi" işi** betiği her push'ta uçtan uca koşuyor ve
+  tar'ın İÇİNDEN okuyor: dosyalar var mı, THIRD_PARTY Caddy'yi içeriyor
+  mu, LICENSE Apache mi.

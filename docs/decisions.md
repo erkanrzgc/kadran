@@ -8963,7 +8963,8 @@ sonra). CI'ın bulduğu iki şey:
 ## K-129 — Commit mesajıyla otomatik dağıtımı atlama (`[skip ci]`): K-125'e ek taslak
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK. K-125'e BAĞLI: otomatik dağıtım yoksa bu
+**Durum:** KAPANDI (2 Ekim): K-125 C ile kuralı GitHub uyguluyor, kod yok;
+tuzak ölçüldü ve belgelendi (aşağıda "Güncelleme"). İlk taslak: K-125'e BAĞLI: otomatik dağıtım yoksa bu
 kuralın uygulanacağı yer de yok.
 
 Kaynak: Coolify'ın `DetectsSkipDeployCommits` ve GitHub webhook işleyicisi
@@ -9065,6 +9066,29 @@ Kalan iki aday: "yalnız uca bak" ya da "hepsi işaretliyse atla".
 işaretli commit (bu paragraf, başlığında `[skip ci]`). Koşu oluşursa kural
 "hepsi işaretliyse atla"dır; oluşmazsa "yalnız uca bak"tır ve K-129'un A/B
 tuzağı GitHub'da gerçektir.
+
+**Sonuç (2 Ekim, 21:09 UTC):** ölçüm 2'nin push'u (`df4482c..8231e7f`:
+önce işaretsiz `909e3a0`, uçta işaretli `8231e7f`) 22 dakika boyunca HİÇ koşu oluşturmadı; ölçüm 1'de koşu 2 sn'de
+oluşmuştu. İkinci bir işaret: `df4482c`'nin süren koşusu iptal edilmedi.
+Yeni bir koşu olsaydı eşzamanlılık kuralı (`cancel-in-progress`) onu
+iptal ederdi. Kontrol grubu: bu kaydın kendisi işaretsiz bir uçla push
+ediliyor ve koşu oluşturması bekleniyor (oluşmazsa ölçüm geçersiz).
+
+**GitHub'ın kuralı: yalnız uca bakılıyor.** K-129'un A/B tuzağı GitHub
+Actions'ta GERÇEK: kod commit'i A ile işaretli belge commit'i B aynı
+push'ta giderse ve B uçtaysa iş akışı hiç tetiklenmez, A canlıya çıkmaz.
+Coolify'ın kuralı ("hepsi işaretliyse atla") GitHub'da yok.
+
+### Karar (K-125 C ile)
+
+- panelyd'de kod YOK: tetikleme GitHub'da, kural orada uygulanıyor.
+- `[skip deploy]` gibi bir işaret eklenmiyor: GitHub tanımıyor, iş akışında
+  taklit etmek ancak "ucu oku" olabilirdi, yani aynı tuzak.
+- Tuzak belgeleniyor (README, otomatik dağıtım bölümü): işaret yalnız
+  push'un TAMAMI belgeyse kullanılmalı; kod commit'i atlanan bir push'un
+  içinde kaldıysa düzeltme `workflow_dispatch` (Actions → Run workflow),
+  o uçtaki commit'i dağıtır.
+- Durum: KAPANDI.
 
 ## K-131 — Yalnızca dağıtım yapabilen anahtar: yetki ayrımı
 

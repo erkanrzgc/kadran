@@ -454,6 +454,13 @@ Deploy-only keys need a server upgraded past v0.2.0: an older `kadran-connect` d
 not know `-deploy`, refuses to start, and the key simply cannot connect. It fails
 closed and never falls back to admin rights.
 
+**Skipping a deploy.** GitHub does not start push-triggered workflows when the
+commit message contains `[skip ci]` (or `[ci skip]`, `[no ci]`, `[skip actions]`,
+`[actions skip]`). Only the **last** commit of the push counts. If a push carries a
+code commit followed by a `[skip ci]` commit, the code is not deployed (measured,
+K-129). Use the marker only when the whole push is documentation. Otherwise deploy the
+pushed head by hand: Actions → Deploy → Run workflow.
+
 > **Design note.** An earlier draft allowed unix-socket forwarding via
 > `direct-streamlocal`. The forced command is both simpler and stricter: socket
 > forwarding requires the `port-forwarding` permission, which would let the client

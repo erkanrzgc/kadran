@@ -70,6 +70,20 @@ func parseSSHHostname(out []byte) (string, error) {
 	return "", errors.New("ssh -G çıktısında hostname yok")
 }
 
+// serverHostFor, hedefin sunucu adını döndürür: SSH hedefinde ssh
+// yapılandırmasından çözülmüş ad, yerel hedefte boş dize. ok=false: hedef
+// ayrıştırılamadı.
+func (c *cli) serverHostFor(ctx context.Context, rawTarget string) (string, bool) {
+	target, err := client.ParseTarget(rawTarget)
+	if err != nil {
+		return "", false
+	}
+	if target.IsLocal() {
+		return "", true
+	}
+	return c.resolveSSHHost(ctx, target.SSHHost), true
+}
+
 // checkDomain, `-domain` verildiğinde, sunucuya bağlanmadan ÖNCE alan
 // adının DNS kaydını sunucunun adresiyle karşılaştırır (K-128). Rapor
 // stderr'e gider: stdout `-json` için temiz kalmalı. Açıkça yanlış DNS'te
@@ -82,15 +96,11 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		fmt.Fprintf(c.stderr, "panely: DNS önkontrolü atlandı (-%s)\n", skipDNSCheckFlag)
 		return nil
 	}
-	target, err := client.ParseTarget(rawTarget)
-	if err != nil {
+	server, ok := c.serverHostFor(ctx, rawTarget)
+	if !ok {
 		// Denetlenecek sunucu yok; connect aynı hatayı kendi mesajıyla
 		// hemen ardından veriyor.
-		return nil //nolint:nilerr // bilerek: hedef hatasını connect bildiriyor
-	}
-	server := ""
-	if !target.IsLocal() {
-		server = c.resolveSSHHost(ctx, target.SSHHost)
+		return nil
 	}
 
 	rep := domaincheck.Check(ctx, c.dnsResolver(), domain, server)

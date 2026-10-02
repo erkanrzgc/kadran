@@ -22,6 +22,13 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   - Measured with the real resolver: a wildcard record pointing elsewhere was
     refused, as were a nonexistent name and a name that points at the other
     server. The check refused all three before connecting (K-128).
+- **`panely domain check <domain> [target]`** diagnoses a missing certificate from
+  your machine: DNS against the server's address, TCP to ports 80 and 443, the
+  HTTP redirect on port 80, and the certificate on 443 (trusted, which issuer,
+  days left). It reports every step instead of stopping at the first problem, and
+  exits 1 if any step fails. An untrusted certificate is described (subject,
+  issuer, names). When the DNS points elsewhere, it says that the remaining lines
+  measured that other host (K-128).
 
 ## v0.2.0 — 2026-10-01
 

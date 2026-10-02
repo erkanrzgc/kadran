@@ -181,6 +181,11 @@ server (K-128).
 - Behind a proxy such as Cloudflare the records show the proxy, not the server.
   Pass `-skip-dns-check` in that case.
 
+If a certificate still doesn't arrive, `panely domain check site.example.com
+panely-client@your-server` checks each step from your machine and exits non-zero on
+a problem. When the DNS points elsewhere, it says that the port and certificate
+lines describe that other host.
+
 > Flags go **after the command and before positional arguments** (Go's `flag`
 > package stops at the first positional one): `panely app update -replicas 2 site host`.
 
@@ -196,6 +201,7 @@ server (K-128).
 | `prune [-dry-run] <app>\|-all` | Remove old releases' containers |
 | `alarms` | List active failure conditions |
 | `backup create\|list` | Database snapshots |
+| `domain check <domain>` | Diagnose a missing certificate: DNS, ports 80/443, the HTTP redirect and the certificate, checked from your machine |
 | `audit list\|verify` | Read and verify both audit chains |
 | `bootstrap root@server` | One-time server install |
 

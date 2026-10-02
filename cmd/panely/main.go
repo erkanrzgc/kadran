@@ -14,10 +14,12 @@ package main
 
 import (
 	"context"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -64,6 +66,10 @@ type cli struct {
 	resolver    domaincheck.Resolver
 	sshHostname func(ctx context.Context, host string) (string, error)
 	dial        func(ctx context.Context, rawTarget string) (*client.Client, *panelyv1.PingResponse, error)
+	// `domain check`: alan adının portlarına bağlanma ve güvenilen kökler
+	// (nil: sistemin kökleri).
+	dialNet  func(ctx context.Context, network, addr string) (net.Conn, error)
+	tlsRoots *x509.CertPool
 }
 
 func main() {
@@ -93,6 +99,7 @@ func commands() []command {
 		{"prune", "[-dry-run] <uygulama>|-all [hedef]", "eski sürümlerin konteynerlerini kaldırır", (*cli).runPrune},
 		{"alarms", "[hedef]", "etkin arıza koşullarını listeler", (*cli).runAlarms},
 		{"backup", "<create|list> [hedef]", "veritabanı yedeklerini alır ve listeler", (*cli).runBackup},
+		{"domain", "check <alan-adı> [hedef]", "alan adının DNS, port ve sertifikasını denetler", (*cli).runDomain},
 		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
 		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
 		{"bootstrap", "root@sunucu | -sudo kullanıcı@sunucu", "sunucuyu kurar ya da yükseltir", (*cli).runBootstrap},

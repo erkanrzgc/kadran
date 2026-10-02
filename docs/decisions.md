@@ -8654,8 +8654,8 @@ Ardından yayın açıldı. GitHub'dan geri indirilen 7 dosyanın hepsi
 ## K-128 — Alan adı önkontrolü
 
 **Tarih:** 1 Ekim 2026 (taslak), 2 Ekim 2026 (A uygulandı)
-**Durum:** A UYGULANDI ve gerçek çözücüyle ölçüldü (aşağıda "Uygulandı").
-B (`panely domain check`) sırada. C yapılmadı.
+**Durum:** A ve B UYGULANDI, gerçek çözücü ve gerçek alan adlarıyla
+ölçüldü (aşağıda "Uygulandı"). C yapılmadı.
 
 Kaynak: Coolify'ın `CheckDomainDns` eylemi (1 Ekim'de okundu, HEAD
 `0ed423a`). Fikir alınıyor, kod değil (Apache-2.0, bkz. kopya kararı).
@@ -8824,6 +8824,45 @@ türetiliyor. Betik çıkışta her dosyanın yedeğiyle aynı olduğunu ve iki
 dosyanın aynı içeriğe düşmediğini doğruluyor. Paket dosyası elle geri
 yazıldı; testler, lint ve mutasyon koşusu sonrası güvenli kopyayla
 karşılaştırma bunu doğruladı.
+
+### Uygulandı: B — `panely domain check` (2 Ekim)
+
+- Kullanıcının makinesinden, sırayla ve ilk hatada DURMADAN:
+  - DNS, önkontrolle aynı kurallar;
+  - 80 ve 443'e TCP;
+  - 80'de HTTP yanıtı (yönlendirme izlenmez, yanıtın kendisi okunur);
+  - 443'te sertifika: güvenilir mi, veren, kalan gün.
+- Bir adım düşerse çıkış 1. RPC yok.
+- 7 günden az kalan sertifika ✗: otomatik yenilenen bir sertifikada bu,
+  yenilemenin işlemediğini gösteriyor.
+- Güvenilmeyen sertifika TARİF ediliyor (konu, veren, adlar). Bunun için
+  ikinci bir el sıkışma doğrulamasız yapılıyor; o bağlantı üzerinden
+  hiçbir veri gönderilmiyor.
+- **Ölçümle bulunan yanıltıcılık:** joker kayıtlı adda port ve sertifika
+  satırları ✓ çıktı. Sunucu Vercel'di, sertifika da Vercel'in Let's
+  Encrypt sertifikası (YR2); bizim sunucumuz değildi. DNS ✗ olduğunda
+  komut artık "aşağıdakiler alan adının şu an gösterdiği sunucuya
+  yapıldı, bu sunucuya değil" diyor.
+- **Gerçek ölçüm (salt okuma):**
+  - canlının adı kendi hedefiyle: beş satır ✓, sertifika Let's Encrypt
+    (YE1), 40 gün kaldı;
+  - GCP'nin sslip adı: beş satır ✓, 88 gün;
+  - canlının adı GCP hedefiyle: DNS ✗, not basıldı, çıkış 1;
+  - joker kayıtlı ad: DNS ✗, çıkış 1.
+- **Test:** gerçek yerel TLS ve HTTP sunucuları (httptest), sahte DNS,
+  bağlantı kancası. Senaryolar:
+  - hepsi iyi;
+  - güvenilmeyen sertifika;
+  - kapalı 80 (diğer denetimler yine koşuyor);
+  - yanlış DNS ve not;
+  - gerçek, 3 günlük bir sertifikayla bitmek üzere uyarısı;
+  - kullanım hatası.
+- `mutate-domaincheck.sh` +5, toplam **19/19**:
+  - sorun çıkış koduna yansımıyor;
+  - sertifika doğrulanmadan kabul ediliyor;
+  - bitiş eşiği yok;
+  - kapalı port yalnızca uyarıyor;
+  - not basılmıyor.
 
 ## K-129 — Commit mesajıyla otomatik dağıtımı atlama (`[skip ci]`): K-125'e ek taslak
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Alan adı önkontrolünü koruyan testlerin GERÇEKTEN bir şey koruduğunu
-# sınar (K-128).
+# sınar (K-128: önkontrol ve `panely domain check`).
 #
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
@@ -20,9 +20,10 @@ DC=internal/domaincheck/domaincheck.go
 CLI=cmd/panely/domaincheck.go
 APP=cmd/panely/app.go
 UPD=cmd/panely/appupdate.go
+DOM=cmd/panely/domain.go
 PKGS=(./internal/domaincheck/ ./cmd/panely/)
-TESTS='TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname'
-FILES=("$DC" "$CLI" "$APP" "$UPD")
+TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname'
+FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM")
 
 # ⚠ Yedek adı TAM YOLDAN türetiliyor: internal/domaincheck/domaincheck.go
 # ile cmd/panely/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
@@ -129,7 +130,7 @@ mutate_in "$CLI" "-skip-dns-check yok sayılıyor" \
     "s=s.replace('\tif skip {','\tif false {',1)"
 
 mutate_in "$CLI" "ssh takma adı çözülmüyor" \
-    "s=s.replace('server = c.resolveSSHHost(ctx, target.SSHHost)','server = target.SSHHost',1)"
+    "s=s.replace('return c.resolveSSHHost(ctx, target.SSHHost), true','return target.SSHHost, true',1)"
 
 # Rapor stdout'a giderse -json çıktısı bozulur.
 mutate_in "$CLI" "uyarı stdout'a yazılıyor" \
@@ -144,6 +145,26 @@ mutate_in "$APP" "app create denetlemiyor" \
 
 mutate_in "$UPD" "app update denetlemiyor" \
     "s=s.replace('\tif req.Domain != nil {\n\t\tif err := c.checkDomain','\tif req.Domain != nil && false {\n\t\tif err := c.checkDomain',1)"
+
+echo "== panely domain check =="
+
+# Sorun bulunsa da çıkış 0 olursa betikler ve CI tanıyı göremez.
+mutate_in "$DOM" "sorun çıkış koduna yansımıyor" \
+    "s=s.replace('\tr.failed = true\n','',1)"
+
+mutate_in "$DOM" "sertifika doğrulanmadan kabul ediliyor" \
+    "s=s.replace('leaf, err := c.tlsLeaf(ctx, domain, false)','leaf, err := c.tlsLeaf(ctx, domain, true)',1)"
+
+mutate_in "$DOM" "bitmek üzere olan sertifika fark edilmiyor" \
+    "s=s.replace('if days < certExpiryFailDays {','if days < -1 {',1)"
+
+# Kapalı 80 (K-121'deki GCP güvenlik duvarı) yalnızca uyarı olurdu.
+mutate_in "$DOM" "kapalı port yalnızca uyarıyor" \
+    "s=s.replace('r.fail(p.port+\"/tcp\"','r.warn(p.port+\"/tcp\"',1)"
+
+# Yanlış DNS'te sonraki ✓ satırları başka sunucuyu ölçüyor; söylenmeli.
+mutate_in "$DOM" "başka sunucu ölçüldüğü söylenmiyor" \
+    "s=s.replace('fs.Arg(1)) == domaincheck.Stop {','fs.Arg(1)) == domaincheck.Verdict(99) {',1)"
 
 restore
 # Geri yükleme kanıtlanıyor: her dosya kendi yedeğiyle bayt bayt aynı ve

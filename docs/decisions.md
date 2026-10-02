@@ -9055,6 +9055,12 @@ belge commit'i, aynı push'taki kod commit'lerinin dağıtımını da düşürü
 Hangi kuralın geçerli olduğu bu depoda iki push'la ölçülüyor (yalnız
 belge commit'leriyle; atlanan bir CI sonraki push'ta koşar).
 
+**Ölçüm 1 (push `de4171c..df4482c`):** önce işaretli commit (`4bc25ab`,
+başlığında `[skip ci]`), uçta işaretsiz commit (`df4482c`). Koşu OLUŞTU
+(`37062569684`, push'tan 2 sn sonra). Yani "herhangi bir commit işaretliyse
+atla" kuralı bugün geçerli değil; changelog'un cümlesi eski ya da yanlış.
+Kalan iki aday: "yalnız uca bak" ya da "hepsi işaretliyse atla".
+
 ## K-131 — Yalnızca dağıtım yapabilen anahtar: yetki ayrımı
 
 **Tarih:** 2 Ekim 2026

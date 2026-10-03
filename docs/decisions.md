@@ -9885,3 +9885,9 @@ düzlemi eski vekil sunarken konteynerleri kuruyor; iyileştirmenin son adımı
 (vekile rota yazmak) yeni vekil henüz olmadığı için düşüyor, 2 sn sonraki
 turda "iyileşti" yazılıyor ve rotalar vekil değişince yazılıyor. Hata değil,
 göçün sırasının sonucu.
+
+Göçten sonra uzak yedek elle bir kez koşturuldu (R2, yeni rclone hedefi
+`kadran-offsite`): `success`, "yüklendi=30 atlandı=0 başarısız=0" (24
+veritabanı + 6 hacim arşivi, `kadran-` adıyla, yeni kilit kuralının
+kapsamında); 409 yok. Dış nabız yeni birimle atılıyor (`son-nabiz` 19:37:15,
+"nabız atılamadı" 0): Worker sahte "NABIZ YOK" yazmaz.

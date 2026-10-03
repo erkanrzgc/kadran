@@ -107,6 +107,20 @@ mutate_in "$GOC" "goc_uzak_yedek offsite.conf'u çevirmiyor" \
 mutate_in "$GOC" "goc_uzak_yedek iki hedef birden varken sürüyor" \
     "s=s.replace('        die \"göç: rclone.conf\\'ta hem','        : \"x',1)"
 
+echo "== Güvenlik: depo beyaz listesi (K-056) =="
+
+mutate_in "$GOC" "drop-in yeni birime taşınmıyor" \
+    "s=s.replace('        goc_dropin_tasi \"\$b\"\n','',1)"
+
+mutate_in "$GOC" "drop-in içindeki eski adlar çevrilmiyor" \
+    "s=s.replace('        sed \\'s/panely/kadran/g\\' \"\$f\" > \"\$hedef\"','        cat \"\$f\" > \"\$hedef\"',1)"
+
+mutate_in "$GOC" "beyaz liste değerinin yalnız ilki okunuyor" \
+    "s=s.replace('{ grep -oE -- \\'--allow-repo[ =][^ ;]*\\' || true; }','{ grep -oE -- \\'--allow-repo[ =][^ ;]*\\' || true; } | head -1',1)"
+
+mutate_in "$GOC" "goc_gerekli makinenin gerçek kullanıcılarına bakıyor" \
+    "s=s.replace('    if [ -n \"\$KOK\" ]; then\n        grep -q','    if false; then\n        grep -q',1)"
+
 echo "== Paket =="
 
 mutate_in "$BOOT" "göçün okuduğu bir birim pakette yok" \

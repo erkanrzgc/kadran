@@ -101,11 +101,45 @@ dene "iki hedef birden varsa DURUYOR, dosyalar değişmiyor" \
     "! bash -c '$(on u3) goc_uzak_yedek \$KOK'; grep -qx 'OFFSITE_REMOTE=panely-offsite:panely-yedek' '$KOK/u3/offsite.conf'"
 
 echo
+echo "== goc_dropin_tasi: operatör drop-in'leri (K-056 beyaz listesi) =="
+DROPIN='[Service]
+ExecStart=
+ExecStart=/usr/local/lib/panely/panely-exec --socket /run/panely-exec/exec.sock --journal /var/lib/panely-exec/exec-audit.log --allow-user panely --owner-group panely --allow-repo erkanrzgc/portfolio,crccheck/docker-hello-world'
+k="$(kok d1)"; mkdir -p "$k/etc/systemd/system/panely-exec.service.d"
+printf '%s\n' "$DROPIN" > "$k/etc/systemd/system/panely-exec.service.d/10-allow-repo.conf"
+dene "drop-in yeni birim adına kopyalanıyor, yollar ve kullanıcılar çevriliyor, beyaz liste aynen kalıyor" \
+    "$(on d1) goc_dropin_tasi panely-exec.service; f=\$KOK/etc/systemd/system/kadran-exec.service.d/10-allow-repo.conf; grep -qxF 'ExecStart=/usr/local/lib/kadran/kadran-exec --socket /run/kadran-exec/exec.sock --journal /var/lib/kadran-exec/exec-audit.log --allow-user kadran --owner-group kadran --allow-repo erkanrzgc/portfolio,crccheck/docker-hello-world' \$f && ! grep -q panely \$f"
+dene "eski drop-in yerinde (saklamak goc_birimleri_kaldir'ın işi)" \
+    "[ -f '$k/etc/systemd/system/panely-exec.service.d/10-allow-repo.conf' ]"
+k="$(kok d2)"; mkdir -p "$k/etc/systemd/system/panely-exec.service.d" "$k/etc/systemd/system/kadran-exec.service.d"
+printf '%s\n' "$DROPIN" > "$k/etc/systemd/system/panely-exec.service.d/10-allow-repo.conf"
+echo elle-duzeltildi > "$k/etc/systemd/system/kadran-exec.service.d/10-allow-repo.conf"
+dene "hedefte aynı adlı dosya varsa üstüne yazılmıyor (yeniden koşu)" \
+    "$(on d2) goc_dropin_tasi panely-exec.service; [ \"\$(cat \$KOK/etc/systemd/system/kadran-exec.service.d/10-allow-repo.conf)\" = elle-duzeltildi ]"
+k="$(kok d3)"; mkdir -p "$k/etc/systemd/system/panely-exec.service.d"
+printf '%s\n' "$DROPIN" > "$k/etc/systemd/system/panely-exec.service.d/10-allow-repo.conf"
+dene "goc_birimleri_kaldir: drop-in hem yeniye geçiyor hem eskisi geri dönüş için saklanıyor" \
+    "$(on d3) goc_birimleri_kaldir panely-exec.service; [ -f \$KOK/etc/systemd/system/kadran-exec.service.d/10-allow-repo.conf ] && [ -f \$KOK/var/lib/kadran-goc/eski-birimler/panely-exec.service.d/10-allow-repo.conf ] && [ ! -e \$KOK/etc/systemd/system/panely-exec.service.d ]"
+
+echo
+echo "== goc_izinli_depo: etkin beyaz liste =="
+GOSTER='ExecStart={ path=/usr/local/lib/panely/panely-exec ; argv[]=/usr/local/lib/panely/panely-exec --socket /run/panely-exec/exec.sock --allow-user panely --allow-repo erkanrzgc/portfolio,crccheck/docker-hello-world ; ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; pid=0 ; code=(null) ; status=0/0 }'
+k="$(kok i1)"
+dene "systemctl show çıktısından değer çıkıyor" \
+    "$(on i1) [ \"\$(goc_izinli_depo '$GOSTER')\" = '--allow-repo erkanrzgc/portfolio,crccheck/docker-hello-world' ]"
+dene "beyaz liste yoksa boş, kurulum DURMUYOR" \
+    "$(on i1) x=\"\$(goc_izinli_depo 'ExecStart={ argv[]=/x --socket /y ; }')\"; [ -z \"\$x\" ]"
+dene "= biçimi ve birden çok bayrak yakalanıyor" \
+    "$(on i1) [ \"\$(goc_izinli_depo 'argv[]=/x --allow-repo=a/b --allow-repo c/d ;')\" = \"\$(printf -- '--allow-repo=a/b\n--allow-repo c/d')\" ]"
+
+echo
 echo "== goc_gerekli =="
 k="$(kok g1)"
 dene "temiz kökte göç GEREKMİYOR" "! bash -c '$(on g1) goc_gerekli'"
 k="$(kok g2)"; mkdir -p "$k/usr/local/lib/panely"
 dene "eski ikili dizini göçü tetikliyor" "$(on g2) goc_gerekli"
+k="$(kok g4)"; mkdir -p "$k/etc"; echo 'panely-client:x:996:987::/var/lib/panely-client:/bin/sh' > "$k/etc/passwd"
+dene "yalnız eski kullanıcı kalmışsa da göç tetikleniyor" "$(on g4) goc_gerekli"
 k="$(kok g3)"; mkdir -p "$k/var/lib/kadran-goc"; touch "$k/var/lib/kadran-goc/asama1"
 dene "yarıda kalmış göç (asama1 var, tamam yok) yeniden tetikliyor" "$(on g3) goc_gerekli"
 touch "$k/var/lib/kadran-goc/tamam"

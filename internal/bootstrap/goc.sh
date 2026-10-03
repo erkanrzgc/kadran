@@ -48,7 +48,7 @@ goc_gerekli() {
     [ -e "$GOC_DIR/asama1" ] && [ ! -e "$GOC_DIR/tamam" ] && return 0
     local ad yol
     for ad in panely panely-client panely-caddy; do
-        getent passwd "$ad" >/dev/null 2>&1 && return 0
+        goc_kullanici_var "$ad" && return 0
     done
     for yol in "$ESKI_LIB" "$KOK/var/lib/panely" "$KOK/etc/panely" \
                "$KOK/etc/systemd/system/panelyd.service" \
@@ -56,6 +56,17 @@ goc_gerekli() {
         [ -e "$yol" ] && return 0
     done
     return 1
+}
+
+# goc_kullanici_var <ad> — kullanıcı var mı. Sahte kökte (testler) kökün
+# /etc/passwd'ına bakar: testi koşturan makinenin GERÇEK kullanıcıları
+# (ör. eski kurulumlu bir sunucu) sonucu karıştırmasın.
+goc_kullanici_var() {
+    if [ -n "$KOK" ]; then
+        grep -q "^$1:" "$KOK/etc/passwd" 2>/dev/null
+    else
+        getent passwd "$1" >/dev/null 2>&1
+    fi
 }
 
 # goc_tasi <eski> <yeni> — eskiyi yeniye taşır. Yeni yalnızca BOŞ bir
@@ -152,9 +163,60 @@ goc_birimleri_kaldir() {
     local b
     install -d -m 0700 "$GOC_DIR/eski-birimler"
     for b in "$@"; do
+        goc_dropin_tasi "$b"
         goc_tasi "$KOK/etc/systemd/system/$b" "$GOC_DIR/eski-birimler/$b"
         goc_tasi "$KOK/etc/systemd/system/$b.d" "$GOC_DIR/eski-birimler/$b.d"
     done
+}
+
+# goc_dropin_tasi <eski birim> — operatörün drop-in'lerini (`systemctl edit`)
+# yeni birim adına KOPYALAR; içerikteki eski adlar (yollar, kullanıcılar,
+# ikililer) yeniye çevrilir. Eski dizin geri dönüş için goc_birimleri_kaldir
+# tarafından saklanır.
+#
+# Neden şart: canlıda kadran-exec'in depo beyaz listesi (--allow-repo,
+# K-056) bir drop-in'de. Taşınmasaydı yeni executor kısıtsız açılırdı:
+# sessiz bir güvenlik gerilemesi. goc_izinli_depo_dogrula bunu ayrıca
+# denetler. Hedefte aynı adlı dosya varsa dokunulmaz (yeniden koşu).
+goc_dropin_tasi() {
+    local eski="$1" yeni d f hedef
+    d="$KOK/etc/systemd/system/$eski.d"
+    [ -d "$d" ] || return 0
+    yeni="${eski//panely/kadran}"
+    install -d -m 0755 "$KOK/etc/systemd/system/$yeni.d"
+    for f in "$d"/*; do
+        [ -f "$f" ] || continue
+        hedef="$KOK/etc/systemd/system/$yeni.d/${f##*/}"
+        [ -e "$hedef" ] && continue
+        sed 's/panely/kadran/g' "$f" > "$hedef"
+        chmod --reference="$f" "$hedef"
+        say "drop-in taşındı, eski adlar çevrildi (gözden geçirin): $yeni.d/${f##*/}"
+    done
+}
+
+# goc_izinli_depo <systemctl show -p ExecStart çıktısı> — etkin komut
+# satırındaki her `--allow-repo` değerini satır satır yazar (yoksa boş).
+# `--allow-repo x` ve `--allow-repo=x` ikisi de yakalanır.
+goc_izinli_depo() {
+    printf '%s\n' "$1" | { grep -oE -- '--allow-repo[ =][^ ;]*' || true; }
+}
+
+# goc_izinli_depo_dogrula — yeni executor'ın etkin depo beyaz listesi,
+# göçten önceki executor'ınkiyle AYNI olmalı. Değilse DURUR: yeni
+# executor henüz başlamadı, site eskiyle açık.
+goc_izinli_depo_dogrula() {
+    local once simdi
+    [ -e "$GOC_DIR/izinli-depo" ] || return 0
+    once="$(cat "$GOC_DIR/izinli-depo")"
+    simdi="$(goc_izinli_depo "$(systemctl show -p ExecStart kadran-exec.service)")"
+    if [ "$once" != "$simdi" ]; then
+        die "göç: executor'ın depo beyaz listesi değişti.
+  önce : ${once:-<yok>}
+  sonra: ${simdi:-<yok>}
+Bu bir güvenlik gerilemesi olurdu; kadran-exec BAŞLATILMADI.
+Drop-in'e bakın: systemctl cat kadran-exec.service"
+    fi
+    say "depo beyaz listesi korundu: ${simdi:-<yok>}"
 }
 
 # goc_1 — kontrol düzlemini durdurur ve ters vekil DIŞINDAKİ her şeyi yeni
@@ -203,6 +265,13 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
         n=$((n + 1))
     done < <(docker images --filter reference='panely/*' --format '{{.Repository}}:{{.Tag}}')
     say "$n imaj kadran/ adıyla etiketlendi"
+
+    # Eski executor'ın ETKİN depo beyaz listesi (drop-in dahil); yenisi
+    # başlamadan aynısı istenir (goc_izinli_depo_dogrula).
+    if [ ! -e "$GOC_DIR/izinli-depo" ] && [ -e "$KOK/etc/systemd/system/panely-exec.service" ]; then
+        goc_izinli_depo "$(systemctl show -p ExecStart panely-exec.service)" > "$GOC_DIR/izinli-depo.yeni"
+        mv "$GOC_DIR/izinli-depo.yeni" "$GOC_DIR/izinli-depo"
+    fi
 
     # Kontrol düzlemi ve zamanlayıcılar durur. Ters vekil ÇALIŞMAYA DEVAM
     # eder; konteynerler zaten kontrol düzleminden bağımsız.

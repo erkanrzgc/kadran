@@ -528,6 +528,11 @@ say "zorlanmış komut ve ExposeAuthInfo yapılandırıldı"
 
 step "Servisler"
 
+# Göçte executor BAŞLAMADAN: depo beyaz listesi eskisiyle aynı mı (K-136).
+if [ "$GOC" -eq 1 ]; then
+    goc_izinli_depo_dogrula
+fi
+
 systemctl enable kadran-exec.service kadrand.service
 
 # Yeniden kurulum aynı zamanda YÜKSELTME yolu. `enable --now` ÇALIŞAN

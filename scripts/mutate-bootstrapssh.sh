@@ -234,7 +234,7 @@ mutate "ServerAliveInterval düştü" \
 echo "== Paket belirlenimci (K-127: yarım yükleme yalnızca aynı pakete devam eder) =="
 
 mutate "birim sırası rastgele" \
-    "s=s.replace('slices.Sorted(maps.Keys(unitFiles))','slices.Collect(maps.Keys(unitFiles))',1)"
+    "s=s.replace('slices.Sorted(maps.Keys(files))','slices.Collect(maps.Keys(files))',1)"
 
 mutate "dosya zamanı sabit değil" \
     "s=s.replace('ModTime: archiveModTime,','ModTime: time.Unix(time.Now().UnixNano()%1000000, 0),',1)"

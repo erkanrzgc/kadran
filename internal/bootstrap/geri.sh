@@ -37,7 +37,11 @@ while read -r imaj; do
     docker tag "$imaj" "panely/${imaj#kadran/}"
     n=$((n + 1))
 done < <(docker images --filter reference='kadran/*' --format '{{.Repository}}:{{.Tag}}')
-say "$n imaj panely/ adıyla etiketlendi"
+# Yeni adlı etiketler kalkar (imajın kendisi panely/ etiketiyle duruyor;
+# `rmi` yalnızca etiketi siler). GCP provasında kalıntı olarak görüldü.
+docker images --filter reference='kadran/*' --format '{{.Repository}}:{{.Tag}}' |
+    xargs -r docker rmi >/dev/null
+say "$n imaj panely/ adıyla etiketlendi, kadran/ etiketleri kaldırıldı"
 
 # Her şey durur; ters vekil dahil (KESİNTİ burada başlar).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \

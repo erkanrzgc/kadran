@@ -9795,7 +9795,7 @@ geçti. Executor'ın beyaz listesiz başlayabileceği bir yol bulunmadı. Yenide
 |---|---|---|
 | 6 | `goc_temizle` doğrulamadan ÖNCE koşuyordu ve borularının biri (kullanımdaki ağ/imaj) `set -e` altında kurulumu düşürürdü; kalıntı durduğu için sonraki HER kurulum aynı yerde ölürdü, 17 kontrol hiç koşmazdı. | Düzeltildi: temizlik doğrulama geçtikten SONRA (düşerse eski konteynerler, yani son çalışan sürüm, yerinde kalır); her adım uyarıyla sürer. Sahte `docker` ile senaryo + iki mutant. |
 | 4 | `goc_uzak_yedek`'in iki sed'i arasında kesilen koşu (rclone.conf çevrilmiş, offsite.conf değil) her yeniden koşuda DURUYORDU; o noktada eski kontrol düzlemi çoktan durmuş olurdu. | Düzeltildi: her dosya kendi durumuna bakıyor; ikisi birden varsa ya da hiçbiri yoksa durur. Canlıda uzak yedek kurulu: bu yol gerçek. |
-| 2 | `goc_yerinde_sed` sabit adlı `$f.goc` kullanıyordu; authorized_keys kadran-client'ın `.ssh`'ında, o kullanıcı oraya bir bağ koyup root'a istediği dosyanın üstüne yazdırabiliyordu (yeniden üretildi: kurbanın içeriği değişti, sahibi istemci uid'i oldu). | Düzeltildi: dosya bağsa durur, kopya `mktemp` (O_EXCL, tahmin edilemez ad), `mv -T`. Kalan dar pencere (dizinin sahibi mktemp ile sed arasında kopyayı değiştirebilir) KABUL: kapatmak kopyayı o kullanıcı olarak yazmayı ister; kadran-client'ın tek yetkisi zorlanmış komut. `install.sh`'taki `yonetici_satiri_yaz` aynı sınıftan (v0.3.0'dan beri), ayrı iş. |
+| 2 | `goc_yerinde_sed` sabit adlı `$f.goc` kullanıyordu; authorized_keys kadran-client'ın `.ssh`'ında, o kullanıcı oraya bir bağ koyup root'a istediği dosyanın üstüne yazdırabiliyordu (yeniden üretildi: kurbanın içeriği değişti, sahibi istemci uid'i oldu). | Düzeltildi: dosya bağsa durur, kopya `mktemp` (O_EXCL, tahmin edilemez ad), `mv -T`. Kalan dar pencere (dizinin sahibi mktemp ile sed arasında kopyayı değiştirebilir) KABUL: kapatmak kopyayı o kullanıcı olarak yazmayı ister; kadran-client'ın tek yetkisi zorlanmış komut. `install.sh`'taki `yonetici_satiri_yaz` aynı sınıftan (v0.3.0'dan beri), ayrı iş: K-137. |
 | 3 | Kopya umask'la 0644 açılıyordu: `rclone.conf`'un anahtarı (0640, `/etc/kadran` 0755) bir an kadran-caddy'ye de okunurdu. | Düzeltildi (`mktemp` 0600 doğuruyor); senaryo `chown` anındaki izni ölçüyor. |
 | 8 | `goc_onek` bağlı bir `backups` dizinini izliyordu; `backups` daemon'un yazabildiği `/var/lib/kadran` içinde (K-100'ün sınıfı). | Düzeltildi: dizin bağsa durur. |
 | 5 | `systemctl show` okunamazsa boş çıktı "beyaz liste yok" sayılıyordu. | Düzeltildi: komut satırı (`argv[]=`) yoksa durur. Beyaz listede "panely" geçen bir depo `s/panely/kadran/g` ile değişir ve karşılaştırma durdurur (güvenli); canlıda yok (`erkanrzgc/portfolio,crccheck/docker-hello-world`, ölçüldü). |
@@ -9814,3 +9814,125 @@ senaryo ve `mutate-goc.sh`'ta mutant.
 arkasına). Canlıdan önce GCP'de yayın dosyalarıyla yeniden prova edilir:
 v0.4.0'a yükselt → yeni `kadran-geri-donus.sh` ile v0.3.0'a dön → v0.4.0
 yayınıyla göç. Böylece canlıya giden paket prova edilen paket olur.
+
+## K-137 — Kurulum, kadran-client'ın `.ssh`'ında bağları izliyordu
+
+**Tarih:** 3 Ekim 2026
+**Durum:** DÜZELTİLDİ (kod; `kadran-rename` üstüne ayrı dal). v0.4.0 ile gelir.
+
+### Nasıl bulundu
+
+K-136'nın güvenlik incelemesinin 2. bulgusu: `goc_yerinde_sed` sabit adlı
+bir kopyayla kadran-client'ın `.ssh`'ına yazıyordu. Aynı kalıp `install.sh`'ın
+`yonetici_satiri_yaz`'ında da vardı ve "ayrı iş" diye bırakılmıştı. Bu kayıt
+o iş.
+
+### Neden önemli
+
+`/var/lib/kadran-client` `useradd --create-home` ile kuruluyor: ev dizini ve
+`.ssh` kadran-client'ın. Kurulum orada root olarak, yol üzerinden üç şey
+yapıyordu. Üçü de Debian 13'te eski koda karşı ölçüldü:
+
+1. `grep -vF … > "$auth_file.yeni"; mv …`: ad sabit. `.yeni`'nin yerine
+   bir kurban dosyasına bağ konunca kurbanın içeriği istemcinin kendi
+   satırları ve yönetici satırı oldu; authorized_keys'in kendisi de bağa
+   dönüştü. Yani root, istemcinin seçtiği bir dosyaya istemcinin seçtiği
+   içeriği yazıyordu.
+2. `>> "$auth_file"`: authorized_keys bağsa yönetici satırı bağın HEDEFİNE
+   eklendi.
+3. `install -d -m 0700 -o kadran-client -g kadran-client "$CLIENT_HOME/.ssh"`:
+   `.ssh` bağsa `install` HEDEF dizini `kadran-client:kadran-client 0700`
+   yaptı. Hedef root'a ait herhangi bir dizin olabilir: bu doğrudan
+   yetki yükseltmesi. İşin tanımında yoktu. Yalnız fonksiyonu düzeltmek saldırıyı
+   on beş satır yukarı taşırdı; bu yüzden aynı işe alındı.
+
+Aynı blokta ölçülen öteki iki adım: `chown -R kadran-client:kadran-client
+.ssh` bağ argümanını İZLEMİYOR (hedef `root:root 755` kaldı; GNU `chown -R`'nin
+varsayılanı `-P`). `chmod 0600 "$auth_file"` İZLİYOR (hedef 600 oldu). O
+artık fonksiyon dosyayı yerine koyduktan SONRA koşuyor; ancak aşağıdaki
+yarış penceresinde ulaşılabilir.
+
+Tehdit modeli K-136'yla aynı: kadran-client'ın tek yetkisi zorlanmış komut
+(`kadran-connect`). Bağ koyabilmesi için önce o yolun aşılmış olması gerekir.
+Bu bir derinlemesine savunma katmanı; ama o katman aşıldığı anda kurulum
+root'a giden yolu açıyordu.
+
+### Düzeltme
+
+- `yonetici_satiri_yaz`: authorized_keys bağsa ya da düzenli dosya değilse
+  (FIFO, dizin) DURUR. Yeni içerik bütünüyle bir `mktemp "$auth_file.XXXXXX"`
+  kopyasına yazılır (O_EXCL, tahmin edilemez ad, 0600): önce `grep -vF` ile
+  eski satırlar, arkasından yönetici satırı. Dosya varsa sahiplik ve izin
+  `--reference` ile aktarılır, kopya `mv -fT` ile yerine konur. Yol üzerinden
+  yazma kalmadı. Bu yüzden sabit bağ (hardlink) da artık izlenmiyor.
+- Fonksiyon kurulumda `|| die` bağlamında çağrılıyor ve bash orada `set -e`'yi
+  fonksiyonun İÇİNDE de kapatıyor. Bu yüzden her adım kendi hatasını
+  denetliyor. grep'in 1'i ("satır kalmadı": dosyada yalnız bu anahtar vardı)
+  başarı sayılıyor, 2'si (okuma hatası) kurulumu durduruyor. Eski kod `|| true`
+  ile yutuyordu. Yeni kod grep'i HER koşuda çalıştırdığı için yutulan bir
+  okuma hatası dağıtım satırlarını sessizce silerdi.
+- `ssh_dizini_hazirla <dizin> <kullanıcı> <grup>`: `.ssh` bağsa DURUR; değilse
+  eskisi gibi `install -d`.
+- K-131'in tek satır ve CR denetimleri aynen kaldı: 1 döner, çağıran "tek
+  satır" iletisiyle durur.
+
+Bilinçli davranış farkları:
+
+- Eskiden anahtar dosyada yoksa satır `>>` ile ekleniyordu. Son satırı satır
+  sonu taşımayan bir dosyada yönetici satırı önceki satıra YAPIŞIYOR, ikisi
+  de bozuluyordu (senaryo eski kodda kırmızıydı). Şimdi her satır kendi
+  satırında.
+- Yeni dosya 0600 doğuyor. Eskiden umask'la 0644 doğup çağıranın `chmod`'unu
+  bekliyordu.
+
+### Kanıt
+
+KIRMIZI: yeni senaryolar eski `install.sh`'a karşı, Debian 13'te, root ve
+uid 1000 ile koşturuldu:
+
+```
+  ✗ önceden konmuş ak.yeni bağı İZLENMİYOR, kurban aynı kalıyor
+  ✗ authorized_keys bağsa kurulum DURUYOR, kurbana dokunulmuyor
+  ✗ authorized_keys düzenli dosya değilse (FIFO) DURUYOR, takılmıyor
+  ✓ yalnız yönetici satırı varken de DEĞİŞİYOR (grep'in 1'i hata değil)
+  ✗ authorized_keys yokken 0600 doğuyor
+  ✗ son satırı satır sonu taşımayan dosyada satırlar YAPIŞMIYOR
+```
+
+`.ssh`'nin kırmızısı yukarıdaki ayrı ölçüm: o adım fonksiyon değildi, senaryo
+ona doğrudan bağlanamazdı. Kalıcı karşılığı bir kontrol grubu: "KONTROL:
+korumasız install -d bağlı .ssh'nin HEDEFİNİ değiştirir".
+
+YEŞİL: `check-install-sh.sh` root'ta ve uid 1000'de tamamen yeşil;
+`go test ./internal/bootstrap/` geçiyor. Okuma hatası senaryosu root'ta
+kurulamıyor (root 000 izinli dosyayı da okur). CI bu betiği root'suz
+koşturuyor; orada her seferinde ölçülüyor.
+
+Mutasyon: yeni `scripts/mutate-install.sh`. `check-install-sh.sh`'ı şimdiye
+kadar hiçbir mutasyon betiği koşturmuyordu. 8 mutant var: altısı bu kaydın
+korumaları, ikisi K-131'in tek satır ve CR denetimleri. uid 1000'de 8'in 8'i
+yakalandı. Her mutantın düşürdüğü senaryo tek tek okundu ve her biri
+kendi senaryosuyla yakalanıyor. Root'ta okuma hatası mutantı "ölçülmedi"
+diye basılıyor.
+
+### Kalan pencere ve sonraki iş
+
+Denetim ile kullanım arasında dizinin sahibi adları değiştirebilir:
+
+- `.ssh` `[ -L ]` ile `install -d` arasında bağa çevrilirse yükseltme geri
+  gelir.
+- authorized_keys `[ -L ]` ile `grep` arasında bağa çevrilirse root bağın
+  hedefini OKUR. İçerik yeni authorized_keys'e girer ve hemen ardından
+  `chown -R` onu kadran-client'a verir: root'un okuyabildiği bir dosya sızar.
+- Geçici ad `mktemp` ile yazma arasında değiştirilirse durum `goc_yerinde_sed`'in
+  kabul edilen penceresiyle aynı.
+
+K-136'nın gerekçesiyle KABUL: pencere dar, saldırgan önce zorlanmış komutu
+aşmalı ve bu kod yalnız yönetici `bootstrap` koşturduğunda çalışıyor.
+
+Pencereyi kapatan iş: `.ssh` ve authorized_keys işlemlerini kadran-client
+olarak yapmak (`setpriv --reuid kadran-client`; `install.sh` doğrulamada
+zaten kullanıyor). O kullanıcının koyduğu bir bağ kendi yetkisinden fazlasını
+açamaz. `kadran key`'in uzak betiği (`keys.go`, `remoteKeys`) de aynı dizinde
+root olarak yol üzerinden çalışıyor: `mktemp` kullanıyor, ama `[ -f ]`, `cat`
+ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.

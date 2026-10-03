@@ -82,6 +82,10 @@ executor without its allowlist. Fixed, each with a test scenario and a mutant (K
   `.ssh` let that user make root overwrite another file. Temporary copies now come from
   `mktemp`, which also keeps the rclone key from being briefly world-readable, and
   symlinked files or directories stop the migration.
+- **The install did the same in `.ssh`** (K-137). Writing the admin key used a fixed
+  temporary name and appended through the path. Creating `.ssh` followed a symlink and
+  handed the target directory to the client user. Both now stop on a symlink, and the
+  new `authorized_keys` is written to a `mktemp` copy and moved into place.
 - **An unreadable `systemctl show` counted as "no allowlist".** It now stops the
   migration.
 - **Rollback deleted drop-ins edited after the migration.** It now keeps them in the

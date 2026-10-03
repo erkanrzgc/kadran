@@ -3,6 +3,20 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased (v0.4.1)
+
+### Audit chain anchors (K-126)
+
+A compromised daemon could rewrite its own audit chain into one that still verifies.
+With offsite backups on, every daemon backup now carries an anchor, the chain's head
+(`seq` and hash), uploaded unencrypted under the bucket-locked `kadran-` prefix.
+`kadran audit verify -anchors <dir>` recomputes the daemon chain on your machine,
+ignores the hashes the server sends, and exits `3` if any anchor disagrees or the
+chain is shorter than an anchor. `-anchors-since` sets aside anchors from before a
+database restore. It covers the daemon chain only, back to the lock period.
+
+- `ListAuditRecordsRequest.after_seq` is exclusive; its comment said inclusive.
+
 ## v0.4.0 — 2026-10-03
 
 The second half of the rename: every name on the server is now `kadran`, and

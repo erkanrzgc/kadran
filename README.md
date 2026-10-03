@@ -416,8 +416,22 @@ Identity is the client's **SSH key fingerprint**, written by `kadran-connect` in
 preamble before any remote byte is read, not taken from gRPC metadata the client controls.
 Servers before v0.3.0 recorded only the source IP (K-134).
 
-**Not done yet:** the two chains are verified *separately*. A compromised `kadrand` that
-drops its own records produces two chains that both verify (see [Known gaps](#known-gaps)).
+**Anchors (v0.4.1, K-126).** A compromised `kadrand` could rewrite its own chain into one
+that still verifies. With offsite backups on, every daemon backup now carries an *anchor*:
+the chain's head (`seq` and hash), uploaded unencrypted under the bucket-locked `kadran-`
+prefix. Check the live chain against them from your own machine:
+
+```bash
+rclone copy kadran-offsite:<bucket> ./anchors --include 'kadran-*.capa'
+kadran audit verify -anchors ./anchors kadran-client@your-server
+```
+
+The CLI recomputes the daemon chain itself and ignores the hashes the server sends. Any
+anchor that disagrees, including a chain shorter than an anchor, exits `3`. After restoring
+the database from an older backup, older anchors conflict by design; pass
+`-anchors-since <restore time>`. Limits: it covers the daemon chain only, back to the lock
+period (30 days) and up to the newest anchor. The daemon can read the upload token, so it
+can add fake anchors, but it cannot change or delete locked ones.
 
 ### Verified, not asserted
 
@@ -527,7 +541,8 @@ same release as the server.
 
 Tracked in the open rather than hidden. Each is a real limitation today.
 
-- **Audit chains are not cross-checked** (see [Audit log](#audit-log)).
+- **Only the daemon chain is anchored, and only with offsite backups** (see
+  [Audit log](#audit-log)). The executor's chain is verified on its own.
 - **The last link is unwatched.** The heartbeat Worker reports a dead alarm sender or
   server, but if the Worker itself stops (Cloudflare outage, account problem), nobody is
   told.

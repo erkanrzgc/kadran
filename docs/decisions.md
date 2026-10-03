@@ -8369,7 +8369,8 @@ ayrı bir K kaydı ve testlerle gelmesi gereken iş.
 ## K-126 — Denetim zincirlerinin çapraz denetimi: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** KARAR (3 Ekim, kullanıcı): **önce C**, B ayrıcalıklı yüzey
+**Durum:** C UYGULANDI (3 Ekim, v0.4.1; canlı ölçüm sonda). KARAR
+(kullanıcı): **önce C**, B ayrıcalıklı yüzey
 kararıyla sonra. C'nin dayandığı kilit artık var ve ölçüldü: R2'de
 `kadran-` öneki 30 gün kilitli (K-136, "Canlı göç").
 
@@ -8425,7 +8426,10 @@ yazılır.**
   ekler.
 - **Yakaladığı:** host root'u ele geçirse bile son çapaya kadarki geçmişin
   yeniden yazılması. Bunun için bucket'ta sürümleme ya da object lock
-  açık olmalı.
+  açık olmalı. *(3 Ekim düzeltmesi: "host root'u bile" yalnızca kilit
+  süresi içindeki çapalar için doğru; root da daemon da token'ı okuyup
+  kilidi dolmuş çapaları silebilir ve sahte yenilerini ekleyebilir.
+  Aşağıdaki "Uygulama (C)" bölümüne bakın.)*
 - **Bedel:** ayrıcalıklı yüzeye dokunmaz, yalnızca betik. Ama koruması
   bucket ayarına bağlı ve uzak yedek kapalıysa çalışmaz.
 
@@ -8443,8 +8447,61 @@ ek katman.
    gerekçeli karar.
 3. Kontrol noktası sıklığı: her ayrıcalıklı işlem ve saatte bir mi?
 
+### Uygulama (C) — 3 Ekim
 
+**Ön koşul ölçüldü:** canlı zincirin 169 kaydı yalnızca API alanlarından
+istemcide yeniden hesaplandı: 0 uyuşmaz, uç veritabanından okunanla aynı
+(`54b87bf9…`). Yani proto değişmiyor. İlk deneme bütün kayıtları
+uyuşmaz buldu: `ListAuditRecordsRequest.after_seq` yorumu "dahil"
+diyordu ama sunucu HARİÇ tutuyor (1 verilince ilk kayıt #2); ilk kayıt
+atlanınca zincir baştan kaydı. Yorum düzeltildi. O yanlış koşu,
+karşılaştırmanın farkı görebildiğinin de kontrolü oldu.
 
+**Akış:**
+- **Daemon** (`store.writeAnchor`): her zamanlı yedekten hemen sonra
+  `kadran-<damga>.capa` yazıyor (`kadran-capa 1` / `seq N` / `hash <hex>`,
+  0600, geçici ad + rename). Uç `VACUUM INTO`'dan SONRA okunuyor; arada
+  kayıt eklenmişse çapa bir ileride olur, şart zincirin gerçek bir noktası
+  olması. Yazılamazsa yedek başarısız sayılır (alarm). Budama çapayı
+  yedeğiyle birlikte siliyor. Çapayı uzak yedek betiğinde `sqlite3` ile
+  okumak da seçenekti; GCP'de (taze Debian 13) `sqlite3` YOK, yeni bir
+  çalışma bağımlılığı getirmemek için daemon yazıyor.
+- **Uzak yedek:** çapaları veritabanı yedeklerinden SONRA, şifrelemeden
+  yüklüyor (sır yok; doğrulama özel anahtar istemesin). `kadran-` öneki
+  kilit kapsamında. Budama deseni (`.db.age`) onları seçmiyor. Yüklenemezse
+  yedek yine gidiyor ama koşu başarısız (alarm).
+- **CLI** (`kadran audit verify -anchors <dizin> [-anchors-since <zaman>]`):
+  zinciri sayfa sayfa çekip SIFIRDAN hesaplıyor; sunucunun gönderdiği
+  `hash`/`prev_hash`'e güvenmiyor. Çapalar katı ayrıştırılıyor (kanonik
+  biçim bayt bayt, ad deseni, boyut); bozuk tek dosya bile çıkış 3.
+  Çelişen tek çapa ya da çapadan kısa zincir: çıkış 3. Hiç çapa
+  denetlenmediyse çıkış 1 (doğrulama değil). Çapası olmayan günler uyarı.
+  Dönüşüm (`auditRecordFromProto`) CLI'da: `pbconv` executor'a girdiği
+  için ayrıcalıklı yüzeye sayılırdı. Yüzey değişmedi: 2498.
+
+**Tehdit modeli, dürüstçe:**
+- Daemon kullanıcısı `rclone.conf`'u okuyabiliyor (640 root:kadran,
+  canlıda ölçüldü), uzak yedek de `kadran` olarak koşuyor. Ele geçirilmiş
+  bir daemon SAHTE çapa yükleyebilir ve kilidi dolmuş gerçek çapaları
+  silebilir. Bu yüzden: herhangi bir çelişki kırmızı (bir çapanın tutması
+  yetmez), dosyalar saldırganın girdisi gibi ayrıştırılıyor, eksik günler
+  raporlanıyor.
+- Kapsam: yalnızca daemon zinciri; executor'ınki çapalanmıyor (B'nin
+  işi). Kilit süresi kadar geriye (30 gün) ve en yeni çapaya kadar.
+- Veritabanı eski bir yedekten geri yüklenirse zincir çatallanır ve daha
+  yeni çapalar çelişir. Bu sahte alarm değil, gerçek bir çatal; kullanıcı
+  `-anchors-since` ile açıkça kabul eder.
+
+**Sınama:** `internal/anchor` 11 test (dönen hash alanına güvenmeme,
+tutarlı biçimde yeniden yazılmış zincir, kısaltma, çelişen tek çapa, sıfır
+çapa, since, eksik günler, katı ayrıştırma); daemon 3 test (uç, boş zincir,
+budama); CLI 9 test (sahte sunucu içeriği değiştirip hash alanlarını
+bırakıyor → çıkış 3); `check-offsite.sh` 4 senaryo (bayt bayt yükleme,
+budamanın dokunmaması, kilitli yüklemede yedeklerin yine gitmesi ve
+çıkış≠0). `scripts/mutate-anchor.sh` 14/14 mutant; derleme kapısı bir
+mutantı (kullanılmayan import) sahte "yakalandı" saymadan durdurdu.
+
+**Canlı ölçüm:** v0.4.1 yayınından sonra (aşağıya eklenecek).
 
 ## K-127 — Kaldığı yerden devam eden yükleme, oturumdan ayrılan kurulum
 

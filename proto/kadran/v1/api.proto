@@ -303,7 +303,8 @@ message GetSystemInfoResponse {
 }
 
 message ListAuditRecordsRequest {
-  // Bu sıra numarasından itibaren okur (dahil). 0 = baştan.
+  // Bu sıra numarasından SONRAKİLERİ okur (hariç). 0 = baştan. Canlı
+  // sunucuda ölçüldü: 1 verilince ilk dönen kayıt #2 (K-126).
   uint64 after_seq = 1;
   // Döndürülecek en fazla kayıt. 0 = varsayılan (100), üst sınır 1000.
   uint32 limit = 2;

@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/erkanrzgc/kadran/internal/anchor"
 )
 
 // snapshotDirName, zamanlı yedeklerin tutulduğu alt dizindir.
@@ -109,6 +111,9 @@ func (s *Store) snapshotAt(ctx context.Context, now time.Time) (SnapshotInfo, er
 			return SnapshotInfo{}, fmt.Errorf(
 				"yedek alınamadı (%s): %w", dest, err)
 		}
+		if err := s.writeAnchor(ctx, dir, stamp); err != nil {
+			return SnapshotInfo{}, err
+		}
 	}
 
 	info := SnapshotInfo{Path: dest, Taken: stamp}
@@ -150,7 +155,40 @@ func pruneSnapshots(dir string) {
 	sort.Strings(matches)
 	for _, old := range matches[:len(matches)-SnapshotKeep] {
 		_ = os.Remove(old)
+		_ = os.Remove(strings.TrimSuffix(old, snapshotExt) + anchor.Ext)
 	}
+}
+
+// writeAnchor, denetim zincirinin ucunu yedeğin yanına yazar:
+// kadran-<damga>.capa (K-126 C). Uzak yedek onu kilitli önekle R2'ye
+// taşıyor; sonradan yazılmış bir geçmiş o hash'i üretemez.
+//
+// Uç, VACUUM INTO'dan SONRA okunuyor: arada bir kayıt eklenmişse çapa
+// yedekteki uçtan bir ileride olur. Bu sorun değil, çapanın tek şartı
+// zincirin GERÇEK bir noktası olması.
+//
+// Çapa yazılamazsa yedek başarısız sayılır (alarm): çapasız yedekler
+// fark edilmeden birikirse koruma sessizce biter. Boş zincirde
+// çapalanacak bir şey yok.
+func (s *Store) writeAnchor(ctx context.Context, dir string, stamp time.Time) error {
+	seq, hash, err := s.AuditHead(ctx)
+	if err != nil {
+		return fmt.Errorf("zincir çapası okunamadı: %w", err)
+	}
+	if seq == 0 {
+		return nil
+	}
+	// Geçici ad `.capa` ile BİTMİYOR: uzak yedek yarım çapayı görmesin.
+	dest := filepath.Join(dir, anchor.FileName(stamp))
+	tmp := dest + ".yaziliyor"
+	if err := os.WriteFile(tmp, anchor.Format(seq, hash), 0o600); err != nil {
+		return fmt.Errorf("zincir çapası yazılamadı (%s): %w", dest, err)
+	}
+	if err := os.Rename(tmp, dest); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("zincir çapası yazılamadı (%s): %w", dest, err)
+	}
+	return nil
 }
 
 // ListSnapshots, bu deponun yedeklerini en YENİDEN eskiye döndürür.

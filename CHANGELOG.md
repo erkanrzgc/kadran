@@ -3,7 +3,7 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.4.0 — 2026-10-03
 
 The second half of the rename: every name on the server is now `kadran`, and
 `bootstrap` migrates an existing install in place.

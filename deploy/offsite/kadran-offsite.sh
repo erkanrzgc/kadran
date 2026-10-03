@@ -225,6 +225,21 @@ done
 #
 # Gizli adlar (.yaziliyor-…) desene uymuyor: arşivleyici yarım dosyayı
 # o adla yazıyor, bitince yerine koyuyor.
+# ── Zincir çapaları (K-126 C) ────────────────────────────────────────
+#
+# Daemon her yedeğin yanına denetim zincirinin o anki ucunu yazıyor
+# (kadran-<damga>.capa: sıra no + hash). ŞİFRELENMEDEN yükleniyor: içinde
+# sır yok ve `kadran audit verify -anchors` özel anahtar istemesin.
+# `kadran-` öneki kova kilidinin kapsamında: daemon ele geçirilse bile
+# yüklenmiş bir çapayı 30 gün değiştiremez. Budama deseni (`.db.age`)
+# onları SEÇMEZ; eskiyenleri yaşam döngüsü kuralı siler.
+#
+# Veritabanı yedeklerinden SONRA: bir çapanın yüklenememesi yedeği
+# engellemiyor, ama başarısız sayılıyor ve koşu sonunda birim düşüyor.
+for capa in "$BACKUP_DIR"/kadran-*.capa; do
+    yukle_dogrula "$capa" "$(basename "$capa")"
+done
+
 if [[ -d "$VOLUME_BACKUP_DIR" ]]; then
     for arsiv in "$VOLUME_BACKUP_DIR"/kadran-hacim-*.tar.zst.age; do
         yukle_dogrula "$arsiv" "$(basename "$arsiv")"

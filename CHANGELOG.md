@@ -3,6 +3,28 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased (v0.4.1)
+
+### Audit chain anchors (K-126)
+
+A compromised daemon could rewrite its own audit chain into one that still verifies.
+With offsite backups on, every daemon backup now carries an anchor, the chain's head
+(`seq` and hash), uploaded unencrypted under the bucket-locked `kadran-` prefix.
+`kadran audit verify -anchors <dir>` recomputes the daemon chain on your machine,
+ignores the hashes the server sends, and exits `3` if any anchor disagrees or the
+chain is shorter than an anchor. `-anchors-since` sets aside anchors from before a
+database restore. It covers the daemon chain only, back to the lock period.
+
+- `ListAuditRecordsRequest.after_seq` is exclusive; its comment said inclusive.
+
+### Security
+
+- **The install followed symlinks in the client user's `.ssh`** (K-137), the same
+  class the v0.4.0 migration fixed. Writing the admin key used a fixed temporary name
+  and appended through the path; creating `.ssh` followed a symlink and handed the
+  target directory to the client user. Both now stop on a symlink, and the new
+  `authorized_keys` is written to a `mktemp` copy and moved into place.
+
 ## v0.4.0 — 2026-10-03
 
 The second half of the rename: every name on the server is now `kadran`, and
@@ -19,7 +41,7 @@ It detects the old (`panely`) install and migrates it in place (K-136).
 - Users are renamed with `usermod`: uid/gid and the ownership of every file stay the
   same. The database, backups, volumes, deploy keys, TLS certificates, both audit
   chains and the optional offsite, volume-backup and alarm units move to the new
-  names.
+  names. A timer that was off stays off.
 - Your own systemd drop-ins follow their units. The migration stops before the new
   executor starts if its effective `--allow-repo` list differs from the old one.
 - The old proxy and containers keep serving until the new control plane has started
@@ -53,8 +75,8 @@ It detects the old (`panely`) install and migrates it in place (K-136).
 ### Found by rehearsing the migration
 
 The migration was run on the Debian 13 test server against a copy of the live setup:
-migrate, reboot, roll back, migrate again (K-136). That found three problems before
-they reached the live server:
+migrate, reboot, roll back, migrate again, and once more after the security fixes
+(K-136). That found four problems before they reached the live server:
 
 - **The executor's repository allowlist would have been dropped.** On the live server it
   lives in an operator drop-in (`panely-exec.service.d`). Without carrying it over, the
@@ -67,6 +89,10 @@ they reached the live server:
 - **The first version was down for 16 s,** mostly waiting for the proxy watcher's 10 s
   tick. The daemon now restarts right after the new proxy, and startup reconciliation
   writes the routes immediately: about 1.3 s.
+- **An installed but disabled optional unit was dropped** (found in a second rehearsal
+  after the security fixes). Only units with an enabled timer were reinstalled under the
+  new names. Every installed one is now carried over, and only the enabled ones are
+  turned on.
 
 ### Found by a security review of the migration
 
@@ -82,10 +108,6 @@ executor without its allowlist. Fixed, each with a test scenario and a mutant (K
   `.ssh` let that user make root overwrite another file. Temporary copies now come from
   `mktemp`, which also keeps the rclone key from being briefly world-readable, and
   symlinked files or directories stop the migration.
-- **The install did the same in `.ssh`** (K-137). Writing the admin key used a fixed
-  temporary name and appended through the path. Creating `.ssh` followed a symlink and
-  handed the target directory to the client user. Both now stop on a symlink, and the
-  new `authorized_keys` is written to a `mktemp` copy and moved into place.
 - **An unreadable `systemctl show` counted as "no allowlist".** It now stops the
   migration.
 - **Rollback deleted drop-ins edited after the migration.** It now keeps them in the
@@ -93,8 +115,8 @@ executor without its allowlist. Fixed, each with a test scenario and a mutant (K
 
 ### Documentation
 
-- The README is reorganized around a quick start, with a new wordmark, the migration
-  guide, and long reference material folded into collapsible sections.
+- The README is reorganized around a quick start, the migration guide, and long
+  reference material folded into collapsible sections.
 - The README's GitHub Actions example is now a complete workflow: the one that
   deploys the author's site on every push to `main`. It downloads the CLI and
   checks it against `SHA256SUMS`, reads only repository contents, and queues

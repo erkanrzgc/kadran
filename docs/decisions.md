@@ -8097,7 +8097,7 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda (aşağıda "Kararlar")
+**Durum:** KARAR B (3 Ekim); ölçüldü, yüzey sınırı 2600'e çekilecek (sonda)
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
 stored in the daemon's database and are visible to `docker inspect`."
@@ -8195,10 +8195,40 @@ B'yi uygulamadan önce ölçülmesi gerekenler:
 3. Anahtar yedeği nerede durmalı? Uzak yedek anahtarıyla AYNI yerde
    olmamalı.
 
+### Karar ve ölçüm (3 Ekim)
+
+Kullanıcı: **B**, önce ölç. Atılacak bir çalışma ağacında executor'ın
+payına düşen en küçük gerçekçi yol yazıldı (depoya girmedi):
+
+- `-vault-key` bayrağı, açılışta `age.ParseIdentities`;
+- `age:` önekli değerler `ContainerCreate`'te çözülüyor, çözülmüş değer
+  64 KiB ile sınırlı, anahtar yoksa ya da çözülemezse istek reddediliyor;
+- şifresiz değerler olduğu gibi geçiyor (göç dönemi).
+
+| | Bugün | Prototip | Fark |
+|---|---|---|---|
+| Ayrıcalıklı kod (yorum/boş hariç, `check-exec-surface.sh`) | 2498 | 2568 | **+70** |
+| `kadran-exec` (linux/amd64, `-s -w`) | 12 427 426 B | 12 628 130 B | +200 KB (%1,6) |
+| Standart dışı paket (`go list -deps`) | 140 | 157 | +17 |
+
+Yeni paketler: `filippo.io/age` v1.3.2, `filippo.io/hpke` v0.4.0,
+`golang.org/x/crypto` (chacha20poly1305, curve25519, hkdf, scrypt…).
+Üçüncü taraf kod bütçeye sayılmıyor (govulncheck'in işi), ama root
+sürecin bağımlılık yüzeyi 17 paket büyüyor.
+
+Sonuç: B, sınırı **~70 satır** aşıyor. Prototip sıkıştırılabilir (yalnız
+X25519 kimliği, tek hata yolu) ama 2500'ün altına inmiyor: kalan pay 2
+satır. Yani B, gerekçeli bir sınır kararı gerektiriyor (K-040'ın kuralı:
+tahmin değil ölçüm, kural sessizce gevşetilmez). Kullanıcı (3 Ekim):
+**sınır 2500 → 2600.** `MAX_EXEC_LINES` kasanın kodunu getiren commit'te
+değişir, öncesinde değil: ayrı bir commit'te açılan boşluk, gerekçesiz
+büyümeyi davet ederdi. Kalan pay ~30 satır.
+
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+**Durum:** ERTELENDİ (3 Ekim, kullanıcı): bugünkü uygulamaların hepsi
+herkese açık depo; ihtiyaç doğunca C yolu (aşağıda) uygulanır.
 
 ### Bugün (koddan okundu)
 
@@ -8339,7 +8369,10 @@ ayrı bir K kaydı ve testlerle gelmesi gereken iş.
 ## K-126 — Denetim zincirlerinin çapraz denetimi: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+**Durum:** C UYGULANDI (3 Ekim, v0.4.1; canlı ölçüm sonda). KARAR
+(kullanıcı): **önce C**, B ayrıcalıklı yüzey
+kararıyla sonra. C'nin dayandığı kilit artık var ve ölçüldü: R2'de
+`kadran-` öneki 30 gün kilitli (K-136, "Canlı göç").
 
 ### Sorun (README "Audit log" bölümü)
 
@@ -8393,7 +8426,10 @@ yazılır.**
   ekler.
 - **Yakaladığı:** host root'u ele geçirse bile son çapaya kadarki geçmişin
   yeniden yazılması. Bunun için bucket'ta sürümleme ya da object lock
-  açık olmalı.
+  açık olmalı. *(3 Ekim düzeltmesi: "host root'u bile" yalnızca kilit
+  süresi içindeki çapalar için doğru; root da daemon da token'ı okuyup
+  kilidi dolmuş çapaları silebilir ve sahte yenilerini ekleyebilir.
+  Aşağıdaki "Uygulama (C)" bölümüne bakın.)*
 - **Bedel:** ayrıcalıklı yüzeye dokunmaz, yalnızca betik. Ama koruması
   bucket ayarına bağlı ve uzak yedek kapalıysa çalışmaz.
 
@@ -8411,8 +8447,61 @@ ek katman.
    gerekçeli karar.
 3. Kontrol noktası sıklığı: her ayrıcalıklı işlem ve saatte bir mi?
 
+### Uygulama (C) — 3 Ekim
 
+**Ön koşul ölçüldü:** canlı zincirin 169 kaydı yalnızca API alanlarından
+istemcide yeniden hesaplandı: 0 uyuşmaz, uç veritabanından okunanla aynı
+(`54b87bf9…`). Yani proto değişmiyor. İlk deneme bütün kayıtları
+uyuşmaz buldu: `ListAuditRecordsRequest.after_seq` yorumu "dahil"
+diyordu ama sunucu HARİÇ tutuyor (1 verilince ilk kayıt #2); ilk kayıt
+atlanınca zincir baştan kaydı. Yorum düzeltildi. O yanlış koşu,
+karşılaştırmanın farkı görebildiğinin de kontrolü oldu.
 
+**Akış:**
+- **Daemon** (`store.writeAnchor`): her zamanlı yedekten hemen sonra
+  `kadran-<damga>.capa` yazıyor (`kadran-capa 1` / `seq N` / `hash <hex>`,
+  0600, geçici ad + rename). Uç `VACUUM INTO`'dan SONRA okunuyor; arada
+  kayıt eklenmişse çapa bir ileride olur, şart zincirin gerçek bir noktası
+  olması. Yazılamazsa yedek başarısız sayılır (alarm). Budama çapayı
+  yedeğiyle birlikte siliyor. Çapayı uzak yedek betiğinde `sqlite3` ile
+  okumak da seçenekti; GCP'de (taze Debian 13) `sqlite3` YOK, yeni bir
+  çalışma bağımlılığı getirmemek için daemon yazıyor.
+- **Uzak yedek:** çapaları veritabanı yedeklerinden SONRA, şifrelemeden
+  yüklüyor (sır yok; doğrulama özel anahtar istemesin). `kadran-` öneki
+  kilit kapsamında. Budama deseni (`.db.age`) onları seçmiyor. Yüklenemezse
+  yedek yine gidiyor ama koşu başarısız (alarm).
+- **CLI** (`kadran audit verify -anchors <dizin> [-anchors-since <zaman>]`):
+  zinciri sayfa sayfa çekip SIFIRDAN hesaplıyor; sunucunun gönderdiği
+  `hash`/`prev_hash`'e güvenmiyor. Çapalar katı ayrıştırılıyor (kanonik
+  biçim bayt bayt, ad deseni, boyut); bozuk tek dosya bile çıkış 3.
+  Çelişen tek çapa ya da çapadan kısa zincir: çıkış 3. Hiç çapa
+  denetlenmediyse çıkış 1 (doğrulama değil). Çapası olmayan günler uyarı.
+  Dönüşüm (`auditRecordFromProto`) CLI'da: `pbconv` executor'a girdiği
+  için ayrıcalıklı yüzeye sayılırdı. Yüzey değişmedi: 2498.
+
+**Tehdit modeli, dürüstçe:**
+- Daemon kullanıcısı `rclone.conf`'u okuyabiliyor (640 root:kadran,
+  canlıda ölçüldü), uzak yedek de `kadran` olarak koşuyor. Ele geçirilmiş
+  bir daemon SAHTE çapa yükleyebilir ve kilidi dolmuş gerçek çapaları
+  silebilir. Bu yüzden: herhangi bir çelişki kırmızı (bir çapanın tutması
+  yetmez), dosyalar saldırganın girdisi gibi ayrıştırılıyor, eksik günler
+  raporlanıyor.
+- Kapsam: yalnızca daemon zinciri; executor'ınki çapalanmıyor (B'nin
+  işi). Kilit süresi kadar geriye (30 gün) ve en yeni çapaya kadar.
+- Veritabanı eski bir yedekten geri yüklenirse zincir çatallanır ve daha
+  yeni çapalar çelişir. Bu sahte alarm değil, gerçek bir çatal; kullanıcı
+  `-anchors-since` ile açıkça kabul eder.
+
+**Sınama:** `internal/anchor` 11 test (dönen hash alanına güvenmeme,
+tutarlı biçimde yeniden yazılmış zincir, kısaltma, çelişen tek çapa, sıfır
+çapa, since, eksik günler, katı ayrıştırma); daemon 3 test (uç, boş zincir,
+budama); CLI 9 test (sahte sunucu içeriği değiştirip hash alanlarını
+bırakıyor → çıkış 3); `check-offsite.sh` 4 senaryo (bayt bayt yükleme,
+budamanın dokunmaması, kilitli yüklemede yedeklerin yine gitmesi ve
+çıkış≠0). `scripts/mutate-anchor.sh` 14/14 mutant; derleme kapısı bir
+mutantı (kullanılmayan import) sahte "yakalandı" saymadan durdurdu.
+
+**Canlı ölçüm:** v0.4.1 yayınından sonra (aşağıya eklenecek).
 
 ## K-127 — Kaldığı yerden devam eden yükleme, oturumdan ayrılan kurulum
 
@@ -9573,7 +9662,7 @@ dokunulmadı: oraya her push canlıya dağıtım demek, karar kullanıcıda.
 ## K-136 — Ad değişikliğinin ikinci yarısı: sunucu tarafı panely → kadran
 
 **Tarih:** 2 Ekim 2026
-**Durum:** UYGULANDI, GCP'de PROVA EDİLDİ (3 Ekim); canlı göç ayrı adım.
+**Durum:** CANLIDA (3 Ekim, v0.4.0); GCP'de üç kez prova edildi.
 Kullanıcı kararı: "her şey şimdi" (K-130'un "bilerek
 değişmeyen" listesinin tamamı). Kod ayrı dalda; önce GCP'de prova, sonra
 canlı.
@@ -9710,9 +9799,9 @@ geri dönüş → yeniden göç, her birinde yoklama açık.
   `geri.sh` (göç başlarken sunucuya `/usr/local/lib/kadran/kadran-geri-donus.sh`
   olarak kurulur). Paket ikisini ve seçimli birimlerin dosyalarını taşıyor;
   test betiklerin okuduğu her `$STAGE/<ad>`'ı pakette arıyor.
-- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 48 senaryo;
-  `scripts/mutate-goc.sh` 23/23 mutant (güvenlik incelemesinden sonra;
-  provada 37 ve 15'ti). Kullanıcı adlandırma, systemd ve
+- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 51 senaryo;
+  `scripts/mutate-goc.sh` 25/25 mutant (güvenlik incelemesi ve ikinci
+  provadan sonra; ilk provada 37 ve 15'ti). Kullanıcı adlandırma, systemd ve
   Docker adımları gerçek sunucuda ölçüldü (aşağıda).
 - CLI: eski sunucu (`Unimplemented`) ve `panely-client@` hedefi için yol
   gösteren hata; protokol 3. Masaüstü: `panely-desktop` profilleri taşınıyor,
@@ -9810,15 +9899,93 @@ dizin ve bağlı authorized_keys'te DURDU; yarıda kalan koşu tamamlandı; boş
 `goc.sh`'ta her saldırıyı yeniden üretti. Hepsi `check-goc-sh.sh`'ta
 senaryo ve `mutate-goc.sh`'ta mutant.
 
-⚠ `install.sh`'ın sırası provadan SONRA değişti (temizlik doğrulamanın
-arkasına). Canlıdan önce GCP'de yayın dosyalarıyla yeniden prova edilir:
-v0.4.0'a yükselt → yeni `kadran-geri-donus.sh` ile v0.3.0'a dön → v0.4.0
-yayınıyla göç. Böylece canlıya giden paket prova edilen paket olur.
+### İkinci GCP provası (3 Ekim, inceleme düzeltmeleriyle)
+
+`install.sh`'ın sırası ilk provadan SONRA değiştiği için (temizlik
+doğrulamanın arkasına) canlıdan önce yeniden prova edildi. Normal yükseltme
+geri dönüş betiğini GÜNCELLEMEZ (onu yalnızca göç kurar); yeni `goc.sh` ve
+`geri.sh` sunucuya elle kondu (özetleri depodakiyle aynı).
+
+- **Geri dönüş (yeni betik):** 17 sn. Göçten sonra elle eklenen işaret
+  drop-in'i (`kadran-exec.service.d/20-olcum.conf`) silinmedi, göç kaydının
+  `yeni-dropin` dizinine alındı ve uyarı basıldı (bulgu 9, sahada).
+- **v0.3.0 bootstrap:** 17/17.
+- **Göç (rc6, `c0b80c8`):** 57 sn, 17/17; temizlik doğrulamadan SONRA koştu
+  ("eski kalıntılar kaldırıldı"). Günlükten pencere: eski vekil 13:18:22,364'te
+  durdu, yeni vekil rotalarla 23,076'da sunuyordu: **~0,7 sn**. Yoklayıcı
+  62/63 `200`; tek hata 22,327'de (bağlantı sıfırlandı), pencereyle aynı an.
+- **Tabana karşı:** uid/gid, hacim işareti, 24 yedek, authorized_keys,
+  drop-in'ler, beyaz liste aynı; `rclone.conf`/`offsite.conf` 640
+  root:kadran, `authorized_keys` 600; hiçbir dizinde `.goc*` geçici dosyası
+  yok; uzak yedek yeni adla koştu (`success`).
+
+Bu prova bir hata daha buldu: **kurulu ama zamanlayıcısı kapalı seçimli
+birimler düşüyordu.** Göç yalnızca etkin zamanlayıcıların birimlerini yeni
+adla kuruyordu; GCP'de bildirim zamanlayıcısı kapalıydı ve
+`kadran-notify.*` birimleri göçten sonra yoktu (eskileri göç kaydında).
+CHANGELOG "taşınır" diyordu. Düzeltme: göç, eski adla kurulu olanları da
+kaydediyor (`kurulu`), kurulu ∪ etkin olanları kuruyor, yalnızca etkin
+olanları açıyor. Senaryo + iki mutant (mutate-goc 25/25).
+
+GCP'de yeniden ölçüldü: geri dönüş → v0.3.0 (17/17; bildirim birimi kurulu,
+zamanlayıcı kapalı) → **göç (rc7)** 66 sn, 17/17. "seçimli birim kuruldu,
+zamanlayıcısı eskisi gibi KAPALI: kadran-notify"; `kadran-notify.timer`
+disabled, offsite ve volume-backup enabled. Pencere (günlük): eski vekil
+13:25:17,253'te durmaya başladı, yeni rotalar 18,527'de: ~1,3 sn. Yoklayıcı
+58/58 `200`. Geçici dosya kalıntısı 0.
+
+### Canlı göç (3 Ekim, v0.4.0 yayın dosyalarıyla)
+
+Yayın `b216f23` (iki temiz klon aynı `SHA256SUMS`; GitHub'dan indirilip
+doğrulandı). GCP önce aynı dosyalarla v0.4.0'a yükseltildi (17/17, göç
+tetiklenmedi). Canlı sunucuda önce salt okunur denetim: v0.3.0, üç rotalı
+ad 200, hacimli uygulama yok, beyaz liste `erkanrzgc/portfolio,
+crccheck/docker-hello-world`, portfolio CI boşta. R2'de `kadran-` öneki
+için kilit (30 g) ve yaşam döngüsü (90 g) kuralları eklendi; kilit
+sunucunun kendi token'ıyla ölçüldü (kilitli sil/üzerine yaz 409
+`ObjectLockedByBucketPolicy`, kilitsiz kontrol silindi).
+
+- **Göç:** 59 sn, 17/17. 3 eski replika, üç zamanlayıcı da etkin ve yeni
+  adla yeniden açıldı; drop-in taşındı, beyaz liste korundu; temizlik
+  doğrulamadan sonra ("eski kalıntılar kaldırıldı").
+- **Kesinti:** günlükten, eski vekil 19:29:50,178'de durmaya başladı, yeni
+  vekil üç uygulamayı (`pfprobe portfolio web`) 50,750'de rotaladı:
+  **~0,6 sn**. Yoklayıcı üç adı birlikte yokladı: 188/189 `200`; tek hata
+  50,526'da (`hello`, bağlantı sıfırlandı), pencerenin içinde.
+- **Tabana karşı:** uid/gid aynı (999/988, 996/987, 993/985); 24 yedek
+  `kadran-` adıyla, `panely-` 0; authorized_keys iki satırı yeni yolda,
+  dağıtım satırının `-deploy=portfolio` kapsamı korundu (yönetici satırı
+  bootstrap'ın kendi yenilemesiyle sona geçti); `rclone.conf`/`offsite.conf`
+  640 root:kadran; geçici dosya 0; eski konteyner/ağ/birim 0. İki zincir
+  geçerli (executor 199 kayıt).
+- **Bildirim:** "vekil uzlaştırılamadı" alarmı 19:29:34'te açıldı (yeni
+  kontrol düzlemi eski vekil sunarken başladı), 50,757'de kapandı;
+  `kadran-notify: 2 alarm olayı gönderildi`.
+- **CI:** göçten hemen sonra portfolio'nun `KADRAN_TARGET` sırrı
+  `kadran-client@…` yapıldı ve `KADRAN_VERSION: v0.4.0` commit'i push
+  edildi. İş akışı v0.4.0 CLI'ını indirip doğruladı, r10'u 55 sn'de canlıya
+  aldı; denetim kaydında `app.deploy r10` dağıtım anahtarının parmak
+  iziyle. Eski hedef (`panely-client@`) yeni CLI'da yol gösteren hatayla
+  reddediliyor.
+
+Denetim kaydında beklenen bir iz: göç sırasında `app.unhealthy` ve
+`app.heal BAŞARISIZ` (portfolio, web; pfprobe yalnız günlükte). Yeni kontrol
+düzlemi eski vekil sunarken konteynerleri kuruyor; iyileştirmenin son adımı
+(vekile rota yazmak) yeni vekil henüz olmadığı için düşüyor, 2 sn sonraki
+turda "iyileşti" yazılıyor ve rotalar vekil değişince yazılıyor. Hata değil,
+göçün sırasının sonucu.
+
+Göçten sonra uzak yedek elle bir kez koşturuldu (R2, yeni rclone hedefi
+`kadran-offsite`): `success`, "yüklendi=30 atlandı=0 başarısız=0" (24
+veritabanı + 6 hacim arşivi, `kadran-` adıyla, yeni kilit kuralının
+kapsamında); 409 yok. Dış nabız yeni birimle atılıyor (`son-nabiz` 19:37:15,
+"nabız atılamadı" 0): Worker sahte "NABIZ YOK" yazmaz.
 
 ## K-137 — Kurulum, kadran-client'ın `.ssh`'ında bağları izliyordu
 
 **Tarih:** 3 Ekim 2026
-**Durum:** DÜZELTİLDİ (kod; `kadran-rename` üstüne ayrı dal). v0.4.0 ile gelir.
+**Durum:** DÜZELTİLDİ (kod; PR #2, `kadran-rename` üstüne ayrı dal). v0.4.0
+yayınına yetişmedi; v0.4.1 ile gelir.
 
 ### Nasıl bulundu
 

@@ -191,6 +191,21 @@ dene "eski konteyner hiç yoksa ve yapılandırma okunduysa siliniyor" \
     "$(on r1) goc_temizlenebilir '$YAPI'"
 
 echo
+echo "== Seçimli birimler: kurulu olan taşınır, yalnız etkin olan açılır =="
+# rc6 provasında bulundu: göç yalnız ETKİN zamanlayıcıların birimlerini
+# kuruyordu; kurulu ama kapalı bildirim birimi sessizce düşüyordu.
+k="$(kok z1)"; mkdir -p "$k/etc/systemd/system"
+touch "$k/etc/systemd/system/panely-notify.timer" "$k/etc/systemd/system/panely-offsite.timer"
+dene "kurulu seçimliler zamanlayıcı dosyasından okunuyor (etkin olsun olmasın)" \
+    "$(on z1) [ \"\$(goc_kurulu_secimliler | tr '\n' ' ')\" = 'notify offsite ' ]"
+k="$(kok z2)"; mkdir -p "$k/var/lib/kadran-goc"; printf 'notify\noffsite\n' > "$k/var/lib/kadran-goc/kurulu"; printf 'offsite\n' > "$k/var/lib/kadran-goc/zamanlayicilar"
+dene "kurulan liste: kurulu ∪ etkin (kapalı notify da kuruluyor)" \
+    "$(on z2) [ \"\$(goc_secimli_listesi | tr '\n' ' ')\" = 'notify offsite ' ]"
+k="$(kok z3)"; mkdir -p "$k/var/lib/kadran-goc"; printf 'offsite\nvolume-backup\n' > "$k/var/lib/kadran-goc/zamanlayicilar"
+dene "kurulu kaydı yoksa (eski sürümle başlamış göç) etkinler yine kuruluyor" \
+    "$(on z3) [ \"\$(goc_secimli_listesi | tr '\n' ' ')\" = 'offsite volume-backup ' ]"
+
+echo
 echo "== goc_temizle: bir kalıntı silinemese de kurulum DÜŞMÜYOR =="
 # Kullanımdaki bir ağ ya da imaj set -e altında kurulumu düşürüyordu; kalıntı
 # kaldığı için sonraki her kurulum aynı satırda ölürdü (güvenlik incelemesi,

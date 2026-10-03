@@ -136,6 +136,14 @@ mutate_in "$GOC" "geçici kopya umask'la açılıyor (anahtar bir an herkese oku
 mutate_in "$GOC" "goc_onek sembolik bağ dizinini izliyor" \
     "s=s.replace('    if [ -L \"\$dizin\" ]; then\n        die','    if false; then\n        die',1)"
 
+echo "== Seçimli birimler (rc6 provası) =="
+
+mutate_in "$GOC" "kurulu ama kapalı birim taşınmıyor" \
+    "s=s.replace('    { cat \"\$GOC_DIR/kurulu\" 2>/dev/null || true; cat','    { cat',1)"
+
+mutate_in "$GOC" "kurulu kaydı birim dosyasına bakmıyor" \
+    "s=s.replace('panely-\$s.timer\" ]; then echo','panely-\$s.timer.YOK\" ]; then echo',1)"
+
 echo "== Kurulumu takılı bırakmamak (güvenlik incelemesi) =="
 
 mutate_in "$GOC" "silinemeyen eski ağ kurulumu düşürüyor" \

@@ -283,6 +283,10 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
         done > "$GOC_DIR/zamanlayicilar.yeni"
         mv "$GOC_DIR/zamanlayicilar.yeni" "$GOC_DIR/zamanlayicilar"
     fi
+    if [ ! -e "$GOC_DIR/kurulu" ]; then
+        goc_kurulu_secimliler > "$GOC_DIR/kurulu.yeni"
+        mv "$GOC_DIR/kurulu.yeni" "$GOC_DIR/kurulu"
+    fi
     if [ ! -e "$GOC_DIR/beklenen" ]; then
         docker ps --filter label=panely.app_id --filter status=running \
             --format '{{.Label "panely.app_id"}} {{.Label "panely.release_id"}} {{.Label "panely.replica"}}' \
@@ -411,11 +415,13 @@ goc_vekil() {
     rm -rf "$KOK/run/panely-caddy"
 }
 
-# goc_secimli — göçten önce etkin olan seçimli zamanlayıcıların yeni
-# birimlerini ve betiklerini kurar, aynı zamanlayıcıları etkinleştirir.
+# goc_secimli — göçten önce KURULU olan seçimli birimlerin yeni adlı
+# birimlerini ve betiklerini kurar; yalnızca önceden ETKİN olan
+# zamanlayıcıları açar.
 goc_secimli() {
-    local s
-    [ -s "$GOC_DIR/zamanlayicilar" ] || return 0
+    local s liste
+    liste="$(goc_secimli_listesi)"
+    [ -n "$liste" ] || return 0
     # Dosya adları AÇIK yazılıyor (değişkenden kurulmuyor): paket testi
     # (TestArchiveCarriesEveryStageFileTheScriptsRead) her `$STAGE/<ad>`'ı
     # pakette arıyor; kurulan adı göremeseydi eksik dosyayı da göremezdi.
@@ -443,13 +449,36 @@ goc_secimli() {
                 goc_birim_kur kadran-volume-backup.timer ;;
             *) die "göç: tanınmayan zamanlayıcı kaydı: $s" ;;
         esac
-        say "seçimli birim kuruldu: kadran-$s"
-    done < "$GOC_DIR/zamanlayicilar"
+        if grep -qx "$s" "$GOC_DIR/zamanlayicilar"; then
+            say "seçimli birim kuruldu: kadran-$s"
+        else
+            say "seçimli birim kuruldu, zamanlayıcısı eskisi gibi KAPALI: kadran-$s"
+        fi
+    done <<< "$liste"
     systemctl daemon-reload
     while read -r s; do
         [ -n "$s" ] || continue
         systemctl enable --now "kadran-$s.timer"
     done < "$GOC_DIR/zamanlayicilar"
+}
+
+# goc_kurulu_secimliler — eski adla KURULU seçimli birimler, zamanlayıcısı
+# etkin olsun olmasın. Kapalı bir zamanlayıcı da kullanıcının kurduğu bir
+# birim: göç onu yeni adla kurar ama açmaz (rc6 provası: kapalı bildirim
+# birimi sessizce düşüyordu).
+goc_kurulu_secimliler() {
+    local s
+    for s in "${SECIMLI[@]}"; do
+        if [ -e "$KOK/etc/systemd/system/panely-$s.timer" ]; then echo "$s"; fi
+    done
+}
+
+# goc_secimli_listesi — yeni adla kurulacak seçimliler: kurulu ∪ etkin.
+# Etkinler ayrıca eklenir: kurulu kaydı olmayan (bu düzeltmeden önceki bir
+# sürümle başlamış) bir göçte de düşmesinler.
+goc_secimli_listesi() {
+    { cat "$GOC_DIR/kurulu" 2>/dev/null || true; cat "$GOC_DIR/zamanlayicilar" 2>/dev/null || true; } |
+        { grep -v '^$' || true; } | sort -u
 }
 
 # goc_birim_kur <ad> — hazırlık dizinindeki birimi systemd dizinine kurar.

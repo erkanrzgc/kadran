@@ -84,7 +84,7 @@ func TestCheckRole(t *testing.T) {
 	}
 
 	gecersiz := []Identity{
-		{},                 // rol yok: eski panely-connect ya da hata — KAPALI
+		{},                 // rol yok: eski kadran-connect ya da hata — KAPALI
 		{Role: "root"},     // bilinmeyen rol
 		{Role: "Admin"},    // büyük/küçük harf duyarlı
 		{Role: RoleDeploy}, // kapsamsız dağıtım

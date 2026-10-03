@@ -22,7 +22,7 @@ mod="$(go list -m)"
 ldflags="$ldflags -X $mod/internal/version.Version=$version"
 ldflags="$ldflags -X $mod/internal/version.Commit=$commit"
 
-for binary in panelyd panely-exec panely-connect kadran; do
+for binary in kadrand kadran-exec kadran-connect kadran; do
     GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "$ldflags" \
         -o "$out/$binary" "./cmd/$binary"
 done

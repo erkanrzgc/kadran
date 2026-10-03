@@ -4,7 +4,7 @@
 #
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
-# Sessiz ayrışma. panely-notify.sh panelyd'nin `msg=ALARM` satırlarını
+# Sessiz ayrışma. kadran-notify.sh kadrand'nin `msg=ALARM` satırlarını
 # ayrıştırıyor; LogSink'in biçimi değişirse betiğin kendi testleri yine
 # geçer (örnekleri elle kopyalanmış) ve Telegram teslimatı SESSİZCE durur.
 # Sözleşme testi iki yönü de bağlamalı: Go tarafı değişince de, betikteki
@@ -112,7 +112,7 @@ echo "== Betik örneği kayıyor =="
 
 # Kontrol grubu: sözleşme TEK yönlü olsaydı bu yeşil kalırdı.
 mutate "betikteki örnek elle değişti" "$FIX" \
-    "s=s.replace('durum=acildi ciddiyet=kritik hedef=panely.db','durum=acildi ciddiyet=KRITIK hedef=panely.db',1)"
+    "s=s.replace('durum=acildi ciddiyet=kritik hedef=kadran.db','durum=acildi ciddiyet=KRITIK hedef=kadran.db',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

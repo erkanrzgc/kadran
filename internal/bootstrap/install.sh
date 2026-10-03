@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Panely sunucu kurulumu. `kadran bootstrap root@sunucu` tarafından
+# Kadran sunucu kurulumu. `kadran bootstrap root@sunucu` tarafından
 # uzak makinede root olarak çalıştırılır.
 #
 # # Bu betik neyi kuruyor?
 #
 # Üç binary, iki kullanıcı, iki grup ve bir SSH zorlanmış komutu. Kurulum
 # bittiğinde root erişimi bir daha GEREKMEZ: günlük kullanım yetkisiz
-# `panely-client` kullanıcısı üzerinden yürür.
+# `kadran-client` kullanıcısı üzerinden yürür.
 #
 # # İdempotent
 #
@@ -19,10 +19,10 @@ set -euo pipefail
 
 STAGE="${1:?kullanım: install.sh <hazırlık-dizini>}"
 
-LIB_DIR=/usr/local/lib/panely
-STATE_DIR=/var/lib/panely
-CLIENT_HOME=/var/lib/panely-client
-SSHD_DROPIN=/etc/ssh/sshd_config.d/60-panely.conf
+LIB_DIR=/usr/local/lib/kadran
+STATE_DIR=/var/lib/kadran
+CLIENT_HOME=/var/lib/kadran-client
+SSHD_DROPIN=/etc/ssh/sshd_config.d/60-kadran.conf
 
 say()  { printf '  %s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
@@ -48,10 +48,10 @@ calisan_ayni_mi() {
 # ile koştuğu için korumasız bir `x="$(vekil_parmak_izi)"` taze kurulumu
 # sessizce durdururdu. `|| true` bu yüzden.
 vekil_parmak_izi() {
-    { cat /etc/panely/caddy.json /etc/tmpfiles.d/panely-caddy.conf \
-          /etc/systemd/system/panely-caddy.service \
-          /etc/systemd/system/panely-caddy-admin.socket \
-          /etc/systemd/system/panely-caddy.service.d/*.conf 2>/dev/null || true; } |
+    { cat /etc/kadran/caddy.json /etc/tmpfiles.d/kadran-caddy.conf \
+          /etc/systemd/system/kadran-caddy.service \
+          /etc/systemd/system/kadran-caddy-admin.socket \
+          /etc/systemd/system/kadran-caddy.service.d/*.conf 2>/dev/null || true; } |
         md5sum | cut -d' ' -f1
 }
 
@@ -81,18 +81,18 @@ yonetici_satiri_yaz() {
         grep -vF "$key_body" "$auth_file" > "$auth_file.yeni" || true
         mv "$auth_file.yeni" "$auth_file"
     fi
-    printf '%s\n' "command=\"$lib_dir/panely-connect\",restrict $key" >> "$auth_file"
+    printf '%s\n' "command=\"$lib_dir/kadran-connect\",restrict $key" >> "$auth_file"
 }
 
-# kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — panely-connect'e
+# kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — kadran-connect'e
 # zorlanmamış ya da `restrict` taşımayan anahtar satırlarının sayısı.
 #
-# Tek bir böyle satır panely-client'a kabuk açar. Eski denetim "herhangi
+# Tek bir böyle satır kadran-client'a kabuk açar. Eski denetim "herhangi
 # bir satırda command= var mı" diye bakıyordu ve iki satırlı anahtar
 # dosyasının ürettiği kısıtsız ikinci satırı GEÇİRİRDİ (K-131).
 kisitsiz_satir_sayisi() {
     { grep -vE '^[[:space:]]*(#|$)' "$1" || true; } |
-        { grep -cvE "^command=\"$2/panely-connect( -deploy=[a-z0-9,-]+)?\",restrict " || true; }
+        { grep -cvE "^command=\"$2/kadran-connect( -deploy=[a-z0-9,-]+)?\",restrict " || true; }
 }
 
 # ── Ön koşullar ──────────────────────────────────────────────────────
@@ -119,24 +119,35 @@ NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
 say "sistem uygun ($(uname -m), $( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo bilinmiyor ))"
 
+# ── Eski adlı kurulum (panely → kadran, K-136) ───────────────────────
+#
+# Göç kodu ayrı dosyada; kurulum paketinde install.sh'ın yanında gelir.
+# shellcheck source=goc.sh
+. "$STAGE/goc.sh"
+GOC=0
+if goc_gerekli; then
+    GOC=1
+    goc_1
+fi
+
 # ── Gruplar ve kullanıcılar ──────────────────────────────────────────
 
 step "Gruplar ve kullanıcılar"
 
-getent group panely >/dev/null || groupadd --system panely
-getent group panely-client >/dev/null || groupadd --system panely-client
+getent group kadran >/dev/null || groupadd --system kadran
+getent group kadran-client >/dev/null || groupadd --system kadran-client
 
-# panelyd'nin çalıştığı yetkisiz kullanıcı. Giriş yapmaz.
-if ! id -u panely >/dev/null 2>&1; then
-    useradd --system --gid panely \
+# kadrand'nin çalıştığı yetkisiz kullanıcı. Giriş yapmaz.
+if ! id -u kadran >/dev/null 2>&1; then
+    useradd --system --gid kadran \
         --home-dir "$STATE_DIR" --no-create-home \
         --shell "$NOLOGIN" \
-        --comment "Panely kontrol düzlemi" panely
+        --comment "Kadran kontrol düzlemi" kadran
 fi
 
 # SSH istemci kullanıcısı.
 #
-# KRİTİK: birincil grup `panely-client` OLMAK ZORUNDA (-g), ek grup (-G)
+# KRİTİK: birincil grup `kadran-client` OLMAK ZORUNDA (-g), ek grup (-G)
 # DEĞİL. SO_PEERCRED yalnızca sürecin BİRİNCİL grubunu bildirir; ek grup
 # üyeliklerini görmez. Yanlış yapılırsa hiçbir hata mesajı çıkmaz, her
 # bağlantı sessizce reddedilir.
@@ -144,11 +155,11 @@ fi
 # Kabuk `nologin` DEĞİL: sshd zorlanmış komutu kullanıcının giriş kabuğu
 # üzerinden çalıştırır ve nologin onu reddeder. Hesabı kısıtlayan şey
 # kabuk değil, authorized_keys'teki `command=...,restrict` ikilisi.
-if ! id -u panely-client >/dev/null 2>&1; then
-    useradd --system --gid panely-client \
+if ! id -u kadran-client >/dev/null 2>&1; then
+    useradd --system --gid kadran-client \
         --home-dir "$CLIENT_HOME" --create-home \
         --shell /bin/sh \
-        --comment "Panely istemci erişimi" panely-client
+        --comment "Kadran istemci erişimi" kadran-client
 fi
 
 # ── Değişmez doğrulaması ─────────────────────────────────────────────
@@ -158,29 +169,29 @@ fi
 
 step "Yetki değişmezleri"
 
-primary="$(id -gn panely-client)"
-[ "$primary" = "panely-client" ] || die \
-"panely-client kullanıcısının birincil grubu '$primary', 'panely-client' olmalı.
+primary="$(id -gn kadran-client)"
+[ "$primary" = "kadran-client" ] || die \
+"kadran-client kullanıcısının birincil grubu '$primary', 'kadran-client' olmalı.
 SO_PEERCRED yalnızca birincil grubu bildirir; bu hâliyle her bağlantı
-sessizce reddedilir. Düzeltmek için:  usermod -g panely-client panely-client"
+sessizce reddedilir. Düzeltmek için:  usermod -g kadran-client kadran-client"
 
-if id -nG panely-client | tr ' ' '\n' | grep -qx panely; then
+if id -nG kadran-client | tr ' ' '\n' | grep -qx kadran; then
     die \
-"panely-client kullanıcısı 'panely' grubunda. Bu hâliyle exec.sock'a
-doğrudan ulaşır ve panelyd tamamen atlanabilir — ayrıcalık ayrımı çöker.
-Düzeltmek için:  gpasswd -d panely-client panely"
+"kadran-client kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
+doğrudan ulaşır ve kadrand tamamen atlanabilir — ayrıcalık ayrımı çöker.
+Düzeltmek için:  gpasswd -d kadran-client kadran"
 fi
 
-if id -nG panely | tr ' ' '\n' | grep -qx docker; then
+if id -nG kadran | tr ' ' '\n' | grep -qx docker; then
     die \
-"panely kullanıcısı 'docker' grubunda. Docker soketine erişim pratikte
+"kadran kullanıcısı 'docker' grubunda. Docker soketine erişim pratikte
 root yetkisidir; bu hâliyle executor ayrımı dekoratif kalır.
-Düzeltmek için:  gpasswd -d panely docker"
+Düzeltmek için:  gpasswd -d kadran docker"
 fi
 
-say "panely-client birincil grubu: $primary"
-say "panely-client ek grupları: $(id -nG panely-client)"
-say "panely ek grupları: $(id -nG panely)"
+say "kadran-client birincil grubu: $primary"
+say "kadran-client ek grupları: $(id -nG kadran-client)"
+say "kadran ek grupları: $(id -nG kadran)"
 
 # ── Binary'ler ───────────────────────────────────────────────────────
 
@@ -188,54 +199,54 @@ step "Binary'ler"
 
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
-for binary in panelyd panely-exec panely-connect panely-caddy; do
+for binary in kadrand kadran-exec kadran-connect kadran-caddy; do
     [ -f "$STAGE/$binary" ] || die "$binary hazırlık dizininde yok"
 done
 
-# panely-exec root çalışır ve yalnızca root yazabilmeli.
-install -m 0755 -o root -g root "$STAGE/panelyd"       "$LIB_DIR/panelyd"
-install -m 0755 -o root -g root "$STAGE/panely-exec"   "$LIB_DIR/panely-exec"
-# panely-connect'i panely-client çalıştırır; yazma yetkisi yine yalnızca root.
-install -m 0755 -o root -g root "$STAGE/panely-connect" "$LIB_DIR/panely-connect"
+# kadran-exec root çalışır ve yalnızca root yazabilmeli.
+install -m 0755 -o root -g root "$STAGE/kadrand"       "$LIB_DIR/kadrand"
+install -m 0755 -o root -g root "$STAGE/kadran-exec"   "$LIB_DIR/kadran-exec"
+# kadran-connect'i kadran-client çalıştırır; yazma yetkisi yine yalnızca root.
+install -m 0755 -o root -g root "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect"
 # Ters vekil. Yazma yetkisi yalnızca root: bu binary bir GÜVENLİK SINIRI
 # taşıyor (K-050) ve çalıştıran kullanıcının onu değiştirebilmesi sınırı
 # anlamsız kılardı.
-install -m 0755 -o root -g root "$STAGE/panely-caddy"  "$LIB_DIR/panely-caddy"
+install -m 0755 -o root -g root "$STAGE/kadran-caddy"  "$LIB_DIR/kadran-caddy"
 
 say "$LIB_DIR içine kuruldu"
-"$LIB_DIR/panelyd" -version || die "panelyd çalıştırılamadı — mimari uyuşmuyor olabilir"
+"$LIB_DIR/kadrand" -version || die "kadrand çalıştırılamadı — mimari uyuşmuyor olabilir"
 
 # ── Dizinler ─────────────────────────────────────────────────────────
 
 step "Dizinler"
 
-install -m 0644 -o root -g root "$STAGE/panely-tmpfiles.conf" /etc/tmpfiles.d/panely.conf
-systemd-tmpfiles --create /etc/tmpfiles.d/panely.conf
+install -m 0644 -o root -g root "$STAGE/kadran-tmpfiles.conf" /etc/tmpfiles.d/kadran.conf
+systemd-tmpfiles --create /etc/tmpfiles.d/kadran.conf
 
-# /var/lib/panely tmpfiles ile yaratılıyor ama yeniden başlatma arasında
+# /var/lib/kadran tmpfiles ile yaratılıyor ama yeniden başlatma arasında
 # kalıcı olması gerekiyor; burada da garantiye alıyoruz.
-install -d -m 0750 -o panely -g panely "$STATE_DIR"
+install -d -m 0750 -o kadran -g kadran "$STATE_DIR"
 
-say "/run/panely, /run/panely-exec, $STATE_DIR hazır"
+say "/run/kadran, /run/kadran-exec, $STATE_DIR hazır"
 
 # ── systemd birimleri ────────────────────────────────────────────────
 
 step "systemd birimleri"
 
-install -m 0644 -o root -g root "$STAGE/panely-exec.service" /etc/systemd/system/panely-exec.service
-install -m 0644 -o root -g root "$STAGE/panelyd.service"     /etc/systemd/system/panelyd.service
-install -m 0644 -o root -g root "$STAGE/var-lib-panely-volumes.mount" \
-    /etc/systemd/system/var-lib-panely-volumes.mount
+install -m 0644 -o root -g root "$STAGE/kadran-exec.service" /etc/systemd/system/kadran-exec.service
+install -m 0644 -o root -g root "$STAGE/kadrand.service"     /etc/systemd/system/kadrand.service
+install -m 0644 -o root -g root "$STAGE/var-lib-kadran-volumes.mount" \
+    /etc/systemd/system/var-lib-kadran-volumes.mount
 systemctl daemon-reload
 
 # ── Executor denetim günlüğü daemon'un dizininden ÇIKARILIR ──────────
 #
 # Günlük eskiden $STATE_DIR içindeydi. Dosya root'undu ama dizin
-# panely'nin; daemon onu silip yerine kendi zincirini koyabiliyordu
-# (K-100, canlıda ölçüldü). Yeni yeri /var/lib/panely-exec (0700 root,
+# kadran'ın; daemon onu silip yerine kendi zincirini koyabiliyordu
+# (K-100, canlıda ölçüldü). Yeni yeri /var/lib/kadran-exec (0700 root,
 # tmpfiles yukarıda yarattı).
 old_journal="$STATE_DIR/exec-audit.log"
-new_journal=/var/lib/panely-exec/exec-audit.log
+new_journal=/var/lib/kadran-exec/exec-audit.log
 
 # Birimi güncellemek yetmez: operatörün `systemctl edit` ile eklediği
 # bir drop-in (ör. --allow-repo için) ExecStart'ı TAMAMEN yeniden yazar
@@ -246,10 +257,10 @@ new_journal=/var/lib/panely-exec/exec-audit.log
 # Çıktı önce değişkene alınıyor: `set -o pipefail` altında `… | grep -q`
 # yarışa açık — grep eşleşince erken çıkar, sol taraf SIGPIPE alır ve
 # boru hattı başarısız sayılır. Yani eşleşme "yok" okunabilirdi.
-exec_start="$(systemctl show -p ExecStart panely-exec.service)"
+exec_start="$(systemctl show -p ExecStart kadran-exec.service)"
 if [[ "$exec_start" == *"$old_journal"* ]]; then
-    die "panely-exec'in etkin ExecStart'ı günlüğü hâlâ $old_journal olarak gösteriyor.
-Büyük ihtimalle bir drop-in (systemctl cat panely-exec). Düzelt:
+    die "kadran-exec'in etkin ExecStart'ı günlüğü hâlâ $old_journal olarak gösteriyor.
+Büyük ihtimalle bir drop-in (systemctl cat kadran-exec). Düzelt:
   --journal $new_journal
 sonra kurulumu yeniden çalıştır. Günlük TAŞINMADI."
 fi
@@ -261,7 +272,7 @@ Hangisinin gerçek zincir olduğuna elle karar verilmeli; hiçbiri silinmedi."
     # Executor günlüğü açılışta bir kez açıp tanımlayıcıyı tutuyor.
     # Çalışırken taşınırsa eski inode'a yazmaya devam eder; bu yüzden
     # önce durdurulur. Aşağıdaki `enable --now` onu yeni yolla başlatır.
-    systemctl stop panely-exec.service 2>/dev/null || true
+    systemctl stop kadran-exec.service 2>/dev/null || true
     mv "$old_journal" "$new_journal"
     chown root:root "$new_journal"
     chmod 0640 "$new_journal"
@@ -271,8 +282,8 @@ fi
 # Hacim kökü nodev,nosuid ile bağlanır. Birim ÖNCE etkinleştirilir ki
 # yeniden başlatmadan sonra da bağlansın; `enable` tek başına şimdi
 # bağlamaz, bu yüzden `start` da çağrılır (ikisi de idempotent).
-systemctl enable var-lib-panely-volumes.mount >/dev/null 2>&1 || true
-systemctl restart var-lib-panely-volumes.mount \
+systemctl enable var-lib-kadran-volumes.mount >/dev/null 2>&1 || true
+systemctl restart var-lib-kadran-volumes.mount \
     || die "hacim kökü sertleştirilemedi — uygulama hacimleri nodev,nosuid olmadan bağlanırdı"
 
 # Birimin AKTİF olması yetmez: `Options=` sessizce yok sayılsaydı birim
@@ -281,131 +292,150 @@ systemctl restart var-lib-panely-volumes.mount \
 # Bu kontrolün var olma sebebi ölçülmüş bir yanlıştır: Docker'ın local
 # sürücüsüne aynı seçenekler verildiğinde hacim sertleştirilmeden
 # bağlanıyor ve hiçbir hata üretmiyor (docs/decisions.md K-038).
-vol_opts="$(awk '$5=="/var/lib/panely/volumes"{print $6}' /proc/self/mountinfo | head -1)"
+vol_opts="$(awk '$5=="/var/lib/kadran/volumes"{print $6}' /proc/self/mountinfo | head -1)"
 for flag in nodev nosuid; do
     printf '%s' "$vol_opts" | tr ',' '\n' | grep -qx "$flag" \
         || die "hacim kökünde $flag ETKİN DEĞİL (etkin: ${vol_opts:-<bağlı değil>})"
 done
 say "hacim kökü sertleştirildi ($vol_opts)"
 
-# ── Ters vekil (panely-caddy) ────────────────────────────────────────
+# ── Ters vekil (kadran-caddy) ────────────────────────────────────────
 #
 # Dağıtımın `caddy` paketine BAĞLANILMIYOR; gerekçe
-# deploy/systemd/panely-caddy.service'in başında. Kurulan her şey depodan
+# deploy/systemd/kadran-caddy.service'in başında. Kurulan her şey depodan
 # geliyor: birim, soket, tmpfiles kuralı ve yol açıcı yapılandırma.
 
-step "Ters vekil"
-
-getent group panely-caddy >/dev/null || groupadd --system panely-caddy
-
-if ! id -u panely-caddy >/dev/null 2>&1; then
-    useradd --system --gid panely-caddy \
-        --home-dir /var/lib/panely-caddy --no-create-home \
-        --shell "$NOLOGIN" \
-        --comment "Panely ters vekili" panely-caddy
-fi
-
-# Değişmez: ters vekil `panely` GRUBUNDA OLAMAZ.
+# ters_vekil_hazirla / ters_vekil_baslat — ters vekili kurar ya da yükseltir.
 #
-# Girseydi /run/panely-exec/exec.sock'a (0660 root:panely) ulaşırdı; yani
-# internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. panelyd'nin
-# admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
-# sağlanıyor.
-if id -nG panely-caddy | tr ' ' '\n' | grep -qx panely; then
-    die \
-"panely-caddy kullanıcısı 'panely' grubunda. Bu hâliyle exec.sock'a
-ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
-Düzeltmek için:  gpasswd -d panely-caddy panely"
-fi
+# İki parça çünkü göçte (K-136) arada eski vekil duruyor: ESKİ vekil siteyi
+# sunarken yapılabilen her şey (K-050 denetimi, dosyalar, enable) hazırlıkta;
+# kullanıcıya ve porta bağlı olanlar başlatmada. GCP provasında ilk sürümün
+# 6,5 sn'lik vekil geçişinin ~3 sn'si modül denetimiydi. Taze kurulum ve
+# yükseltmede ikisi art arda çalışır (ters_vekil_kur), davranış aynı.
+ters_vekil_hazirla() {
+    step "Ters vekil"
 
-# ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
-#
-# Bu, kurulumun en önemli ölçümü. Sınır bir yapılandırmada değil,
-# BINARY'DE: panelyd admin soketine yazabildiği için, stok Caddy'de o
-# yetki "alan adının TLS özel anahtarını okuyabilme"yi de kapsıyordu
-# (ölçüldü, varsayılmadı).
-#
-# ⚠ ÖNCE POZİTİF KONTROL. Doğrudan "file_server var mı" diye sormak,
-# binary hiç çalışmasa bile "yok" cevabı üretirdi — cevapsızlığı istenen
-# cevap diye okumak bu projede üç kez yanlış sonuç ürettirdi (K-051).
-# Bu yüzden önce beklenen bir modülün VARLIĞI kanıtlanıyor.
-caddy_modules="$("$LIB_DIR/panely-caddy" list-modules 2>/dev/null)" \
-    || die "panely-caddy çalıştırılamadı — mimari uyuşmuyor olabilir"
+    # ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
+    #
+    # Bu, kurulumun en önemli ölçümü. Sınır bir yapılandırmada değil,
+    # BINARY'DE: kadrand admin soketine yazabildiği için, stok Caddy'de o
+    # yetki "alan adının TLS özel anahtarını okuyabilme"yi de kapsıyordu
+    # (ölçüldü, varsayılmadı).
+    #
+    # ⚠ ÖNCE POZİTİF KONTROL. Doğrudan "file_server var mı" diye sormak,
+    # binary hiç çalışmasa bile "yok" cevabı üretirdi — cevapsızlığı istenen
+    # cevap diye okumak bu projede üç kez yanlış sonuç ürettirdi (K-051).
+    # Bu yüzden önce beklenen bir modülün VARLIĞI kanıtlanıyor.
+    caddy_modules="$("$LIB_DIR/kadran-caddy" list-modules 2>/dev/null)" \
+        || die "kadran-caddy çalıştırılamadı — mimari uyuşmuyor olabilir"
 
-printf '%s\n' "$caddy_modules" | grep -qx 'http.handlers.reverse_proxy' || die \
-"panely-caddy modül listesinde reverse_proxy YOK. Ölçüm geçersiz: bu
+    printf '%s\n' "$caddy_modules" | grep -qx 'http.handlers.reverse_proxy' || die \
+"kadran-caddy modül listesinde reverse_proxy YOK. Ölçüm geçersiz: bu
 binary ya beklenen ikili değil ya da list-modules bir şey döndürmedi.
 Aşağıdaki dosya-servisi kontrolü bu hâliyle anlamsız olurdu."
 
-serving_modules="$(printf '%s\n' "$caddy_modules" \
-    | grep -E 'file_server|templates|caddyfs' || true)"
-[ -z "$serving_modules" ] || die \
-"panely-caddy DOSYA SERVİS EDEN modüller içeriyor:
+    serving_modules="$(printf '%s\n' "$caddy_modules" \
+        | grep -E 'file_server|templates|caddyfs' || true)"
+    [ -z "$serving_modules" ] || die \
+"kadran-caddy DOSYA SERVİS EDEN modüller içeriyor:
 $serving_modules
 Bu binary ile ters vekil, TLS özel anahtarlarının durduğu dizini
 servis edebilir. Derleme build/caddy/main.go'daki dışlama listesine
 uymuyor — K-050 sınırı ETKİSİZ."
 
-say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^') modül, dosya servisi yok)"
+    say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^') modül, dosya servisi yok)"
 
-# ── Yapılandırma ve birimler ────────────────────────────────────────
+    # ── Yapılandırma ve birimler ────────────────────────────────────────
 
-vekil_once="$(vekil_parmak_izi)"
+    vekil_once="$(vekil_parmak_izi)"
 
-install -d -m 0755 -o root -g root /etc/panely
-install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/panely/caddy.json
+    install -d -m 0755 -o root -g root /etc/kadran
+    install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/kadran/caddy.json
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy.service" \
+        /etc/systemd/system/kadran-caddy.service
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy-admin.socket" \
+        /etc/systemd/system/kadran-caddy-admin.socket
+    systemctl daemon-reload
 
-install -m 0644 -o root -g root "$STAGE/panely-caddy-tmpfiles.conf" \
-    /etc/tmpfiles.d/panely-caddy.conf
-systemd-tmpfiles --create /etc/tmpfiles.d/panely-caddy.conf
-
-install -m 0644 -o root -g root "$STAGE/panely-caddy.service" \
-    /etc/systemd/system/panely-caddy.service
-install -m 0644 -o root -g root "$STAGE/panely-caddy-admin.socket" \
-    /etc/systemd/system/panely-caddy-admin.socket
-systemctl daemon-reload
-
-# ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
-#
-# Dağıtımın kendi caddy'si ya da bir nginx çalışıyorsa panely-caddy
-# bağlanamaz ve "address already in use" ile ölür. Sebebi günlüğün
-# içinde kaybolmasın diye ÖNCEDEN ve açıkça söyleniyor.
-for other in caddy nginx apache2 httpd lighttpd; do
-    if systemctl is-active --quiet "$other.service" 2>/dev/null; then
-        die \
+    # ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
+    #
+    # Dağıtımın kendi caddy'si ya da bir nginx çalışıyorsa kadran-caddy
+    # bağlanamaz ve "address already in use" ile ölür. Sebebi günlüğün
+    # içinde kaybolmasın diye ÖNCEDEN ve açıkça söyleniyor.
+    for other in caddy nginx apache2 httpd lighttpd; do
+        if systemctl is-active --quiet "$other.service" 2>/dev/null; then
+            die \
 "$other.service çalışıyor ve 80/443 portlarını tutuyor olabilir.
-panely-caddy bu portlara bağlanamaz. Devam etmek için:
+kadran-caddy bu portlara bağlanamaz. Devam etmek için:
   systemctl disable --now $other.service"
+        fi
+    done
+
+    # Soket ÖNCE: Caddy onu fd/3 olarak devralıyor.
+    #
+    # `enable` ile `start` AYRI şeyler — yalnızca başlatmak, birimi yeniden
+    # başlatmadan sonra geri getirmez. Bu ayrım gerçek bir kurulumda
+    # atlandı ve ancak reboot testinde ortaya çıktı; ikisi de yapılıyor ve
+    # ikisi de aşağıda DOĞRULANIYOR.
+    systemctl enable kadran-caddy-admin.socket
+    systemctl enable kadran-caddy.service
+}
+
+ters_vekil_baslat() {
+    getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
+
+    if ! id -u kadran-caddy >/dev/null 2>&1; then
+        useradd --system --gid kadran-caddy \
+            --home-dir /var/lib/kadran-caddy --no-create-home \
+            --shell "$NOLOGIN" \
+            --comment "Kadran ters vekili" kadran-caddy
     fi
-done
 
-# Soket ÖNCE: Caddy onu fd/3 olarak devralıyor.
-#
-# `enable` ile `start` AYRI şeyler — yalnızca başlatmak, birimi yeniden
-# başlatmadan sonra geri getirmez. Bu ayrım gerçek bir kurulumda
-# atlandı ve ancak reboot testinde ortaya çıktı; ikisi de yapılıyor ve
-# ikisi de aşağıda DOĞRULANIYOR.
-systemctl enable panely-caddy-admin.socket
-systemctl enable panely-caddy.service
+    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
+    #
+    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
+    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
+    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
+    # sağlanıyor.
+    if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
+        die \
+"kadran-caddy kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
+ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
+Düzeltmek için:  gpasswd -d kadran-caddy kadran"
+    fi
 
-# Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
-# Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
-# başlattı ve Caddy rotasız açıldı; site panelyd yeniden başlayana kadar
-# KAPALI kaldı (bir sonraki kurulumda panelyd yeniden başlayınca döndü).
-# Rotaları geri getirmek panelyd'nin işi (K-055, vekil izleyicisi); ama
-# gereksiz yeniden başlatma yine de kesinti demek. İkili, yapılandırma
-# ya da birim değiştiyse yeniden başlatma şart. İkili commit'ten BAĞIMSIZ
-# derleniyor (scripts/build-caddy.sh, -buildvcs=false); öyle olmasaydı
-# Caddy'ye dokunmayan her yükseltme de onu "değişmiş" sayardı (ölçüldü).
-if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
-        && systemctl is-active --quiet panely-caddy-admin.socket \
-        && systemctl is-active --quiet panely-caddy.service \
-        && calisan_ayni_mi panely-caddy.service "$LIB_DIR/panely-caddy"; then
-    say "ters vekil değişmedi — yeniden başlatılmadı, trafik kesilmedi"
-else
-    systemctl stop panely-caddy.service 2>/dev/null || true
-    systemctl restart panely-caddy-admin.socket
-    systemctl restart panely-caddy.service
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
+        /etc/tmpfiles.d/kadran-caddy.conf
+    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
+
+    # Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
+    # Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
+    # başlattı ve Caddy rotasız açıldı; site kadrand yeniden başlayana kadar
+    # KAPALI kaldı (bir sonraki kurulumda kadrand yeniden başlayınca döndü).
+    # Rotaları geri getirmek kadrand'nin işi (K-055, vekil izleyicisi); ama
+    # gereksiz yeniden başlatma yine de kesinti demek. İkili, yapılandırma
+    # ya da birim değiştiyse yeniden başlatma şart. İkili commit'ten BAĞIMSIZ
+    # derleniyor (scripts/build-caddy.sh, -buildvcs=false); öyle olmasaydı
+    # Caddy'ye dokunmayan her yükseltme de onu "değişmiş" sayardı (ölçüldü).
+    if [ "$vekil_once" = "$(vekil_parmak_izi)" ] \
+            && systemctl is-active --quiet kadran-caddy-admin.socket \
+            && systemctl is-active --quiet kadran-caddy.service \
+            && calisan_ayni_mi kadran-caddy.service "$LIB_DIR/kadran-caddy"; then
+        say "ters vekil değişmedi — yeniden başlatılmadı, trafik kesilmedi"
+    else
+        systemctl stop kadran-caddy.service 2>/dev/null || true
+        systemctl restart kadran-caddy-admin.socket
+        systemctl restart kadran-caddy.service
+    fi
+}
+
+ters_vekil_kur() {
+    ters_vekil_hazirla
+    ters_vekil_baslat
+}
+
+if [ "$GOC" -eq 0 ]; then
+    ters_vekil_kur
 fi
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
@@ -414,12 +444,12 @@ step "SSH yapılandırması"
 
 [ -f "$STAGE/client_key.pub" ] || die "istemci açık anahtarı hazırlık dizininde yok"
 
-install -d -m 0700 -o panely-client -g panely-client "$CLIENT_HOME/.ssh"
+install -d -m 0700 -o kadran-client -g kadran-client "$CLIENT_HOME/.ssh"
 
 # authorized_keys satırı:
 #
 #   command="..."  → istemci ne isterse istesin YALNIZCA bu çalışır.
-#                    SSH_ORIGINAL_COMMAND panely-connect tarafından
+#                    SSH_ORIGINAL_COMMAND kadran-connect tarafından
 #                    kasten yok sayılıyor.
 #   restrict       → pty, port yönlendirme, ajan yönlendirme, X11,
 #                    user-rc: hepsi kapalı.
@@ -432,24 +462,24 @@ auth_file="$CLIENT_HOME/.ssh/authorized_keys"
 yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR" \
     || die "istemci açık anahtarı tek satır olmalı — ikinci satır zorlanmış komutsuz bir anahtar olurdu"
 
-chown -R panely-client:panely-client "$CLIENT_HOME/.ssh"
+chown -R kadran-client:kadran-client "$CLIENT_HOME/.ssh"
 chmod 0600 "$auth_file"
 
 # sshd drop-in.
 #
 # ExposeAuthInfo, kimlik doğrulamada kullanılan anahtarı geçici bir dosyaya
-# yazar ve yolunu oturuma SSH_USER_AUTH ile verir. panely-connect denetim
+# yazar ve yolunu oturuma SSH_USER_AUTH ile verir. kadran-connect denetim
 # kaydının aktör kimliğini ORADAN okuyor; kapalıysa parmak izi sessizce boş
 # kalır ve denetim izi "kim yaptı" sorusunu yanıtlayamaz. (Kod eskiden
 # SSH_AUTH_INFO_0'ı okuyordu: PAM'in iç değişkeni, oturuma gelmiyor; canlıda
 # parmak izi hiç kaydedilmemişti — K-134.)
 if [ -d /etc/ssh/sshd_config.d ] && grep -qE '^\s*Include\s+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config; then
     cat > "$SSHD_DROPIN" <<'SSHD'
-# Panely tarafından yönetiliyor. Elle düzenlemeyin.
+# Kadran tarafından yönetiliyor. Elle düzenlemeyin.
 
 # ── Denetim kimliğinin taklit edilmesini engelleyen satır ────────────
 #
-# panely-connect, aktörün SSH parmak izini SSH_USER_AUTH'ın gösterdiği
+# kadran-connect, aktörün SSH parmak izini SSH_USER_AUTH'ın gösterdiği
 # dosyadan okur. O değişkeni istemci belirleyebilirse denetim izi yalan
 # söyler.
 #
@@ -482,7 +512,7 @@ PermitUserEnvironment no
 # yalnızca genişletirdi.
 
 # ExposeAuthInfo olmadan denetim kaydındaki SSH parmak izi boş kalır.
-Match User panely-client
+Match User kadran-client
     ExposeAuthInfo yes
     PermitTTY no
     X11Forwarding no
@@ -493,7 +523,7 @@ SSHD
     chmod 0644 "$SSHD_DROPIN"
 else
     die "sshd_config.d dizini yok veya Include satırı bulunamadı — \
-elle yapılandırma gerekiyor (Match User panely-client + ExposeAuthInfo yes)"
+elle yapılandırma gerekiyor (Match User kadran-client + ExposeAuthInfo yes)"
 fi
 
 # Yapılandırma BOZUKSA sshd'yi yeniden yüklemek bizi dışarıda bırakır.
@@ -507,34 +537,60 @@ say "zorlanmış komut ve ExposeAuthInfo yapılandırıldı"
 
 step "Servisler"
 
-systemctl enable panely-exec.service panelyd.service
+# Göçte executor BAŞLAMADAN: depo beyaz listesi eskisiyle aynı mı (K-136).
+if [ "$GOC" -eq 1 ]; then
+    goc_izinli_depo_dogrula
+fi
+
+systemctl enable kadran-exec.service kadrand.service
 
 # Yeniden kurulum aynı zamanda YÜKSELTME yolu. `enable --now` ÇALIŞAN
 # birimi yeniden başlatmıyor: taze sunucu testinde (K-112) ikinci
-# kurulumdan sonra /proc/<pid>/exe → "…/panelyd (deleted)" — süreç
+# kurulumdan sonra /proc/<pid>/exe → "…/kadrand (deleted)" — süreç
 # diskten silinmiş ESKİ ikiliyi çalıştırıyordu ve kurulum "tamamlandı"
 # diyordu. Kontrol düzlemi her kurulumda yeniden başlatılıyor; uygulama
 # trafiği etkilenmez (ters vekil ve konteynerler ayrı). Executor ÖNCE:
 # daemon açılışta ona bağlanıyor.
-systemctl restart panely-exec.service
-systemctl restart panelyd.service
+systemctl restart kadran-exec.service
+systemctl restart kadrand.service
 
 # Soketlerin belirmesi için kısa bir pencere.
 for _ in $(seq 1 50); do
-    [ -S /run/panely/api.sock ] && break
+    [ -S /run/kadran/api.sock ] && break
     sleep 0.1
 done
 
-systemctl is-active --quiet panely-exec.service || {
-    journalctl -u panely-exec.service -n 30 --no-pager >&2
-    die "panely-exec başlamadı"
+systemctl is-active --quiet kadran-exec.service || {
+    journalctl -u kadran-exec.service -n 30 --no-pager >&2
+    die "kadran-exec başlamadı"
 }
-systemctl is-active --quiet panelyd.service || {
-    journalctl -u panelyd.service -n 30 --no-pager >&2
-    die "panelyd başlamadı"
+systemctl is-active --quiet kadrand.service || {
+    journalctl -u kadrand.service -n 30 --no-pager >&2
+    die "kadrand başlamadı"
 }
 
-say "panely-exec ve panelyd çalışıyor"
+say "kadran-exec ve kadrand çalışıyor"
+
+# ── Göçün ikinci yarısı (K-136) ─────────────────────────────────────
+#
+# Yeni kontrol düzlemi çalışıyor ve eski konteynerlerin karşılıklarını
+# kuruyor. Onlar ayağa kalkınca eski ters vekil yenisiyle değişir;
+# kesinti yalnız bu adımda.
+if [ "$GOC" -eq 1 ]; then
+    goc_bekle
+    ters_vekil_hazirla
+    # kadrand eski vekil DURMADAN önce durur ve yenisi açılınca başlar:
+    # açılış uzlaştırması rotaları hemen yazar. Çalışır bırakılsaydı rotaları
+    # vekil izleyicisinin 10 sn'lik turu yazardı (GCP provası: 16 sn'lik
+    # kesintinin 9,5 sn'si bu bekleyişti).
+    systemctl stop kadrand.service
+    goc_vekil
+    ters_vekil_baslat
+    systemctl start kadrand.service
+    goc_secimli
+    goc_rota_bekle
+    goc_bitir
+fi
 
 # ── Kurulum sonrası doğrulama ────────────────────────────────────────
 #
@@ -547,48 +603,48 @@ fail=0
 check_fail() { printf '  ✗ %s\n' "$*" >&2; fail=1; }
 check_ok()   { printf '  ✓ %s\n' "$*"; }
 
-# 1. panelyd root ÇALIŞMAMALI.
-daemon_user="$(ps -o user= -C panelyd | head -1 | tr -d ' ')"
-if [ "$daemon_user" = "panely" ]; then
-    check_ok "panelyd yetkisiz kullanıcı olarak çalışıyor ($daemon_user)"
+# 1. kadrand root ÇALIŞMAMALI.
+daemon_user="$(ps -o user= -C kadrand | head -1 | tr -d ' ')"
+if [ "$daemon_user" = "kadran" ]; then
+    check_ok "kadrand yetkisiz kullanıcı olarak çalışıyor ($daemon_user)"
 else
-    check_fail "panelyd '$daemon_user' olarak çalışıyor, 'panely' bekleniyordu"
+    check_fail "kadrand '$daemon_user' olarak çalışıyor, 'kadran' bekleniyordu"
 fi
 
-# 2. panelyd Docker'a ERİŞEMEMELİ — ama önce ölçümün ölçebildiği
+# 2. kadrand Docker'a ERİŞEMEMELİ — ama önce ölçümün ölçebildiği
 #    kanıtlanıyor. `setpriv … docker ps` Docker HİÇ yokken de başarısız
 #    oluyor (komut bulunamadı) ve bu kontrol "erişemiyor" diye GEÇİYORDU
-#    (taze sunucu testi, K-112). Root ulaşamıyorsa panely'nin ulaşamaması
+#    (taze sunucu testi, K-112). Root ulaşamıyorsa kadran'ın ulaşamaması
 #    hiçbir şey kanıtlamaz.
 if ! docker ps >/dev/null 2>&1; then
     check_fail "root da Docker'a ulaşamıyor — ayrıcalık ayrımı ÖLÇÜLEMEDİ"
-elif setpriv --reuid panely --regid panely --clear-groups docker ps >/dev/null 2>&1; then
-    check_fail "panely kullanıcısı Docker'a erişebiliyor — ayrıcalık ayrımı ÇÖKMÜŞ"
+elif setpriv --reuid kadran --regid kadran --clear-groups docker ps >/dev/null 2>&1; then
+    check_fail "kadran kullanıcısı Docker'a erişebiliyor — ayrıcalık ayrımı ÇÖKMÜŞ"
 else
-    check_ok "panely kullanıcısı Docker'a erişemiyor"
+    check_ok "kadran kullanıcısı Docker'a erişemiyor"
 fi
 
 # 3. Soket izinleri.
-api_mode="$(stat -c '%a %U:%G' /run/panely/api.sock 2>/dev/null || echo yok)"
-if [ "$api_mode" = "660 panely:panely-client" ]; then
+api_mode="$(stat -c '%a %U:%G' /run/kadran/api.sock 2>/dev/null || echo yok)"
+if [ "$api_mode" = "660 kadran:kadran-client" ]; then
     check_ok "api.sock: $api_mode"
 else
-    check_fail "api.sock beklenmedik: $api_mode (660 panely:panely-client bekleniyordu)"
+    check_fail "api.sock beklenmedik: $api_mode (660 kadran:kadran-client bekleniyordu)"
 fi
 
-exec_mode="$(stat -c '%a %U:%G' /run/panely-exec/exec.sock 2>/dev/null || echo yok)"
-if [ "$exec_mode" = "660 root:panely" ]; then
+exec_mode="$(stat -c '%a %U:%G' /run/kadran-exec/exec.sock 2>/dev/null || echo yok)"
+if [ "$exec_mode" = "660 root:kadran" ]; then
     check_ok "exec.sock: $exec_mode"
 else
-    check_fail "exec.sock beklenmedik: $exec_mode (660 root:panely bekleniyordu)"
+    check_fail "exec.sock beklenmedik: $exec_mode (660 root:kadran bekleniyordu)"
 fi
 
 # 4. İstemci kullanıcısı exec.sock'a ULAŞAMAMALI.
-if setpriv --reuid panely-client --regid panely-client --clear-groups \
-        test -r /run/panely-exec/exec.sock 2>/dev/null; then
-    check_fail "panely-client exec.sock'u okuyabiliyor — panelyd atlanabilir"
+if setpriv --reuid kadran-client --regid kadran-client --clear-groups \
+        test -r /run/kadran-exec/exec.sock 2>/dev/null; then
+    check_fail "kadran-client exec.sock'u okuyabiliyor — kadrand atlanabilir"
 else
-    check_ok "panely-client exec.sock'a erişemiyor"
+    check_ok "kadran-client exec.sock'a erişemiyor"
 fi
 
 # 4b. Daemon, executor'ın denetim günlüğünün DİZİNİNE yazamamalı.
@@ -596,13 +652,13 @@ fi
 # Dosyanın izni yetmez: yazılabilir bir dizindeki root dosyası silinip
 # yerine başkası konabilir (K-100). Çalışan executor'ın açık tuttuğu
 # günlük de sınanıyor — bir drop-in eski yolu geri getirmiş olabilir.
-if setpriv --reuid panely --regid panely --clear-groups \
+if setpriv --reuid kadran --regid kadran --clear-groups \
         test -w "$(dirname "$new_journal")" 2>/dev/null; then
-    check_fail "panely, executor günlüğünün dizinine yazabiliyor — ayrıcalıklı kayıt değiştirilebilir"
+    check_fail "kadran, executor günlüğünün dizinine yazabiliyor — ayrıcalıklı kayıt değiştirilebilir"
 else
-    check_ok "panely executor günlüğünün dizinine yazamıyor"
+    check_ok "kadran executor günlüğünün dizinine yazamıyor"
 fi
-exec_pid="$(systemctl show -p MainPID --value panely-exec.service)"
+exec_pid="$(systemctl show -p MainPID --value kadran-exec.service)"
 exec_fds="$(ls -l "/proc/$exec_pid/fd" 2>/dev/null || true)"
 if [[ "$exec_fds" == *"-> $new_journal"$'\n'* || "$exec_fds" == *"-> $new_journal" ]]; then
     check_ok "executor günlüğü $new_journal konumunda tutuyor"
@@ -615,7 +671,7 @@ kisitsiz="$(kisitsiz_satir_sayisi "$auth_file" "$LIB_DIR")"
 if ! grep -q 'command="' "$auth_file"; then
     check_fail "authorized_keys'te zorlanmış komut yok — istemci kabuk alabilir"
 elif [ "$kisitsiz" != 0 ]; then
-    check_fail "authorized_keys'te $kisitsiz satır panely-connect'e zorlanmamış — istemci kabuk alabilir"
+    check_fail "authorized_keys'te $kisitsiz satır kadran-connect'e zorlanmamış — istemci kabuk alabilir"
 else
     check_ok "authorized_keys'in her satırı zorlanmış komutlu"
 fi
@@ -628,7 +684,7 @@ fi
 # etkinleştirilmemişti ve yalnızca REBOOT testinde ortaya çıktı. "Şu an
 # çalışıyor" bir kabul ölçütü değil; ölçüt "yeniden başlatmadan sonra da
 # çalışır".
-for unit in panely-caddy-admin.socket panely-caddy.service; do
+for unit in kadran-caddy-admin.socket kadran-caddy.service; do
     state="$(systemctl is-enabled "$unit" 2>/dev/null || echo yok)"
     if [ "$state" = "enabled" ]; then
         check_ok "$unit etkin (yeniden başlatmayı geçer)"
@@ -638,7 +694,7 @@ for unit in panely-caddy-admin.socket panely-caddy.service; do
 done
 
 # 6b. Kontrol düzleminin çalışan imajı da kurulan ikili olmalı (K-112).
-#     Önceden yalnızca ters vekil için ölçülüyordu; panelyd ve executor
+#     Önceden yalnızca ters vekil için ölçülüyordu; kadrand ve executor
 #     yeniden kurulumda silinmiş eski ikiliyle çalışmaya devam ediyordu
 #     ve hiçbir kontrol bunu görmedi.
 calisan_ikili_dogrula() {
@@ -648,19 +704,19 @@ calisan_ikili_dogrula() {
         check_fail "çalışan $1 kurulan binary DEĞİL — eski süreç ayakta ya da hiç çalışmıyor"
     fi
 }
-calisan_ikili_dogrula panelyd
-calisan_ikili_dogrula panely-exec
+calisan_ikili_dogrula kadrand
+calisan_ikili_dogrula kadran-exec
 
 # 7. Çalışan İMAJ, kurduğumuz binary olmalı (K-049).
 #
 # `systemctl is-active` yeni ikilinin çalıştığını KANITLAMAZ: eski süreç
 # ayakta kalmışsa birim yine "active" görünür. Kanıt /proc/<pid>/exe'den
 # okunuyor — çalışan imajın kendisi.
-caddy_pid="$(systemctl show -p MainPID --value panely-caddy.service 2>/dev/null || echo 0)"
+caddy_pid="$(systemctl show -p MainPID --value kadran-caddy.service 2>/dev/null || echo 0)"
 if [ "${caddy_pid:-0}" -gt 0 ] 2>/dev/null \
         && running_sum="$(md5sum "/proc/$caddy_pid/exe" 2>/dev/null | cut -d' ' -f1)" \
         && [ -n "$running_sum" ]; then
-    installed_sum="$(md5sum "$LIB_DIR/panely-caddy" | cut -d' ' -f1)"
+    installed_sum="$(md5sum "$LIB_DIR/kadran-caddy" | cut -d' ' -f1)"
     if [ "$running_sum" = "$installed_sum" ]; then
         check_ok "çalışan ters vekil kurulan binary (${running_sum:0:12})"
     else
@@ -672,32 +728,32 @@ fi
 
 # 8. Ters vekil root ÇALIŞMAMALI.
 caddy_user="$(ps -o user= -p "${caddy_pid:-0}" 2>/dev/null | tr -d ' ')"
-if [ "$caddy_user" = "panely-caddy" ]; then
+if [ "$caddy_user" = "kadran-caddy" ]; then
     check_ok "ters vekil yetkisiz kullanıcı olarak çalışıyor ($caddy_user)"
 else
-    check_fail "ters vekil '$caddy_user' olarak çalışıyor, 'panely-caddy' bekleniyordu"
+    check_fail "ters vekil '$caddy_user' olarak çalışıyor, 'kadran-caddy' bekleniyordu"
 fi
 
 # 9. Admin soketinin izinleri.
-admin_mode="$(stat -c '%a %U:%G' /run/panely-caddy/admin.sock 2>/dev/null || echo yok)"
-if [ "$admin_mode" = "660 panely-caddy:panely" ]; then
+admin_mode="$(stat -c '%a %U:%G' /run/kadran-caddy/admin.sock 2>/dev/null || echo yok)"
+if [ "$admin_mode" = "660 kadran-caddy:kadran" ]; then
     check_ok "admin.sock: $admin_mode"
 else
-    check_fail "admin.sock beklenmedik: $admin_mode (660 panely-caddy:panely bekleniyordu)"
+    check_fail "admin.sock beklenmedik: $admin_mode (660 kadran-caddy:kadran bekleniyordu)"
 fi
 
-# 10. panelyd admin soketine ULAŞABİLMELİ — K-050'nin dayandığı erişim.
-if setpriv --reuid panely --regid panely --clear-groups \
-        test -w /run/panely-caddy/admin.sock 2>/dev/null; then
-    check_ok "panely kullanıcısı admin soketine yazabiliyor"
+# 10. kadrand admin soketine ULAŞABİLMELİ — K-050'nin dayandığı erişim.
+if setpriv --reuid kadran --regid kadran --clear-groups \
+        test -w /run/kadran-caddy/admin.sock 2>/dev/null; then
+    check_ok "kadran kullanıcısı admin soketine yazabiliyor"
 else
-    check_fail "panely kullanıcısı admin soketine YAZAMIYOR — ters vekil yönetilemez"
+    check_fail "kadran kullanıcısı admin soketine YAZAMIYOR — ters vekil yönetilemez"
 fi
 
 # 11. Ters vekil executor'a ULAŞAMAMALI. Modelin can alıcı noktası:
 #     internete bakan süreç ayrıcalıklı soketi görmemeli.
-if setpriv --reuid panely-caddy --regid panely-caddy --clear-groups \
-        test -r /run/panely-exec/exec.sock 2>/dev/null; then
+if setpriv --reuid kadran-caddy --regid kadran-caddy --clear-groups \
+        test -r /run/kadran-exec/exec.sock 2>/dev/null; then
     check_fail "ters vekil exec.sock'u okuyabiliyor — ayrıcalıklı executor internete bakıyor"
 else
     check_ok "ters vekil exec.sock'a erişemiyor"
@@ -705,6 +761,15 @@ fi
 
 [ "$fail" -eq 0 ] || die "kurulum sonrası doğrulama başarısız — yukarıya bakın"
 
+# Eski adlı Docker kalıntıları (konteyner, ağ, imaj etiketi; K-136) yalnızca
+# hiçbiri trafik almıyorsa kaldırılır. Göçten AYRI: o kurulumda
+# kaldırılamadıysa sonraki her kurulum yeniden dener. Doğrulamadan SONRA:
+# temizlik kontrollerin önüne geçmesin, doğrulama düşerse eski konteynerler
+# (son çalışan sürüm) yerinde kalsın.
+if goc_artik_var; then
+    goc_temizle
+fi
+
 printf '\nKurulum tamamlandı.\n'
 printf 'Artık root erişimine gerek yok; bağlanmak için:\n'
-printf '  kadran status panely-client@<sunucu>\n'
+printf '  kadran status kadran-client@<sunucu>\n'

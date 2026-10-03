@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // DefaultGitHost, `-allow-git-host` verilmediğinde izin verilen tek host.
@@ -43,7 +43,7 @@ var (
 //
 // allowedHosts ve allowedRepos executor'ın yapılandırmasından gelir,
 // istekten DEĞİL.
-func validateGitSource(src *panelyv1.GitSource, allowedHosts, allowedRepos []string) error {
+func validateGitSource(src *kadranv1.GitSource, allowedHosts, allowedRepos []string) error {
 	if src == nil {
 		return errors.New("source zorunludur")
 	}
@@ -85,7 +85,7 @@ func validateGitHost(host string, allowed []string) error {
 			"host geçersiz (%q) — şema, port, kullanıcı bilgisi veya yol içeremez", host)
 	}
 
-	// Beyaz liste ele geçirilmiş bir panelyd tarafından genişletilemez:
+	// Beyaz liste ele geçirilmiş bir kadrand tarafından genişletilemez:
 	// executor'ın bayrağından geliyor.
 	for _, a := range allowed {
 		if host == a {
@@ -136,7 +136,7 @@ func validateDockerfilePath(p string) error {
 }
 
 // validateImageBuild, ImageBuild isteğinin tamamını doğrular.
-func validateImageBuild(req *panelyv1.ImageBuildRequest, allowedHosts, allowedRepos []string) error {
+func validateImageBuild(req *kadranv1.ImageBuildRequest, allowedHosts, allowedRepos []string) error {
 	if req == nil {
 		return errors.New("istek boş olamaz")
 	}
@@ -166,7 +166,7 @@ func validateImageBuild(req *panelyv1.ImageBuildRequest, allowedHosts, allowedRe
 // bir sha olduğu için subdir bileşeni oluşturulamaz.
 //
 // Çağırmadan ÖNCE validateGitSource geçmiş olmalıdır.
-func BuildContextURL(src *panelyv1.GitSource) string {
+func BuildContextURL(src *kadranv1.GitSource) string {
 	return fmt.Sprintf("https://%s/%s/%s.git#%s",
 		src.GetHost(), src.GetOwner(), src.GetRepo(), src.GetCommitSha())
 }

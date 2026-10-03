@@ -22,14 +22,14 @@ func callerFromContext(ctx context.Context) (CallerInfo, bool) {
 //
 // # Kimlik neden gRPC metadata'sından OKUNMUYOR?
 //
-// İlk tasarımda öyleydi ve delik bir tasarımdı. `panely-connect` bir bayt
+// İlk tasarımda öyleydi ve delik bir tasarımdı. `kadran-connect` bir bayt
 // pompasıdır: gRPC metadata'sını yazan o değil, SSH'ın diğer ucundaki UZAK
 // İSTEMCİDİR. İstemci kendi parmak izini istediği gibi uydurabilir ve
 // denetim günlüğü "kim yaptı" alanında yalan söylerdi — hem de tam olarak
 // inkâr edilemezlik için tutulan kayıtta.
 //
 // Şimdi kimlik, bağlantı kurulurken okunan önsözden geliyor
-// (bkz. internal/connproto). Önsözü panely-connect yazar, sshd'nin kendi
+// (bkz. internal/connproto). Önsözü kadran-connect yazar, sshd'nin kendi
 // ortam değişkenlerinden türeterek; uzak istemcinin baytları ondan sonra
 // geldiği için onu değiştiremez.
 //

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# panelyd'nin ağ çitini GERÇEK systemd altında ölçer.
+# kadrand'nin ağ çitini GERÇEK systemd altında ölçer.
 #
 # ── Neden cgroup'a girerek? ─────────────────────────────────────────
 #
@@ -25,28 +25,28 @@
 # İÇİNDE ve DIŞINDA. Anlamlı olan fark.
 set -uo pipefail
 
-CG=/sys/fs/cgroup/system.slice/panelyd.service
+CG=/sys/fs/cgroup/system.slice/kadrand.service
 T=5
 
 [ -d "$CG" ] || { echo "HATA: cgroup yok: $CG" >&2; exit 1; }
 
 # Yoklama hedefi ÇALIŞAN bir konteynerden alınıyor — sabit yazmak, adres
 # değişince testi sessizce anlamsızlaştırırdı.
-cip="$(docker inspect panely_portfolio_r2_0 \
+cip="$(docker inspect kadran_portfolio_r2_0 \
     --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null)"
 [ -n "$cip" ] || { echo "HATA: konteyner adresi okunamadı" >&2; exit 1; }
 
 # connect <host> <port> → 0 = TCP bağlantısı kuruldu
 connect() { timeout "$T" bash -c "exec 3<>/dev/tcp/$1/$2" 2>/dev/null; }
 
-# inside <host> <port> → aynı şey, ama panelyd'nin cgroup'unda
+# inside <host> <port> → aynı şey, ama kadrand'nin cgroup'unda
 inside() {
     sh -c "echo \$\$ > $CG/cgroup.procs 2>/dev/null; \
         exec timeout $T bash -c 'exec 3<>/dev/tcp/$1/$2'" 2>/dev/null
 }
 
 fail=0
-printf '%-32s %-14s %-14s %s\n' 'HEDEF' 'panelyd içi' 'kontrol' 'SONUÇ'
+printf '%-32s %-14s %-14s %s\n' 'HEDEF' 'kadrand içi' 'kontrol' 'SONUÇ'
 printf '%-32s %-14s %-14s %s\n' '─────' '───────────' '───────' '─────'
 
 check() { # check <ad> <host> <port> <allow|deny>

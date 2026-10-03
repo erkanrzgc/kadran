@@ -49,9 +49,9 @@ test("preload ve paylaşılan kanal listeleri birebir aynı", async () => {
   );
 });
 
-test("her kanal adı panely: önekini taşıyor", () => {
+test("her kanal adı kadran: önekini taşıyor", () => {
   for (const [key, value] of Object.entries(CHANNELS)) {
-    assert.match(value, /^panely:/, `${key} kanalı öneki taşımıyor: ${value}`);
+    assert.match(value, /^kadran:/, `${key} kanalı öneki taşımıyor: ${value}`);
   }
 });
 
@@ -72,7 +72,7 @@ test("kanal adları benzersiz", () => {
 test("preload genel amaçlı bir köprü açmıyor", async () => {
   const source = await readFile(preloadPath, "utf8");
 
-  const exposed = source.match(/exposeInMainWorld\(\s*"panely"\s*,\s*\{([\s\S]*)\}\s*\)/);
+  const exposed = source.match(/exposeInMainWorld\(\s*"kadran"\s*,\s*\{([\s\S]*)\}\s*\)/);
   assert.ok(exposed, "exposeInMainWorld çağrısı bulunamadı");
 
   const body = exposed[1];

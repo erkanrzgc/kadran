@@ -26,7 +26,7 @@ func execRecord(action string) audit.Record {
 		Actor:      audit.SystemActor("executor"),
 		Action:     action,
 		Target:     "container/blog-1",
-		ParamsJSON: `{"image":"panely/blog:abc"}`,
+		ParamsJSON: `{"image":"kadran/blog:abc"}`,
 		Outcome:    audit.OutcomeSuccess,
 	}
 }
@@ -347,7 +347,7 @@ func TestRoundTripPreservesAllFields(t *testing.T) {
 // senaryoyu kapsar.
 //
 // Executor çalışırken günlük dosyasına sahte bir satır eklenirse, Read
-// bunu "gerçek" gibi teslim ederse panelyd'nin çapraz doğrulaması iki
+// bunu "gerçek" gibi teslim ederse kadrand'nin çapraz doğrulaması iki
 // doğrulanmamış zinciri karşılaştırmış olur — yani hiçbir şey kanıtlamaz.
 // Bu yüzden Read her çağrıda zinciri seq 1'den yeniden doğrular.
 func TestReadRejectsLineForgedWhileOpen(t *testing.T) {

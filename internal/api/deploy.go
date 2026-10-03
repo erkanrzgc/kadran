@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/erkanrzgc/kadran/internal/deploy"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -57,8 +57,8 @@ const sealTimeout = 10 * time.Second
 // görmedim" bir başarı kanıtı değildir. İstemci de aynı ölçütü
 // kullanabilir: DeploySucceeded görmeden biten akış BAŞARISIZDIR.
 func (s *Server) Deploy(
-	req *panelyv1.DeployRequest,
-	stream grpc.ServerStreamingServer[panelyv1.DeployResponse],
+	req *kadranv1.DeployRequest,
+	stream grpc.ServerStreamingServer[kadranv1.DeployResponse],
 ) error {
 	const action = "app.deploy"
 
@@ -92,8 +92,8 @@ func (s *Server) Deploy(
 	params["release_id"] = rel.ID
 	tgt = releaseTarget(appID, rel.ID)
 
-	if err := stream.Send(&panelyv1.DeployResponse{
-		Event: &panelyv1.DeployResponse_Accepted{Accepted: &panelyv1.DeployAccepted{
+	if err := stream.Send(&kadranv1.DeployResponse{
+		Event: &kadranv1.DeployResponse_Accepted{Accepted: &kadranv1.DeployAccepted{
 			ReleaseId: rel.ID,
 			AppId:     appID,
 			CommitSha: req.GetCommitSha(),
@@ -105,8 +105,8 @@ func (s *Server) Deploy(
 
 	imageID, buildErr := s.exec.ImageBuild(ctx, buildRequest(app, rel, req.GetCommitSha()),
 		func(data []byte, isStderr bool) error {
-			return stream.Send(&panelyv1.DeployResponse{
-				Event: &panelyv1.DeployResponse_Output{Output: &panelyv1.BuildOutput{
+			return stream.Send(&kadranv1.DeployResponse{
+				Event: &kadranv1.DeployResponse_Output{Output: &kadranv1.BuildOutput{
 					Data:     data,
 					IsStderr: isStderr,
 				}},
@@ -148,8 +148,8 @@ func (s *Server) Deploy(
 		params["skipped_routes"] = skipped.Result.Error()
 	}
 
-	if err := stream.Send(&panelyv1.DeployResponse{
-		Event: &panelyv1.DeployResponse_Succeeded{Succeeded: &panelyv1.DeploySucceeded{
+	if err := stream.Send(&kadranv1.DeployResponse{
+		Event: &kadranv1.DeployResponse_Succeeded{Succeeded: &kadranv1.DeploySucceeded{
 			ReleaseId: rel.ID,
 			ImageId:   imageID,
 		}},
@@ -168,13 +168,13 @@ func (s *Server) Deploy(
 // URL'ini executor kendisi kuruyor (exec.BuildContextURL) ve şema sabit
 // https, fragment de doğrulanmış 40 haneli bir sha olduğu için subdir
 // bileşeni oluşturulamıyor.
-func buildRequest(app store.App, rel store.Release, sha string) *panelyv1.ImageBuildRequest {
-	return &panelyv1.ImageBuildRequest{
-		Release: &panelyv1.ReleaseRef{
+func buildRequest(app store.App, rel store.Release, sha string) *kadranv1.ImageBuildRequest {
+	return &kadranv1.ImageBuildRequest{
+		Release: &kadranv1.ReleaseRef{
 			AppId:     app.ID,
 			ReleaseId: rel.ID,
 		},
-		Source: &panelyv1.GitSource{
+		Source: &kadranv1.GitSource{
 			Host:      app.GitHost,
 			Owner:     app.GitOwner,
 			Repo:      app.GitRepo,

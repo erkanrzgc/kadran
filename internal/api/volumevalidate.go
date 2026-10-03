@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ════════════════════════════════════════════════════════════════════
@@ -17,7 +17,7 @@ import (
 // ── Sınırlar executor'ınkiyle AYNI olmak ZORUNDA ────────────────────
 //
 // Buradaki desen, sayılar ve yasak kökler `internal/exec/validate.go`
-// ile birebir aynıdır. Kopya olmaları kasıtlı: panelyd ayrıcalıklı
+// ile birebir aynıdır. Kopya olmaları kasıtlı: kadrand ayrıcalıklı
 // paketi içe aktarmıyor ve aktarmamalı — yetki sınırı ikilinin
 // kendisinde, ortak bir kütüphanede değil.
 //
@@ -44,7 +44,7 @@ const (
 var forbiddenMountRoots = []string{"/proc", "/sys", "/dev"}
 
 // validateVolumes, hacim listesini doğrular.
-func validateVolumes(vols []*panelyv1.AppVolume) error {
+func validateVolumes(vols []*kadranv1.AppVolume) error {
 	if len(vols) > maxVolumes {
 		return fmt.Errorf("çok fazla hacim (%d, sınır %d)", len(vols), maxVolumes)
 	}
@@ -128,7 +128,7 @@ func pathOverlaps(a, b string) bool {
 // Aynı hacmi hem tanımlayıp hem ayırmak iki zıt niyet taşır. Sessizce
 // birini seçmek, hangisinin uygulandığını kullanıcı için belirsiz
 // bırakırdı.
-func validateVolumeRemove(set []*panelyv1.AppVolume, remove []string) error {
+func validateVolumeRemove(set []*kadranv1.AppVolume, remove []string) error {
 	for _, name := range remove {
 		if !volumeNamePat.MatchString(name) {
 			return fmt.Errorf("ayrılacak hacim adı geçersiz (%q)", name)

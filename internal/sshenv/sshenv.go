@@ -36,7 +36,7 @@
 // DİKKAT — burada kolay bir yanlış var: bunları kapatan şey `restrict`
 // DEĞİLDİR. sshd(8), restrict'i "disable port, agent and X11 forwarding,
 // as well as disabling PTY allocation and execution of ~/.ssh/rc" diye
-// tanımlar; ortam işlemesi bu listede YOKTUR. Panely bir zamanlar bunun
+// tanımlar; ortam işlemesi bu listede YOKTUR. Kadran bir zamanlar bunun
 // tersini iddia eden bir yorum taşıyordu (docs/decisions.md K-031).
 //
 // `PermitUserEnvironment no`, bootstrap'ın sshd drop-in'inde GENEL kapsamda
@@ -158,7 +158,7 @@ func parseAuthLine(line string) (keyType, fingerprint string, err error) {
 		return "", "", errors.New("sshenv: beklenmedik kimlik satırı biçimi")
 	}
 	if fields[0] != "publickey" {
-		// Panely yalnızca açık anahtarla girişe izin verir; başka bir
+		// Kadran yalnızca açık anahtarla girişe izin verir; başka bir
 		// yöntem görülürse parmak izi üretilmez.
 		return "", "", fmt.Errorf("sshenv: açık anahtar dışı yöntem: %s", fields[0])
 	}

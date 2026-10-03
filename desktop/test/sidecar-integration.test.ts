@@ -96,7 +96,7 @@ describe("gerçek sidecar süreci", { skip: binaryExists ? false : "kadran binar
     const client = newClient();
     try {
       const err = await client
-        .call("status", { target: "unix:///olmayan/panely-test.sock" })
+        .call("status", { target: "unix:///olmayan/kadran-test.sock" })
         .then(
           () => null,
           (e) => e as { message: string },

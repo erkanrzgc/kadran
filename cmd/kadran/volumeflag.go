@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ════════════════════════════════════════════════════════════════════
@@ -15,14 +15,14 @@ import (
 //
 // ── ⚠ Docker'ın `-v` sözdiziminden KASTEN farklı ────────────────────
 //
-// Docker'da `-v /host/yol:/konteyner` ilk parça HOST YOLUDUR. Panely
+// Docker'da `-v /host/yol:/konteyner` ilk parça HOST YOLUDUR. Kadran
 // host yolu KABUL ETMİYOR: şemada öyle bir alan yok ve yolu executor
 // kuruyor (TOCTOU sınıfı baştan siliniyor).
 //
 // Bu yüzden ilk parça bir AD, ve yol gibi görünen bir ilk parça AÇIKÇA
 // REDDEDİLİYOR. Sessizce ad sanmak, Docker alışkanlığıyla
 // `-volume /srv/veri:/veri` yazan birinin host dizinini bağladığını
-// sanmasına yol açardı — oysa panely `/srv/veri` adında bir hacim
+// sanmasına yol açardı — oysa kadran `/srv/veri` adında bir hacim
 // yaratmaya çalışır (ve ad deseni onu zaten reddeder, ama hata mesajı
 // sebebi anlatmazdı).
 
@@ -58,8 +58,8 @@ func parseVolumeFlag(raw string) (volumeSpec, error) {
 	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, ".") {
 		return volumeSpec{}, fmt.Errorf(
 			"ilk parça bir HACİM ADI olmalı, host yolu değil (%q). "+
-				"Panely host yolu kabul etmez; yolu kendisi kurar "+
-				"(/var/lib/panely/volumes/<uygulama>/<ad>)", name)
+				"Kadran host yolu kabul etmez; yolu kendisi kurar "+
+				"(/var/lib/kadran/volumes/<uygulama>/<ad>)", name)
 	}
 
 	spec := volumeSpec{name: name, mountPath: mount}
@@ -82,7 +82,7 @@ func parseVolumeFlag(raw string) (volumeSpec, error) {
 
 // volumeList, tekrarlanabilir -volume bayrağının topladıklarıdır.
 type volumeList struct {
-	vals *[]*panelyv1.AppVolume
+	vals *[]*kadranv1.AppVolume
 }
 
 func (l volumeList) String() string {
@@ -109,7 +109,7 @@ func (l volumeList) Set(raw string) error {
 			return fmt.Errorf("%q birden çok kez verildi", spec.name)
 		}
 	}
-	*l.vals = append(*l.vals, &panelyv1.AppVolume{
+	*l.vals = append(*l.vals, &kadranv1.AppVolume{
 		Name:      spec.name,
 		MountPath: spec.mountPath,
 		ReadOnly:  spec.readOnly,
@@ -118,8 +118,8 @@ func (l volumeList) Set(raw string) error {
 }
 
 // volumeFlag, tekrarlanabilir bir hacim bayrağı tanımlar.
-func (c *cli) volumeFlag(fs *flag.FlagSet, name, usage string) *[]*panelyv1.AppVolume {
-	vals := []*panelyv1.AppVolume{}
+func (c *cli) volumeFlag(fs *flag.FlagSet, name, usage string) *[]*kadranv1.AppVolume {
+	vals := []*kadranv1.AppVolume{}
 	fs.Var(volumeList{vals: &vals}, name, usage)
 	return &vals
 }

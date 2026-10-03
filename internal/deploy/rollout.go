@@ -153,7 +153,7 @@ func NewRollout(
 //
 // `SetActiveRelease` kapıdan SONRA: kontrol düzlemine "bu sürüm canlı"
 // yazmak, ters vekile yüklemekten önce gelmeli (aksi hâlde arada düşen
-// bir panelyd, canlıda kayıtsız bir rota bırakır ve bir sonraki
+// bir kadrand, canlıda kayıtsız bir rota bırakır ve bir sonraki
 // uzlaştırma onu sessizce siler) — ama ikisi de kapıdan sonra gelmeli.
 //
 // Uzlaştırmadan sonra boşaltma penceresi beklenir ve ESKİ sürümlerin
@@ -555,7 +555,7 @@ func (r *Rollout) drainStale(ctx context.Context, appID, activeID string) error 
 //
 // Kaynak, kontrol düzlemi değil HOST: SQLite ne istediğimizi biliyor, ama
 // yalnızca Docker hangi konteynerlerin gerçekten var olduğunu biliyor.
-// Önceki bir panelyd çökmesinden kalan sürümler de böylece toplanıyor.
+// Önceki bir kadrand çökmesinden kalan sürümler de böylece toplanıyor.
 //
 // Sıra BELİRLENİMLİ: aksi hâlde aynı arıza her koşuda başka bir sırayla
 // günlüğe düşer ve karşılaştırılamaz.
@@ -608,9 +608,9 @@ func (e SkippedError) Error() string {
 // 4. kabul ölçütü ("bozuk commit kapıda durmalı") ikisinin birlikte
 // olmasını gerektiriyor.
 //
-// HTTP yoklaması panelyd'nin ağa çıkmasını gerektiriyor; birim artık
+// HTTP yoklaması kadrand'nin ağa çıkmasını gerektiriyor; birim artık
 // `AF_INET`/`AF_INET6` ile çalışıyor ve `IPAddressAllow` ile yalnızca
-// Docker'ın özel ağ aralığına sınırlanıyor (bkz. panelyd.service).
+// Docker'ın özel ağ aralığına sınırlanıyor (bkz. kadrand.service).
 //
 // ── Ölçüt POZİTİF ──────────────────────────────────────────────────
 //

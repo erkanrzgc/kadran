@@ -49,9 +49,9 @@ var sqliteSidecars = []string{"-wal", "-shm"}
 //
 // ── Daemon KAPALI olmalı ────────────────────────────────────────────
 //
-// Çalışan bir panelyd'nin altından veritabanını çekmek, açık dosya
+// Çalışan bir kadrand'nin altından veritabanını çekmek, açık dosya
 // tanıtıcısı eski inode'u tutmaya devam ettiği için sessiz ve
-// açıklanamaz bir duruma yol açar. Çağıran taraf (cmd/panelyd) soketi
+// açıklanamaz bir duruma yol açar. Çağıran taraf (cmd/kadrand) soketi
 // yoklayarak daemon'ın kapalı olduğunu doğruluyor; burada bu bir ÖN
 // KOŞULdur.
 //
@@ -65,13 +65,13 @@ var sqliteSidecars = []string{"-wal", "-shm"}
 //  3. Yan dosyalar SİLİNİR — güvenlik kopyası zaten WAL'deki yazmaları
 //     içerdiği için burada kaybedilen bir şey yok.
 //  4. Yedek yerine KONUR (geçici dosya + rename, yani yarım kalmış bir
-//     kopya asla `panely.db` adını almaz).
+//     kopya asla `kadran.db` adını almaz).
 func Restore(ctx context.Context, dbPath, snapshotPath string) (string, error) {
 	if dbPath == ":memory:" || dbPath == "" {
 		return "", fmt.Errorf("bellek veritabanına geri yükleme yapılamaz")
 	}
 
-	// 1. Yedek gerçekten açılabilir ve Panely şeması taşıyor mu?
+	// 1. Yedek gerçekten açılabilir ve Kadran şeması taşıyor mu?
 	if err := validateSnapshot(ctx, snapshotPath); err != nil {
 		return "", err
 	}
@@ -104,7 +104,7 @@ func Restore(ctx context.Context, dbPath, snapshotPath string) (string, error) {
 }
 
 // validateSnapshot, dosyanın açılabilir bir SQLite veritabanı olduğunu ve
-// Panely şemasını taşıdığını doğrular.
+// Kadran şemasını taşıdığını doğrular.
 //
 // ⚠ Store.Open KULLANILMIYOR ve bu kasıtlı: Open göçleri UYGULAR, yani
 // doğrulamak istediğimiz dosyayı DEĞİŞTİRİRDİ. Salt okunur açıyoruz.
@@ -146,13 +146,13 @@ func validateSnapshot(ctx context.Context, path string) error {
 			path, result)
 	}
 
-	// Şema kontrolü: rastgele bir SQLite dosyası Panely veritabanı
+	// Şema kontrolü: rastgele bir SQLite dosyası Kadran veritabanı
 	// değildir. Bunu geri yüklemek daemon'u açılmaz yapardı.
 	var n int
 	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		return fmt.Errorf(
-			"yedek Panely veritabanı değil (%s): schema_migrations "+
+			"yedek Kadran veritabanı değil (%s): schema_migrations "+
 				"okunamadı: %w", path, err)
 	}
 	if n == 0 {
@@ -202,7 +202,7 @@ func safetyCopy(ctx context.Context, dbPath string) (string, error) {
 // copyFileAtomic, kaynağı hedefe geçici dosya üzerinden kopyalar.
 //
 // Doğrudan hedefe yazmak, kopyalama yarıda kalırsa (disk dolu, süreç
-// öldürüldü) `panely.db` adını taşıyan BOZUK bir dosya bırakırdı.
+// öldürüldü) `kadran.db` adını taşıyan BOZUK bir dosya bırakırdı.
 // Geçici dosya + rename ile hedef ya eski ya yeni hâldedir, arası yok.
 func copyFileAtomic(src, dst string) error {
 	in, err := os.Open(src)

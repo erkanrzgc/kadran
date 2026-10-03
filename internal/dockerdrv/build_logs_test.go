@@ -45,7 +45,7 @@ const (
 {"stream":"merhaba\n"}
 {"aux":{"ID":"sha256:682293ee6cde4fa71a739b7349812ab946fbde3206380d37fc1ebc9c58cab570"}}
 {"stream":"Successfully built 682293ee6cde\n"}
-{"stream":"Successfully tagged panely/probe-ok:test\n"}
+{"stream":"Successfully tagged kadran/probe-ok:test\n"}
 `
 	// realMidBuildFailure, ÖLÇÜLMÜŞ derleme-ortası hatası.
 	//
@@ -154,7 +154,7 @@ func TestBuildStopsWhenSinkFails(t *testing.T) {
 // çağıranın onu seçemediğini telde doğrular.
 func TestBuildTagAndContextAreNotTakenFromCaller(t *testing.T) {
 	f := newFakeDocker(t)
-	c := f.client("/var/lib/panely/volumes")
+	c := f.client("/var/lib/kadran/volumes")
 
 	const sha = "7fd1a60b01f91b314f59955a4e4d4e80d8edf11d"
 	// Sürücü hata döndürecek (sahte daemon aux karesi üretmiyor); burada
@@ -171,7 +171,7 @@ func TestBuildTagAndContextAreNotTakenFromCaller(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := q.Get("t"), "panely/blog:"+sha; got != want {
+	if got, want := q.Get("t"), "kadran/blog:"+sha; got != want {
 		t.Errorf("etiket %q, beklenen %q", got, want)
 	}
 	if got := q.Get("remote"); got != "https://github.com/o/r.git#"+sha {
@@ -216,7 +216,7 @@ func TestStreamsOutliveTheRequestTimeout(t *testing.T) {
 		}
 		if strings.HasSuffix(r.URL.Path, "/containers/json") {
 			_, _ = w.Write([]byte(`[{"Id":"aaa","State":"running","Created":0,"Labels":` +
-				`{"panely.app_id":"blog","panely.release_id":"r1","panely.replica":"0"}}]`))
+				`{"kadran.app_id":"blog","kadran.release_id":"r1","kadran.replica":"0"}}]`))
 			return
 		}
 		fl, ok := w.(http.Flusher)
@@ -232,7 +232,7 @@ func TestStreamsOutliveTheRequestTimeout(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := &Client{http: srv.Client(), base: srv.URL, volumeRoot: "/var/lib/panely/volumes"}
+	c := &Client{http: srv.Client(), base: srv.URL, volumeRoot: "/var/lib/kadran/volumes"}
 	replica := uint32(0)
 	var got collector
 	err := c.ContainerLogs(context.Background(),
@@ -277,7 +277,7 @@ func TestNonStreamingCallsStayBounded(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	c := &Client{http: srv.Client(), base: srv.URL, volumeRoot: "/var/lib/panely/volumes"}
+	c := &Client{http: srv.Client(), base: srv.URL, volumeRoot: "/var/lib/kadran/volumes"}
 	start := time.Now()
 	if _, err := c.ContainerList(context.Background(), "blog"); err == nil {
 		t.Fatal("asılı kalan daemon çağrısı hiç zaman aşımına uğramadı")
@@ -386,7 +386,7 @@ func TestLogsNeedExactlyOneContainer(t *testing.T) {
 			f := newFakeDocker(t)
 			f.containers = entries
 			replica := uint32(0)
-			err := f.client("/var/lib/panely/volumes").ContainerLogs(
+			err := f.client("/var/lib/kadran/volumes").ContainerLogs(
 				context.Background(),
 				Selector{AppID: "blog", ReleaseID: "r1", Replica: &replica},
 				0, false, time.Time{}, func([]byte, bool) error { return nil })
@@ -423,7 +423,7 @@ func TestLogsQueryCarriesBothStreams(t *testing.T) {
 		},
 	}}
 	replica := uint32(0)
-	_ = f.client("/var/lib/panely/volumes").ContainerLogs(
+	_ = f.client("/var/lib/kadran/volumes").ContainerLogs(
 		context.Background(),
 		Selector{AppID: "blog", ReleaseID: "r1", Replica: &replica},
 		50, true, time.Unix(1750000000, 0),

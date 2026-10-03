@@ -2,8 +2,8 @@
 # Sunucu binary'lerini `kadran bootstrap`'ın beklediği düzende derler.
 #
 # Çıktı:
-#   bin/linux-amd64/{panelyd,panely-exec,panely-connect}
-#   bin/linux-arm64/{panelyd,panely-exec,panely-connect}
+#   bin/linux-amd64/{kadrand,kadran-exec,kadran-connect}
+#   bin/linux-arm64/{kadrand,kadran-exec,kadran-connect}
 #   bin/kadran[.exe]                 — iş istasyonu aracı (yerel platform)
 #
 # Kullanım:
@@ -19,7 +19,7 @@ ARCHES=("${@:-amd64 arm64}")
 # shellcheck disable=SC2206
 ARCHES=(${ARCHES[*]})
 
-VERSION="${PANELY_VERSION:-dev}"
+VERSION="${KADRAN_VERSION:-dev}"
 COMMIT="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 
 LDFLAGS="-s -w"
@@ -28,7 +28,7 @@ MOD="$(go list -m)"
 LDFLAGS="$LDFLAGS -X $MOD/internal/version.Version=$VERSION"
 LDFLAGS="$LDFLAGS -X $MOD/internal/version.Commit=$COMMIT"
 
-SERVER_BINARIES=(panelyd panely-exec panely-connect)
+SERVER_BINARIES=(kadrand kadran-exec kadran-connect)
 
 for arch in "${ARCHES[@]}"; do
     out="bin/linux-$arch"
@@ -53,8 +53,8 @@ for arch in "${ARCHES[@]}"; do
     #
     # Commit'ten BAĞIMSIZ derleniyor (-buildvcs=false, K-112): aksi hâlde
     # her yükseltme ters vekili "değişmiş" sayıp yeniden başlatırdı.
-    bash scripts/build-caddy.sh "$arch" "$REPO_ROOT/$out/panely-caddy"
-    printf '    %s\n' "$out/panely-caddy"
+    bash scripts/build-caddy.sh "$arch" "$REPO_ROOT/$out/kadran-caddy"
+    printf '    %s\n' "$out/kadran-caddy"
 done
 
 # İş istasyonu aracı yerel platforma derlenir: bootstrap'ı ve GUI'yi

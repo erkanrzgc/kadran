@@ -1,5 +1,5 @@
 // Package api, iş istasyonu istemcisine (CLI / Electron sidecar) açılan
-// PanelyService'i uygular.
+// KadranService'i uygular.
 //
 // Bu paket YETKİSİZ süreçte çalışır. Docker'a, ayrıcalıklı dosya sistemine
 // veya rastgele komutlara erişimi yoktur; ayrıcalık gerektiren her şey
@@ -22,15 +22,15 @@ import (
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/deploy"
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/pbconv"
 	"github.com/erkanrzgc/kadran/internal/store"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
-// Server, PanelyService'i uygular.
+// Server, KadranService'i uygular.
 //
-// UnimplementedPanelyServiceServer kasıtlı olarak GÖMÜLMEZ; gerekçe için
+// UnimplementedKadranServiceServer kasıtlı olarak GÖMÜLMEZ; gerekçe için
 // docs/decisions.md K-011'e bakın.
 type Server struct {
 	store      *store.Store
@@ -41,7 +41,7 @@ type Server struct {
 	runAsUser  string
 }
 
-// Executor, panelyd'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
+// Executor, kadrand'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
 //
 // Arayüz KULLANILDIĞI yerde tanımlanıyor, uygulandığı yerde değil:
 // *execclient.Client onu kendiliğinden karşılıyor.
@@ -53,9 +53,9 @@ type Server struct {
 // Docker daemon'ı olurdu — yani birim testinde HİÇ sınanmazdı.
 type Executor interface {
 	Ping(ctx context.Context) (execclient.PingResult, error)
-	HostInfo(ctx context.Context) (*panelyv1.HostInfo, error)
+	HostInfo(ctx context.Context) (*kadranv1.HostInfo, error)
 	ReadJournal(ctx context.Context, afterSeq uint64, limit uint32) (execclient.JournalPage, error)
-	ImageBuild(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
+	ImageBuild(ctx context.Context, req *kadranv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
 	ContainerLogs(ctx context.Context, opts execclient.LogOptions, sink execclient.LogSink) error
 
 	// Aşağıdaki üçü YALNIZCA silme yolunda kullanılıyor.
@@ -172,7 +172,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 // başvurusu olarak patlar; yani hata kurulum yerinden UZAKTA görünür.
 //
 // Arayüze geçmek testleri mümkün kıldı (bkz. Executor); bu kontrol, o
-// değişikliğin yan etkisini kapatıyor. Kurucuda yakalamak, panelyd'yi
+// değişikliğin yan etkisini kapatıyor. Kurucuda yakalamak, kadrand'yi
 // hatalı kablolamayla ayağa kaldırıp ilk isteği bekletmekten iyidir.
 func checkExecutor(e Executor) error {
 	return checkNotTypedNil(e, "executor istemcisi")
@@ -195,8 +195,8 @@ func checkNotTypedNil(v any, what string) error {
 }
 
 // Ping, bağlantı canlılığını ve sürüm uyumunu doğrular.
-func (s *Server) Ping(_ context.Context, req *panelyv1.PingRequest) (*panelyv1.PingResponse, error) {
-	resp := &panelyv1.PingResponse{
+func (s *Server) Ping(_ context.Context, req *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
+	resp := &kadranv1.PingResponse{
 		DaemonVersion:   version.Version,
 		ProtocolVersion: version.Protocol,
 		ServerTime:      timestamppb.Now(),
@@ -213,8 +213,8 @@ func (s *Server) Ping(_ context.Context, req *panelyv1.PingRequest) (*panelyv1.P
 }
 
 // GetSystemInfo, daemon ve host durumunu döner.
-func (s *Server) GetSystemInfo(ctx context.Context, _ *panelyv1.GetSystemInfoRequest) (*panelyv1.GetSystemInfoResponse, error) {
-	resp := &panelyv1.GetSystemInfoResponse{
+func (s *Server) GetSystemInfo(ctx context.Context, _ *kadranv1.GetSystemInfoRequest) (*kadranv1.GetSystemInfoResponse, error) {
+	resp := &kadranv1.GetSystemInfoResponse{
 		DaemonVersion:       version.Version,
 		DaemonUptimeSeconds: int64(time.Since(s.startedAt).Seconds()),
 		RunningAsUser:       s.runAsUser,
@@ -243,7 +243,7 @@ func (s *Server) GetSystemInfo(ctx context.Context, _ *panelyv1.GetSystemInfoReq
 }
 
 // ListAuditRecords, denetim zincirini sayfalı olarak döner.
-func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRecordsRequest) (*panelyv1.ListAuditRecordsResponse, error) {
+func (s *Server) ListAuditRecords(ctx context.Context, req *kadranv1.ListAuditRecordsRequest) (*kadranv1.ListAuditRecordsResponse, error) {
 	records, err := s.store.ListAudit(ctx, req.GetAfterSeq(), int(req.GetLimit()))
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "denetim kayıtları okunamadı: %v", err)
@@ -254,7 +254,7 @@ func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRe
 		return nil, status.Errorf(codes.Internal, "zincir başı okunamadı: %v", err)
 	}
 
-	return &panelyv1.ListAuditRecordsResponse{
+	return &kadranv1.ListAuditRecordsResponse{
 		Records:   pbconv.AuditRecordsToProto(records),
 		LatestSeq: latestSeq,
 	}, nil
@@ -265,17 +265,17 @@ func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRe
 // # Neden iki zincir?
 //
 // Daemon'ın SQLite zinciri ile executor'ın dosya zinciri ayrı tutulur.
-// panelyd'nin ele geçirilmesi tehdit modelinin merkezinde: kayıtlar
-// yalnızca panelyd'de olsaydı, ele geçirilmiş bir panelyd kendi yaptığı
+// kadrand'nin ele geçirilmesi tehdit modelinin merkezinde: kayıtlar
+// yalnızca kadrand'de olsaydı, ele geçirilmiş bir kadrand kendi yaptığı
 // ayrıcalıklı çağrıları hiç kaydetmeyebilirdi. Executor kendi günlüğüne
-// yazar ve panelyd o dosyaya DOKUNAMAZ (root'un 0700 dizininde, K-102).
+// yazar ve kadrand o dosyaya DOKUNAMAZ (root'un 0700 dizininde, K-102).
 //
 // ⚠ ÇAPRAZ DOĞRULAMA HENÜZ YOK — ve bu, yukarıdaki gerekçenin bugün
 // TAM OLARAK karşılanmadığı anlamına geliyor.
 //
 // İki zincir bağımsız olarak doğrulanıyor ama birbirlerine ÇAPRAZ
 // REFERANSLI DEĞİL. Somut sonucu şudur: kendi kayıtlarını hiç yazmayan,
-// ele geçirilmiş bir panelyd için bu RPC `daemon=VALID, executor=VALID`
+// ele geçirilmiş bir kadrand için bu RPC `daemon=VALID, executor=VALID`
 // döner. Her iki zincir de kendi içinde tutarlıdır; eksik olan, executor
 // kaydının daemon tarafında bir karşılığı olup olmadığının SORULMASIDIR.
 // Böyle bir karşılaştırma kodu bu dosyada da başka yerde de yoktur.
@@ -302,27 +302,27 @@ func (s *Server) ListAuditRecords(ctx context.Context, req *panelyv1.ListAuditRe
 //
 // "Doğrulanamadı"yı "geçersiz" diye raporlamak, executor'ın kapalı olduğu
 // her an operatörü olmayan bir saldırının peşine düşürürdü.
-func (s *Server) VerifyAuditChain(ctx context.Context, _ *panelyv1.VerifyAuditChainRequest) (*panelyv1.VerifyAuditChainResponse, error) {
-	resp := &panelyv1.VerifyAuditChainResponse{}
+func (s *Server) VerifyAuditChain(ctx context.Context, _ *kadranv1.VerifyAuditChainRequest) (*kadranv1.VerifyAuditChainResponse, error) {
+	resp := &kadranv1.VerifyAuditChainResponse{}
 
 	checked, err := s.store.VerifyAuditChain(ctx)
 	resp.RecordsChecked = checked
 
 	switch {
 	case err == nil:
-		resp.DaemonStatus = panelyv1.ChainStatus_CHAIN_STATUS_VALID
+		resp.DaemonStatus = kadranv1.ChainStatus_CHAIN_STATUS_VALID
 		resp.Detail = "daemon zinciri geçerli"
 
 	case errors.Is(err, audit.ErrChainBroken):
 		// Zincirin kendisi kırık: bu gerçek bir bulgu.
-		resp.DaemonStatus = panelyv1.ChainStatus_CHAIN_STATUS_INVALID
+		resp.DaemonStatus = kadranv1.ChainStatus_CHAIN_STATUS_INVALID
 		// Kopma noktası: doğrulanan son kayıttan sonraki kayıt.
 		resp.FirstInvalidSeq = checked + 1
 		resp.Detail = err.Error()
 
 	default:
 		// Veritabanı okunamadı. Zincir hakkında bir iddiada BULUNMUYORUZ.
-		resp.DaemonStatus = panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE
+		resp.DaemonStatus = kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE
 		resp.Detail = "daemon zinciri doğrulanamadı: " + err.Error()
 	}
 
@@ -334,7 +334,7 @@ func (s *Server) VerifyAuditChain(ctx context.Context, _ *panelyv1.VerifyAuditCh
 }
 
 // verifyExecutorChain, executor'ın kendi günlüğünü baştan sona doğrular.
-func (s *Server) verifyExecutorChain(ctx context.Context) (panelyv1.ChainStatus, uint64, string) {
+func (s *Server) verifyExecutorChain(ctx context.Context) (kadranv1.ChainStatus, uint64, string) {
 	ctx, cancel := context.WithTimeout(ctx, execclient.DefaultTimeout)
 	defer cancel()
 
@@ -349,19 +349,19 @@ func (s *Server) verifyExecutorChain(ctx context.Context) (panelyv1.ChainStatus,
 			// Executor'a ulaşılamıyor: günlüğü hakkında bir şey bilmiyoruz.
 			// Hata zaten "executor denetim günlüğü okunamadı" diye
 			// başlıyor; başına bir kez daha eklemek mesajı okunmaz yapar.
-			return panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE, v.Count(), err.Error()
+			return kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE, v.Count(), err.Error()
 		}
 		if len(page.Records) == 0 {
 			if v.Count() == 0 {
-				return panelyv1.ChainStatus_CHAIN_STATUS_VALID, 0,
+				return kadranv1.ChainStatus_CHAIN_STATUS_VALID, 0,
 					"executor zinciri boş (henüz ayrıcalıklı işlem yapılmadı)"
 			}
-			return panelyv1.ChainStatus_CHAIN_STATUS_VALID, v.Count(),
+			return kadranv1.ChainStatus_CHAIN_STATUS_VALID, v.Count(),
 				"executor zinciri geçerli"
 		}
 		for _, rec := range page.Records {
 			if err := v.Next(rec); err != nil {
-				return panelyv1.ChainStatus_CHAIN_STATUS_INVALID, v.Count(), err.Error()
+				return kadranv1.ChainStatus_CHAIN_STATUS_INVALID, v.Count(), err.Error()
 			}
 		}
 		after = page.Records[len(page.Records)-1].Seq

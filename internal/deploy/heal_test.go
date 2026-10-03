@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -43,7 +43,7 @@ type healWorld struct {
 
 func (w *healWorld) EnsureNetwork(context.Context, string) (string, error) {
 	w.networks++
-	return "panely-" + testApp, nil
+	return "kadran-" + testApp, nil
 }
 
 func (w *healWorld) CreateReplica(_ context.Context, o execclient.CreateReplicaOptions) error {
@@ -52,7 +52,7 @@ func (w *healWorld) CreateReplica(_ context.Context, o execclient.CreateReplicaO
 	// ayrı bir adım ve testin onu ayrıca doğrulaması gerekiyor.
 	w.replicas = append(w.replicas, execclient.Replica{
 		AppID: o.AppID, ReleaseID: o.ReleaseID, Index: o.Index,
-		State: panelyv1.ContainerState_CONTAINER_STATE_EXITED,
+		State: kadranv1.ContainerState_CONTAINER_STATE_EXITED,
 	})
 	return nil
 }
@@ -65,7 +65,7 @@ func (w *healWorld) StartReplica(_ context.Context, app, rel string, idx uint32)
 	for i := range w.replicas {
 		r := &w.replicas[i]
 		if r.AppID == app && r.ReleaseID == rel && r.Index == idx {
-			r.State = panelyv1.ContainerState_CONTAINER_STATE_RUNNING
+			r.State = kadranv1.ContainerState_CONTAINER_STATE_RUNNING
 			// Adres, konteyner AYAĞA KALKINCA doğuyor. Duran bir
 			// konteynerin IP'si yoktur (gerçek sunucuda ölçüldü:
 			// `docker inspect` "invalid IP" döndürüyor).
@@ -102,7 +102,7 @@ func (w *healWorld) StopReplica(
 	for i := range w.replicas {
 		r := &w.replicas[i]
 		if r.ReleaseID == rel && r.Index == idx {
-			r.State = panelyv1.ContainerState_CONTAINER_STATE_EXITED
+			r.State = kadranv1.ContainerState_CONTAINER_STATE_EXITED
 			r.IPAddress = ""
 			n++
 		}
@@ -123,7 +123,7 @@ const healIP = "172.20.0.7"
 func stoppedReplica(rel string, idx uint32) execclient.Replica {
 	return execclient.Replica{
 		AppID: testApp, ReleaseID: rel, Index: idx,
-		State: panelyv1.ContainerState_CONTAINER_STATE_EXITED,
+		State: kadranv1.ContainerState_CONTAINER_STATE_EXITED,
 	}
 }
 

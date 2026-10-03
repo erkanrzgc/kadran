@@ -20,7 +20,7 @@ import (
 // geçen bir test üretimdeki davranış hakkında bir şey söylemezdi.
 func newAppStore(t *testing.T) *Store {
 	t.Helper()
-	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	s, err := Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("depo açılamadı: %v", err)
 	}
@@ -33,7 +33,7 @@ func sampleApp(id string) App {
 		ID:             id,
 		GitHost:        "github.com",
 		GitOwner:       "erkanrzgc",
-		GitRepo:        "panely",
+		GitRepo:        "kadran",
 		GitBranch:      "main",
 		DockerfilePath: "Dockerfile",
 		BuildArgs:      map[string]string{"NODE_ENV": "production"},

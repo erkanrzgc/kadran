@@ -8,7 +8,7 @@ import (
 
 	"google.golang.org/grpc"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── consumeDeploy: istemci de POZİTİF ölçüt kullanıyor mu ────────────
@@ -20,12 +20,12 @@ import (
 // panikler. Sınanmayan bir yolun sınanmış görünmesi daha kötüdür.
 type fakeDeployStream struct {
 	grpc.ClientStream
-	msgs []*panelyv1.DeployResponse
+	msgs []*kadranv1.DeployResponse
 	err  error // mesajlar tükendikten sonra dönecek hata; nil ise EOF
 	i    int
 }
 
-func (f *fakeDeployStream) Recv() (*panelyv1.DeployResponse, error) {
+func (f *fakeDeployStream) Recv() (*kadranv1.DeployResponse, error) {
 	if f.i < len(f.msgs) {
 		m := f.msgs[f.i]
 		f.i++
@@ -37,21 +37,21 @@ func (f *fakeDeployStream) Recv() (*panelyv1.DeployResponse, error) {
 	return nil, io.EOF
 }
 
-func acceptedMsg(id string) *panelyv1.DeployResponse {
-	return &panelyv1.DeployResponse{Event: &panelyv1.DeployResponse_Accepted{
-		Accepted: &panelyv1.DeployAccepted{ReleaseId: id, CommitSha: measuredMainSHA},
+func acceptedMsg(id string) *kadranv1.DeployResponse {
+	return &kadranv1.DeployResponse{Event: &kadranv1.DeployResponse_Accepted{
+		Accepted: &kadranv1.DeployAccepted{ReleaseId: id, CommitSha: measuredMainSHA},
 	}}
 }
 
-func outputMsg(s string) *panelyv1.DeployResponse {
-	return &panelyv1.DeployResponse{Event: &panelyv1.DeployResponse_Output{
-		Output: &panelyv1.BuildOutput{Data: []byte(s)},
+func outputMsg(s string) *kadranv1.DeployResponse {
+	return &kadranv1.DeployResponse{Event: &kadranv1.DeployResponse_Output{
+		Output: &kadranv1.BuildOutput{Data: []byte(s)},
 	}}
 }
 
-func succeededMsg(id, img string) *panelyv1.DeployResponse {
-	return &panelyv1.DeployResponse{Event: &panelyv1.DeployResponse_Succeeded{
-		Succeeded: &panelyv1.DeploySucceeded{ReleaseId: id, ImageId: img},
+func succeededMsg(id, img string) *kadranv1.DeployResponse {
+	return &kadranv1.DeployResponse{Event: &kadranv1.DeployResponse_Succeeded{
+		Succeeded: &kadranv1.DeploySucceeded{ReleaseId: id, ImageId: img},
 	}}
 }
 
@@ -66,7 +66,7 @@ func TestConsumeDeployRequiresSuccessFrame(t *testing.T) {
 	c, _, errBuf := newTestCLI("")
 
 	// Hata YOK, çıktı akmış, akış temiz bitmiş — ama başarı karesi yok.
-	code := c.consumeDeploy(&fakeDeployStream{msgs: []*panelyv1.DeployResponse{
+	code := c.consumeDeploy(&fakeDeployStream{msgs: []*kadranv1.DeployResponse{
 		acceptedMsg("r1"), outputMsg("Step 1/2\n"), outputMsg("Step 2/2\n"),
 	}})
 
@@ -81,7 +81,7 @@ func TestConsumeDeployRequiresSuccessFrame(t *testing.T) {
 func TestConsumeDeployReportsSuccess(t *testing.T) {
 	c, out, errBuf := newTestCLI("")
 
-	code := c.consumeDeploy(&fakeDeployStream{msgs: []*panelyv1.DeployResponse{
+	code := c.consumeDeploy(&fakeDeployStream{msgs: []*kadranv1.DeployResponse{
 		acceptedMsg("r7"), outputMsg("Step 1/1\n"), succeededMsg("r7", "sha256:abcdef012345"),
 	}})
 
@@ -108,7 +108,7 @@ func TestConsumeDeployNamesTheReleaseOnFailure(t *testing.T) {
 	c, _, errBuf := newTestCLI("")
 
 	code := c.consumeDeploy(&fakeDeployStream{
-		msgs: []*panelyv1.DeployResponse{acceptedMsg("r3"), outputMsg("Step 1/2\n")},
+		msgs: []*kadranv1.DeployResponse{acceptedMsg("r3"), outputMsg("Step 1/2\n")},
 		err:  errors.New("rpc error: derleme başarısız"),
 	})
 

@@ -5,12 +5,12 @@
 -- Burada yalnızca hacim ADI ve konteyner İÇİNDEKİ bağlama noktası
 -- duruyor. Gerçek yolu executor kuruyor:
 --
---   /var/lib/panely/volumes/<app_id>/<volume_name>
+--   /var/lib/kadran/volumes/<app_id>/<volume_name>
 --
 -- Bu, `exec.proto`'daki VolumeMount kararının veritabanı tarafındaki
 -- karşılığı: yol alıp doğrulamak TOCTOU'ya açıktır, girdiyi hiç almamak
 -- kategorik olarak daha güçlüdür. Veritabanına host yolu yazmak o kararı
--- arkadan delerdi — ele geçirilmiş bir panelyd satırı değiştirip
+-- arkadan delerdi — ele geçirilmiş bir kadrand satırı değiştirip
 -- executor'a keyfî bir yol gösterebilirdi.
 --
 -- ── Neden JSON sütun? ───────────────────────────────────────────────

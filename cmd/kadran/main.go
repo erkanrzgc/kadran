@@ -3,12 +3,12 @@
 // Sunucuya iki yoldan bağlanır:
 //
 //   - SSH:   `kadran status kullanici@sunucu` — `ssh` alt süreci üzerinden
-//   - Yerel: `kadran status` — sunucunun kendisinde /run/panely/api.sock
+//   - Yerel: `kadran status` — sunucunun kendisinde /run/kadran/api.sock
 //
 // # Anahtar malzemesi bu programa girmez
 //
 // Parola sorulmaz, özel anahtar okunmaz. Kimlik doğrulamayı `ssh` yapar;
-// anahtar ssh-agent'ta veya ~/.ssh altındadır ve panely onu hiç görmez.
+// anahtar ssh-agent'ta veya ~/.ssh altındadır ve kadran onu hiç görmez.
 // BatchMode=yes ile çalıştığı için bir istem de asla açılmaz.
 package main
 
@@ -30,7 +30,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/bootstrap"
 	"github.com/erkanrzgc/kadran/internal/client"
 	"github.com/erkanrzgc/kadran/internal/domaincheck"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -58,8 +58,8 @@ const defaultTimeout = 30 * time.Second
 // cli, giriş/çıkış akışlarını taşır. Testlerin çıktıyı yakalayabilmesi
 // için os.Stdout'a doğrudan yazılmıyor.
 // progName, iş istasyonu aracının adı: hata öneki, kullanım ve sürüm
-// satırı. Sunucu tarafındaki adlar (panelyd, panely-client, ...) AYRI ve
-// değişmedi (K-130).
+// satırı. Sunucu tarafının adları (kadrand, kadran-client, ...) v0.4.0'da
+// aynı ada geçti (K-136).
 const progName = "kadran"
 
 type cli struct {
@@ -70,7 +70,7 @@ type cli struct {
 	// Testlerin değiştirdiği bağımlılıklar; nil ise gerçekleri kullanılır.
 	resolver    domaincheck.Resolver
 	sshHostname func(ctx context.Context, host string) (string, error)
-	dial        func(ctx context.Context, rawTarget string) (*client.Client, *panelyv1.PingResponse, error)
+	dial        func(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error)
 	// `domain check`: alan adının portlarına bağlanma ve güvenilen kökler
 	// (nil: sistemin kökleri).
 	dialNet  func(ctx context.Context, network, addr string) (net.Conn, error)
@@ -187,7 +187,7 @@ func (c *cli) newFlagSet(name string) *flag.FlagSet {
 //
 // Protokol denetimi ilk iş olarak yapılır: uyumsuz sürümlerle konuşup
 // yarı anlaşılmış yanıtlar üretmektense hemen durmak daha güvenli.
-func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *panelyv1.PingResponse, error) {
+func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
 	if c.dial != nil {
 		return c.dial(ctx, rawTarget)
 	}
@@ -240,7 +240,7 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 // Root yetkisi isteyen TEK komut bu. Yetki ya root'a SSH ile ya da -sudo
 // kipinde hedef kullanıcının PAROLASIZ sudo'suyla alınıyor (K-122); ikinci
 // yol, root'a SSH'ı kapalı getiren bulut imajları için. Kurulumdan sonra
-// günlük kullanım yetkisiz `panely-client` üzerinden yürür.
+// günlük kullanım yetkisiz `kadran-client` üzerinden yürür.
 func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("bootstrap")
 	binaryDir := fs.String("binaries", defaultBinaryDir(), "linux binary'lerinin bulunduğu dizin")
@@ -299,7 +299,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 
 // defaultBinaryDir, derlenmiş linux binary'lerinin varsayılan yeri.
 func defaultBinaryDir() string {
-	if dir := os.Getenv("PANELY_BINARY_DIR"); dir != "" {
+	if dir := os.Getenv("KADRAN_BINARY_DIR"); dir != "" {
 		return dir
 	}
 	return "bin"

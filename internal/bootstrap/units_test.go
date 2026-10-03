@@ -25,23 +25,23 @@ import (
 // ne de CI yakalayabilirdi — hiçbiri systemd ad alanı yalıtımını bu
 // biçimde kurmuyor.
 
-// panelyOwnedPaths, kurulumun BAŞLATMADAN ÖNCE var ettiği yollar.
+// kadranOwnedPaths, kurulumun BAŞLATMADAN ÖNCE var ettiği yollar.
 //
 // install.sh ve tmpfiles bunları oluşturuyor, dolayısıyla zorunlu
 // (öneksiz) olmaları doğru: yoksalar kurulum zaten bozuktur ve birimin
 // sessizce başlaması yanıltıcı olurdu.
-var panelyOwnedPaths = map[string]bool{
-	"/var/lib/panely":      true,
-	"/var/lib/panely-exec": true,
-	"/run/panely":          true,
-	"/run/panely-exec":     true,
+var kadranOwnedPaths = map[string]bool{
+	"/var/lib/kadran":      true,
+	"/var/lib/kadran-exec": true,
+	"/run/kadran":          true,
+	"/run/kadran-exec":     true,
 }
 
-// tmpfilesDizinleri, panely-tmpfiles.conf'un yarattığı dizinleri
+// tmpfilesDizinleri, kadran-tmpfiles.conf'un yarattığı dizinleri
 // yol → {kip, sahip, grup} olarak döndürür.
 func tmpfilesDizinleri(t *testing.T) map[string][3]string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd", "panely-tmpfiles.conf"))
+	b, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd", "kadran-tmpfiles.conf"))
 	if err != nil {
 		t.Fatalf("tmpfiles okunamadı: %v", err)
 	}
@@ -55,7 +55,7 @@ func tmpfilesDizinleri(t *testing.T) map[string][3]string {
 	return dizinler
 }
 
-// TestOwnedPathsAreActuallyCreated, panelyOwnedPaths'teki her yolun
+// TestOwnedPathsAreActuallyCreated, kadranOwnedPaths'teki her yolun
 // tmpfiles tarafından GERÇEKTEN yaratıldığını doğrular.
 //
 // Liste "bunları biz oluşturuyoruz" diyerek öneksiz ReadWritePaths'e
@@ -64,9 +64,9 @@ func tmpfilesDizinleri(t *testing.T) map[string][3]string {
 // getirirdi — ve bu test olmadan liste yalnızca bir iddiaydı.
 func TestOwnedPathsAreActuallyCreated(t *testing.T) {
 	dizinler := tmpfilesDizinleri(t)
-	for yol := range panelyOwnedPaths {
+	for yol := range kadranOwnedPaths {
 		if _, ok := dizinler[yol]; !ok {
-			t.Errorf("%s panelyOwnedPaths'te ama panely-tmpfiles.conf onu yaratmıyor", yol)
+			t.Errorf("%s kadranOwnedPaths'te ama kadran-tmpfiles.conf onu yaratmıyor", yol)
 		}
 	}
 }
@@ -76,17 +76,17 @@ func TestOwnedPathsAreActuallyCreated(t *testing.T) {
 //
 // ── Kapatılan delik (K-100) ──────────────────────────────────────────
 //
-// Günlük /var/lib/panely içindeydi: dosya root:panely 0640, dizin
-// panely:panely 0750. Daemon içeriğe yazamıyordu ama dizine yazma
+// Günlük /var/lib/kadran içindeydi: dosya root:kadran 0640, dizin
+// kadran:kadran 0750. Daemon içeriğe yazamıyordu ama dizine yazma
 // yetkisi, dosyayı silip aynı adla yenisini koyma yetkisidir. Canlıda
 // kök sahipli bir sınama dosyasıyla ölçüldü: `rm` çıkış 0, yenisinin
-// sahibi panely. Ele geçirilen bir panelyd, ayrıcalıklı tarafın
+// sahibi kadran. Ele geçirilen bir kadrand, ayrıcalıklı tarafın
 // kaydını kendi zinciriyle değiştirebilirdi.
 //
 // Üç dosya arasındaki bir ilişki — birim, daemon birimi, tmpfiles —
 // hiçbiri tek başına göremez.
 func TestExecutorJournalOutsideDaemonDirs(t *testing.T) {
-	alanlar := strings.Fields(unitOku(t, "panely-exec.service"))
+	alanlar := strings.Fields(unitOku(t, "kadran-exec.service"))
 	var gunluk string
 	for i, alan := range alanlar {
 		if alan == "--journal" && i+1 < len(alanlar) {
@@ -94,13 +94,13 @@ func TestExecutorJournalOutsideDaemonDirs(t *testing.T) {
 		}
 	}
 	if gunluk == "" {
-		t.Fatal("panely-exec.service ExecStart'ında --journal yok — ölçüm geçersiz")
+		t.Fatal("kadran-exec.service ExecStart'ında --journal yok — ölçüm geçersiz")
 	}
 
 	for _, dizin := range daemonYazilabilirYollar(t) {
 		if altinda(gunluk, dizin) {
 			t.Errorf("executor günlüğü %q, daemon'un yazabildiği %q altında — "+
-				"ele geçirilen panelyd ayrıcalıklı kaydı silip değiştirebilir", gunluk, dizin)
+				"ele geçirilen kadrand ayrıcalıklı kaydı silip değiştirebilir", gunluk, dizin)
 		}
 	}
 
@@ -121,7 +121,7 @@ func TestExecutorJournalOutsideDaemonDirs(t *testing.T) {
 	}
 }
 
-// TestUnitsDoNotHardRequireForeignPaths, Panely'nin oluşturmadığı bir
+// TestUnitsDoNotHardRequireForeignPaths, Kadran'ın oluşturmadığı bir
 // yola ZORUNLU bağımlılık kurulmadığını doğrular.
 //
 // Kural: kaynağını biz yaratmıyorsak `-` ile isteğe bağlı olmalı.
@@ -160,10 +160,10 @@ func TestUnitsDoNotHardRequireForeignPaths(t *testing.T) {
 				if strings.HasPrefix(ham, "-") {
 					continue // isteğe bağlı, sorun yok
 				}
-				if panelyOwnedPaths[ham] {
+				if kadranOwnedPaths[ham] {
 					continue // kurulumun garanti ettiği yol
 				}
-				t.Errorf("%s:%d — %s=%s: Panely bu yolu oluşturmuyor, "+
+				t.Errorf("%s:%d — %s=%s: Kadran bu yolu oluşturmuyor, "+
 					"`-` öneki şart. Öneksizken systemd kaynak yoksa "+
 					"birimi hiç başlatmaz (226/NAMESPACE).",
 					giris.Name(), satirNo, anahtar, ham)
@@ -183,7 +183,7 @@ func TestUnitsDoNotHardRequireForeignPaths(t *testing.T) {
 // Yukarıdaki genel kural yanlışlıkla gevşetilirse bu satır yine de
 // düşer; gerçekten yaşanmış bir hatanın nöbetçisi.
 func TestDockerSocketBindIsOptional(t *testing.T) {
-	yol := filepath.Join("..", "..", "deploy", "systemd", "panely-exec.service")
+	yol := filepath.Join("..", "..", "deploy", "systemd", "kadran-exec.service")
 	icerik, err := os.ReadFile(yol)
 	if err != nil {
 		t.Fatalf("birim okunamadı: %v", err)
@@ -192,7 +192,7 @@ func TestDockerSocketBindIsOptional(t *testing.T) {
 
 	if !strings.Contains(metin, "BindReadOnlyPaths=-/run/docker.sock") {
 		t.Error("docker.sock bind'i isteğe bağlı değil. Taze sunucuda " +
-			"Docker kurulu olmadığı için panely-exec hiç başlamaz ve " +
+			"Docker kurulu olmadığı için kadran-exec hiç başlamaz ve " +
 			"bootstrap kurulumu tamamlayamaz.")
 	}
 }
@@ -211,8 +211,8 @@ func yolDirektifi(anahtar string) bool {
 // TestUnitExecStartFlagsExist, birim dosyalarının binary'de TANIMLI
 // OLMAYAN bir bayrak geçmediğini doğrular.
 //
-// Gerçekten yaşanmış hata: panelyd.service uzun süre
-// `--config /etc/panely/panelyd.toml` diyordu. Ne böyle bir bayrak ne
+// Gerçekten yaşanmış hata: kadrand.service uzun süre
+// `--config /etc/kadran/kadrand.toml` diyordu. Ne böyle bir bayrak ne
 // böyle bir dosya vardı; birim tasarım oturmadan yazılmış ve öylece
 // kalmıştı. Sonuç, taze sunucuda:
 //
@@ -223,8 +223,8 @@ func yolDirektifi(anahtar string) bool {
 // Aradaki boşluk tam olarak burası.
 func TestUnitExecStartFlagsExist(t *testing.T) {
 	esler := map[string]string{
-		"panelyd.service":     filepath.Join("..", "..", "cmd", "panelyd", "main.go"),
-		"panely-exec.service": filepath.Join("..", "..", "cmd", "panely-exec", "main.go"),
+		"kadrand.service":     filepath.Join("..", "..", "cmd", "kadrand", "main.go"),
+		"kadran-exec.service": filepath.Join("..", "..", "cmd", "kadran-exec", "main.go"),
 	}
 
 	for birim, kaynak := range esler {
@@ -368,51 +368,51 @@ func directive(unit, key string) []string {
 	return out
 }
 
-// TestReverseProxyIsNotInThePanelyGroup, ters vekilin panely grubuna
+// TestReverseProxyIsNotInTheKadranGroup, ters vekilin kadran grubuna
 // GİRMEDİĞİNİ doğrular.
 //
-// Girseydi /run/panely-exec/exec.sock'a (0660 root:panely) ulaşırdı: yani
+// Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı: yani
 // internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. Bu, tüm
 // ayrıcalık ayrımının çöktüğü tek satır olurdu.
-func TestReverseProxyIsNotInThePanelyGroup(t *testing.T) {
-	unit := readUnit(t, "panely-caddy.service")
+func TestReverseProxyIsNotInTheKadranGroup(t *testing.T) {
+	unit := readUnit(t, "kadran-caddy.service")
 
 	gruplar := directive(unit, "Group")
-	if len(gruplar) != 1 || gruplar[0] != "panely-caddy" {
-		t.Fatalf("Group= beklenmedik: %v (yalnızca panely-caddy olmalı)", gruplar)
+	if len(gruplar) != 1 || gruplar[0] != "kadran-caddy" {
+		t.Fatalf("Group= beklenmedik: %v (yalnızca kadran-caddy olmalı)", gruplar)
 	}
 
 	// SupplementaryGroups arka kapıyı yeniden açardı.
 	for _, ek := range directive(unit, "SupplementaryGroups") {
 		for _, ad := range strings.Fields(ek) {
-			if ad == "panely" {
-				t.Errorf("ters vekile panely ek grubu verilmiş: %q", ek)
+			if ad == "kadran" {
+				t.Errorf("ters vekile kadran ek grubu verilmiş: %q", ek)
 			}
 		}
 	}
 
-	if k := directive(unit, "User"); len(k) != 1 || k[0] != "panely-caddy" {
+	if k := directive(unit, "User"); len(k) != 1 || k[0] != "kadran-caddy" {
 		t.Errorf("User= beklenmedik: %v", k)
 	}
 }
 
-// TestAdminSocketCarriesGroupOwnershipNotMembership, panelyd'nin admin
+// TestAdminSocketCarriesGroupOwnershipNotMembership, kadrand'nin admin
 // soketine nasıl ULAŞTIĞINI doğrular.
 //
 // Erişim grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle sağlanıyor.
 // Fark tam da yukarıdaki testin koruduğu şey: üyelik verilseydi exec.sock
 // da açılırdı.
 func TestAdminSocketCarriesGroupOwnershipNotMembership(t *testing.T) {
-	unit := readUnit(t, "panely-caddy-admin.socket")
+	unit := readUnit(t, "kadran-caddy-admin.socket")
 
 	beklenenler := map[string]string{
-		"SocketUser":  "panely-caddy",
-		"SocketGroup": "panely",
+		"SocketUser":  "kadran-caddy",
+		"SocketGroup": "kadran",
 		"SocketMode":  "0660",
 		// .socket birimi varsayılan olarak AYNI ADLI .service'i tetikler;
 		// bizimki farklı adda ve bu satır olmadan hiç başlamıyor
 		// (gerçek sunucuda ölçüldü).
-		"Service": "panely-caddy.service",
+		"Service": "kadran-caddy.service",
 	}
 	for anahtar, beklenen := range beklenenler {
 		got := directive(unit, anahtar)
@@ -425,11 +425,11 @@ func TestAdminSocketCarriesGroupOwnershipNotMembership(t *testing.T) {
 // TestReverseProxyHasNoReload, ters vekil biriminde ExecReload
 // OLMADIĞINI doğrular (K-112).
 //
-// Reload /etc/panely/caddy.json'ı yüklerdi ve o taban yapılandırmada hiç
-// rota yok. Çalışan bir ExecReload, `systemctl reload panely-caddy` ile
-// BÜTÜN siteleri kapatırdı; rotaların tek kaynağı panelyd (K-055).
+// Reload /etc/kadran/caddy.json'ı yüklerdi ve o taban yapılandırmada hiç
+// rota yok. Çalışan bir ExecReload, `systemctl reload kadran-caddy` ile
+// BÜTÜN siteleri kapatırdı; rotaların tek kaynağı kadrand (K-055).
 func TestReverseProxyHasNoReload(t *testing.T) {
-	unit := readUnit(t, "panely-caddy.service")
+	unit := readUnit(t, "kadran-caddy.service")
 
 	// Pozitif kontrol: ayrıştırıcı bu dosyada bir Exec* satırını
 	// göremiyorsa "ExecReload yok" hiçbir şey kanıtlamaz.
@@ -441,13 +441,13 @@ func TestReverseProxyHasNoReload(t *testing.T) {
 	}
 }
 
-// TestDaemonHasAWatchdog, panelyd biriminin watchdog'u AÇTIĞINI ve bir
-// watchdog öldürmesinin panelyd'yi geri getirdiğini doğrular (K-115).
+// TestDaemonHasAWatchdog, kadrand biriminin watchdog'u AÇTIĞINI ve bir
+// watchdog öldürmesinin kadrand'yi geri getirdiğini doğrular (K-115).
 //
 // Kod (internal/liveness) ancak WATCHDOG_USEC tanımlıysa ping atıyor; bu
 // satır olmadan bütün tespit sessizce kapalıdır.
 func TestDaemonHasAWatchdog(t *testing.T) {
-	unit := readUnit(t, "panelyd.service")
+	unit := readUnit(t, "kadrand.service")
 
 	got := directive(unit, "WatchdogSec")
 	if len(got) != 1 {
@@ -456,13 +456,13 @@ func TestDaemonHasAWatchdog(t *testing.T) {
 	sure, err := time.ParseDuration(got[0])
 	if err != nil || sure < 30*time.Second {
 		t.Errorf("WatchdogSec=%s — ping aralığı bunun yarısı; 30 sn'nin altı "+
-			"tek bir yavaş veritabanı yoklamasında panelyd'yi öldürür", got[0])
+			"tek bir yavaş veritabanı yoklamasında kadrand'yi öldürür", got[0])
 	}
 
 	// Watchdog öldürmesi bir başarısızlık; yalnızca on-failure/always onu
 	// geri getirir.
 	if r := directive(unit, "Restart"); len(r) != 1 || (r[0] != "on-failure" && r[0] != "always") {
-		t.Errorf("Restart= %v — watchdog'un öldürdüğü panelyd geri gelmez", r)
+		t.Errorf("Restart= %v — watchdog'un öldürdüğü kadrand geri gelmez", r)
 	}
 
 	// SIGKILL, Go'nun SIGABRT'de bastığı yığın dökümünü, yani takılmanın
@@ -475,7 +475,7 @@ func TestDaemonHasAWatchdog(t *testing.T) {
 // TestReverseProxyKeepsOnlyThePortBindingCapability, ters vekile :80/:443
 // dışında bir yetenek verilmediğini doğrular.
 func TestReverseProxyKeepsOnlyThePortBindingCapability(t *testing.T) {
-	unit := readUnit(t, "panely-caddy.service")
+	unit := readUnit(t, "kadran-caddy.service")
 
 	for _, anahtar := range []string{"AmbientCapabilities", "CapabilityBoundingSet"} {
 		got := directive(unit, anahtar)

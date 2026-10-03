@@ -14,7 +14,7 @@ import (
 // sayısıdır.
 //
 // Bellek, CPU ve blkio sınırlıyken PID sınırsızdı: bir fork bombası host'un
-// PID tablosunu tüketip panelyd dahil her şeyi düşürebilirdi. Bellek limiti
+// PID tablosunu tüketip kadrand dahil her şeyi düşürebilirdi. Bellek limiti
 // bunu DURDURMAZ — çatallanan süreçler ucuzdur, tablo bellekten önce dolar.
 //
 // 512 seçildi: ölçülen üç canlı uygulamanın en yükseği (nginx, 2 worker)
@@ -139,7 +139,7 @@ type hostConfig struct {
 	SecurityOpt []string `json:"SecurityOpt"`
 
 	// RestartPolicy KASTEN "no"dur. Yeniden başlatma kararı sağlık
-	// denetçisinin (panelyd) işidir; Docker'ın kendi döngüsü devreye
+	// denetçisinin (kadrand) işidir; Docker'ın kendi döngüsü devreye
 	// girerse dağıtım durumu iki yerden yönetilir ve mavi-yeşil geçişte
 	// ölmüş bir sürüm kendini geri getirebilirdi.
 	RestartPolicy struct {
@@ -266,7 +266,7 @@ type Selector struct {
 	Replica   *uint32
 }
 
-// Container, listelenen bir konteynerin Panely'nin umursadığı kadarıdır.
+// Container, listelenen bir konteynerin Kadran'ın umursadığı kadarıdır.
 type Container struct {
 	ID        string
 	AppID     string
@@ -279,7 +279,7 @@ type Container struct {
 	// konteynerlerde boştur — Docker adresi ancak çalışırken atar.
 	//
 	// Ters vekil hostta çalıştığı ve konteynerler host portu yayınlamadığı
-	// için panelyd'nin vekile verecek adresi yalnızca buradan öğrenilir.
+	// için kadrand'nin vekile verecek adresi yalnızca buradan öğrenilir.
 	IPAddress string
 }
 
@@ -303,10 +303,10 @@ type listEntry struct {
 	} `json:"NetworkSettings"`
 }
 
-// ContainerList, Panely'nin yönettiği konteynerleri döndürür.
+// ContainerList, Kadran'ın yönettiği konteynerleri döndürür.
 //
-// appID boş bırakılabilir; o zaman `panely.app_id` taşıyan TÜM
-// konteynerler dönülür (panelyd bir kaydı kaybederse öksüzleri ancak
+// appID boş bırakılabilir; o zaman `kadran.app_id` taşıyan TÜM
+// konteynerler dönülür (kadrand bir kaydı kaybederse öksüzleri ancak
 // böyle bulabilir).
 func (c *Client) ContainerList(ctx context.Context, appID string) ([]Container, error) {
 	f := map[string][]string{"label": {labelAppID}}
@@ -364,7 +364,7 @@ type identity struct {
 	Replica   uint32
 }
 
-// parseLabels, Panely etiketlerini çözer. Üçü de yoksa false döner.
+// parseLabels, Kadran etiketlerini çözer. Üçü de yoksa false döner.
 func parseLabels(labels map[string]string) (identity, bool) {
 	appID, hasApp := labels[labelAppID]
 	releaseID, hasRelease := labels[labelReleaseID]

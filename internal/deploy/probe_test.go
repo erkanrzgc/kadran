@@ -69,7 +69,7 @@ func TestProbeRejectsClientAndServerErrors(t *testing.T) {
 
 // ⚠ GÜVENLİK: yönlendirme İZLENMEMELİ.
 //
-// İzlenseydi, dağıtılan uygulama panelyd'ye istediği adrese istek
+// İzlenseydi, dağıtılan uygulama kadrand'ye istediği adrese istek
 // attırabilirdi — kontrol düzlemi, iş yükünün seçtiği bir hedefe bağlanan
 // bir araca dönüşürdü. Sağlık yoklaması tek atımlık bir ölçümdür.
 func TestProbeDoesNotFollowRedirects(t *testing.T) {
@@ -89,12 +89,12 @@ func TestProbeDoesNotFollowRedirects(t *testing.T) {
 		t.Fatalf("302 sağlıklı sayılmalıydı: %v", err)
 	}
 	if n := hits.Load(); n != 0 {
-		t.Fatalf("yönlendirme İZLENDİ (%d istek) — panelyd keyfi bir adrese bağlandı", n)
+		t.Fatalf("yönlendirme İZLENDİ (%d istek) — kadrand keyfi bir adrese bağlandı", n)
 	}
 }
 
 // Gövde SINIRLI okunmalı: sağlıksız bir uygulama sonsuz akış üretebilir
-// ve yoklayıcı onu yutmaya çalışırsa panelyd'nin belleğini bitirir.
+// ve yoklayıcı onu yutmaya çalışırsa kadrand'nin belleğini bitirir.
 func TestProbeDoesNotDrainUnboundedBodies(t *testing.T) {
 	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(200)

@@ -165,7 +165,7 @@ func TestRestoreTakesSafetyCopy(t *testing.T) {
 	}
 }
 
-// TestRestoreRejectsForeignFile, Panely veritabanı OLMAYAN bir dosyanın
+// TestRestoreRejectsForeignFile, Kadran veritabanı OLMAYAN bir dosyanın
 // geri yüklenmediğini doğrular.
 //
 // Yabancı bir dosyayı yerine koymak daemon'u açılmaz yapardı ve o anda
@@ -180,7 +180,7 @@ func TestRestoreRejectsForeignFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Geçerli bir SQLite dosyası, ama Panely şeması YOK.
+	// Geçerli bir SQLite dosyası, ama Kadran şeması YOK.
 	foreign := filepath.Join(t.TempDir(), "yabanci.db")
 	fdb, err := sql.Open("sqlite", "file:"+filepath.ToSlash(foreign))
 	if err != nil {

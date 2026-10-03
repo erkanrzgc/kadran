@@ -25,7 +25,7 @@ import (
 // Şimdi üç ayrı adım var:
 //
 //  1. Yükleme: paket, sunucuda bağlanan kullanıcının KENDİ dizinine
-//     (~/.panely-upload, 0700) adı paketin sha256'sı olan bir dosyaya
+//     (~/.kadran-upload, 0700) adı paketin sha256'sı olan bir dosyaya
 //     yazılıyor. Kopan bağlantıdan sonra sunucudaki boyut sorulup yalnızca
 //     eksik kısım gönderiliyor. Yazma EKLEME değil AÇIK OFSETLE
 //     (`dd seek_bytes conv=notrunc`): ölü bir oturumun süreci sonradan yazsa
@@ -66,15 +66,15 @@ var transferBackoff = 3 * time.Second
 
 const remoteUploadPrepare = `set -e
 umask 077
-mkdir -p "$HOME/.panely-upload"
-chmod 700 "$HOME/.panely-upload"
-cd "$HOME/.panely-upload"
+mkdir -p "$HOME/.kadran-upload"
+chmod 700 "$HOME/.kadran-upload"
+cd "$HOME/.kadran-upload"
 find . -maxdepth 1 -type f -mtime +0 -delete
 pwd
 if [ -f "$1.part" ]; then stat -c %s "$1.part"; else echo 0; fi`
 
 const remoteUploadWrite = `set -e
-cd "$HOME/.panely-upload"
+cd "$HOME/.kadran-upload"
 dd of="$1.part" bs=65536 seek="$2" oflag=seek_bytes conv=notrunc status=none`
 
 // remoteInstallStart; argümanlar: $1 dizin, $2 sha, $3 boyut, $4 çalıştırıcı.
@@ -104,7 +104,7 @@ setsid bash -c "$4" _ "$1" "$2" > "$2.log" 2>&1 < /dev/null &`
 // İşaret önce geçici dosyaya yazılıp taşınıyor: izleme yarım yazılmış
 // (boş) bir işaret okumasın. `-z`: paket gzip'li (buildArchive) —
 // TestRemoteExtractionMatchesTheArchiveFormat ikisini birbirine bağlıyor.
-const remoteInstallRun = `d="$(mktemp -d /tmp/panely-bootstrap.XXXXXX)"
+const remoteInstallRun = `d="$(mktemp -d /tmp/kadran-bootstrap.XXXXXX)"
 trap 'rm -rf "$d"' EXIT
 rc=0
 tar -x -z -m -C "$d" -f "$1/$2.part" 9>&- && bash "$d/install.sh" "$d" 9>&- || rc=$?

@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // deleteGrace, silmeden önce konteynere SIGTERM ile SIGKILL arasında
@@ -56,8 +56,8 @@ const deleteGrace = 10 * time.Second
 // anda gözetmen onları ~6 saniyede geri getirir ve bizimle yarışırdı.
 // Canlılık kontrolü o yarışı BAŞLAMADAN bitiriyor.
 func (s *Server) DeleteApp(
-	ctx context.Context, req *panelyv1.DeleteAppRequest,
-) (*panelyv1.DeleteAppResponse, error) {
+	ctx context.Context, req *kadranv1.DeleteAppRequest,
+) (*kadranv1.DeleteAppResponse, error) {
 	const action = "app.delete"
 
 	appID := req.GetAppId()
@@ -121,7 +121,7 @@ func (s *Server) DeleteApp(
 	if err := s.completed(ctx, action, tgt, params, nil); err != nil {
 		return nil, err
 	}
-	return &panelyv1.DeleteAppResponse{
+	return &kadranv1.DeleteAppResponse{
 		AppId:              appID,
 		ContainersRemoved:  removed,
 		ReleasesDeleted:    counts.Releases,

@@ -2,7 +2,7 @@
 //
 // # Neden ayrı bir paket?
 //
-// panelyd, panely-exec ve panely bu kararı aynı şekilde vermeli. Üç yerde
+// kadrand, kadran-exec ve kadran bu kararı aynı şekilde vermeli. Üç yerde
 // ayrı ayrı yazmak, birinin diğerlerinden sapmasıyla biter — ve sapan
 // binary büyük ihtimalle en çok ihtiyaç duyulanı olur.
 package logutil
@@ -17,8 +17,8 @@ import (
 // Bayrağa ek olarak var, çünkü sunucudaki binary'ler systemd tarafından
 // başlatılıyor: bayrak eklemek unit dosyasını düzenleyip daemon-reload
 // yapmayı gerektirir. `systemctl set-environment` veya bir drop-in ile
-// PANELY_DEBUG=1 vermek çok daha kısa bir yoldur.
-const EnvVar = "PANELY_DEBUG"
+// KADRAN_DEBUG=1 vermek çok daha kısa bir yoldur.
+const EnvVar = "KADRAN_DEBUG"
 
 // Level, ayrıntılı günlüğün açık olup olmadığına karar verir.
 //
@@ -27,7 +27,7 @@ const EnvVar = "PANELY_DEBUG"
 //
 // # Neden varsayılan KAPALI?
 //
-// Ayrıntılı günlük bu projede sıradan bir kolaylık değil: panelyd ve
+// Ayrıntılı günlük bu projede sıradan bir kolaylık değil: kadrand ve
 // executor konteyner ortam değişkenlerini, istek parametrelerini ve
 // çağıran kimliklerini işliyor. Bunlar systemd journal'ına düşerse
 // `journalctl` okuyabilen herkes görür — SECURITY.md'de çizilen sınırın
@@ -50,7 +50,7 @@ func Level(flagEnabled bool, getenv func(string) string) slog.Level {
 // Enabled, ortam değişkeninin ayrıntılı günlüğü açıp açmadığını söyler.
 //
 // "1", "true", "yes", "on" (ve büyük harfli hâlleri) açar. Tanınmayan bir
-// değer KAPALI sayılır: `PANELY_DEBUG=hayir` yazan biri kapalı bekler.
+// değer KAPALI sayılır: `KADRAN_DEBUG=hayir` yazan biri kapalı bekler.
 func Enabled(getenv func(string) string) bool {
 	switch v := getenv(EnvVar); v {
 	case "", "0":

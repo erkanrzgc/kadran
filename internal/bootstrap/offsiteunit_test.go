@@ -14,8 +14,8 @@ import (
 // ── Yorumları atmak neden ZORUNLU ────────────────────────────────────
 //
 // İlk hâli dosyanın tamamında düz metin araması yapıyordu ve testler
-// kırmızıya döndü: `panely-offsite.service`'in AÇIKLAMA satırında
-// "panelyd `IPAddressDeny=any` taşıyor" yazıyor. Yani test, birimin
+// kırmızıya döndü: `kadran-offsite.service`'in AÇIKLAMA satırında
+// "kadrand `IPAddressDeny=any` taşıyor" yazıyor. Yani test, birimin
 // yapılandırmasını değil, kendi gerekçesini okumuştu.
 //
 // Bu projede tanıdık bir sınıf: yüzey denetçisi de bir dönem yorum
@@ -44,26 +44,26 @@ func unitOku(t *testing.T, ad string) string {
 //
 // ── Kilitlenen mimari karar ──────────────────────────────────────────
 //
-// panelyd `IPAddressDeny=any` taşıyor: ele geçirilen bir kontrol
+// kadrand `IPAddressDeny=any` taşıyor: ele geçirilen bir kontrol
 // düzlemi dışarı veri sızdıramasın diye (K-092'de kontrol gruplu
 // ölçüldü — kısıtlı istek `status=6`, kısıtsız `302`).
 //
-// Uzak yedek yüklemesi ağ istiyor. Bu yetenek panelyd'ye EKLENMEDİ;
+// Uzak yedek yüklemesi ağ istiyor. Bu yetenek kadrand'ye EKLENMEDİ;
 // ayrı bir birime verildi. İkisi aynı anda ağ görürse ayrım anlamını
 // yitirir, ikisi de görmezse yedek dışarı çıkamaz.
 //
 // Hiçbir birim testi bunu göremezdi: kural iki AYRI dosya arasındaki
 // ilişkide yaşıyor.
 func TestOffsiteUploaderIsTheOnlyUnitWithNetwork(t *testing.T) {
-	daemon := unitOku(t, "panelyd.service")
+	daemon := unitOku(t, "kadrand.service")
 	if !strings.Contains(daemon, "IPAddressDeny=any") {
-		t.Error("panelyd.service artık IPAddressDeny=any taşımıyor — " +
+		t.Error("kadrand.service artık IPAddressDeny=any taşımıyor — " +
 			"ele geçirilen kontrol düzlemi dışarı veri sızdırabilir")
 	}
 
-	yukleyici := unitOku(t, "panely-offsite.service")
+	yukleyici := unitOku(t, "kadran-offsite.service")
 	if strings.Contains(yukleyici, "IPAddressDeny=any") {
-		t.Error("panely-offsite.service ağa çıkamıyor — uzak yedek " +
+		t.Error("kadran-offsite.service ağa çıkamıyor — uzak yedek " +
 			"yüklenemez, birim her koşuda başarısız olur")
 	}
 	if !strings.Contains(yukleyici, "RestrictAddressFamilies=") {
@@ -87,7 +87,7 @@ func TestOffsiteUploaderIsTheOnlyUnitWithNetwork(t *testing.T) {
 // yerel servislere ulaşabilir — engelin tüm amacı buydu.
 func TestOffsiteUploaderCanResolveNamesButNotReachLocalhost(t *testing.T) {
 	var deny, allow []string
-	for _, satir := range strings.Split(unitOku(t, "panely-offsite.service"), "\n") {
+	for _, satir := range strings.Split(unitOku(t, "kadran-offsite.service"), "\n") {
 		if deger, ok := strings.CutPrefix(satir, "IPAddressDeny="); ok {
 			deny = append(deny, strings.Fields(deger)...)
 		}
@@ -128,7 +128,7 @@ func TestOffsiteUploaderCanResolveNamesButNotReachLocalhost(t *testing.T) {
 // Üretimde hedef ağ olduğu için sorun değil — ama kısıtın gerçekten
 // uygulandığını göstermiş oldu.
 func TestOffsiteUploaderCannotWriteToDisk(t *testing.T) {
-	icerik := unitOku(t, "panely-offsite.service")
+	icerik := unitOku(t, "kadran-offsite.service")
 
 	if !strings.Contains(icerik, "ProtectSystem=strict") {
 		t.Error("ProtectSystem=strict yok — yükleyici dosya sistemine yazabilir")
@@ -139,27 +139,27 @@ func TestOffsiteUploaderCannotWriteToDisk(t *testing.T) {
 				"ele geçirilirse YEREL YEDEKLERİ bozabilir", satir)
 		}
 	}
-	if !strings.Contains(icerik, "User=panely") {
-		t.Error("User=panely yok — yükleyici yanlış kimlikle koşuyor")
+	if !strings.Contains(icerik, "User=kadran") {
+		t.Error("User=kadran yok — yükleyici yanlış kimlikle koşuyor")
 	}
 	if !strings.Contains(icerik, "CapabilityBoundingSet=") {
 		t.Error("CapabilityBoundingSet boşaltılmamış")
 	}
 }
 
-// daemonYazilabilirYollar, panelyd.service'in ReadWritePaths
+// daemonYazilabilirYollar, kadrand.service'in ReadWritePaths
 // yönergelerini döndürür — daemon'un yazabildiği, dolayısıyla içindeki
 // HER dosyayı silip değiştirebildiği dizinler.
 func daemonYazilabilirYollar(t *testing.T) []string {
 	t.Helper()
 	var yollar []string
-	for _, satir := range strings.Split(unitOku(t, "panelyd.service"), "\n") {
+	for _, satir := range strings.Split(unitOku(t, "kadrand.service"), "\n") {
 		if deger, ok := strings.CutPrefix(satir, "ReadWritePaths="); ok {
 			yollar = append(yollar, strings.Fields(deger)...)
 		}
 	}
 	if len(yollar) == 0 {
-		t.Fatal("panelyd.service'te ReadWritePaths yok — ölçüm geçersiz: " +
+		t.Fatal("kadrand.service'te ReadWritePaths yok — ölçüm geçersiz: " +
 			"karşılaştırılacak bir şey bulunamadı")
 	}
 	return yollar
@@ -178,8 +178,8 @@ func altinda(yol, dizin string) bool {
 // ── Kapatılan delik (K-100) ──────────────────────────────────────────
 //
 // Birim RCLONE_CONFIG tanımlamıyordu. rclone o zaman
-// `$HOME/.config/rclone` altına bakar ve `panely`nin ev dizini
-// /var/lib/panely — daemon'un kendi dizini. Dosya root'a ait olsa bile
+// `$HOME/.config/rclone` altına bakar ve `kadran`nin ev dizini
+// /var/lib/kadran — daemon'un kendi dizini. Dosya root'a ait olsa bile
 // daemon onu silip yerine kendisininkini koyabilir; bu canlıda bir
 // sınama dosyasıyla ölçüldü. rclone yapılandırması komut çalıştırabildiği
 // için (webdav `bearer_token_command`) bu, ağı olmayan daemon'a ağ gören
@@ -188,13 +188,13 @@ func altinda(yol, dizin string) bool {
 // İki dosya arasındaki bir ilişki: hiçbir birim testi tek başına göremez.
 func TestOffsiteRcloneConfigOutsideDaemonDirs(t *testing.T) {
 	var yol string
-	for _, satir := range strings.Split(unitOku(t, "panely-offsite.service"), "\n") {
+	for _, satir := range strings.Split(unitOku(t, "kadran-offsite.service"), "\n") {
 		if deger, ok := strings.CutPrefix(satir, "Environment=RCLONE_CONFIG="); ok {
 			yol = strings.TrimSpace(deger)
 		}
 	}
 	if yol == "" {
-		t.Fatal("panely-offsite.service RCLONE_CONFIG tanımlamıyor — rclone " +
+		t.Fatal("kadran-offsite.service RCLONE_CONFIG tanımlamıyor — rclone " +
 			"$HOME/.config/rclone'a, yani daemon'un dizinine bakar")
 	}
 	if !strings.HasPrefix(yol, "/") {
@@ -204,7 +204,7 @@ func TestOffsiteRcloneConfigOutsideDaemonDirs(t *testing.T) {
 	for _, dizin := range daemonYazilabilirYollar(t) {
 		if altinda(yol, dizin) {
 			t.Errorf("rclone yapılandırması %q, daemon'un yazabildiği %q altında — "+
-				"ele geçirilen panelyd yükleyicinin yapılandırmasını değiştirebilir", yol, dizin)
+				"ele geçirilen kadrand yükleyicinin yapılandırmasını değiştirebilir", yol, dizin)
 		}
 	}
 }
@@ -216,7 +216,7 @@ func TestOffsiteRcloneConfigOutsideDaemonDirs(t *testing.T) {
 // yedeğini SESSİZCE atlardı — ve bu, tam olarak yedeğe en çok
 // ihtiyaç duyulan senaryodur.
 func TestOffsiteTimerSurvivesDowntime(t *testing.T) {
-	icerik := unitOku(t, "panely-offsite.timer")
+	icerik := unitOku(t, "kadran-offsite.timer")
 
 	if !strings.Contains(icerik, "Persistent=true") {
 		t.Error("Persistent=true yok — kapalı kalan sunucu yedeği sessizce atlar")

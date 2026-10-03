@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // humanBytes, bayt sayısını okunabilir bir birime çevirir.
@@ -70,7 +70,7 @@ func shortFingerprint(fp string) string {
 }
 
 // describeActor, denetim listesi için aktörü tek bir hücreye sığdırır.
-func describeActor(a *panelyv1.Actor) string {
+func describeActor(a *kadranv1.Actor) string {
 	if a == nil {
 		return "bilinmiyor"
 	}
@@ -87,16 +87,16 @@ func describeActor(a *panelyv1.Actor) string {
 }
 
 // outcomeLabel, denetim sonucunu Türkçeleştirir.
-func outcomeLabel(o panelyv1.AuditOutcome) string {
+func outcomeLabel(o kadranv1.AuditOutcome) string {
 	switch o {
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS:
 		return "BAŞARILI"
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_FAILURE:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_FAILURE:
 		return "BAŞARISIZ"
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_DENIED:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_DENIED:
 		// Güvenlik modelinin devreye girdiği durum: ayrıca izlenir.
 		return "REDDEDİLDİ"
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_UNSPECIFIED:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_UNSPECIFIED:
 		return "belirsiz"
 	default:
 		return "belirsiz"
@@ -108,15 +108,15 @@ func outcomeLabel(o panelyv1.AuditOutcome) string {
 // UNREACHABLE'ın "GEÇERSİZ" değil "DOĞRULANAMADI" olarak görünmesi
 // kasıtlıdır: birincisi kurcalama şüphesi, ikincisi işletim sorunudur ve
 // operatörün tepkisi tamamen farklıdır.
-func chainStatusLabel(s panelyv1.ChainStatus) string {
+func chainStatusLabel(s kadranv1.ChainStatus) string {
 	switch s {
-	case panelyv1.ChainStatus_CHAIN_STATUS_VALID:
+	case kadranv1.ChainStatus_CHAIN_STATUS_VALID:
 		return "GEÇERLİ"
-	case panelyv1.ChainStatus_CHAIN_STATUS_INVALID:
+	case kadranv1.ChainStatus_CHAIN_STATUS_INVALID:
 		return "GEÇERSİZ"
-	case panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE:
+	case kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE:
 		return "DOĞRULANAMADI"
-	case panelyv1.ChainStatus_CHAIN_STATUS_UNSPECIFIED:
+	case kadranv1.ChainStatus_CHAIN_STATUS_UNSPECIFIED:
 		return "BİLİNMİYOR"
 	default:
 		return "BİLİNMİYOR"

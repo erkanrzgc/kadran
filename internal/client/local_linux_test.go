@@ -25,7 +25,7 @@ import (
 	"google.golang.org/grpc"
 
 	"github.com/erkanrzgc/kadran/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // tempSocketPath, unix soketi için yeterince kısa bir geçici yol üretir.
@@ -128,7 +128,7 @@ func TestGRPCWorksOverRealSocketAfterPreamble(t *testing.T) {
 
 	creds := &preambleCreds{seen: make(chan connproto.Identity, 1)}
 	server := grpc.NewServer(grpc.Creds(creds))
-	panelyv1.RegisterPanelyServiceServer(server, &stubService{})
+	kadranv1.RegisterKadranServiceServer(server, &stubService{})
 
 	done := make(chan struct{})
 	go func() {
@@ -149,7 +149,7 @@ func TestGRPCWorksOverRealSocketAfterPreamble(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	if _, err := c.RPC().Ping(ctx, &panelyv1.PingRequest{ClientVersion: "test"}); err != nil {
+	if _, err := c.RPC().Ping(ctx, &kadranv1.PingRequest{ClientVersion: "test"}); err != nil {
 		t.Fatalf("gerçek soket üzerinde gRPC çağrısı başarısız: %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestReconnectWritesPreambleAgain(t *testing.T) {
 			t.Fatalf("unix soketi dinlenemedi: %v", err)
 		}
 		server := grpc.NewServer(grpc.Creds(&preambleCreds{seen: seen}))
-		panelyv1.RegisterPanelyServiceServer(server, &stubService{})
+		kadranv1.RegisterKadranServiceServer(server, &stubService{})
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
@@ -199,7 +199,7 @@ func TestReconnectWritesPreambleAgain(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 
-	if _, err := c.RPC().Ping(ctx, &panelyv1.PingRequest{}); err != nil {
+	if _, err := c.RPC().Ping(ctx, &kadranv1.PingRequest{}); err != nil {
 		t.Fatalf("ilk çağrı başarısız: %v", err)
 	}
 
@@ -219,7 +219,7 @@ func TestReconnectWritesPreambleAgain(t *testing.T) {
 	var lastErr error
 	for range 40 {
 		callCtx, callCancel := context.WithTimeout(ctx, 2*time.Second)
-		_, lastErr = c.RPC().Ping(callCtx, &panelyv1.PingRequest{})
+		_, lastErr = c.RPC().Ping(callCtx, &kadranv1.PingRequest{})
 		callCancel()
 		if lastErr == nil {
 			break

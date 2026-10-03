@@ -125,7 +125,7 @@ func TestDialSSHPassesHostAsSinglePositionalArg(t *testing.T) {
 	t.Cleanup(func() { sshCommand = original })
 
 	conn, err := dialSSH(context.Background(), Target{
-		SSHUser: "panely-client",
+		SSHUser: "kadran-client",
 		SSHHost: "sunucu",
 	})
 	if err != nil {
@@ -141,8 +141,8 @@ func TestDialSSHPassesHostAsSinglePositionalArg(t *testing.T) {
 	argv := strings.Split(strings.TrimSpace(string(ham)), "\n")
 
 	son := argv[len(argv)-1]
-	if son != "panely-client@sunucu" {
-		t.Errorf("son argüman %q, beklenen \"panely-client@sunucu\"", son)
+	if son != "kadran-client@sunucu" {
+		t.Errorf("son argüman %q, beklenen \"kadran-client@sunucu\"", son)
 	}
 	if strings.HasPrefix(son, "-") {
 		t.Errorf("konumsal argüman `-` ile başlıyor: %q", son)
@@ -159,7 +159,7 @@ func TestDialSSHPassesHostAsSinglePositionalArg(t *testing.T) {
 // yerel bağlantı yolu kimlik önsözünü yazmıyordu ve argümansız
 // `kadran status` — birincil kullanım — ölüyordu (K-012).
 //
-// Yukarıdaki pozitif kontrol "panely-client" dizgisini ELLE yazıyor;
+// Yukarıdaki pozitif kontrol "kadran-client" dizgisini ELLE yazıyor;
 // yani DefaultSSHUser değişse haberi olmazdı. Burada sabitlerin
 // kendileri sınanıyor.
 func TestDefaultTargetsSurviveOptionCheck(t *testing.T) {

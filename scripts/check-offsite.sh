@@ -21,7 +21,7 @@ for arac in tar zstd stat; do
     command -v "$arac" >/dev/null || { echo "$arac yok" >&2; exit 2; }
 done
 
-KOK="$(mktemp -d /root/panely-offsite-check.XXXXXX)"   # /root 0700: üst dizinler root'un
+KOK="$(mktemp -d /root/kadran-offsite-check.XXXXXX)"   # /root 0700: üst dizinler root'un
 trap 'rm -rf "$KOK"' EXIT
 BIN="$KOK/bin"; ETC="$KOK/etc"; YEDEK="$KOK/backups"; HACIM="$KOK/volumes"
 CIKTI="$KOK/hacim-yedek"; UZAK="$KOK/uzak"
@@ -69,8 +69,8 @@ conf_yaz() {  # conf_yaz [ek satırlar]
 conf_yaz
 : > "$ETC/rclone.conf"; chmod 600 "$ETC/rclone.conf"
 
-export PANELY_OFFSITE_CONF="$ETC/offsite.conf" PANELY_VOLUMES_DIR="$HACIM" \
-       PANELY_VOLUME_BACKUP_DIR="$CIKTI" PANELY_BACKUP_DIR="$YEDEK" RCLONE_CONFIG="$ETC/rclone.conf"
+export KADRAN_OFFSITE_CONF="$ETC/offsite.conf" KADRAN_VOLUMES_DIR="$HACIM" \
+       KADRAN_VOLUME_BACKUP_DIR="$CIKTI" KADRAN_BACKUP_DIR="$YEDEK" RCLONE_CONFIG="$ETC/rclone.conf"
 
 hacim_kur() {
     rm -rf "$HACIM"; mkdir -p "$HACIM/web/veri" "$HACIM/web-2/data"
@@ -79,8 +79,8 @@ hacim_kur() {
     ln -s /etc/shadow "$HACIM/web/veri/kacis"
     chown -R 101:101 "$HACIM/web/veri"; chmod 750 "$HACIM/web/veri" "$HACIM/web"
 }
-arsivle() { bash "$DEPO/deploy/offsite/panely-volume-backup.sh" > "$KOK/cikti" 2>&1; }
-yukle()   { bash "$DEPO/deploy/offsite/panely-offsite.sh" > "$KOK/cikti" 2>&1; }
+arsivle() { bash "$DEPO/deploy/offsite/kadran-volume-backup.sh" > "$KOK/cikti" 2>&1; }
+yukle()   { bash "$DEPO/deploy/offsite/kadran-offsite.sh" > "$KOK/cikti" 2>&1; }
 ac()      { tail -n +2 "$1" | zstd -dq; }   # sahte age başlığını at, aç
 
 fail=0
@@ -94,17 +94,17 @@ say() { local n=0 f; for f in "$@"; do [[ -e "$f" ]] && n=$((n + 1)); done; echo
 echo "== Hacim arşivleyicisi =="
 hacim_kur
 # Budama tuzağı: web-2'nin arşivi EN ESKİ damgayı taşıyor. Önek eşleşmesi
-# ("panely-hacim-web-*") kullanılsaydı web'in budaması onu silerdi.
-echo eski > "$CIKTI/panely-hacim-web-2-20250101T000000Z.tar.zst.age"
-for g in 01 02 03; do echo eski > "$CIKTI/panely-hacim-web-202601${g}T000000Z.tar.zst.age"; done
+# ("kadran-hacim-web-*") kullanılsaydı web'in budaması onu silerdi.
+echo eski > "$CIKTI/kadran-hacim-web-2-20250101T000000Z.tar.zst.age"
+for g in 01 02 03; do echo eski > "$CIKTI/kadran-hacim-web-202601${g}T000000Z.tar.zst.age"; done
 
 arsivle; kod=$?
 shopt -s nullglob
-yeni_web=( "$CIKTI"/panely-hacim-web-2026[0-9][0-9][0-9][0-9]T*Z.tar.zst.age )
+yeni_web=( "$CIKTI"/kadran-hacim-web-2026[0-9][0-9][0-9][0-9]T*Z.tar.zst.age )
 dene "çıkış 0" '[[ $kod == 0 ]]'
 dene "web için KEEP=2 arşiv kaldı" '[[ ${#yeni_web[@]} == 2 ]]'
-dene "en eski web arşivleri budandı" '[[ ! -e $CIKTI/panely-hacim-web-20260101T000000Z.tar.zst.age && ! -e $CIKTI/panely-hacim-web-20260102T000000Z.tar.zst.age ]]'
-dene "web-2'nin arşivine dokunulmadı (önek tuzağı)" '[[ -e $CIKTI/panely-hacim-web-2-20250101T000000Z.tar.zst.age ]]'
+dene "en eski web arşivleri budandı" '[[ ! -e $CIKTI/kadran-hacim-web-20260101T000000Z.tar.zst.age && ! -e $CIKTI/kadran-hacim-web-20260102T000000Z.tar.zst.age ]]'
+dene "web-2'nin arşivine dokunulmadı (önek tuzağı)" '[[ -e $CIKTI/kadran-hacim-web-2-20250101T000000Z.tar.zst.age ]]'
 YENI="${yeni_web[1]}"
 dene "arşiv kipi 0640" '[[ $(stat -c %a "$YENI") == 640 ]]'
 dene "yarım dosya kalmadı" '[[ $(say "$CIKTI"/.yaziliyor-*) == 0 ]]'
@@ -130,9 +130,9 @@ conf_yaz "OFFSITE_VOLUME_KEEP=2; touch $KOK/calisti
 arsivle
 dene "yapılandırma ÇALIŞTIRILMAZ (source yok)" '[[ ! -e $KOK/calisti && ! -e $KOK/calisti2 ]]'
 conf_yaz
-once=$(say "$CIKTI"/panely-hacim-*)
+once=$(say "$CIKTI"/kadran-hacim-*)
 SAHTE_AGE_BOZ=1 arsivle; kod=$?
-dene "şifreleme düşerse: çıkış≠0, yeni arşiv yok" '[[ $kod != 0 && $(say "$CIKTI"/panely-hacim-*) == $once ]]'
+dene "şifreleme düşerse: çıkış≠0, yeni arşiv yok" '[[ $kod != 0 && $(say "$CIKTI"/kadran-hacim-*) == $once ]]'
 dene "şifreleme düşerse: yarım dosya kalmaz" '[[ $(say "$CIKTI"/.yaziliyor-*) == 0 ]]'
 mkdir "$HACIM/Kotu_Ad"; ln -s "$HACIM/web" "$HACIM/bagli"; arsivle; kod=$?
 dene "beklenmeyen girdi: çıkış≠0" '[[ $kod != 0 ]] && grep -q "beklenmeyen girdi" "$KOK/cikti"'
@@ -144,16 +144,16 @@ mv "$HACIM.x" "$HACIM"
 
 echo "== Uzak yükleyici =="
 rm -f "$CIKTI"/*; arsivle
-echo db1 > "$YEDEK/panely-20260926T100000Z.db"; echo db22 > "$YEDEK/panely-20260926T110000Z.db"
+echo db1 > "$YEDEK/kadran-20260926T100000Z.db"; echo db22 > "$YEDEK/kadran-20260926T110000Z.db"
 : > "$CIKTI/.yaziliyor-web-20990101T000000Z"
 yukle; kod=$?
 dene "çıkış 0" '[[ $kod == 0 ]]'
-dene "hacim arşivleri BAYT BAYT aynı (yeniden şifrelenmedi)" '( for f in "$CIKTI"/panely-hacim-*; do cmp -s "$f" "$UZAK/$(basename "$f")" || exit 1; done )'
-dene "veritabanı yedekleri şifrelendi" '[[ $(head -1 "$UZAK/panely-20260926T100000Z.db.age") == age-encryption.org/v1 ]]'
+dene "hacim arşivleri BAYT BAYT aynı (yeniden şifrelenmedi)" '( for f in "$CIKTI"/kadran-hacim-*; do cmp -s "$f" "$UZAK/$(basename "$f")" || exit 1; done )'
+dene "veritabanı yedekleri şifrelendi" '[[ $(head -1 "$UZAK/kadran-20260926T100000Z.db.age") == age-encryption.org/v1 ]]'
 dene "yarım arşiv (.yaziliyor-) yüklenmedi" '[[ ! -e $UZAK/.yaziliyor-web-20990101T000000Z ]]'
 yukle
 dene "ikinci koşu: yeniden yükleme yok" 'grep -q "yüklendi=0 atlandı=4 başarısız=0" "$KOK/cikti"'
-bir="$(ls "$CIKTI"/panely-hacim-web-2026* | head -1)"; truncate -s 10 "$UZAK/$(basename "$bir")"
+bir="$(ls "$CIKTI"/kadran-hacim-web-2026* | head -1)"; truncate -s 10 "$UZAK/$(basename "$bir")"
 yukle
 dene "kesik uzak arşiv yeniden yüklendi" 'grep -q "UZAK KOPYA BOZUK" "$KOK/cikti" && cmp -s "$bir" "$UZAK/$(basename "$bir")"'
 
@@ -166,44 +166,44 @@ echo "== Uzak budama =="
 conf_yaz "OFFSITE_KEEP=1"
 # web'in yerelde İKİ arşivi olsun (biri eski): tek arşiv hep en yeni
 # olduğundan "en yeniyi tut" onu da korurdu ve kural sınanmazdı.
-cp "$(ls "$CIKTI"/panely-hacim-web-2026*)" "$CIKTI/panely-hacim-web-20250601T000000Z.tar.zst.age"
+cp "$(ls "$CIKTI"/kadran-hacim-web-2026*)" "$CIKTI/kadran-hacim-web-20250601T000000Z.tar.zst.age"
 for g in 01 02 03; do
-    echo eski > "$UZAK/panely-hacim-web-201901${g}T000000Z.tar.zst.age"
-    echo eski > "$UZAK/panely-201901${g}T000000Z.db.age"
+    echo eski > "$UZAK/kadran-hacim-web-201901${g}T000000Z.tar.zst.age"
+    echo eski > "$UZAK/kadran-201901${g}T000000Z.db.age"
 done
 yukle
-dene "yerelde olmayan eski hacim arşivleri budandı" '[[ $(say "$UZAK"/panely-hacim-web-201901*) == 0 ]]'
-dene "yerelde olan hacim arşivleri DURUYOR" '( for f in "$CIKTI"/panely-hacim-*; do [[ -e $UZAK/$(basename "$f") ]] || exit 1; done )'
-dene "yerelde olmayan eski veritabanı yedekleri budandı" '[[ $(say "$UZAK"/panely-201901*.db.age) == 0 ]]'
-dene "yerelde olan veritabanı yedekleri DURUYOR" '[[ -e $UZAK/panely-20260926T100000Z.db.age && -e $UZAK/panely-20260926T110000Z.db.age ]]'
+dene "yerelde olmayan eski hacim arşivleri budandı" '[[ $(say "$UZAK"/kadran-hacim-web-201901*) == 0 ]]'
+dene "yerelde olan hacim arşivleri DURUYOR" '( for f in "$CIKTI"/kadran-hacim-*; do [[ -e $UZAK/$(basename "$f") ]] || exit 1; done )'
+dene "yerelde olmayan eski veritabanı yedekleri budandı" '[[ $(say "$UZAK"/kadran-201901*.db.age) == 0 ]]'
+dene "yerelde olan veritabanı yedekleri DURUYOR" '[[ -e $UZAK/kadran-20260926T100000Z.db.age && -e $UZAK/kadran-20260926T110000Z.db.age ]]'
 # Uygulama başına ve DAMGAYA göre: aa'nın arşivleri YENİ, zz'ninkiler
 # ESKİ, ikisi de yerelde yok. KEEP=1 → her uygulamanın en yenisi kalır.
 # Tek grupta ADA göre budansaydı aa'nınkiler (alfabede önce) silinirdi;
 # tek grupta ZAMANA göre budansaydı zz'nin hepsi silinirdi.
 for a in aa-20260101 aa-20260102 zz-20190101 zz-20190102; do
-    echo eski > "$UZAK/panely-hacim-${a}T000000Z.tar.zst.age"
+    echo eski > "$UZAK/kadran-hacim-${a}T000000Z.tar.zst.age"
 done
 yukle
 dene "uygulama başına: aa'nın en yenisi kaldı" \
-    '[[ -e $UZAK/panely-hacim-aa-20260102T000000Z.tar.zst.age && ! -e $UZAK/panely-hacim-aa-20260101T000000Z.tar.zst.age ]]'
+    '[[ -e $UZAK/kadran-hacim-aa-20260102T000000Z.tar.zst.age && ! -e $UZAK/kadran-hacim-aa-20260101T000000Z.tar.zst.age ]]'
 dene "uygulama başına: zz'nin en yenisi kaldı" \
-    '[[ -e $UZAK/panely-hacim-zz-20190102T000000Z.tar.zst.age && ! -e $UZAK/panely-hacim-zz-20190101T000000Z.tar.zst.age ]]'
+    '[[ -e $UZAK/kadran-hacim-zz-20190102T000000Z.tar.zst.age && ! -e $UZAK/kadran-hacim-zz-20190101T000000Z.tar.zst.age ]]'
 conf_yaz
 
 echo "== Uzak yükleyici: sınırlar =="
 mv "$CIKTI" "$CIKTI.x"; yukle; kod=$?
 dene "hacim dizini yoksa: veritabanı yedekleri yine gider" '[[ $kod == 0 ]] && grep -q "hacim yedeği kurulu değil" "$KOK/cikti"'
 mv "$CIKTI.x" "$CIKTI"
-mkdir "$KOK/bosyedek"; PANELY_BACKUP_DIR="$KOK/bosyedek" yukle; kod=$?
+mkdir "$KOK/bosyedek"; KADRAN_BACKUP_DIR="$KOK/bosyedek" yukle; kod=$?
 dene "veritabanı yedeği yoksa: yereldeki hacim arşivi bunu ÖRTMEZ" \
-    '[[ $(say "$CIKTI"/panely-hacim-*) -gt 0 && $kod != 0 ]] && grep -q "BULUNAMADI" "$KOK/cikti"'
+    '[[ $(say "$CIKTI"/kadran-hacim-*) -gt 0 && $kod != 0 ]] && grep -q "BULUNAMADI" "$KOK/cikti"'
 
 # Birim, arşivleyici ve yükleyici AYNI dizinde buluşmalı. Biri değişip
 # diğeri kalırsa arşivler üretilir ama hiç yüklenmez — sessizce.
 echo "== Üç dosya aynı dizini söylüyor =="
-a="$(sed -n 's/^OUT_DIR="\${PANELY_VOLUME_BACKUP_DIR:-\(.*\)}"$/\1/p' deploy/offsite/panely-volume-backup.sh)"
-y="$(sed -n 's/^VOLUME_BACKUP_DIR="\${PANELY_VOLUME_BACKUP_DIR:-\(.*\)}"$/\1/p' deploy/offsite/panely-offsite.sh)"
-b="/var/lib/$(sed -n 's/^StateDirectory=//p' deploy/systemd/panely-volume-backup.service)"
+a="$(sed -n 's/^OUT_DIR="\${KADRAN_VOLUME_BACKUP_DIR:-\(.*\)}"$/\1/p' deploy/offsite/kadran-volume-backup.sh)"
+y="$(sed -n 's/^VOLUME_BACKUP_DIR="\${KADRAN_VOLUME_BACKUP_DIR:-\(.*\)}"$/\1/p' deploy/offsite/kadran-offsite.sh)"
+b="/var/lib/$(sed -n 's/^StateDirectory=//p' deploy/systemd/kadran-volume-backup.service)"
 : > "$KOK/cikti"
 dene "arşivleyici=$a yükleyici=$y birim=$b" '[[ -n $a && $a == "$y" && $a == "$b" ]]'
 

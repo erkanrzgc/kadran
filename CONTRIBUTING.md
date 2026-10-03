@@ -26,22 +26,22 @@ PR rather than shipping a green check that proves nothing.
 
 Anything touching these is held to a higher bar:
 
-- `proto/panely/v1/exec.proto`
+- `proto/kadran/v1/exec.proto`
 - `internal/exec/**`
-- `cmd/panely-exec/**`
+- `cmd/kadran-exec/**`
 - `deploy/systemd/**`
 
 A PR here must include:
 
 1. **A written threat rationale.** Answer the question the schema file asks:
-   *"If `panelyd` were fully compromised, what would it do with this field?"*
+   *"If `kadrand` were fully compromised, what would it do with this field?"*
 2. **A test for each new invariant,** including escape attempts, not just the
    happy path.
 3. **Evidence the test fires.** Describe the mutation you applied and the failure
    you observed.
 4. **Room in the budget.** `scripts/check-exec-surface.sh` caps the privileged code
    at 2500 lines of code (comments and blanks excluded), measured from the real
-   import graph of `cmd/panely-exec`.
+   import graph of `cmd/kadran-exec`.
    Raising that cap is a decision, not a fix — open an issue first.
 
 New forbidden field patterns must be added to `scripts/check-exec-surface.sh`. The

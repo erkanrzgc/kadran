@@ -38,10 +38,10 @@ const (
 
 // New, unix soketi üzerinden konuşan bir istemci kurar.
 //
-// panelyd dilim 4c'de sağlık yoklaması için AF_INET aldı, ama
+// kadrand dilim 4c'de sağlık yoklaması için AF_INET aldı, ama
 // `IPAddressDeny=any` + `IPAddressAllow=172.16.0.0/12` yalnızca Docker'ın
 // özel ağına izin veriyor. Caddy'nin admin ucu HOSTTA duruyor, o aralıkta
-// değil — yani TCP admin portu kullanılsaydı panelyd ona ULAŞAMAZDI
+// değil — yani TCP admin portu kullanılsaydı kadrand ona ULAŞAMAZDI
 // (gerçek sunucuda ölçüldü: 127.0.0.1'e bağlanma denemesi engelleniyor).
 //
 // Unix soketi bu yüzden bir tercih değil, gereklilik. Ve iyi ki öyle:
@@ -63,7 +63,7 @@ func New(socketPath string) *Client {
 // ── Neden geri okuma ────────────────────────────────────────────────
 //
 // `POST /load`'ın 200 dönmesi, canlı yapılandırmanın gönderdiğimiz şey
-// olduğunu KANITLAMAZ. Admin soketine `panely` (veya root) olarak çalışan
+// olduğunu KANITLAMAZ. Admin soketine `kadran` (veya root) olarak çalışan
 // başka bir süreç de yazabilir ve kontrol düzlemi bunu göremez; o zaman
 // SQLite'taki "gerçeğin kaynağı", canlı olmayan bir şeyi tarif eder.
 //
@@ -218,7 +218,7 @@ func verifyApplied(want, live *Config) error {
 // alan adlarını sıralı döndürür.
 //
 // Vekil izleyicisinin tetikleyicisi (K-055'in ikinci yarısı, K-112):
-// Caddy yeniden başlayınca rotasız açılıyor ve panelyd bunu görmezse
+// Caddy yeniden başlayınca rotasız açılıyor ve kadrand bunu görmezse
 // siteler kapalı kalıyor. Bilerek TEK YÖNLÜ: fazla rotalar ve upstream
 // farkları burada görünmez. Uzlaştırma sağlıksız bir uygulamayı atlıyor
 // ve canlıdaki eski rotası iyileştirme bitene kadar duruyor; iki yönlü

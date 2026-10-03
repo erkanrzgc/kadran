@@ -75,7 +75,7 @@ linters:
       # için var. Test yardımcılarındaki net.Listen/net.Dial çağrıları
       # geçici soket kurup hemen kapatıyor; context eklemek hiçbir davranış
       # değiştirmez, yalnızca gürültü üretir. Üretim kodunda noctx AÇIK
-      # kalıyor — panely-connect'teki bağlantı zaman aşımı bu linter
+      # kalıyor — kadran-connect'teki bağlantı zaman aşımı bu linter
       # sayesinde eklendi.
       - path: _test\.go
         linters:

@@ -34,7 +34,7 @@ func (r *recorder) states() []Transition {
 // Dosya tabanlı: kalıcılık iddiası da sınanıyor.
 func newManager(t *testing.T) (*Manager, *recorder, *store.Store, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 	s, err := store.Open(context.Background(), path)
 	if err != nil {
 		t.Fatalf("depo açılamadı: %v", err)
@@ -215,7 +215,7 @@ func TestSinceSurvivesRepeatedRaise(t *testing.T) {
 	}
 }
 
-// TestStateSurvivesRestart, kenar tetiklemenin panelyd'nin ÖMRÜNDEN
+// TestStateSurvivesRestart, kenar tetiklemenin kadrand'nin ÖMRÜNDEN
 // UZUN yaşadığını doğrular.
 //
 // ── Neden bu testin olmaması tehlikeli ──────────────────────────────

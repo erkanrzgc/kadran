@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"text/tabwriter"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runAudit, `audit` alt komutlarını dağıtır.
@@ -48,7 +48,7 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().ListAuditRecords(ctx, &panelyv1.ListAuditRecordsRequest{
+	resp, err := conn.RPC().ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{
 		AfterSeq: *after,
 		Limit:    uint32(*limit), //nolint:gosec // sunucu üst sınırı zaten uyguluyor
 	})
@@ -68,7 +68,7 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 	return exitOK
 }
 
-func (c *cli) printAuditRecords(resp *panelyv1.ListAuditRecordsResponse) {
+func (c *cli) printAuditRecords(resp *kadranv1.ListAuditRecordsResponse) {
 	records := resp.GetRecords()
 	if len(records) == 0 {
 		fmt.Fprintln(c.stdout, "Denetim zincirinde kayıt yok.")
@@ -111,9 +111,9 @@ func orDash(s string) string {
 // # İki zincir neden AYRI raporlanıyor?
 //
 // Daemon'ın SQLite zinciri ile executor'ın dosya zinciri bilerek ayrı
-// tutulur: ele geçirilmiş bir panelyd kendi yaptığı ayrıcalıklı çağrıları
+// tutulur: ele geçirilmiş bir kadrand kendi yaptığı ayrıcalıklı çağrıları
 // hiç kaydetmeyebilir, ama executor'ın günlüğüne DOKUNAMAZ (root'un 0700
-// dizininde; K-102'ye kadar panelyd'nin dizinindeydi ve silinebiliyordu).
+// dizininde; K-102'ye kadar kadrand'nin dizinindeydi ve silinebiliyordu).
 // İkisini tek bir "geçerli" satırında birleştirmek, modelin tamamının
 // dayandığı ayrımı gizlerdi.
 func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
@@ -136,7 +136,7 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().VerifyAuditChain(ctx, &panelyv1.VerifyAuditChainRequest{})
+	resp, err := conn.RPC().VerifyAuditChain(ctx, &kadranv1.VerifyAuditChainRequest{})
 	if err != nil {
 		return c.fail(fmt.Errorf("zincir doğrulanamadı: %w", err))
 	}
@@ -154,7 +154,7 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 	return verifyExitCode(resp)
 }
 
-func (c *cli) printVerifyResult(target string, resp *panelyv1.VerifyAuditChainResponse) {
+func (c *cli) printVerifyResult(target string, resp *kadranv1.VerifyAuditChainResponse) {
 	fmt.Fprintf(c.stdout, "Denetim zinciri doğrulaması — %s\n\n", target)
 
 	tw := tabwriter.NewWriter(c.stdout, 0, 0, 2, ' ', 0)
@@ -172,7 +172,7 @@ func (c *cli) printVerifyResult(target string, resp *panelyv1.VerifyAuditChainRe
 		fmt.Fprintf(c.stdout, "  executor : %s\n", d)
 	}
 
-	if resp.GetDaemonStatus() == panelyv1.ChainStatus_CHAIN_STATUS_INVALID {
+	if resp.GetDaemonStatus() == kadranv1.ChainStatus_CHAIN_STATUS_INVALID {
 		fmt.Fprintf(c.stderr,
 			"\nZİNCİR KIRIK: ilk bozulan kayıt #%d.\n"+
 				"Denetim günlüğü yalnızca eklemeye açıktır; bir kaydın değişmesi "+
@@ -180,9 +180,9 @@ func (c *cli) printVerifyResult(target string, resp *panelyv1.VerifyAuditChainRe
 				"Bu bir kurcalama göstergesidir ve araştırılmalıdır.\n",
 			resp.GetFirstInvalidSeq())
 	}
-	if resp.GetExecutorStatus() == panelyv1.ChainStatus_CHAIN_STATUS_INVALID {
+	if resp.GetExecutorStatus() == kadranv1.ChainStatus_CHAIN_STATUS_INVALID {
 		fmt.Fprintln(c.stderr,
-			"\nEXECUTOR ZİNCİRİ KIRIK. panelyd bu günlüğe dokunamaz "+
+			"\nEXECUTOR ZİNCİRİ KIRIK. kadrand bu günlüğe dokunamaz "+
 				"(root'un 0700 dizininde); bozulmuşsa ya root yetkisi kullanıldı "+
 				"ya da dosya diskte bozuldu.")
 	}
@@ -194,13 +194,13 @@ func (c *cli) printVerifyResult(target string, resp *panelyv1.VerifyAuditChainRe
 // KIRIK zincir araştırma gerektirir, DOĞRULANAMADI ise yalnızca servisin
 // ayakta olmadığını söyler. Cron'a konulan bir doğrulama bu ikisini
 // karıştırırsa ya sahte alarm üretir ya da gerçek olanı boğar.
-func verifyExitCode(resp *panelyv1.VerifyAuditChainResponse) int {
-	invalid := panelyv1.ChainStatus_CHAIN_STATUS_INVALID
+func verifyExitCode(resp *kadranv1.VerifyAuditChainResponse) int {
+	invalid := kadranv1.ChainStatus_CHAIN_STATUS_INVALID
 	if resp.GetDaemonStatus() == invalid || resp.GetExecutorStatus() == invalid {
 		return exitChainInvalid
 	}
-	if resp.GetDaemonStatus() != panelyv1.ChainStatus_CHAIN_STATUS_VALID ||
-		resp.GetExecutorStatus() != panelyv1.ChainStatus_CHAIN_STATUS_VALID {
+	if resp.GetDaemonStatus() != kadranv1.ChainStatus_CHAIN_STATUS_VALID ||
+		resp.GetExecutorStatus() != kadranv1.ChainStatus_CHAIN_STATUS_VALID {
 		return exitError
 	}
 	return exitOK

@@ -28,7 +28,7 @@ func fakeFiles(files map[string]string) func(string) ([]byte, error) {
 // ed25519 anahtar blobunu taklit eden sabit bir bayt dizisi. Gerçek bir
 // anahtar olması gerekmiyor: parmak izi ham blobun SHA-256'sıdır ve
 // hesaplama içeriğe bakmaz.
-var testBlob = []byte("panely-test-key-blob-0123456789")
+var testBlob = []byte("kadran-test-key-blob-0123456789")
 
 func testBlobB64() string { return base64.StdEncoding.EncodeToString(testBlob) }
 

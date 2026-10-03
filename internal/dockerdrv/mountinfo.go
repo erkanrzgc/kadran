@@ -11,7 +11,7 @@ import (
 // ════════════════════════════════════════════════════════════════════
 //
 // `nodev,nosuid`, bir systemd .mount birimi tarafından sağlanır
-// (deploy/systemd/var-lib-panely-volumes.mount). Peki neden bir de burada
+// (deploy/systemd/var-lib-kadran-volumes.mount). Peki neden bir de burada
 // kontrol ediliyor?
 //
 // Çünkü o birim BİR KEZ SESSİZCE ÇALIŞMADI ve kimse fark etmedi (K-039):
@@ -24,7 +24,7 @@ import (
 // doğru davrandığı VARSAYIMINA bırakılamaz. Bu kontrol varsayımı ölçüme
 // çevirir: bayraklar yoksa hacim bağlanmaz.
 //
-// Ölçüldü: panely-exec.service'in sertleştirmesi (ProtectSystem=strict,
+// Ölçüldü: kadran-exec.service'in sertleştirmesi (ProtectSystem=strict,
 // ProtectProc=invisible, ProcSubset=pid) /proc/self/mountinfo'yu
 // GİZLEMİYOR — aynı direktifleri taşıyan geçici bir birimden mount
 // satırı ve doğru bayraklar okunabildi.
@@ -49,7 +49,7 @@ func (c *Client) checkVolumeRootHardened() error {
 	if !ok {
 		return fmt.Errorf(
 			"hacim kökü %q ayrı bir mount DEĞİL — nodev,nosuid uygulanamaz; "+
-				"var-lib-panely-volumes.mount birimi etkin mi?", c.volumeRoot)
+				"var-lib-kadran-volumes.mount birimi etkin mi?", c.volumeRoot)
 	}
 	for _, want := range requiredMountFlags {
 		if !hasOption(opts, want) {

@@ -22,8 +22,8 @@ cd "$(dirname "$0")/.."
 ALARM=internal/alarm/alarm.go
 STORE=internal/store/alarms.go
 SUP=internal/health/supervisor.go
-WATCH=cmd/panelyd/alarmwatch.go
-BACKUP=cmd/panelyd/backup.go
+WATCH=cmd/kadrand/alarmwatch.go
+BACKUP=cmd/kadrand/backup.go
 
 BAK_ALARM=$(mktemp); BAK_STORE=$(mktemp)
 BAK_SUP=$(mktemp); BAK_WATCH=$(mktemp); BAK_BACKUP=$(mktemp)
@@ -185,13 +185,13 @@ mutate "alarm kapatma st.unhealthy'ye bağlandı" "$SUP" ./internal/health/ \
 
 echo "== Disk histerezisi =="
 
-mutate "histerezis kaldırıldı (tek eşik)" "$WATCH" ./cmd/panelyd/ \
+mutate "histerezis kaldırıldı (tek eşik)" "$WATCH" ./cmd/kadrand/ \
     "s=s.replace('	diskClearFree    = 0.20','	diskClearFree    = 0.15',1)"
 
-mutate "kritik eşik uyarının üstüne çıkarıldı" "$WATCH" ./cmd/panelyd/ \
+mutate "kritik eşik uyarının üstüne çıkarıldı" "$WATCH" ./cmd/kadrand/ \
     "s=s.replace('	diskCriticalFree = 0.05','	diskCriticalFree = 0.30',1)"
 
-mutate "kapanma bandı yok sayılıyor" "$WATCH" ./cmd/panelyd/ \
+mutate "kapanma bandı yok sayılıyor" "$WATCH" ./cmd/kadrand/ \
     "s=s.replace('	case free >= diskClearFree:','	case true:',1)"
 
 echo "== Kimlik eşleşmesi =="
@@ -202,17 +202,17 @@ echo "== Kimlik eşleşmesi =="
 #
 # Bu mutasyon olmasa, TestDiskAlarmIDMatchesClearID'in gerçekten bir şey
 # koruduğu bilinmezdi: iddia ettiği sapmayı hiçbir test üretmiyor.
-mutate "yükseltme kimliği kapatmadan ayrıştı" "$WATCH" ./cmd/panelyd/     "s=s.replace('		ID:       diskAlarmID,','		ID:       diskAlarmID + \"-v2\",',1)"
+mutate "yükseltme kimliği kapatmadan ayrıştı" "$WATCH" ./cmd/kadrand/     "s=s.replace('		ID:       diskAlarmID,','		ID:       diskAlarmID + \"-v2\",',1)"
 
 # Açılışın "trafik akmıyor" alarmını vekil izleyicisi kapatıyor (K-112,
 # 7. bulgu); bu ancak ikisi AYNI kimliği kullanırsa mümkün. Ayrışırsa
 # reboot'tan sonra alarm yine sonsuza dek açık kalır. İzleyicinin kendi
 # testleri sahte bir yöneticiyle bunu göremez; bu mutant gerçek
 # yönetici + gerçek depo testini ölçüyor.
-mutate "açılış alarmı kimliği izleyicininkinden ayrıştı" "$WATCH" ./cmd/panelyd/ \
+mutate "açılış alarmı kimliği izleyicininkinden ayrıştı" "$WATCH" ./cmd/kadrand/ \
     "s=s.replace('\tid := proxyAlarmID\n','\tid := proxyAlarmID + \"-acilis\"\n',1)"
 
-mutate "temiz açılış kalan alarmı kapatmıyor" "$WATCH" ./cmd/panelyd/ \
+mutate "temiz açılış kalan alarmı kapatmıyor" "$WATCH" ./cmd/kadrand/ \
     "s=s.replace('\t\tam.Clear(ctx, id)\n\t\treturn\n','\t\treturn\n',1)"
 
 echo "== Zamanlı yedek alarmı =="
@@ -220,10 +220,10 @@ echo "== Zamanlı yedek alarmı =="
 # Kimlik artık tek sabit (backupAlarmID): açan ile kapatanın ayrışması
 # derleme düzeyinde imkânsız, o yüzden onun mutantı yok. Geriye davranış
 # kalıyor.
-mutate "başarılı yedek alarmı kapatmıyor" "$BACKUP" ./cmd/panelyd/ \
+mutate "başarılı yedek alarmı kapatmıyor" "$BACKUP" ./cmd/kadrand/ \
     "s=s.replace('\tam.Clear(ctx, backupAlarmID)\n','',1)"
 
-mutate "başarısız yedek alarm açmıyor" "$BACKUP" ./cmd/panelyd/ \
+mutate "başarısız yedek alarm açmıyor" "$BACKUP" ./cmd/kadrand/ \
     "s=s.replace('\t\tam.Raise(ctx, store.Alarm{\n\t\t\tID:       backupAlarmID,','\t\t_ = am\n\t\t_ = (store.Alarm{\n\t\t\tID:       backupAlarmID,',1)"
 
 restore

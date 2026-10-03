@@ -7,7 +7,7 @@ import (
 	"strconv"
 
 	"github.com/erkanrzgc/kadran/internal/deploy"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // Rollback, trafiği bir önceki aktif sürüme geri çevirir.
@@ -35,8 +35,8 @@ import (
 // atlamak, geri almayı siteyi kurtaran değil ikinci kez düşüren işleme
 // çevirirdi.
 func (s *Server) Rollback(
-	ctx context.Context, req *panelyv1.RollbackRequest,
-) (*panelyv1.RollbackResponse, error) {
+	ctx context.Context, req *kadranv1.RollbackRequest,
+) (*kadranv1.RollbackResponse, error) {
 	const action = "app.rollback"
 
 	appID := req.GetAppId()
@@ -95,7 +95,7 @@ func (s *Server) Rollback(
 	if err := s.completed(ctx, action, tgt, params, nil); err != nil {
 		return nil, err
 	}
-	return &panelyv1.RollbackResponse{
+	return &kadranv1.RollbackResponse{
 		AppId:         appID,
 		FromReleaseId: live.ReleaseID,
 		ToReleaseId:   rel.ID,

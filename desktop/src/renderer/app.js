@@ -1,7 +1,7 @@
 /**
- * Panely arayüz mantığı.
+ * Kadran arayüz mantığı.
  *
- * Düz JavaScript, derleme adımı yok. Erişebildiği tek şey `window.panely`
+ * Düz JavaScript, derleme adımı yok. Erişebildiği tek şey `window.kadran`
  * — preload'daki beyaz liste (bkz. src/preload/index.ts). Node API'leri,
  * `require` ve `ipcRenderer` bu bağlamda YOK.
  *
@@ -12,7 +12,7 @@
 
 "use strict";
 
-const api = window.panely;
+const api = window.kadran;
 
 const el = (id) => document.getElementById(id);
 
@@ -137,8 +137,8 @@ function renderStatus(target, payload) {
   setRow("daemon-version", daemonVersion);
   setRow("daemon-uptime", humanDuration(payload.daemon_uptime_seconds));
 
-  // panelyd root çalışıyorsa ürünün merkezî iddiası çökmüş demektir; bu
-  // sessizce geçilmez. panelyd zaten root ile başlamayı reddediyor —
+  // kadrand root çalışıyorsa ürünün merkezî iddiası çökmüş demektir; bu
+  // sessizce geçilmez. kadrand zaten root ile başlamayı reddediyor —
   // burası o kontrolün görünür yedeği.
   const user = payload.running_as_user || "bilinmiyor";
   setRow("daemon-user", user === "root" ? "root — KURULUM BOZUK" : user, user === "root" ? "is-bad" : "");

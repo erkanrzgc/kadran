@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // newRollbackServer, aktivasyonu GERÇEKTEN yazan bir sunucu kurar.
@@ -33,7 +33,7 @@ func deployN(t *testing.T, srv *Server, n int) []string {
 	ids := make([]string, 0, n)
 	for i := 0; i < n; i++ {
 		stream := &deployStream{ctx: context.Background()}
-		if err := srv.Deploy(&panelyv1.DeployRequest{
+		if err := srv.Deploy(&kadranv1.DeployRequest{
 			AppId: "blog", CommitSha: apiSHA,
 		}, stream); err != nil {
 			t.Fatalf("%d. dağıtım başarısız: %v", i+1, err)
@@ -60,7 +60,7 @@ func TestRollbackTargetsThePreviouslyLiveRelease(t *testing.T) {
 	ids := deployN(t, srv, 3)
 	prev, live := ids[1], ids[2]
 
-	resp, err := srv.Rollback(context.Background(), &panelyv1.RollbackRequest{AppId: "blog"})
+	resp, err := srv.Rollback(context.Background(), &kadranv1.RollbackRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("geri alma başarısız: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestRollbackTwiceReturnsToTheNewerRelease(t *testing.T) {
 	ids := deployN(t, srv, 3)
 	r2, r3 := ids[1], ids[2]
 
-	first, err := srv.Rollback(context.Background(), &panelyv1.RollbackRequest{AppId: "blog"})
+	first, err := srv.Rollback(context.Background(), &kadranv1.RollbackRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("ilk geri alma başarısız: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestRollbackTwiceReturnsToTheNewerRelease(t *testing.T) {
 		t.Fatalf("ilk geri alma %q hedefledi, %q bekleniyordu", first.GetToReleaseId(), r2)
 	}
 
-	second, err := srv.Rollback(context.Background(), &panelyv1.RollbackRequest{AppId: "blog"})
+	second, err := srv.Rollback(context.Background(), &kadranv1.RollbackRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("ikinci geri alma başarısız: %v", err)
 	}
@@ -130,14 +130,14 @@ func TestRollbackWithoutHistoryIsFailedPrecondition(t *testing.T) {
 	srv := newRollbackServer(t, ro)
 
 	// 1. Hiç dağıtılmamış.
-	_, err := srv.Rollback(context.Background(), &panelyv1.RollbackRequest{AppId: "blog"})
+	_, err := srv.Rollback(context.Background(), &kadranv1.RollbackRequest{AppId: "blog"})
 	if got := status.Code(err); got != codes.FailedPrecondition {
 		t.Errorf("dağıtılmamış uygulamada kod %v, FailedPrecondition bekleniyordu", got)
 	}
 
 	// 2. Bir kez dağıtılmış — canlı var ama geri alınacak öncesi yok.
 	deployN(t, srv, 1)
-	_, err = srv.Rollback(context.Background(), &panelyv1.RollbackRequest{AppId: "blog"})
+	_, err = srv.Rollback(context.Background(), &kadranv1.RollbackRequest{AppId: "blog"})
 	if got := status.Code(err); got != codes.FailedPrecondition {
 		t.Errorf("ilk dağıtımdan sonra kod %v, FailedPrecondition bekleniyordu", got)
 	}
@@ -147,7 +147,7 @@ func TestRollbackWithoutHistoryIsFailedPrecondition(t *testing.T) {
 
 	// 3. Bilinmeyen uygulama AYRI kod almalı — kontrol grubu. Aynı koda
 	//    düşselerdi test yalnızca "her şey FailedPrecondition" derdi.
-	_, err = srv.Rollback(context.Background(), &panelyv1.RollbackRequest{AppId: "yok"})
+	_, err = srv.Rollback(context.Background(), &kadranv1.RollbackRequest{AppId: "yok"})
 	if got := status.Code(err); got != codes.NotFound {
 		t.Errorf("bilinmeyen uygulamada kod %v, NotFound bekleniyordu", got)
 	}
@@ -166,7 +166,7 @@ func TestRollbackRecordsWhatItDidInTheAuditChain(t *testing.T) {
 	deployN(t, srv, 2)
 
 	if _, err := srv.Rollback(
-		context.Background(), &panelyv1.RollbackRequest{AppId: "blog"}); err != nil {
+		context.Background(), &kadranv1.RollbackRequest{AppId: "blog"}); err != nil {
 		t.Fatalf("geri alma başarısız: %v", err)
 	}
 

@@ -12,7 +12,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/deploy"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -39,7 +39,7 @@ func (f *fakeReconciler) Reconcile(context.Context) (deploy.Result, error) {
 func newUpdateServer(t *testing.T, rec *fakeReconciler) (*Server, *store.Store) {
 	t.Helper()
 
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
@@ -55,7 +55,7 @@ func newUpdateServer(t *testing.T, rec *fakeReconciler) (*Server, *store.Store) 
 	return srv, db
 }
 
-func update(t *testing.T, srv *Server, req *panelyv1.UpdateAppRequest) *panelyv1.UpdateAppResponse {
+func update(t *testing.T, srv *Server, req *kadranv1.UpdateAppRequest) *kadranv1.UpdateAppResponse {
 	t.Helper()
 	resp, err := srv.UpdateApp(context.Background(), req)
 	if err != nil {
@@ -75,7 +75,7 @@ func TestUpdateAppWritesOnlyTheNamedFields(t *testing.T) {
 	spec.Domain = "eski.example.com"
 	mustCreateApp(t, srv, spec)
 
-	update(t, srv, &panelyv1.UpdateAppRequest{
+	update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId:  "blog",
 		Domain: strp("yeni.example.com"),
 	})
@@ -108,7 +108,7 @@ func TestUpdateAppCanClearTheDomain(t *testing.T) {
 	spec.Domain = "eski.example.com"
 	mustCreateApp(t, srv, spec)
 
-	resp := update(t, srv, &panelyv1.UpdateAppRequest{
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId:  "blog",
 		Domain: strp(""),
 	})
@@ -142,13 +142,13 @@ func TestUpdateAppSkipsReconcileWhenNothingRoutableChanges(t *testing.T) {
 	mustCreateApp(t, srv, spec)
 
 	// 1) Alan adına hiç dokunulmuyor.
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", GitBranch: strp("develop")})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", GitBranch: strp("develop")})
 	if rec.calls != 0 {
 		t.Errorf("dal değişikliği uzlaştırma tetikledi (%d kez)", rec.calls)
 	}
 
 	// 2) Alan adı belirtiliyor ama AYNI değerle.
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Domain: strp("sabit.example.com")})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("sabit.example.com")})
 	if rec.calls != 0 {
 		t.Errorf("değişmeyen alan adı uzlaştırma tetikledi (%d kez)", rec.calls)
 	}
@@ -159,7 +159,7 @@ func TestUpdateAppSkipsReconcileWhenNothingRoutableChanges(t *testing.T) {
 	// artık fazla şey iddia ediyordu: replika sayısı da uzlaştırma
 	// tetikliyor (rota kümesi ona da bağlı). Ad daraltıldı; replika
 	// tarafı ayrı testte.
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Domain: strp("baska.example.com")})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("baska.example.com")})
 	if rec.calls != 1 {
 		t.Fatalf("alan adı değişti ama uzlaştırma %d kez koştu, 1 olmalıydı", rec.calls)
 	}
@@ -186,20 +186,20 @@ func TestUpdateAppReconcilesWhenReplicaCountChanges(t *testing.T) {
 	mustCreateApp(t, srv, spec)
 
 	// 1) Replika belirtiliyor ama AYNI değerle: tetiklememeli.
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(3)})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(3)})
 	if rec.calls != 0 {
 		t.Errorf("değişmeyen replika sayısı uzlaştırma tetikledi (%d kez)", rec.calls)
 	}
 
 	// 2) GERÇEKTEN değişiyor: tetiklemeli.
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(1)})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(1)})
 	if rec.calls != 1 {
 		t.Fatalf("replika 3→1 oldu ama uzlaştırma %d kez koştu, 1 olmalıydı — "+
 			"rota daralmaz ve fazlalıklar trafik almaya devam ederdi", rec.calls)
 	}
 
 	// 3) Büyütme de aynı: rota genişlemeli.
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(2)})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(2)})
 	if rec.calls != 2 {
 		t.Errorf("replika büyütmesi uzlaştırma tetiklemedi (%d kez)", rec.calls)
 	}
@@ -219,7 +219,7 @@ func TestUpdateAppSaysTheChangeWasSavedWhenTheProxyFails(t *testing.T) {
 	spec.Domain = "eski.example.com"
 	mustCreateApp(t, srv, spec)
 
-	_, err := srv.UpdateApp(context.Background(), &panelyv1.UpdateAppRequest{
+	_, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{
 		AppId: "blog", Domain: strp("yeni.example.com"),
 	})
 	if err == nil {
@@ -254,7 +254,7 @@ func TestUpdateAppWarnsWhenTrafficDidNotMove(t *testing.T) {
 	spec.Domain = "eski.example.com"
 	mustCreateApp(t, srv, spec)
 
-	resp := update(t, srv, &panelyv1.UpdateAppRequest{
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{
 		AppId: "blog", Domain: strp("yeni.example.com"),
 	})
 
@@ -272,15 +272,15 @@ func TestUpdateAppWarnsWhenTrafficDidNotMove(t *testing.T) {
 func TestUpdateAppValidatesTheMergedSpec(t *testing.T) {
 	cases := []struct {
 		name string
-		req  *panelyv1.UpdateAppRequest
+		req  *kadranv1.UpdateAppRequest
 	}{
-		{"sıfır replika", &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(0)}},
-		{"aralık dışı replika", &panelyv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(9999)}},
-		{"şemalı alan adı", &panelyv1.UpdateAppRequest{AppId: "blog", Domain: strp("https://a.com")}},
-		{"portlu alan adı", &panelyv1.UpdateAppRequest{AppId: "blog", Domain: strp("a.com:8080")}},
-		{"eğik çizgisiz sağlık yolu", &panelyv1.UpdateAppRequest{AppId: "blog", HealthPath: strp("healthz")}},
-		{"boşluklu sağlık yolu", &panelyv1.UpdateAppRequest{AppId: "blog", HealthPath: strp("/a b")}},
-		{"geçersiz dal", &panelyv1.UpdateAppRequest{AppId: "blog", GitBranch: strp("-oProxyCommand=x")}},
+		{"sıfır replika", &kadranv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(0)}},
+		{"aralık dışı replika", &kadranv1.UpdateAppRequest{AppId: "blog", Replicas: u32p(9999)}},
+		{"şemalı alan adı", &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("https://a.com")}},
+		{"portlu alan adı", &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("a.com:8080")}},
+		{"eğik çizgisiz sağlık yolu", &kadranv1.UpdateAppRequest{AppId: "blog", HealthPath: strp("healthz")}},
+		{"boşluklu sağlık yolu", &kadranv1.UpdateAppRequest{AppId: "blog", HealthPath: strp("/a b")}},
+		{"geçersiz dal", &kadranv1.UpdateAppRequest{AppId: "blog", GitBranch: strp("-oProxyCommand=x")}},
 	}
 
 	for _, tc := range cases {
@@ -314,7 +314,7 @@ func TestUpdateAppRejectsEmptyRequest(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
-	_, err := srv.UpdateApp(context.Background(), &panelyv1.UpdateAppRequest{AppId: "blog"})
+	_, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{AppId: "blog"})
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("kod = %v, beklenen InvalidArgument (%v)", status.Code(err), err)
 	}
@@ -323,7 +323,7 @@ func TestUpdateAppRejectsEmptyRequest(t *testing.T) {
 func TestUpdateAppReportsMissingApp(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})
 
-	_, err := srv.UpdateApp(context.Background(), &panelyv1.UpdateAppRequest{
+	_, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{
 		AppId: "yok", Domain: strp("a.example.com"),
 	})
 	if status.Code(err) != codes.NotFound {
@@ -338,15 +338,15 @@ func TestUpdateAppRejectsADomainOwnedByAnotherApp(t *testing.T) {
 
 	first := testSpec()
 	first.AppId = "portfolio"
-	first.Domain = "panely.example.com"
+	first.Domain = "kadran.example.com"
 	mustCreateApp(t, srv, first)
 
 	second := testSpec()
 	second.Domain = "blog.example.com"
 	mustCreateApp(t, srv, second)
 
-	_, err := srv.UpdateApp(context.Background(), &panelyv1.UpdateAppRequest{
-		AppId: "blog", Domain: strp("panely.example.com"),
+	_, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{
+		AppId: "blog", Domain: strp("kadran.example.com"),
 	})
 	if status.Code(err) != codes.AlreadyExists {
 		t.Fatalf("kod = %v, beklenen AlreadyExists (%v)", status.Code(err), err)
@@ -367,7 +367,7 @@ func TestUpdateAppAuditRecordsOnlyTheNamedFields(t *testing.T) {
 	spec.Domain = "eski.example.com"
 	mustCreateApp(t, srv, spec)
 
-	update(t, srv, &panelyv1.UpdateAppRequest{AppId: "blog", Domain: strp("yeni.example.com")})
+	update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("yeni.example.com")})
 
 	var rec *audit.Record
 	for _, r := range auditActions(t, db) {
@@ -395,9 +395,9 @@ func TestUpdateAppAuditRecordsOnlyTheNamedFields(t *testing.T) {
 	}
 }
 
-func mustGetSpec(t *testing.T, srv *Server, appID string) *panelyv1.AppSpec {
+func mustGetSpec(t *testing.T, srv *Server, appID string) *kadranv1.AppSpec {
 	t.Helper()
-	resp, err := srv.GetApp(context.Background(), &panelyv1.GetAppRequest{AppId: appID})
+	resp, err := srv.GetApp(context.Background(), &kadranv1.GetAppRequest{AppId: appID})
 	if err != nil {
 		t.Fatalf("uygulama okunamadı (%s): %v", appID, err)
 	}

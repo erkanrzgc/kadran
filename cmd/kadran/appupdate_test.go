@@ -76,7 +76,7 @@ func TestIsEmptyUpdateDetectsNoFields(t *testing.T) {
 // YEŞİLDİ — ama CLI o hatayı "uygulama güncellenemedi: %w" ile
 // sarmalıyordu, yani terminalde şu görünüyordu:
 //
-//	panely: uygulama güncellenemedi: ... KAYDEDİLDİ, ama ...
+//	kadran: uygulama güncellenemedi: ... KAYDEDİLDİ, ama ...
 //
 // Test doğru şeyi kontrol ediyordu, yanlış KATMANDA. Bu, aynı dilimde
 // yakalanan "dönen struct'a bakan test diski ölçmez" kusurunun kardeşi.

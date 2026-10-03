@@ -9,7 +9,7 @@ import (
 // tek bir satırda değil, birkaç yönergenin BİRLİKTE durmasında yaşıyor.
 // Testler her birini ayrı kilitliyor; hepsi sunucuda kontrol gruplu
 // ölçüldü.
-const hacimBirimi = "panely-volume-backup.service"
+const hacimBirimi = "kadran-volume-backup.service"
 
 // TestVolumeArchiverReadsWithOneCapabilityOnly, birimin uygulama
 // verisini okuyabildiğini ve bundan fazlasını YAPAMADIĞINI doğrular.
@@ -46,15 +46,15 @@ func TestVolumeArchiverCannotReachAnything(t *testing.T) {
 	}
 }
 
-// TestVolumeArchiveOutputOutsideDaemonDirs, arşivlerin panelyd'nin
+// TestVolumeArchiveOutputOutsideDaemonDirs, arşivlerin kadrand'nin
 // SİLEMEYECEĞİ ve DEĞİŞTİREMEYECEĞİ bir yerde durduğunu doğrular.
 //
 // Çıktı dizini daemon'un yazabildiği bir yerde olsaydı ele geçirilen
-// panelyd arşivleri silebilir ya da kendi hazırladığı bir arşivi yerine
+// kadrand arşivleri silebilir ya da kendi hazırladığı bir arşivi yerine
 // koyabilirdi; geri yükleme o veriyi geri getirirdi (K-100'ün sınıfı).
-// Ayrıca birim panely KULLANICISIYLA koşsaydı dosyalar daemon'unkiyle
-// aynı sahipte doğardı. Grup panely: yükleyici okuyabilsin diye.
-// Ölçüldü: panely okuyor, silemiyor, üzerine yazamıyor, yanına dosya
+// Ayrıca birim kadran KULLANICISIYLA koşsaydı dosyalar daemon'unkiyle
+// aynı sahipte doğardı. Grup kadran: yükleyici okuyabilsin diye.
+// Ölçüldü: kadran okuyor, silemiyor, üzerine yazamıyor, yanına dosya
 // koyamıyor.
 func TestVolumeArchiveOutputOutsideDaemonDirs(t *testing.T) {
 	durum := yonergeDegerleri(t, hacimBirimi, "StateDirectory")
@@ -76,11 +76,11 @@ func TestVolumeArchiveOutputOutsideDaemonDirs(t *testing.T) {
 	if u := yonergeDegerleri(t, hacimBirimi, "User"); len(u) != 0 {
 		t.Errorf("User=%q — arşivler root'a ait olmalı; aksi hâlde sahibi onları silebilir", u)
 	}
-	if g := yonergeDegerleri(t, hacimBirimi, "Group"); !slices.Equal(g, []string{"panely"}) {
-		t.Errorf("Group=%q — yükleyici (panely) arşivleri okuyamaz", g)
+	if g := yonergeDegerleri(t, hacimBirimi, "Group"); !slices.Equal(g, []string{"kadran"}) {
+		t.Errorf("Group=%q — yükleyici (kadran) arşivleri okuyamaz", g)
 	}
 	if m := yonergeDegerleri(t, hacimBirimi, "UMask"); !slices.Equal(m, []string{"0027"}) {
-		t.Errorf("UMask=%q — 0027 değilse panely grubu arşivlere yazabilir", m)
+		t.Errorf("UMask=%q — 0027 değilse kadran grubu arşivlere yazabilir", m)
 	}
 }
 
@@ -88,7 +88,7 @@ func TestVolumeArchiveOutputOutsideDaemonDirs(t *testing.T) {
 // haber gittiğini doğrular. Günde bir koşan bir yedeğin sessiz
 // başarısızlığı, geri yükleme gününe kadar fark edilmez.
 func TestVolumeArchiverFailureIsNotified(t *testing.T) {
-	if of := yonergeDegerleri(t, hacimBirimi, "OnFailure"); !slices.Contains(of, "panely-notify-failure@%n.service") {
+	if of := yonergeDegerleri(t, hacimBirimi, "OnFailure"); !slices.Contains(of, "kadran-notify-failure@%n.service") {
 		t.Errorf("OnFailure=%q — hacim yedeği düşerse kimse haber almaz", of)
 	}
 }
@@ -96,10 +96,10 @@ func TestVolumeArchiverFailureIsNotified(t *testing.T) {
 // TestVolumeArchiverTimerSurvivesDowntime, kaçan koşunun telafi
 // edildiğini doğrular.
 func TestVolumeArchiverTimerSurvivesDowntime(t *testing.T) {
-	if p := yonergeDegerleri(t, "panely-volume-backup.timer", "Persistent"); !slices.Equal(p, []string{"true"}) {
+	if p := yonergeDegerleri(t, "kadran-volume-backup.timer", "Persistent"); !slices.Equal(p, []string{"true"}) {
 		t.Errorf("Persistent=%q — kapalı kalan sunucu o günün hacim yedeğini sessizce atlar", p)
 	}
-	if oc := yonergeDegerleri(t, "panely-volume-backup.timer", "OnCalendar"); len(oc) == 0 {
+	if oc := yonergeDegerleri(t, "kadran-volume-backup.timer", "OnCalendar"); len(oc) == 0 {
 		t.Error("OnCalendar yok — zamanlayıcı hiç tetiklenmez")
 	}
 }

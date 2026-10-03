@@ -7,8 +7,10 @@ import (
 	"testing"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -16,14 +18,14 @@ import (
 // çağrılırsa test panikle düşer — CheckProtocol'ün başka bir şeye
 // dokunmadığını da böylece doğruluyor.
 type sahtePing struct {
-	panelyv1.PanelyServiceClient
+	kadranv1.KadranServiceClient
 	protokol uint32
 	gelen    string
 }
 
-func (s *sahtePing) Ping(_ context.Context, in *panelyv1.PingRequest, _ ...grpc.CallOption) (*panelyv1.PingResponse, error) {
+func (s *sahtePing) Ping(_ context.Context, in *kadranv1.PingRequest, _ ...grpc.CallOption) (*kadranv1.PingResponse, error) {
 	s.gelen = in.GetClientVersion()
-	return &panelyv1.PingResponse{ProtocolVersion: s.protokol}, nil
+	return &kadranv1.PingResponse{ProtocolVersion: s.protokol}, nil
 }
 
 // TestCheckProtocolRejectsAMismatch: her CLI bağlantısı bu kontrolden
@@ -52,5 +54,31 @@ func TestCheckProtocolAcceptsTheSameVersion(t *testing.T) {
 	}
 	if s.gelen != version.Version {
 		t.Errorf("istemci sürümünü göndermedi: %q", s.gelen)
+	}
+}
+
+// eskiSunucu, servis adını tanımayan bir sunucuyu taklit eder: v0.4.0'dan
+// önceki sunucular `panely.v1` konuşuyor; `kadran.v1` çağrısına gRPC
+// `Unimplemented` (unknown service) dönüyorlar (K-136).
+type eskiSunucu struct {
+	kadranv1.KadranServiceClient
+}
+
+func (eskiSunucu) Ping(context.Context, *kadranv1.PingRequest, ...grpc.CallOption) (*kadranv1.PingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "unknown service kadran.v1.KadranService")
+}
+
+// TestCheckProtocolExplainsAnOldServer: ham gRPC hatası ("unknown service")
+// kullanıcıya ne yapacağını söylemiyordu. Ad değişikliği (K-136) her eski
+// kurulumu bu duruma düşürüyor; mesaj yükseltme yolunu göstermeli.
+func TestCheckProtocolExplainsAnOldServer(t *testing.T) {
+	_, err := (&Client{rpc: eskiSunucu{}}).CheckProtocol(context.Background())
+	if err == nil {
+		t.Fatal("servisi tanımayan sunucu kabul edildi")
+	}
+	for _, want := range []string{"v0.4.0", "bootstrap"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("hata %q demiyor: %v", want, err)
+		}
 	}
 }

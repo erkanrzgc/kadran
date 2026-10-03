@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -54,7 +54,7 @@ type fakeLifecycle struct {
 }
 
 func (f *fakeLifecycle) EnsureNetwork(context.Context, string) (string, error) {
-	return "panely-test", nil
+	return "kadran-test", nil
 }
 
 func (f *fakeLifecycle) CreateReplica(_ context.Context, o execclient.CreateReplicaOptions) error {
@@ -264,7 +264,7 @@ func bothReleasesUp() []execclient.Replica {
 // ── Testler ──────────────────────────────────────────────────────────
 
 // Bu, GERÇEK sunucuda gözlenen kusurdur: r2 dağıtıldıktan sonra
-// panely_portfolio_r1_0 28 saat boyunca ayakta kaldı.
+// kadran_portfolio_r1_0 28 saat boyunca ayakta kaldı.
 func TestOldReleaseIsStoppedOnceTrafficHasMoved(t *testing.T) {
 	life := &fakeLifecycle{replicas: bothReleasesUp()}
 	r := newHarness(t, life, true).rollout
@@ -338,7 +338,7 @@ func TestNothingIsStoppedWhenTheGateFails(t *testing.T) {
 		running(testApp, relOld, 0, "172.20.0.2"),
 		{
 			AppID: testApp, ReleaseID: relNew, Index: 0,
-			State: panelyv1.ContainerState_CONTAINER_STATE_EXITED,
+			State: kadranv1.ContainerState_CONTAINER_STATE_EXITED,
 		},
 	}}
 	h := newHarness(t, life, true)
@@ -599,6 +599,6 @@ func (f *flappingLifecycle) ListReplicas(context.Context, string) ([]execclient.
 	}
 	return []execclient.Replica{{
 		AppID: testApp, ReleaseID: relNew, Index: 0,
-		State: panelyv1.ContainerState_CONTAINER_STATE_EXITED,
+		State: kadranv1.ContainerState_CONTAINER_STATE_EXITED,
 	}}, nil
 }

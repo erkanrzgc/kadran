@@ -1,4 +1,4 @@
--- Panely kontrol düzlemi şeması — göç 0001
+-- Kadran kontrol düzlemi şeması — göç 0001
 --
 -- Faz 0 kapsamı: denetim zinciri ve ayarlar. Uygulama/sürüm/hacim
 -- tabloları Faz 1'de kendi göçleriyle gelir; şimdiden yaratıp sonra
@@ -16,7 +16,7 @@
 --
 --   2. Kriptografik katman: her satır kendinden öncekinin hash'ini
 --      taşır. Dosyaya doğrudan erişimi olan bir saldırgan satırı
---      değiştirse bile zincir kopar ve `panely audit verify` bunu
+--      değiştirse bile zincir kopar ve `kadran audit verify` bunu
 --      tespit eder.
 --
 -- Tek başına hiçbiri yeterli değildir; birlikte kurcalamayı hem

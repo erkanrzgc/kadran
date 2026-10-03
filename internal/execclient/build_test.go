@@ -12,7 +12,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // fakeExecutor, yalnızca ImageBuild'i uygular.
@@ -22,10 +22,10 @@ import (
 // sunucuları bunu gömemez (yeni bir RPC derlemeyi kırsın diye). Testte
 // gömmek o tripwire'ı zayıflatmaz — sınanan şey istemci tarafı.
 type fakeExecutor struct {
-	panelyv1.UnimplementedExecutorServiceServer
+	kadranv1.UnimplementedExecutorServiceServer
 
 	// build, sunucunun akışa ne yazacağını belirler.
-	build func(ctx context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error
+	build func(ctx context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error
 
 	// seenDeadline, sunucunun GÖRDÜĞÜ bağlam son tarihidir. gRPC bunu
 	// `grpc-timeout` başlığıyla taşır, yani istemcinin bağlamına konan
@@ -35,8 +35,8 @@ type fakeExecutor struct {
 }
 
 func (f *fakeExecutor) ImageBuild(
-	_ *panelyv1.ImageBuildRequest,
-	stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse],
+	_ *kadranv1.ImageBuildRequest,
+	stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse],
 ) error {
 	f.seenDeadline, f.seenHadLimit = stream.Context().Deadline()
 	return f.build(stream.Context(), stream)
@@ -52,7 +52,7 @@ func newFakeClient(t *testing.T, srv *fakeExecutor) *Client {
 
 	lis := bufconn.Listen(1 << 20)
 	gs := grpc.NewServer()
-	panelyv1.RegisterExecutorServiceServer(gs, srv)
+	kadranv1.RegisterExecutorServiceServer(gs, srv)
 	go func() { _ = gs.Serve(lis) }()
 
 	conn, err := grpc.NewClient("passthrough:///bufnet",
@@ -69,11 +69,11 @@ func newFakeClient(t *testing.T, srv *fakeExecutor) *Client {
 		gs.Stop()
 	})
 
-	return &Client{conn: conn, rpc: panelyv1.NewExecutorServiceClient(conn)}
+	return &Client{conn: conn, rpc: kadranv1.NewExecutorServiceClient(conn)}
 }
 
-func sendChunk(stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse], s string, stderr bool) error {
-	return stream.Send(&panelyv1.ImageBuildResponse{Data: []byte(s), IsStderr: stderr})
+func sendChunk(stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse], s string, stderr bool) error {
+	return stream.Send(&kadranv1.ImageBuildResponse{Data: []byte(s), IsStderr: stderr})
 }
 
 // TestImageBuildImposesNoDeadlineOfItsOwn, K-044'ün bir katman yukarıda
@@ -91,17 +91,17 @@ func sendChunk(stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse], s
 // test aynı saniyede kırmızıya döner.
 func TestImageBuildImposesNoDeadlineOfItsOwn(t *testing.T) {
 	srv := &fakeExecutor{
-		build: func(_ context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+		build: func(_ context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
 			if err := sendChunk(stream, "Step 1/3\n", false); err != nil {
 				return err
 			}
-			return stream.Send(&panelyv1.ImageBuildResponse{ImageId: "sha256:abc"})
+			return stream.Send(&kadranv1.ImageBuildResponse{ImageId: "sha256:abc"})
 		},
 	}
 	c := newFakeClient(t, srv)
 
 	// Çağıran SINIRSIZ bir bağlam veriyor.
-	_, err := c.ImageBuild(context.Background(), &panelyv1.ImageBuildRequest{},
+	_, err := c.ImageBuild(context.Background(), &kadranv1.ImageBuildRequest{},
 		func([]byte, bool) error { return nil })
 	if err != nil {
 		t.Fatalf("derleme başarısız: %v", err)
@@ -122,8 +122,8 @@ func TestImageBuildImposesNoDeadlineOfItsOwn(t *testing.T) {
 // sonsuza kadar bekler. Doğru davranış "sınırı ÇAĞIRAN koyar".
 func TestImageBuildHonoursCallerDeadline(t *testing.T) {
 	srv := &fakeExecutor{
-		build: func(_ context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
-			return stream.Send(&panelyv1.ImageBuildResponse{ImageId: "sha256:abc"})
+		build: func(_ context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
+			return stream.Send(&kadranv1.ImageBuildResponse{ImageId: "sha256:abc"})
 		},
 	}
 	c := newFakeClient(t, srv)
@@ -131,7 +131,7 @@ func TestImageBuildHonoursCallerDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 42*time.Second)
 	defer cancel()
 
-	if _, err := c.ImageBuild(ctx, &panelyv1.ImageBuildRequest{},
+	if _, err := c.ImageBuild(ctx, &kadranv1.ImageBuildRequest{},
 		func([]byte, bool) error { return nil }); err != nil {
 		t.Fatalf("derleme başarısız: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestImageBuildHonoursCallerDeadline(t *testing.T) {
 // zorlandığını doğrular: hatasız biten bir akış TEK BAŞINA başarı değil.
 func TestImageBuildNeedsImageIDToSucceed(t *testing.T) {
 	srv := &fakeExecutor{
-		build: func(_ context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+		build: func(_ context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
 			// Çıktı akıyor, hata yok, ama kimlik karesi HİÇ gelmiyor.
 			if err := sendChunk(stream, "Step 1/3\n", false); err != nil {
 				return err
@@ -159,7 +159,7 @@ func TestImageBuildNeedsImageIDToSucceed(t *testing.T) {
 	}
 	c := newFakeClient(t, srv)
 
-	id, err := c.ImageBuild(context.Background(), &panelyv1.ImageBuildRequest{},
+	id, err := c.ImageBuild(context.Background(), &kadranv1.ImageBuildRequest{},
 		func([]byte, bool) error { return nil })
 	if err == nil {
 		t.Fatalf("kimlik karesi olmadan başarı bildirildi (imageID=%q)", id)
@@ -171,14 +171,14 @@ func TestImageBuildNeedsImageIDToSucceed(t *testing.T) {
 
 func TestImageBuildForwardsBothStreams(t *testing.T) {
 	srv := &fakeExecutor{
-		build: func(_ context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+		build: func(_ context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
 			if err := sendChunk(stream, "cikti\n", false); err != nil {
 				return err
 			}
 			if err := sendChunk(stream, "hata\n", true); err != nil {
 				return err
 			}
-			return stream.Send(&panelyv1.ImageBuildResponse{ImageId: "sha256:xyz"})
+			return stream.Send(&kadranv1.ImageBuildResponse{ImageId: "sha256:xyz"})
 		},
 	}
 	c := newFakeClient(t, srv)
@@ -189,7 +189,7 @@ func TestImageBuildForwardsBothStreams(t *testing.T) {
 	}
 	var got []chunk
 
-	id, err := c.ImageBuild(context.Background(), &panelyv1.ImageBuildRequest{},
+	id, err := c.ImageBuild(context.Background(), &kadranv1.ImageBuildRequest{},
 		func(data []byte, stderr bool) error {
 			got = append(got, chunk{string(data), stderr})
 			return nil
@@ -220,14 +220,14 @@ func TestImageBuildForwardsBothStreams(t *testing.T) {
 // akışın bittiğini sanabilirdi.
 func TestImageBuildDoesNotEmitTheIDFrameAsOutput(t *testing.T) {
 	srv := &fakeExecutor{
-		build: func(_ context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
-			return stream.Send(&panelyv1.ImageBuildResponse{ImageId: "sha256:abc"})
+		build: func(_ context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
+			return stream.Send(&kadranv1.ImageBuildResponse{ImageId: "sha256:abc"})
 		},
 	}
 	c := newFakeClient(t, srv)
 
 	emitted := 0
-	if _, err := c.ImageBuild(context.Background(), &panelyv1.ImageBuildRequest{},
+	if _, err := c.ImageBuild(context.Background(), &kadranv1.ImageBuildRequest{},
 		func([]byte, bool) error { emitted++; return nil }); err != nil {
 		t.Fatalf("derleme başarısız: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestImageBuildDoesNotEmitTheIDFrameAsOutput(t *testing.T) {
 // sürdürülmediğini doğrular.
 func TestImageBuildStopsWhenSinkFails(t *testing.T) {
 	srv := &fakeExecutor{
-		build: func(ctx context.Context, stream grpc.ServerStreamingServer[panelyv1.ImageBuildResponse]) error {
+		build: func(ctx context.Context, stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse]) error {
 			for range 100 {
 				if err := sendChunk(stream, "satir\n", false); err != nil {
 					return err
@@ -257,7 +257,7 @@ func TestImageBuildStopsWhenSinkFails(t *testing.T) {
 	c := newFakeClient(t, srv)
 
 	sinkErr := errors.New("istemci gitti")
-	_, err := c.ImageBuild(context.Background(), &panelyv1.ImageBuildRequest{},
+	_, err := c.ImageBuild(context.Background(), &kadranv1.ImageBuildRequest{},
 		func([]byte, bool) error { return sinkErr })
 
 	if !errors.Is(err, sinkErr) {

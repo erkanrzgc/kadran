@@ -1,8 +1,8 @@
--- Panely kontrol düzlemi şeması — göç 0005: dağıtım GEÇMİŞİ
+-- Kadran kontrol düzlemi şeması — göç 0005: dağıtım GEÇMİŞİ
 --
 -- 0003 uygulama başına TEK satır tutuyordu ve her aktivasyon bir öncekini
 -- eziyordu. "Önceki AKTİF sürüm" sorusunun cevabı şemada YOKTU, yani
--- `panely rollback` (Faz 1 kabul ölçütü #5) yazılamıyordu.
+-- `kadran rollback` (Faz 1 kabul ölçütü #5) yazılamıyordu.
 --
 -- ── Neden `releases.seq` yetmiyor ─────────────────────────────────────
 --

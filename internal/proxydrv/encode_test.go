@@ -22,7 +22,7 @@ import (
 //	Caddy üzerinden: content-length 311929, Content-Encoding YOK
 //	Vercel (CDN)   : 104354 bayt, Content-Encoding: br
 //
-// Yani 3 kat fazla veri. Bu, tek bir uygulamanın değil, Panely'nin
+// Yani 3 kat fazla veri. Bu, tek bir uygulamanın değil, Kadran'ın
 // servis ettiği HER uygulamanın sorunuydu.
 func TestEveryRouteCompressesBeforeProxying(t *testing.T) {
 	cfg, err := BuildConfig(BuildOptions{
@@ -59,7 +59,7 @@ func TestEveryRouteCompressesBeforeProxying(t *testing.T) {
 // özel Caddy derlememizde GERÇEKTEN bulunan kodlayıcılara sınırlı
 // kalmasını sağlar.
 //
-// `panely-caddy list-modules` ölçüldü: http.encoders.gzip ve
+// `kadran-caddy list-modules` ölçüldü: http.encoders.gzip ve
 // http.encoders.zstd VAR, brotli YOK (eklenti gerektiriyor). Olmayan bir
 // kodlayıcı istenirse Caddy yapılandırmanın TAMAMINI reddeder ve o an
 // canlı olan bütün rotalar düşer.

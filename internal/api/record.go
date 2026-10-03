@@ -16,12 +16,12 @@ import (
 // ama zincirleri AYRIDIR ve ayrı kalmalıdır:
 //
 //   daemon   → SQLite'taki audit_log (bu dosya)
-//   executor → kendi dosyası, root'un 0700 dizininde (panelyd DOKUNAMAZ, K-102)
+//   executor → kendi dosyası, root'un 0700 dizininde (kadrand DOKUNAMAZ, K-102)
 //
-// Ayrılık tehdit modelinin merkezinde: panelyd ele geçirilirse kendi
+// Ayrılık tehdit modelinin merkezinde: kadrand ele geçirilirse kendi
 // kayıtlarını hiç yazmayabilir, ama executor'ınkileri değiştiremez.
 // İki zincirin KARŞILAŞTIRILMASI bu farkı ortaya çıkarır — daemon
-// tarafında karşılığı olmayan bir executor kaydı, panelyd'nin sustuğu
+// tarafında karşılığı olmayan bir executor kaydı, kadrand'nin sustuğu
 // anlamına gelir.
 //
 // LoggingInterceptor bunu yazmıyor ve yazmamalı: Faz 0'ın salt okunur

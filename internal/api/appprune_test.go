@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -73,7 +73,7 @@ func TestPruneKeepsActiveAndRollbackTarget(t *testing.T) {
 	activate(t, db, "blog", "r1", "r2", "r3", "r4")
 
 	resp, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"})
+		&kadranv1.PruneAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("budama başarısız: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestPruneAfterRollbackKeepsTheRightTarget(t *testing.T) {
 	activate(t, db, "blog", "r1", "r2", "r3", "r1")
 
 	resp, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"})
+		&kadranv1.PruneAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("budama başarısız: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestPruneFirstDeployKeepsOnlyActive(t *testing.T) {
 	activate(t, db, "blog", "r1")
 
 	resp, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"})
+		&kadranv1.PruneAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("ilk dağıtımda budama reddedildi: %v", err)
 	}
@@ -200,7 +200,7 @@ func TestPruneRefusesWhenNoActiveDeployment(t *testing.T) {
 	seedReleases(t, db, "blog", 2) // dağıtım YOK
 
 	_, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"})
+		&kadranv1.PruneAppRequest{AppId: "blog"})
 	if err == nil {
 		t.Fatal("aktif sürümü olmayan uygulama budandı — fail-closed çalışmıyor")
 	}
@@ -227,7 +227,7 @@ func TestPruneRejectsEmptyAppID(t *testing.T) {
 	seedReleases(t, db, "blog", 1)
 	activate(t, db, "blog", "r1")
 
-	_, err := srv.PruneApp(context.Background(), &panelyv1.PruneAppRequest{})
+	_, err := srv.PruneApp(context.Background(), &kadranv1.PruneAppRequest{})
 	if err == nil {
 		t.Fatal("boş app_id kabul edildi — bir unutma her uygulamayı budardı")
 	}
@@ -252,13 +252,13 @@ func TestPruneRejectsEmptyAppID(t *testing.T) {
 // geçmemeliler.
 //
 // ⚠ Bu katmanın sınırı: gerçek etiket süzmesi sürücüde
-// (`ContainerList` `panely.app_id` etiketiyle) ve onun kendi testleri
+// (`ContainerList` `kadran.app_id` etiketiyle) ve onun kendi testleri
 // var. Burada sınanan şey, budamanın executor'a DOĞRU app_id'yi
 // geçirmesi ve dönen listenin dışına çıkmaması.
 func TestPruneNeverTouchesForeignContainers(t *testing.T) {
 	exec := &fakeExec{replicas: []execclient.Replica{
 		replica("blog", "r1", 0), replica("blog", "r2", 0), replica("blog", "r3", 0),
-		// Panely'nin başka uygulamaları ve Panely'ye AİT OLMAYAN işler.
+		// Kadran'ın başka uygulamaları ve Kadran'a AİT OLMAYAN işler.
 		replica("dukkan", "r1", 0),
 		replica("elastic-poincare", "r1", 0),
 		replica("strange-nash", "r1", 0),
@@ -268,7 +268,7 @@ func TestPruneNeverTouchesForeignContainers(t *testing.T) {
 	activate(t, db, "blog", "r1", "r2", "r3")
 
 	if _, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"}); err != nil {
+		&kadranv1.PruneAppRequest{AppId: "blog"}); err != nil {
 		t.Fatalf("budama başarısız: %v", err)
 	}
 
@@ -300,7 +300,7 @@ func TestPruneDryRunRemovesNothing(t *testing.T) {
 	activate(t, db, "blog", "r1", "r2", "r3")
 
 	resp, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog", DryRun: true})
+		&kadranv1.PruneAppRequest{AppId: "blog", DryRun: true})
 	if err != nil {
 		t.Fatalf("deneme başarısız: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestPruneSaysWhatItDidNotDo(t *testing.T) {
 	activate(t, db, "blog", "r1", "r2")
 
 	resp, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"})
+		&kadranv1.PruneAppRequest{AppId: "blog"})
 	if err != nil {
 		t.Fatalf("budama başarısız: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestPruneGivesContainersTimeToStop(t *testing.T) {
 	activate(t, db, "blog", "r1", "r2", "r3", "r4")
 
 	if _, err := srv.PruneApp(context.Background(),
-		&panelyv1.PruneAppRequest{AppId: "blog"}); err != nil {
+		&kadranv1.PruneAppRequest{AppId: "blog"}); err != nil {
 		t.Fatalf("budama başarısız: %v", err)
 	}
 

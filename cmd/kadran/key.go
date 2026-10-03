@@ -19,7 +19,7 @@ import (
 //
 // Rol authorized_keys satırında durduğu ve o dosyaya yalnız root yazdığı
 // için bu komut bootstrap'ın yetki yolunu kullanıyor: root@sunucu ya da
-// -sudo kullanıcı@sunucu. panely-client ile ÇALIŞMAZ (zorlanmış komut).
+// -sudo kullanıcı@sunucu. kadran-client ile ÇALIŞMAZ (zorlanmış komut).
 
 const keyUsage = "kullanım:\n" +
 	"  kadran key list   [-sudo] root@sunucu\n" +
@@ -116,7 +116,7 @@ func (c *cli) runKeyList(ctx context.Context, args []string) int {
 	}
 	unrestricted := printKeys(c.stdout, keys)
 	if unrestricted > 0 {
-		return c.fail(fmt.Errorf("%d satır panely-connect'e zorlanmamış — o anahtarlar panely-client olarak "+
+		return c.fail(fmt.Errorf("%d satır kadran-connect'e zorlanmamış — o anahtarlar kadran-client olarak "+
 			"kabuk alabilir; kaldırın: kadran key remove <parmak-izi> %s", unrestricted, fs.Arg(0)))
 	}
 	return exitOK

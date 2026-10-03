@@ -53,11 +53,11 @@ const (
 // şey, tesadüfen eklenmiş ayrı bir tuzak adımıydı.
 //
 // Atlanan test ile geçen testi ayırt edemeyen bir kontrol, yeşil rozetten
-// başka bir şey üretmez. PANELY_E2E_REQUIRE_DOCKER=1 verildiğinde atlama
+// başka bir şey üretmez. KADRAN_E2E_REQUIRE_DOCKER=1 verildiğinde atlama
 // hakkı kalkar.
 func skipOrFail(t *testing.T, format string, args ...any) {
 	t.Helper()
-	if os.Getenv("PANELY_E2E_REQUIRE_DOCKER") != "" {
+	if os.Getenv("KADRAN_E2E_REQUIRE_DOCKER") != "" {
 		t.Fatalf("Docker zorunlu ama kullanılamıyor: "+format, args...)
 	}
 	t.Skipf(format, args...)
@@ -68,9 +68,9 @@ func e2eClient(t *testing.T) *Client {
 	if _, err := os.Stat(e2eSocket); err != nil {
 		skipOrFail(t, "Docker soketi yok (%v)", err)
 	}
-	root := os.Getenv("PANELY_E2E_VOLUME_ROOT")
+	root := os.Getenv("KADRAN_E2E_VOLUME_ROOT")
 	if root == "" {
-		root = "/var/lib/panely/volumes"
+		root = "/var/lib/kadran/volumes"
 	}
 	c := New(e2eSocket, root)
 	if _, err := c.Ping(context.Background()); err != nil {
@@ -79,7 +79,7 @@ func e2eClient(t *testing.T) *Client {
 	return c
 }
 
-// buildTestImage, panely/<app>:<sha> etiketli minik bir imaj üretir.
+// buildTestImage, kadran/<app>:<sha> etiketli minik bir imaj üretir.
 //
 // Sürücü imaj ÇEKMEDİĞİ için (tasarım gereği) testin imajı önceden var
 // etmesi gerekiyor. Bunu sürücü üzerinden DEĞİL, doğrudan Engine API'ye
@@ -160,7 +160,7 @@ func TestLifecycleAgainstRealDocker(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NetworkEnsure: %v", err)
 	}
-	if name != "panely-"+e2eApp {
+	if name != "kadran-"+e2eApp {
 		t.Errorf("ağ adı %q", name)
 	}
 	// İdempotanlık: ikinci çağrı da başarılı olmalı (409 → başarı).
@@ -170,7 +170,7 @@ func TestLifecycleAgainstRealDocker(t *testing.T) {
 
 	spec := CreateSpec{
 		AppID: e2eApp, ReleaseID: "r1", Replica: 0, CommitSHA: e2eSHA,
-		Env:         map[string]string{"PANELY_E2E": "1"},
+		Env:         map[string]string{"KADRAN_E2E": "1"},
 		MemoryBytes: 64 << 20, CPUMillis: 250, BlkioWeight: 500,
 		ContainerPort: 8080,
 	}
@@ -246,7 +246,7 @@ func waitForState(t *testing.T, c *Client, want string) string {
 // Zayıf test, var olmayan bir ad kullanmak olurdu: o ad Hub'da da yok,
 // yani 404 "çekmedi"yi değil "bulamadı"yı gösterebilirdi. Burada Docker
 // Hub'da KESİNLİKLE VAR OLAN bir imaj (`alpine`) kullanılıyor —
-// `panely/<app>:<sha>` biçimi Docker tarafından `docker.io/panely/...`
+// `kadran/<app>:<sha>` biçimi Docker tarafından `docker.io/kadran/...`
 // olarak yorumlanabilir olduğu için asıl risk budur.
 func TestCreateNeverPullsImages(t *testing.T) {
 	c := e2eClient(t)

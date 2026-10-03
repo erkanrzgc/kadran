@@ -47,7 +47,7 @@ func TestPolicyAllowsMatchingGID(t *testing.T) {
 }
 
 // TestPolicyDoesNotAllowRootImplicitly, root'un otomatik geçmediğini
-// doğrular. Bu önemli: executor'a bağlanabilecek tek kimlik panelyd'dir
+// doğrular. Bu önemli: executor'a bağlanabilecek tek kimlik kadrand'dir
 // ve root'a örtük ayrıcalık tanımak modeli delerdi.
 func TestPolicyDoesNotAllowRootImplicitly(t *testing.T) {
 	p := Policy{AllowUIDs: []uint32{1001}}

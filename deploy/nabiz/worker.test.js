@@ -39,7 +39,7 @@ const env = (kv) => ({
   TELEGRAM_TOKEN: "123:abc",
   TELEGRAM_CHAT_ID: "42",
   ESIK_DAKIKA: "15",
-  SUNUCU: "panely-test",
+  SUNUCU: "kadran-test",
 });
 
 const ping = (yetki, yol = "/ping", yontem = "POST") =>
@@ -83,7 +83,7 @@ test("nabız eskiyse zamanlanmış kontrol ALARM gönderir ve durumu yazar", asy
   const kv = sahteKV({ son_nabiz: String(Date.now() - 20 * 60_000), durum: "var" });
   await worker.scheduled({}, env(kv));
   assert.equal(gonderilen.length, 1);
-  assert.match(gonderilen[0].govde.text, /NABIZ YOK — panely-test/);
+  assert.match(gonderilen[0].govde.text, /NABIZ YOK — kadran-test/);
   assert.equal(gonderilen[0].govde.chat_id, "42");
   assert.equal(kv.veri.get("durum"), "yok");
 });

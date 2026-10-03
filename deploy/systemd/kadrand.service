@@ -1,0 +1,165 @@
+[Unit]
+Description=Kadran control plane daemon
+Documentation=https://github.com/erkanrzgc/kadran
+After=network-online.target kadran-exec.service
+Wants=network-online.target
+Requires=kadran-exec.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+# Bayraklar AÇIK yazılıyor, varsayılana bırakılmıyor: bir varsayılanın
+# kodda değişmesi üretim yapılandırmasını sessizce kaydırmamalı.
+#
+# Buradaki her bayrağın binary'de gerçekten TANIMLI olduğunu
+# TestUnitExecStartFlagsExist doğruluyor. Gerekçesi somut: bu satır
+# uzun süre `--config /etc/kadran/kadrand.toml` diyordu — ne böyle bir
+# bayrak ne de böyle bir dosya vardı. Hata ancak gerçek sunucuda
+# ortaya çıktı (status=2/INVALIDARGUMENT, sonsuz yeniden başlatma).
+ExecStart=/usr/local/lib/kadran/kadrand \
+    --socket /run/kadran/api.sock \
+    --exec-socket /run/kadran-exec/exec.sock \
+    --db /var/lib/kadran/kadran.db \
+    --client-group kadran-client \
+    --backup-interval 1h
+Restart=on-failure
+RestartSec=2s
+
+# ── Askıda kalma tespiti (K-115) ────────────────────────────────────
+#
+# kadrand WatchdogSec'in yarısında bir WATCHDOG=1 gönderiyor, ama YALNIZCA
+# her arka plan döngüsü eşiği içinde ilerlemişse ve veritabanı havuzu bir
+# bağlantı verebiliyorsa (internal/liveness). Ping kesilirse systemd
+# SIGABRT gönderiyor; Go yığın dökümünü journal'a basıp çıkıyor ve
+# Restart=on-failure kadrand'yi geri getiriyor. WatchdogSignal KASTEN
+# değiştirilmiyor: SIGKILL o dökümü, yani takılmanın NEREDE olduğunu
+# yok ederdi.
+#
+# ⚠ Birim ve ikili BİRLİKTE gider: ping atmayan eski bir kadrand bu birim
+# altında her 60 sn'de öldürülür. Yalnızca ikiliyi geri almak bir yeniden
+# başlatma döngüsüdür.
+WatchdogSec=60s
+
+# ── Açılış süresi (K-117) ───────────────────────────────────────────
+#
+# READY'den önceki en kötü durum koddan TÜRETİLDİ, ölçülmedi: executor
+# yoklaması 10 sn + açılış uzlaştırması 3 × 30 sn + aradaki 1+2 sn =
+# 103 sn. Executor ya da dockerd cevap vermezken ve en az bir uygulama
+# varken olur: replikaları listeleyen çağrı her denemenin 30 sn'sini
+# doldurur. systemd'nin varsayılanı 90 sn. kadrand READY göndermek
+# üzereyken öldürülür, Restart=on-failure onu aynı duvara geri gönderir ve
+# `kadran status` hiç cevap vermez. Watchdog bu süreyi kapsamıyor, çünkü
+# systemd onu READY'den sonra kuruyor.
+#
+# TestUnitStartTimeoutCoversTheWorstStartup bu sayıyı koddaki sabitlere
+# bağlıyor. Değer Go süre biçiminde yazılmalı (test onu öyle okuyor).
+TimeoutStartSec=180s
+
+# YETKİSİZ. Bu satır ürünün tamamının dayandığı iddiadır.
+# `sudo -u kadran docker ps` BAŞARISIZ OLMAK ZORUNDADIR.
+User=kadran
+Group=kadran
+
+# api.sock'u kadran-client grubuna açabilmek için ek grup üyeliği.
+# İstemci SSH kullanıcısı kadran-client grubundadır; `kadran` grubunda
+# DEĞİLDİR — bu yüzden /run/kadran-exec dizinini traverse edemez ve
+# executor'a doğrudan ulaşamaz.
+SupplementaryGroups=kadran-client
+
+# ── Sıkılaştırma ─────────────────────────────────────────────────
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
+
+# # @chown neden geri veriliyor?
+#
+# Daemon api.sock'un grubunu kadran-client yapmak ZORUNDA; istemcinin
+# sokete ulaşmasının tek yolu bu. Ama systemd'de chown ailesi
+# @privileged içinde, ve yukarıdaki çıkarma @system-service'in verdiği
+# @chown'u geri alıyor. Sonuç, gerçek sunucuda:
+#
+#   audit: ... comm="kadrand" sig=31 syscall=260   (fchownat)
+#   kadrand.service: Main process exited, code=dumped, status=31/SYS
+#
+# Bu yalnızca gerçek çekirdek + gerçek systemd ile ortaya çıkar; WSL ve
+# CI yakalayamaz.
+#
+# Verilen yetki neredeyse sıfır: süreç uid 999, CapabilityBoundingSet
+# BOŞ, NoNewPrivileges=yes. Çekirdek, root olmayan bir sürecin chown'unu
+# zaten sıkı kısıtlar — yalnızca SAHİBİ OLDUĞU dosyanın GRUBUNU, ve
+# yalnızca ÜYESİ OLDUĞU bir gruba çevirebilir (kadran, kadran-client).
+# Sahip değiştirmek hiçbir koşulda mümkün değil.
+#
+# Tek çağrı (fchownat) yerine aile veriliyor: Go'nun os.Chown'u ileride
+# başka bir çağrı seçerse bu çökme döngüsü geri gelirdi.
+SystemCallFilter=@chown
+
+# Yetenek yok. Hiç.
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# ── Ağ: unix soketleri + SAĞLIK YOKLAMASI ───────────────────────────
+#
+# Unix soketleri: kendi api.sock'u ve executor'ın exec.sock'u.
+#
+# AF_INET, sağlık kapısı için eklendi: dağıtım, konteynerin ÇALIŞTIĞINI
+# değil uygulamanın CEVAP VERDİĞİNİ ölçmek zorunda (Faz 1 kabul ölçütü
+# #4). Ölçüm kadrand'de yapılıyor, executor'da DEĞİL — ayrıcalıklı yüzey
+# bütçesi 2479/2500 ve bir HTTP istemcisi tek başına onu patlatırdı.
+# Yetkisiz sürece ağ vermek, ayrıcalıklı sürece satır eklemekten geri
+# alınabilir bir karardır; aşağıdaki çit de onu dar tutuyor.
+#
+# ⚠ AF_INET6 KASTEN YOK. Docker'ın uygulama ağları IPv4; IPv6 açılırsa
+# burası da IPAddressAllow'daki aralık da güncellenmek ZORUNDA, yoksa
+# yoklama sessizce değil GÖRÜNÜR biçimde (EPERM) düşer.
+RestrictAddressFamilies=AF_UNIX AF_INET
+
+# ── Nereye bağlanabilir ─────────────────────────────────────────────
+#
+# Varsayılan REDDET, tek istisna Docker'ın özel ağ aralığı. Böylece
+# kadrand internete, host'un LAN'ına ya da bulut sağlayıcısının meta veri
+# ucuna (169.254.169.254) ULAŞAMAZ.
+#
+# 172.16.0.0/12 seçildi çünkü Docker'ın varsayılan yerel havuzu
+# 172.17.0.0/16 – 172.31.0.0/16 aralığında ve hepsi bunun içinde.
+# ÖLÇÜLDÜ (gerçek sunucu, ağlar o zaman panely-* adlıydı): web 172.18/16,
+# pfprobe 172.19/16, portfolio 172.20/16. Göç (K-136) eski ağlar dururken
+# yenilerini kurar; ağ sayısı geçici olarak iki katına çıkar.
+#
+# ⚠ 192.168.0.0/16 KASTEN AÇILMADI. Docker o havuzu ancak 172.x aralığı
+# tükendiğinde (≈15 ağ) kullanır; açsaydık kadrand, kalıcı sunucunun EV
+# AĞINA erişebilirdi. Sınıra dayanılırsa yoklama "permission denied" ile
+# düşer ve dağıtım kapıda durur — sessiz değil, görünür bir arıza.
+# Kalıcı çözüm: dockerd'nin havuzunu daemon.json ile bu aralığa sabitlemek.
+#
+# ⚠ Loopback de açılmadı: kadrand'nin hostun kendi portlarına bağlanması
+# için hiçbir sebep yok ve açık olsaydı, hostta duran her servis
+# kadrand'den erişilebilir olurdu.
+IPAddressDeny=any
+IPAddressAllow=172.16.0.0/12
+
+ReadWritePaths=/var/lib/kadran
+ReadWritePaths=/run/kadran
+
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

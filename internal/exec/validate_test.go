@@ -8,26 +8,26 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // Bu dosya kaçış DENEMELERİNİ sınar. "Geçerli girdi geçiyor mu" sorusu
 // ikincildir; asıl soru "şemanın izin verdiği en kötü girdi ne yapabilir".
 
-func validCreateRequest() *panelyv1.ContainerCreateRequest {
-	return &panelyv1.ContainerCreateRequest{
-		Ref: &panelyv1.ContainerRef{
-			Release: &panelyv1.ReleaseRef{AppId: "blog", ReleaseId: "01hx9k2m"},
+func validCreateRequest() *kadranv1.ContainerCreateRequest {
+	return &kadranv1.ContainerCreateRequest{
+		Ref: &kadranv1.ContainerRef{
+			Release: &kadranv1.ReleaseRef{AppId: "blog", ReleaseId: "01hx9k2m"},
 			Replica: 0,
 		},
 		CommitSha: "a1b2c3d4e5f6",
 		Env:       map[string]string{"PORT": "3000"},
-		Limits: &panelyv1.ResourceLimits{
+		Limits: &kadranv1.ResourceLimits{
 			MemoryBytes: 256 << 20,
 			CpuMillis:   500,
 			BlkioWeight: 500,
 		},
-		Volumes: []*panelyv1.VolumeMount{
+		Volumes: []*kadranv1.VolumeMount{
 			{VolumeName: "data", MountPath: "/var/lib/app", ReadOnly: false},
 		},
 		ContainerPort: 3000,
@@ -91,7 +91,7 @@ func TestOverlappingMountsRejected(t *testing.T) {
 	}
 	for _, c := range cases {
 		req := validCreateRequest()
-		req.Volumes = []*panelyv1.VolumeMount{
+		req.Volumes = []*kadranv1.VolumeMount{
 			{VolumeName: "bir", MountPath: c[0]},
 			{VolumeName: "iki", MountPath: c[1]},
 		}
@@ -104,7 +104,7 @@ func TestOverlappingMountsRejected(t *testing.T) {
 	// pathOverlaps saf `strings.HasPrefix` ile yazılabilir ve "/data"
 	// ile "/database" yanlışlıkla çakışık sayılırdı.
 	req := validCreateRequest()
-	req.Volumes = []*panelyv1.VolumeMount{
+	req.Volumes = []*kadranv1.VolumeMount{
 		{VolumeName: "bir", MountPath: "/data"},
 		{VolumeName: "iki", MountPath: "/database"},
 	}
@@ -132,7 +132,7 @@ func TestAppIDRejectsPathAndTagInjection(t *testing.T) {
 }
 
 func TestCommitSHARejectsTagInjection(t *testing.T) {
-	// commit_sha `panely/<app>:<sha>` etiketine giriyor. Hex dışı bir
+	// commit_sha `kadran/<app>:<sha>` etiketine giriyor. Hex dışı bir
 	// karakter, etiketi başka bir imaja ya da registry'ye kaydırabilirdi.
 	bad := []string{
 		"", "abc", "ABCDEF1", "a1b2c3d4e5f!", "a1b2c3d:latest",
@@ -148,7 +148,7 @@ func TestCommitSHARejectsTagInjection(t *testing.T) {
 }
 
 func TestLimitsMustBeExplicitAndBounded(t *testing.T) {
-	cases := map[string]*panelyv1.ResourceLimits{
+	cases := map[string]*kadranv1.ResourceLimits{
 		"nil":           nil,
 		"tamamen sıfır": {},
 		"bellek sıfır":  {MemoryBytes: 0, CpuMillis: 500, BlkioWeight: 500},
@@ -202,23 +202,23 @@ func TestEnvRejectsMalformedKeysAndNUL(t *testing.T) {
 }
 
 func TestSelectorAllowsAbsentReplicaButBoundsPresentOne(t *testing.T) {
-	rel := &panelyv1.ReleaseRef{AppId: "blog", ReleaseId: "01hx9k2m"}
+	rel := &kadranv1.ReleaseRef{AppId: "blog", ReleaseId: "01hx9k2m"}
 
 	// Replika VERİLMEMİŞ: sürümün tamamı seçilir — geçerli olmalı.
-	if err := validateSelector(&panelyv1.ContainerSelector{Release: rel}); err != nil {
+	if err := validateSelector(&kadranv1.ContainerSelector{Release: rel}); err != nil {
 		t.Fatalf("replikasız seçici reddedildi: %v", err)
 	}
 
 	// Verilmişse sınır içinde olmalı.
 	asiri := uint32(maxReplica)
-	if err := validateSelector(&panelyv1.ContainerSelector{
+	if err := validateSelector(&kadranv1.ContainerSelector{
 		Release: rel, Replica: &asiri,
 	}); err == nil {
 		t.Error("sınır dışı replika kabul edildi")
 	}
 
 	sifir := uint32(0)
-	if err := validateSelector(&panelyv1.ContainerSelector{
+	if err := validateSelector(&kadranv1.ContainerSelector{
 		Release: rel, Replica: &sifir,
 	}); err != nil {
 		t.Errorf("geçerli replika reddedildi: %v", err)
@@ -276,14 +276,14 @@ func openTestJournal(t *testing.T) *Journal {
 func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
 	srv := newTestServer(t)
 
-	kotuRef := &panelyv1.ContainerRef{
-		Release: &panelyv1.ReleaseRef{AppId: "../evil", ReleaseId: "x"},
+	kotuRef := &kadranv1.ContainerRef{
+		Release: &kadranv1.ReleaseRef{AppId: "../evil", ReleaseId: "x"},
 	}
-	iyiSel := &panelyv1.ContainerSelector{
-		Release: &panelyv1.ReleaseRef{AppId: "blog", ReleaseId: "01hx9k2m"},
+	iyiSel := &kadranv1.ContainerSelector{
+		Release: &kadranv1.ReleaseRef{AppId: "blog", ReleaseId: "01hx9k2m"},
 	}
-	kotuSel := &panelyv1.ContainerSelector{
-		Release: &panelyv1.ReleaseRef{AppId: "../evil", ReleaseId: "x"},
+	kotuSel := &kadranv1.ContainerSelector{
+		Release: &kadranv1.ReleaseRef{AppId: "../evil", ReleaseId: "x"},
 	}
 
 	kotuCreate := validCreateRequest()
@@ -297,11 +297,11 @@ func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
 		{
 			"NetworkEnsure",
 			func() error {
-				_, err := srv.NetworkEnsure(t.Context(), &panelyv1.NetworkEnsureRequest{AppId: "../evil"})
+				_, err := srv.NetworkEnsure(t.Context(), &kadranv1.NetworkEnsureRequest{AppId: "../evil"})
 				return err
 			},
 			func() error {
-				_, err := srv.NetworkEnsure(t.Context(), &panelyv1.NetworkEnsureRequest{AppId: "blog"})
+				_, err := srv.NetworkEnsure(t.Context(), &kadranv1.NetworkEnsureRequest{AppId: "blog"})
 				return err
 			},
 		},
@@ -319,24 +319,24 @@ func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
 		{
 			"ContainerStart",
 			func() error {
-				_, err := srv.ContainerStart(t.Context(), &panelyv1.ContainerStartRequest{Selector: kotuSel})
+				_, err := srv.ContainerStart(t.Context(), &kadranv1.ContainerStartRequest{Selector: kotuSel})
 				return err
 			},
 			func() error {
-				_, err := srv.ContainerStart(t.Context(), &panelyv1.ContainerStartRequest{Selector: iyiSel})
+				_, err := srv.ContainerStart(t.Context(), &kadranv1.ContainerStartRequest{Selector: iyiSel})
 				return err
 			},
 		},
 		{
 			"ContainerStop",
 			func() error {
-				_, err := srv.ContainerStop(t.Context(), &panelyv1.ContainerStopRequest{
+				_, err := srv.ContainerStop(t.Context(), &kadranv1.ContainerStopRequest{
 					Selector: iyiSel, TimeoutSeconds: maxStopTimeoutSeconds + 1,
 				})
 				return err
 			},
 			func() error {
-				_, err := srv.ContainerStop(t.Context(), &panelyv1.ContainerStopRequest{
+				_, err := srv.ContainerStop(t.Context(), &kadranv1.ContainerStopRequest{
 					Selector: iyiSel, TimeoutSeconds: 10,
 				})
 				return err
@@ -345,35 +345,35 @@ func TestHandlersValidateBeforeAnythingElse(t *testing.T) {
 		{
 			"ContainerRemove",
 			func() error {
-				_, err := srv.ContainerRemove(t.Context(), &panelyv1.ContainerRemoveRequest{Selector: kotuSel})
+				_, err := srv.ContainerRemove(t.Context(), &kadranv1.ContainerRemoveRequest{Selector: kotuSel})
 				return err
 			},
 			func() error {
-				_, err := srv.ContainerRemove(t.Context(), &panelyv1.ContainerRemoveRequest{Selector: iyiSel})
+				_, err := srv.ContainerRemove(t.Context(), &kadranv1.ContainerRemoveRequest{Selector: iyiSel})
 				return err
 			},
 		},
 		{
 			"ContainerList",
 			func() error {
-				_, err := srv.ContainerList(t.Context(), &panelyv1.ContainerListRequest{AppId: "../evil"})
+				_, err := srv.ContainerList(t.Context(), &kadranv1.ContainerListRequest{AppId: "../evil"})
 				return err
 			},
 			func() error {
 				// Boş app_id KASITLI olarak geçerlidir: öksüz konteyner
 				// taraması bunu gerektiriyor.
-				_, err := srv.ContainerList(t.Context(), &panelyv1.ContainerListRequest{})
+				_, err := srv.ContainerList(t.Context(), &kadranv1.ContainerListRequest{})
 				return err
 			},
 		},
 		{
 			"ContainerLogs",
 			func() error {
-				return srv.ContainerLogs(&panelyv1.ContainerLogsRequest{Ref: kotuRef}, newLogStream())
+				return srv.ContainerLogs(&kadranv1.ContainerLogsRequest{Ref: kotuRef}, newLogStream())
 			},
 			func() error {
-				return srv.ContainerLogs(&panelyv1.ContainerLogsRequest{
-					Ref: &panelyv1.ContainerRef{Release: iyiSel.GetRelease()},
+				return srv.ContainerLogs(&kadranv1.ContainerLogsRequest{
+					Ref: &kadranv1.ContainerRef{Release: iyiSel.GetRelease()},
 				}, newLogStream())
 			},
 		},

@@ -9,14 +9,14 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // CreateApp, yeni bir uygulama tanımı kaydeder.
 func (s *Server) CreateApp(
-	ctx context.Context, req *panelyv1.CreateAppRequest,
-) (*panelyv1.CreateAppResponse, error) {
+	ctx context.Context, req *kadranv1.CreateAppRequest,
+) (*kadranv1.CreateAppResponse, error) {
 	const action = "app.create"
 
 	spec := req.GetSpec()
@@ -31,29 +31,29 @@ func (s *Server) CreateApp(
 	if err := s.completed(ctx, action, tgt, params, opErr); err != nil {
 		return nil, appError(err)
 	}
-	return &panelyv1.CreateAppResponse{App: appToProto(app)}, nil
+	return &kadranv1.CreateAppResponse{App: appToProto(app)}, nil
 }
 
 // ListApps, tanımlı uygulamaları döner. Salt okunur: zincire yazılmaz.
 func (s *Server) ListApps(
-	ctx context.Context, _ *panelyv1.ListAppsRequest,
-) (*panelyv1.ListAppsResponse, error) {
+	ctx context.Context, _ *kadranv1.ListAppsRequest,
+) (*kadranv1.ListAppsResponse, error) {
 	apps, err := s.store.ListApps(ctx)
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "uygulamalar okunamadı: %v", err)
 	}
 
-	out := make([]*panelyv1.App, 0, len(apps))
+	out := make([]*kadranv1.App, 0, len(apps))
 	for _, a := range apps {
 		out = append(out, appToProto(a))
 	}
-	return &panelyv1.ListAppsResponse{Apps: out}, nil
+	return &kadranv1.ListAppsResponse{Apps: out}, nil
 }
 
 // GetApp, tek bir uygulamayı ve sürüm geçmişini döner. Salt okunur.
 func (s *Server) GetApp(
-	ctx context.Context, req *panelyv1.GetAppRequest,
-) (*panelyv1.GetAppResponse, error) {
+	ctx context.Context, req *kadranv1.GetAppRequest,
+) (*kadranv1.GetAppResponse, error) {
 	app, err := s.store.GetApp(ctx, req.GetAppId())
 	if err != nil {
 		return nil, appError(err)
@@ -64,7 +64,7 @@ func (s *Server) GetApp(
 		return nil, status.Errorf(codes.Internal, "sürümler okunamadı: %v", err)
 	}
 
-	out := make([]*panelyv1.Release, 0, len(releases))
+	out := make([]*kadranv1.Release, 0, len(releases))
 	for _, r := range releases {
 		out = append(out, releaseToProto(r))
 	}
@@ -83,20 +83,20 @@ func (s *Server) GetApp(
 
 	// Alan HER ZAMAN gönderiliyor, boş olsa da: yokluğu "sunucu bu bilgiyi
 	// bilmiyor (eski sürüm)" demek ve CLI onu ayrı basıyor (api.proto).
-	return &panelyv1.GetAppResponse{
+	return &kadranv1.GetAppResponse{
 		App: appToProto(app), Releases: out, ActiveReleaseId: &active,
 	}, nil
 }
 
 // ── Dönüşümler ───────────────────────────────────────────────────────
 //
-// internal/pbconv'a KONULMADI ve konulmamalı: o paket panely-exec'in içe
+// internal/pbconv'a KONULMADI ve konulmamalı: o paket kadran-exec'in içe
 // aktarma grafiğinde ve ayrıcalıklı yüzey bütçesine yazılıyor
-// (scripts/check-exec-surface.sh). Yalnızca panelyd'nin kullandığı
+// (scripts/check-exec-surface.sh). Yalnızca kadrand'nin kullandığı
 // dönüştürücüleri oraya koymak, root süreçle hiç ilgisi olmayan kodu
 // root bütçesinden harcamak olurdu — ölçüldü: bütçede 6 satır kalmıştı.
 
-func appFromProto(spec *panelyv1.AppSpec) store.App {
+func appFromProto(spec *kadranv1.AppSpec) store.App {
 	l := spec.GetLimits()
 	return store.App{
 		ID:             spec.GetAppId(),
@@ -118,9 +118,9 @@ func appFromProto(spec *panelyv1.AppSpec) store.App {
 	}
 }
 
-func appToProto(a store.App) *panelyv1.App {
-	return &panelyv1.App{
-		Spec: &panelyv1.AppSpec{
+func appToProto(a store.App) *kadranv1.App {
+	return &kadranv1.App{
+		Spec: &kadranv1.AppSpec{
 			AppId:          a.ID,
 			GitHost:        a.GitHost,
 			GitOwner:       a.GitOwner,
@@ -134,7 +134,7 @@ func appToProto(a store.App) *panelyv1.App {
 			Replicas:       a.Replicas,
 			HealthPath:     a.HealthPath,
 			Domain:         a.Domain,
-			Limits: &panelyv1.ResourceLimits{
+			Limits: &kadranv1.ResourceLimits{
 				MemoryBytes: a.MemoryBytes,
 				CpuMillis:   a.CPUMillis,
 				BlkioWeight: a.BlkioWeight,
@@ -146,12 +146,12 @@ func appToProto(a store.App) *panelyv1.App {
 	}
 }
 
-func releaseToProto(r store.Release) *panelyv1.Release {
-	out := &panelyv1.Release{
+func releaseToProto(r store.Release) *kadranv1.Release {
+	out := &kadranv1.Release{
 		ReleaseId: r.ID,
 		AppId:     r.AppID,
 		CommitSha: r.CommitSHA,
-		Status:    panelyv1.ReleaseStatus(r.Status),
+		Status:    kadranv1.ReleaseStatus(r.Status),
 		ImageId:   r.ImageID,
 		StartedAt: timestamppb.New(r.StartedAt),
 		Detail:    r.Detail,
@@ -174,7 +174,7 @@ func appTarget(appID string) string { return "app/" + appID }
 // tanım kaydedildi" sorusunu yanıtlamak. Derleme argümanlarının
 // DEĞERLERİ yazılmaz — redactSensitive recordAction içinde uygulanıyor,
 // ama burada adları da ayrıca ayrıştırılmıyor: değer hiç girmiyor.
-func appAuditParams(spec *panelyv1.AppSpec) map[string]string {
+func appAuditParams(spec *kadranv1.AppSpec) map[string]string {
 	params := map[string]string{
 		"source": spec.GetGitHost() + "/" + spec.GetGitOwner() + "/" + spec.GetGitRepo(),
 		"branch": spec.GetGitBranch(),
@@ -238,7 +238,7 @@ func appError(err error) error {
 //
 // Donusum ACIK: proto tipini dogrudan depoya tasimak, kullaniciya gorunen
 // sozlesmenin degismesi hâlinde diskteki bicimi de sessizce degistirirdi.
-func volumesFromProto(in []*panelyv1.AppVolume) []store.VolumeMount {
+func volumesFromProto(in []*kadranv1.AppVolume) []store.VolumeMount {
 	if len(in) == 0 {
 		return nil
 	}
@@ -254,13 +254,13 @@ func volumesFromProto(in []*panelyv1.AppVolume) []store.VolumeMount {
 }
 
 // volumesToProto, depo tipini kullaniciya gorunen tipe cevirir.
-func volumesToProto(in []store.VolumeMount) []*panelyv1.AppVolume {
+func volumesToProto(in []store.VolumeMount) []*kadranv1.AppVolume {
 	if len(in) == 0 {
 		return nil
 	}
-	out := make([]*panelyv1.AppVolume, 0, len(in))
+	out := make([]*kadranv1.AppVolume, 0, len(in))
 	for _, v := range in {
-		out = append(out, &panelyv1.AppVolume{
+		out = append(out, &kadranv1.AppVolume{
 			Name:      v.Name,
 			MountPath: v.MountPath,
 			ReadOnly:  v.ReadOnly,

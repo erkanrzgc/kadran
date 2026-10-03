@@ -78,7 +78,7 @@ func TestDeployLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `command="/usr/local/lib/panely/panely-connect -deploy=site,api",restrict ` + body + " ci@github"
+	want := `command="/usr/local/lib/kadran/kadran-connect -deploy=site,api",restrict ` + body + " ci@github"
 	if got != want {
 		t.Fatalf("satır:\n%s\nbeklenen:\n%s", got, want)
 	}
@@ -88,7 +88,7 @@ func TestDeployLine(t *testing.T) {
 		t.Errorf("ad uygulanmadı: %s", got)
 	}
 
-	// Satırın kendisi panelyd'nin göreceği rolü taşımalı: panely-connect'in
+	// Satırın kendisi kadrand'nin göreceği rolü taşımalı: kadran-connect'in
 	// argümanı connproto'nun ayrıştırıcısından geçmeli.
 	ak := ParseAuthorizedKeys(got)
 	if len(ak) != 1 || ak[0].Role != connproto.RoleDeploy || !reflect.DeepEqual(ak[0].Apps, []string{"site", "api"}) {
@@ -130,12 +130,12 @@ func TestParseAuthorizedKeys(t *testing.T) {
 	content := strings.Join([]string{
 		"# yorum",
 		"",
-		`command="/usr/local/lib/panely/panely-connect",restrict ` + adminLine,
-		`command="/usr/local/lib/panely/panely-connect -deploy=site,api",restrict ` + ciLine,
+		`command="/usr/local/lib/kadran/kadran-connect",restrict ` + adminLine,
+		`command="/usr/local/lib/kadran/kadran-connect -deploy=site,api",restrict ` + ciLine,
 		rawLine, // zorlanmış komut YOK
 		`command="/bin/sh",restrict ` + rawLine,
-		`command="/usr/local/lib/panely/panely-connect" ` + rawLine, // restrict yok
-		`command="/usr/local/lib/panely/panely-connect -deploy=",restrict ` + rawLine,
+		`command="/usr/local/lib/kadran/kadran-connect" ` + rawLine, // restrict yok
+		`command="/usr/local/lib/kadran/kadran-connect -deploy=",restrict ` + rawLine,
 	}, "\n")
 
 	got := ParseAuthorizedKeys(content)

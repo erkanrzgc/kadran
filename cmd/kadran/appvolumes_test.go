@@ -5,19 +5,19 @@ import (
 	"strings"
 	"testing"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // mustVolumes, test icin hacim listesi kurar.
-func mustVolumes(t *testing.T, raws ...string) []*panelyv1.AppVolume {
+func mustVolumes(t *testing.T, raws ...string) []*kadranv1.AppVolume {
 	t.Helper()
-	out := make([]*panelyv1.AppVolume, 0, len(raws))
+	out := make([]*kadranv1.AppVolume, 0, len(raws))
 	for _, raw := range raws {
 		v, err := parseVolumeFlag(raw)
 		if err != nil {
 			t.Fatalf("%q ayristirilamadi: %v", raw, err)
 		}
-		out = append(out, &panelyv1.AppVolume{
+		out = append(out, &kadranv1.AppVolume{
 			Name: v.name, MountPath: v.mountPath, ReadOnly: v.readOnly,
 		})
 	}
@@ -76,7 +76,7 @@ func TestParseVolumeFlagExplicitRW(t *testing.T) {
 //
 // ⚠ "yalnızca yol" biçimi (`/var/lib/app`) ÖZELLİKLE reddedilmeli:
 // Docker'ın `-v /host:/konteyner` sözdizimine alışkın biri onu yazar ve
-// panely'de o HOST YOLU anlamına gelirdi — oysa panely host yolu KABUL
+// kadran'da o HOST YOLU anlamına gelirdi — oysa kadran host yolu KABUL
 // ETMİYOR. Sessizce ad sanmak, kullanıcının host dizinini bağladığını
 // sanmasına yol açardı.
 func TestParseVolumeFlagRejectsBadForms(t *testing.T) {

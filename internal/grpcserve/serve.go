@@ -1,6 +1,6 @@
 // Package grpcserve, gRPC sunucularının yaşam döngüsünü yönetir.
 //
-// panelyd ve panely-exec aynı kapanış davranışına ihtiyaç duyar; tek yerde
+// kadrand ve kadran-exec aynı kapanış davranışına ihtiyaç duyar; tek yerde
 // doğru yapmak iki yerde farklı yapmaktan iyidir.
 package grpcserve
 
@@ -37,13 +37,13 @@ func Run(server *grpc.Server, listener net.Listener) error {
 //
 // ── Neden ayrı bir giriş noktası ────────────────────────────────────
 //
-// panelyd yalnızca gRPC sunmuyor: sağlık gözetmeni de arka planda
+// kadrand yalnızca gRPC sunmuyor: sağlık gözetmeni de arka planda
 // koşuyor ve kapanışta o da durmalı. `Run` sinyal bağlamını kendi içinde
 // kurup dışarı vermeseydi, gözetmen İKİNCİ bir bağlam kurardı — ikisi de
 // çalışırdı ama kapanış sırası tanımsız kalırdı ve gözetmen, sunucu
 // kapanırken hâlâ konteyner başlatmaya çalışabilirdi.
 //
-// `Run` korunuyor çünkü panely-exec'in arka plan işi yok ve kendi
+// `Run` korunuyor çünkü kadran-exec'in arka plan işi yok ve kendi
 // bağlamını kurmak zorunda kalmamalı.
 func RunContext(ctx context.Context, server *grpc.Server, listener net.Listener) error {
 	serveErr := make(chan error, 1)

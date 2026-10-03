@@ -3,10 +3,98 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.4.0 — 2026-10-03
+
+The second half of the rename: every name on the server is now `kadran`, and
+`bootstrap` migrates an existing install in place.
+
+### Upgrading from v0.3.0
+
+Run `kadran bootstrap` with the v0.4.0 files, as `root@server` or `-sudo user@server`.
+It detects the old (`panely`) install and migrates it in place (K-136).
+
+- **Before you start:** if you use offsite backups, add the bucket lock and lifecycle
+  rules for the `kadran-` prefix ([offsite guide](deploy/offsite/README.md)). Don't
+  push to repositories that deploy through CI while the migration runs.
+- Users are renamed with `usermod`: uid/gid and the ownership of every file stay the
+  same. The database, backups, volumes, deploy keys, TLS certificates, both audit
+  chains and the optional offsite, volume-backup and alarm units move to the new
+  names. A timer that was off stays off.
+- Your own systemd drop-ins follow their units. The migration stops before the new
+  executor starts if its effective `--allow-repo` list differs from the old one.
+- The old proxy and containers keep serving until the new control plane has started
+  its own containers. The site is down only while the proxy switches: about 1.3 s on
+  the Debian 13 test server, read from the journal; 0 of 80 probe requests failed.
+- While they overlap, the old and new replicas of an app mount the same volume, as in a
+  blue-green deploy but for longer. Stop apps that keep a single-writer database in a
+  volume before migrating.
+- If the new containers don't come up within 5 minutes, the migration stops and the
+  site stays on the old stack. Running `bootstrap` again continues where it stopped.
+- The daemon briefly cannot reach the proxy during the switch and raises "proxy not
+  reconciled". With Telegram delivery you get that alarm and its recovery.
+- **Afterwards:** move CI to the v0.4.0 CLI and the `kadran-client@` target at the same
+  time. The desktop app moves its saved profiles on first start.
+- **Rollback:** `/usr/local/lib/kadran/kadran-geri-donus.sh` on the server (installed
+  before anything moves), then `bootstrap` from v0.3.0. The site is down until the old
+  stack is back: ~75 s on the test server.
+
+### Breaking changes
+
+- **Protocol 3.** The wire protocol is now `kadran.v1`; a v0.3.0 CLI cannot talk to a
+  v0.4.0 server or the other way round. The new CLI recognizes an old server and says
+  to run `bootstrap`, and answers a `panely-client@` target with the `kadran-client@`
+  form.
+- Server names: `kadrand`, `kadran-exec`, `kadran-connect`, `kadran-caddy`; users
+  `kadran`, `kadran-client`, `kadran-caddy`; `/var/lib/kadran`, `/etc/kadran`,
+  `/usr/local/lib/kadran`; `kadran.db`; Docker labels `kadran.*`, images `kadran/<app>`;
+  backups `kadran-<time>.db`; volume archives `kadran-hacim-…`; the rclone remote
+  `kadran-offsite`; environment variables `KADRAN_*`.
+
+### Found by rehearsing the migration
+
+The migration was run on the Debian 13 test server against a copy of the live setup:
+migrate, reboot, roll back, migrate again, and once more after the security fixes
+(K-136). That found four problems before they reached the live server:
+
+- **The executor's repository allowlist would have been dropped.** On the live server it
+  lives in an operator drop-in (`panely-exec.service.d`). Without carrying it over, the
+  new executor would have started without the restriction. Drop-ins now follow their
+  units, and an allowlist gate stops the migration if the effective list changes.
+- **An app without a domain would have blocked the migration from ever finishing.**
+  Cleanup waited for every container to appear in the proxy config, and an app with no
+  domain has no route. Finishing and cleanup are now separate. Old containers are
+  removed only once none of them receives traffic.
+- **The first version was down for 16 s,** mostly waiting for the proxy watcher's 10 s
+  tick. The daemon now restarts right after the new proxy, and startup reconciliation
+  writes the routes immediately: about 1.3 s.
+- **An installed but disabled optional unit was dropped** (found in a second rehearsal
+  after the security fixes). Only units with an enabled timer were reinstalled under the
+  new names. Every installed one is now carried over, and only the enabled ones are
+  turned on.
+
+### Found by a security review of the migration
+
+The migration scripts were reviewed separately after the rehearsal. No path started the
+executor without its allowlist. Fixed, each with a test scenario and a mutant (K-136):
+
+- **Cleanup could wedge every later install.** It ran before the post-install checks, and
+  a network or image still in use aborted the install, again on every rerun. It now runs
+  after the checks pass and only warns.
+- **An interrupted run could not resume** if it stopped between renaming the rclone remote
+  and updating `offsite.conf`. Each file is now handled on its own.
+- **Root rewrote files through symlinks.** A fixed temporary name inside the client user's
+  `.ssh` let that user make root overwrite another file. Temporary copies now come from
+  `mktemp`, which also keeps the rclone key from being briefly world-readable, and
+  symlinked files or directories stop the migration.
+- **An unreadable `systemctl show` counted as "no allowlist".** It now stops the
+  migration.
+- **Rollback deleted drop-ins edited after the migration.** It now keeps them in the
+  migration record.
 
 ### Documentation
 
+- The README is reorganized around a quick start, with a new wordmark, the migration
+  guide, and long reference material folded into collapsible sections.
 - The README's GitHub Actions example is now a complete workflow: the one that
   deploys the author's site on every push to `main`. It downloads the CLI and
   checks it against `SHA256SUMS`, reads only repository contents, and queues
@@ -14,6 +102,9 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 - The README no longer says the workflow deploys "the commit that was just
   tested". The example runs no tests: it deploys whatever lands on `main`. To
   deploy only tested commits, add a test job and `needs:` (K-135).
+- `[skip ci]` in a CI-deployed repository: GitHub looks only at the last commit of a
+  push, so a code commit followed by a `[skip ci]` commit is not deployed (measured,
+  K-129).
 
 ## v0.3.0 — 2026-10-02
 

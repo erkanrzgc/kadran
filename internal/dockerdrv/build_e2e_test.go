@@ -53,8 +53,8 @@ func gitRepo(t *testing.T, name, dockerfile string) string {
 
 	for _, args := range [][]string{
 		{"init", "-q"},
-		{"config", "user.email", "e2e@panely.test"},
-		{"config", "user.name", "panely e2e"},
+		{"config", "user.email", "e2e@kadran.test"},
+		{"config", "user.name", "kadran e2e"},
 		// GitHub'ın davranışını taklit et: tam SHA ile fetch'e izin ver.
 		// ÖLÇÜLDÜ: github.com bunu destekliyor, dolayısıyla
 		// BuildContextURL'in ürettiği `#<40-hex>` fragment'i çalışıyor.
@@ -151,7 +151,7 @@ func collectBuild(t *testing.T, c *Client, url, sha string) (string, string, err
 func TestImageBuildAgainstRealDocker(t *testing.T) {
 	c := e2eClient(t)
 	const sha = "1111111111111111111111111111111111111111"
-	url := gitRepo(t, "ok", "FROM busybox:1.36\nRUN echo panely-derleme-izi\n")
+	url := gitRepo(t, "ok", "FROM busybox:1.36\nRUN echo kadran-derleme-izi\n")
 	t.Cleanup(func() { removeImage(t, c, ImageTag(e2eApp, sha)) })
 
 	id, out, err := collectBuild(t, c, url, sha)
@@ -163,7 +163,7 @@ func TestImageBuildAgainstRealDocker(t *testing.T) {
 		t.Errorf("imaj kimliği beklenen biçimde değil: %q", id)
 	}
 	// Derleme çıktısı çağırana AKMALI — istemci ilerlemeyi görebilmeli.
-	if !strings.Contains(out, "panely-derleme-izi") {
+	if !strings.Contains(out, "kadran-derleme-izi") {
 		t.Errorf("derleme çıktısı akmadı:\n%s", out)
 	}
 	// Etiket sürücünün kurduğu ad olmalı.
@@ -231,8 +231,8 @@ func TestContainerLogsSeparatesStreamsOnRealDocker(t *testing.T) {
 	// ⚠ AĞI BU TEST KURAR — devralmaz.
 	//
 	// İlk hâlinde bu satır yoktu ve test geliştirme sunucusunda GEÇTİ:
-	// `panely-e2etest` ağı önceki koşulardan KALMIŞTI. CI'da temiz bir
-	// runner'da düştü (`network panely-e2etest not found`), çünkü dosya
+	// `kadran-e2etest` ağı önceki koşulardan KALMIŞTI. CI'da temiz bir
+	// runner'da düştü (`network kadran-e2etest not found`), çünkü dosya
 	// adı sırası bu testi ağı kuran yaşam döngüsü testinden ÖNCE koşturuyor.
 	//
 	// Yani test geçmiyordu; ARTIK KALMIŞ DURUMA yaslanıyordu. Bir testin

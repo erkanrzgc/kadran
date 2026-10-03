@@ -9,7 +9,7 @@ body:
 
         Two proposals will be declined regardless of quality: **a web panel** (it
         reintroduces the browser attack surface the architecture removes) and anything
-        that gives `panelyd` direct Docker access.
+        that gives `kadrand` direct Docker access.
 
   - type: textarea
     id: problem
@@ -22,7 +22,7 @@ body:
   - type: textarea
     id: proposal
     attributes:
-      label: What would you like Panely to do?
+      label: What would you like Kadran to do?
     validations:
       required: true
 
@@ -30,7 +30,7 @@ body:
     id: privileged
     attributes:
       label: Would this require new privileged capability?
-      description: New Docker operations, filesystem writes, or network access from panely-exec.
+      description: New Docker operations, filesystem writes, or network access from kadran-exec.
       options:
         - "No — it stays within the existing executor schema"
         - "Yes — it needs a new privileged RPC"
@@ -41,7 +41,7 @@ body:
   - type: textarea
     id: threat
     attributes:
-      label: If privileged — what would a compromised panelyd do with it?
+      label: If privileged — what would a compromised kadrand do with it?
       description: |
         This is the question `exec.proto` asks of every field. A convincing answer is
         the difference between a proposal that can be accepted and one that cannot.

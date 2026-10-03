@@ -23,13 +23,13 @@ import (
 // ssh'ın asıl mesajı yakalanıyordu, ama yalnızca bağlantı KAPANIRKEN
 // okunuyordu; gRPC o ana kadar EOF'u çoktan kendi mesajına çevirmiş
 // oluyordu. 30 Eylül'de gerçek CLI'da ölçüldü: `kadran status
-// panely-client@yok-boyle-bir-sunucu.invalid` bu mesajı verdi (K-120).
+// kadran-client@yok-boyle-bir-sunucu.invalid` bu mesajı verdi (K-120).
 //
 // "Host key verification failed" de aynı yoldan kayboluyordu. Kullanıcı
 // sunucunun kimliği değişti uyarısını değil, anlaşılmaz bir gRPC hatası
 // görüyordu.
 
-const reddedildi = "panely-client@sunucu: Permission denied (publickey)."
+const reddedildi = "kadran-client@sunucu: Permission denied (publickey)."
 
 func sahteSSH(t *testing.T, env map[string]string) {
 	t.Helper()
@@ -50,7 +50,7 @@ func sahteSSH(t *testing.T, env map[string]string) {
 func TestSSHFailureReachesTheReader(t *testing.T) {
 	sahteSSH(t, map[string]string{fakeSSHFailEnv: reddedildi})
 
-	conn, err := dialSSH(context.Background(), Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+	conn, err := dialSSH(context.Background(), Target{SSHUser: "kadran-client", SSHHost: "sunucu"})
 	if err != nil {
 		t.Fatalf("ssh başlatılamadı: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestSSHFailureReachesTheReader(t *testing.T) {
 func TestSSHFailureReachesTheUser(t *testing.T) {
 	sahteSSH(t, map[string]string{fakeSSHFailEnv: reddedildi})
 
-	c, err := Dial(Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+	c, err := Dial(Target{SSHUser: "kadran-client", SSHHost: "sunucu"})
 	if err != nil {
 		t.Fatalf("istemci kurulamadı: %v", err)
 	}
@@ -99,7 +99,7 @@ func TestSSHFailureIsBoundedWhenAChildHoldsStderr(t *testing.T) {
 		}
 	})
 
-	conn, err := dialSSH(context.Background(), Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+	conn, err := dialSSH(context.Background(), Target{SSHUser: "kadran-client", SSHHost: "sunucu"})
 	if err != nil {
 		t.Fatalf("ssh başlatılamadı: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSSHFailureIsBoundedWhenAChildHoldsStderr(t *testing.T) {
 func TestCleanSSHExitIsPlainEOF(t *testing.T) {
 	sahteSSH(t, map[string]string{fakeSSHCleanEnv: "1"})
 
-	conn, err := dialSSH(context.Background(), Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+	conn, err := dialSSH(context.Background(), Target{SSHUser: "kadran-client", SSHHost: "sunucu"})
 	if err != nil {
 		t.Fatalf("ssh başlatılamadı: %v", err)
 	}

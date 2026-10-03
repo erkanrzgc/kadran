@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // records, günlüğün tamamını okur.
@@ -22,7 +22,7 @@ func records(t *testing.T, srv *Server) []audit.Record {
 // AUDIT_OUTCOME_DENIED ile yazıldığını doğrular.
 //
 // Reddedilen istek ayrıcalıklı hiçbir şey yapmaz, ama güvenlik modelinin
-// DEVREYE GİRDİĞİ andır: ele geçirilmiş bir panelyd'nin şemayı zorlama
+// DEVREYE GİRDİĞİ andır: ele geçirilmiş bir kadrand'nin şemayı zorlama
 // denemeleri ancak böyle görünür olur. Kaydedilmezse saldırı denemesi
 // hiçbir iz bırakmaz.
 func TestRejectedRequestIsAudited(t *testing.T) {
@@ -124,19 +124,19 @@ func TestAuditKeepsCommitSHA(t *testing.T) {
 // TestReadOnlyCallsAreNotAudited, salt okunur uçların günlüğe
 // YAZMADIĞINI doğrular.
 //
-// panelyd bu uçları durum ekranı için düzenli olarak çağırır. Her çağrıyı
+// kadrand bu uçları durum ekranı için düzenli olarak çağırır. Her çağrıyı
 // kaydetmek günlüğü gürültüyle doldurur ve asıl ayrıcalıklı işlemleri
 // görünmez kılar; her şeyi kaydeden bir günlük hiçbir şey kaydetmemeye
 // yaklaşır.
 func TestReadOnlyCallsAreNotAudited(t *testing.T) {
 	srv := newTestServer(t)
 
-	if _, err := srv.Ping(t.Context(), &panelyv1.ExecutorServicePingRequest{}); err != nil {
+	if _, err := srv.Ping(t.Context(), &kadranv1.ExecutorServicePingRequest{}); err != nil {
 		t.Fatal(err)
 	}
 	// ContainerList sürücüye ulaşır ve orada hata alır (soket yok); yine
 	// de kaydedilmemeli.
-	_, _ = srv.ContainerList(t.Context(), &panelyv1.ContainerListRequest{AppId: "blog"})
+	_, _ = srv.ContainerList(t.Context(), &kadranv1.ContainerListRequest{AppId: "blog"})
 
 	if recs := records(t, srv); len(recs) != 0 {
 		t.Errorf("salt okunur çağrılar %d kayıt yazdı", len(recs))

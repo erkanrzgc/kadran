@@ -25,7 +25,7 @@ type Prober interface {
 // probeBodyLimit, yanıt gövdesinden okunacak en fazla bayt.
 //
 // Gövdeyi hiç okumamak bağlantının yeniden kullanılmasını engeller;
-// tamamını okumak ise sağlıksız bir uygulamanın sonsuz akışıyla panelyd'nin
+// tamamını okumak ise sağlıksız bir uygulamanın sonsuz akışıyla kadrand'nin
 // belleğini bitirmesine izin verir. Sağlık yanıtı için 4 KB fazlasıyla
 // yeter.
 const probeBodyLimit = 4 << 10
@@ -44,7 +44,7 @@ type HTTPProber struct{ client *http.Client }
 //
 // ── Yönlendirme İZLENMİYOR ──────────────────────────────────────────
 //
-// İzlenseydi, dağıtılan uygulama 302 döndürerek panelyd'ye istediği
+// İzlenseydi, dağıtılan uygulama 302 döndürerek kadrand'ye istediği
 // adrese istek attırabilirdi: kontrol düzlemi, iş yükünün seçtiği bir
 // hedefe bağlanan bir araca dönüşürdü. Birimdeki `IPAddressAllow` bunu
 // ikinci katmanda da kapatıyor, ama savunma burada başlıyor.

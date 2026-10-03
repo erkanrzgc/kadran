@@ -11,7 +11,7 @@ import "strings"
 // Özel depoları derleyebilmek için hostta bir git kimlik bilgisi duruyor
 // ve dockerd onu kullanıyor (ölçüldü: dockerd root'un credential
 // helper'ına danışıyor, bkz. K-056). Kimlik bilgisi RPC'den GEÇMİYOR —
-// bu iyi — ama bir bedeli var: token'ın erişebildiği HER depo, Panely'nin
+// bu iyi — ama bir bedeli var: token'ın erişebildiği HER depo, Kadran'ın
 // de erişebildiği depo hâline geliyor.
 //
 // Somut saldırı: ImageBuild çağırabilen biri owner/repo'yu kurbanın özel

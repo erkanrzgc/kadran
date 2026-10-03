@@ -1,14 +1,14 @@
 package execclient
 
 import (
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 )
 
 // ── Neden bu dönüşümler pbconv'da DEĞİL ─────────────────────────────
 //
-// `internal/pbconv` her iki yönü de taşıyordu ve `cmd/panely-exec`'in
+// `internal/pbconv` her iki yönü de taşıyordu ve `cmd/kadran-exec`'in
 // içe aktarma grafiğinde — yani ayrıcalıklı yüzey bütçesine yazılıyor
 // (scripts/check-exec-surface.sh).
 //
@@ -25,7 +25,7 @@ import (
 // seçeneği aranmalı. Arandı ve bulundu (K-053).
 
 // auditRecordsFromProto, protobuf kayıt dilimini iç kayda çevirir.
-func auditRecordsFromProto(msgs []*panelyv1.AuditRecord) []audit.Record {
+func auditRecordsFromProto(msgs []*kadranv1.AuditRecord) []audit.Record {
 	if len(msgs) == 0 {
 		return nil
 	}
@@ -40,7 +40,7 @@ func auditRecordsFromProto(msgs []*panelyv1.AuditRecord) []audit.Record {
 //
 // Hash alanları beklenen uzunlukta değilse sıfır bırakılır; doğrulama
 // audit.Verifier'ın işidir ve orada zaten başarısız olur.
-func auditRecordFromProto(m *panelyv1.AuditRecord) audit.Record {
+func auditRecordFromProto(m *kadranv1.AuditRecord) audit.Record {
 	if m == nil {
 		return audit.Record{}
 	}
@@ -68,13 +68,13 @@ func auditRecordFromProto(m *panelyv1.AuditRecord) audit.Record {
 	return rec
 }
 
-func outcomeFromProto(o panelyv1.AuditOutcome) audit.Outcome {
+func outcomeFromProto(o kadranv1.AuditOutcome) audit.Outcome {
 	switch o {
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS:
 		return audit.OutcomeSuccess
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_FAILURE:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_FAILURE:
 		return audit.OutcomeFailure
-	case panelyv1.AuditOutcome_AUDIT_OUTCOME_DENIED:
+	case kadranv1.AuditOutcome_AUDIT_OUTCOME_DENIED:
 		return audit.OutcomeDenied
 	default:
 		// Sıfır değer geçersizdir ve audit.Verifier tarafından reddedilir.
@@ -84,11 +84,11 @@ func outcomeFromProto(o panelyv1.AuditOutcome) audit.Outcome {
 	}
 }
 
-func sourceFromProto(s panelyv1.AuditSource) audit.Source {
+func sourceFromProto(s kadranv1.AuditSource) audit.Source {
 	switch s {
-	case panelyv1.AuditSource_AUDIT_SOURCE_DAEMON:
+	case kadranv1.AuditSource_AUDIT_SOURCE_DAEMON:
 		return audit.SourceDaemon
-	case panelyv1.AuditSource_AUDIT_SOURCE_EXECUTOR:
+	case kadranv1.AuditSource_AUDIT_SOURCE_EXECUTOR:
 		return audit.SourceExecutor
 	default:
 		return audit.Source(0)

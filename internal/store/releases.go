@@ -11,7 +11,7 @@ import (
 
 // ReleaseStatus, bir sürümün yaşam döngüsündeki yeridir.
 //
-// Değerler panelyv1.ReleaseStatus ve göç 0002'deki CHECK ile AYNI olmak
+// Değerler kadranv1.ReleaseStatus ve göç 0002'deki CHECK ile AYNI olmak
 // zorundadır; üçü de aynı sayıları kullanır.
 type ReleaseStatus int
 

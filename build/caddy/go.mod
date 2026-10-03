@@ -1,5 +1,5 @@
-// Panely'nin ters vekili AYRI bir modüldür; gerekçe main.go'da.
-module github.com/erkanrzgc/panely/build/caddy
+// Kadran'ın ters vekili AYRI bir modüldür; gerekçe main.go'da.
+module github.com/erkanrzgc/kadran/build/caddy
 
 go 1.25.1
 

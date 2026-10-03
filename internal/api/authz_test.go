@@ -16,13 +16,13 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/erkanrzgc/kadran/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Yetki ayrımı (K-131) ─────────────────────────────────────────────
 //
 // Bu testler yetki fonksiyonunu değil KABLOLAMAYI sınar: sunucu,
-// panelyd'nin main.go'da kullandığı NewGRPCServer ile kuruluyor ve
+// kadrand'nin main.go'da kullandığı NewGRPCServer ile kuruluyor ve
 // istekler gerçek gRPC'den, gerçek önsözle geçiyor. Yalnızca SO_PEERCRED
 // aşaması sahte (kabulEdenPeer); unix soketi Windows'ta yok.
 //
@@ -74,7 +74,7 @@ func cagir(t *testing.T, conn *grpc.ClientConn, method string, stream *grpc.Stre
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	full := "/" + panelyv1.PanelyService_ServiceDesc.ServiceName + "/" + method
+	full := "/" + kadranv1.KadranService_ServiceDesc.ServiceName + "/" + method
 	if stream == nil {
 		return status.Code(conn.Invoke(ctx, full, &emptypb.Empty{}, &emptypb.Empty{}))
 	}
@@ -101,10 +101,10 @@ func cagir(t *testing.T, conn *grpc.ClientConn, method string, stream *grpc.Stre
 func herYontem(t *testing.T, conn *grpc.ClientConn) map[string]codes.Code {
 	t.Helper()
 	got := map[string]codes.Code{}
-	for _, m := range panelyv1.PanelyService_ServiceDesc.Methods {
+	for _, m := range kadranv1.KadranService_ServiceDesc.Methods {
 		got[m.MethodName] = cagir(t, conn, m.MethodName, nil)
 	}
-	for _, s := range panelyv1.PanelyService_ServiceDesc.Streams {
+	for _, s := range kadranv1.KadranService_ServiceDesc.Streams {
 		desc := &grpc.StreamDesc{
 			StreamName: s.StreamName, ServerStreams: s.ServerStreams, ClientStreams: s.ClientStreams,
 		}
@@ -138,12 +138,12 @@ func TestDeployKeyScope(t *testing.T) {
 	conn := yetkiIstemcisi(t, connproto.Identity{
 		Origin: "ssh", Role: connproto.RoleDeploy, Apps: []string{"web"},
 	})
-	rpc := panelyv1.NewPanelyServiceClient(conn)
+	rpc := kadranv1.NewKadranServiceClient(conn)
 
 	kod := func(app string) codes.Code {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		st, err := rpc.Deploy(ctx, &panelyv1.DeployRequest{
+		st, err := rpc.Deploy(ctx, &kadranv1.DeployRequest{
 			AppId: app, CommitSha: strings.Repeat("a", 40),
 		})
 		if err != nil {
@@ -193,8 +193,8 @@ func TestDeployAllowlistIsExact(t *testing.T) {
 	}
 	sort.Strings(got)
 	want := []string{
-		panelyv1.PanelyService_Deploy_FullMethodName,
-		panelyv1.PanelyService_Ping_FullMethodName,
+		kadranv1.KadranService_Deploy_FullMethodName,
+		kadranv1.KadranService_Ping_FullMethodName,
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("dağıtım izin listesi = %q, beklenen %q", got, want)
@@ -205,7 +205,7 @@ func TestDeployAllowlistIsExact(t *testing.T) {
 // sıkışmada düşer ve günlüğe yazılır (K-095).
 func TestInvalidRoleIsRejectedAtHandshake(t *testing.T) {
 	for _, id := range []connproto.Identity{
-		{Origin: "ssh"},                             // rolsüz: eski panely-connect
+		{Origin: "ssh"},                             // rolsüz: eski kadran-connect
 		{Origin: "ssh", Role: "root"},               // bilinmeyen
 		{Origin: "ssh", Role: connproto.RoleDeploy}, // kapsamsız
 	} {
@@ -245,12 +245,12 @@ func TestInterceptorRejectsInvalidRolePastHandshake(t *testing.T) {
 		{Origin: "ssh"},
 		{Origin: "ssh", Role: "root"},
 	} {
-		ran, err := birimCagri(id, panelyv1.PanelyService_Ping_FullMethodName, &panelyv1.PingRequest{})
+		ran, err := birimCagri(id, kadranv1.KadranService_Ping_FullMethodName, &kadranv1.PingRequest{})
 		if ran || status.Code(err) != codes.PermissionDenied {
 			t.Errorf("%+v: işleyici koştu=%v, hata=%v; PermissionDenied bekleniyordu", id, ran, err)
 		}
 	}
-	if ran, err := birimCagri(connproto.Identity{}, panelyv1.PanelyService_Ping_FullMethodName, nil); ran || err == nil {
+	if ran, err := birimCagri(connproto.Identity{}, kadranv1.KadranService_Ping_FullMethodName, nil); ran || err == nil {
 		t.Errorf("kimliksiz bağlam kabul edildi (koştu=%v, hata=%v)", ran, err)
 	}
 }
@@ -260,15 +260,15 @@ func TestInterceptorRejectsInvalidRolePastHandshake(t *testing.T) {
 // eklendiği gün delik olmasın diye burada Deploy'un denetimiyle sınanıyor.
 func TestUnaryScopeIsChecked(t *testing.T) {
 	id := connproto.Identity{Origin: "ssh", Role: connproto.RoleDeploy, Apps: []string{"web"}}
-	m := panelyv1.PanelyService_Deploy_FullMethodName
+	m := kadranv1.KadranService_Deploy_FullMethodName
 
-	if ran, err := birimCagri(id, m, &panelyv1.DeployRequest{AppId: "baska"}); ran || status.Code(err) != codes.PermissionDenied {
+	if ran, err := birimCagri(id, m, &kadranv1.DeployRequest{AppId: "baska"}); ran || status.Code(err) != codes.PermissionDenied {
 		t.Errorf("kapsam dışı: koştu=%v, hata=%v", ran, err)
 	}
-	if ran, err := birimCagri(id, m, &panelyv1.PingRequest{}); ran || status.Code(err) != codes.PermissionDenied {
+	if ran, err := birimCagri(id, m, &kadranv1.PingRequest{}); ran || status.Code(err) != codes.PermissionDenied {
 		t.Errorf("yanlış istek tipi: koştu=%v, hata=%v", ran, err)
 	}
-	if ran, err := birimCagri(id, m, &panelyv1.DeployRequest{AppId: "web"}); !ran || err != nil {
+	if ran, err := birimCagri(id, m, &kadranv1.DeployRequest{AppId: "web"}); !ran || err != nil {
 		t.Errorf("kapsam içi: koştu=%v, hata=%v — kontrol grubu", ran, err)
 	}
 }

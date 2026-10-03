@@ -25,7 +25,7 @@ const Redacted = "[REDACTED]"
 // ayarlandı" sorusu yanıtlanabilir kalır, "değerleri neydi" sorusu ise
 // zaten denetim günlüğünün yanıtlaması gereken bir soru değildir.
 //
-// ⚠ Karışık parametre haritaları (panely'nin KENDİ ürettiği anahtarlar)
+// ⚠ Karışık parametre haritaları (kadran'ın KENDİ ürettiği anahtarlar)
 // için ayrı bir politika var ve o KASITLI olarak bu pakette değil:
 // `internal/api` içindeki `redactSensitive`. Gerekçesi orada yazılı —
 // ayrıcalıklı ikili onu hiç çağırmıyor, bu yüzden ayrıcalıklı yüzeyde

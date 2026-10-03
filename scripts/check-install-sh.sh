@@ -43,30 +43,30 @@ echo "== yonetici_satiri_yaz: authorized_keys (K-131) =="
 D="$(mktemp -d)"
 trap 'rm -f "$FN"; rm -rf "$D"' EXIT
 YON='ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIYonetici erkan@dizustu'
-CI_SATIRI='command="/usr/local/lib/panely/panely-connect -deploy=site",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDagitim ci'
+CI_SATIRI='command="/usr/local/lib/kadran/kadran-connect -deploy=site",restrict ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDagitim ci'
 printf '%s\n' "$YON" > "$D/yon.pub"
 printf '%s\n%s\n' "$YON" 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIkinci baska' > "$D/iki.pub"
 printf '%s\r\n' "$YON" > "$D/cr.pub"
 # Her senaryo kendi dosyasıyla: önce eski bir yönetici satırı ve bir
 # dağıtım satırı var (yükseltme anı).
 hazirla() {
-    printf '%s\n%s\n' "command=\"/eski/panely-connect\",restrict $YON" "$CI_SATIRI" > "$D/$1"
+    printf '%s\n%s\n' "command=\"/eski/kadran-connect\",restrict $YON" "$CI_SATIRI" > "$D/$1"
 }
 ys() { printf "set -euo pipefail; source '%s'; %s" "$FN" "$1"; }
 
 hazirla ak1
 dene "dağıtım satırı yeniden kurulumda KORUNUYOR" \
-    "$(ys "yonetici_satiri_yaz '$D/ak1' '$D/yon.pub' /usr/local/lib/panely; grep -qxF '$CI_SATIRI' '$D/ak1'")"
+    "$(ys "yonetici_satiri_yaz '$D/ak1' '$D/yon.pub' /usr/local/lib/kadran; grep -qxF '$CI_SATIRI' '$D/ak1'")"
 hazirla ak2
 dene "yönetici satırı DEĞİŞİYOR, iki kez koşunca da tek satır" \
-    "$(ys "yonetici_satiri_yaz '$D/ak2' '$D/yon.pub' /usr/local/lib/panely; yonetici_satiri_yaz '$D/ak2' '$D/yon.pub' /usr/local/lib/panely; [ \"\$(grep -c AAAAIYonetici '$D/ak2')\" -eq 1 ]; grep -qxF 'command=\"/usr/local/lib/panely/panely-connect\",restrict $YON' '$D/ak2'; ! grep -q /eski/ '$D/ak2'")"
+    "$(ys "yonetici_satiri_yaz '$D/ak2' '$D/yon.pub' /usr/local/lib/kadran; yonetici_satiri_yaz '$D/ak2' '$D/yon.pub' /usr/local/lib/kadran; [ \"\$(grep -c AAAAIYonetici '$D/ak2')\" -eq 1 ]; grep -qxF 'command=\"/usr/local/lib/kadran/kadran-connect\",restrict $YON' '$D/ak2'; ! grep -q /eski/ '$D/ak2'")"
 hazirla ak3
 cp "$D/ak3" "$D/ak3.once"
 dene "iki satırlı anahtar REDDEDİLİYOR ve dosyaya dokunulmuyor" \
-    "$(ys "if yonetici_satiri_yaz '$D/ak3' '$D/iki.pub' /usr/local/lib/panely; then exit 1; fi; cmp -s '$D/ak3' '$D/ak3.once'")"
+    "$(ys "if yonetici_satiri_yaz '$D/ak3' '$D/iki.pub' /usr/local/lib/kadran; then exit 1; fi; cmp -s '$D/ak3' '$D/ak3.once'")"
 hazirla ak4
 dene "CR taşıyan anahtar REDDEDİLİYOR" \
-    "$(ys "if yonetici_satiri_yaz '$D/ak4' '$D/cr.pub' /usr/local/lib/panely; then exit 1; fi; true")"
+    "$(ys "if yonetici_satiri_yaz '$D/ak4' '$D/cr.pub' /usr/local/lib/kadran; then exit 1; fi; true")"
 # Kontrol grubu: tek-satır denetimi olmasaydı iki satırlı dosya
 # authorized_keys'e kısıtsız ikinci bir satır yazardı.
 dene "KONTROL: denetimsiz yazım kısıtsız satır üretir" \
@@ -74,10 +74,10 @@ dene "KONTROL: denetimsiz yazım kısıtsız satır üretir" \
 
 echo
 echo "== kisitsiz_satir_sayisi: kurulum sonrası denetim (K-131) =="
-L=/usr/local/lib/panely
-printf '%s\n%s\n\n# yorum\n' "command=\"$L/panely-connect\",restrict $YON" "$CI_SATIRI" > "$D/temiz"
-printf '%s\n%s\n' "command=\"$L/panely-connect\",restrict $YON" 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIkinci baska' > "$D/kirli"
-printf '%s\n' "command=\"$L/panely-connect\" $YON" > "$D/restrictsiz"
+L=/usr/local/lib/kadran
+printf '%s\n%s\n\n# yorum\n' "command=\"$L/kadran-connect\",restrict $YON" "$CI_SATIRI" > "$D/temiz"
+printf '%s\n%s\n' "command=\"$L/kadran-connect\",restrict $YON" 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIkinci baska' > "$D/kirli"
+printf '%s\n' "command=\"$L/kadran-connect\" $YON" > "$D/restrictsiz"
 printf '%s\n' "command=\"/bin/sh\",restrict $YON" > "$D/baska-komut"
 : > "$D/bos"
 dene "yönetici + dağıtım + yorum + boş satır → 0" \

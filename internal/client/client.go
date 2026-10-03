@@ -1,10 +1,10 @@
-// Package client, iş istasyonundan panelyd'ye bağlanmayı sağlar.
+// Package client, iş istasyonundan kadrand'ye bağlanmayı sağlar.
 //
 // İki taşıma desteklenir:
 //
-//   - SSH: `ssh -T panely-client@host` alt süreç olarak çalıştırılır ve
+//   - SSH: `ssh -T kadran-client@host` alt süreç olarak çalıştırılır ve
 //     borularının üzerinden gRPC konuşulur. Sunucuda sshd bu boruları
-//     zorlanmış komuta (panely-connect) bağlar.
+//     zorlanmış komuta (kadran-connect) bağlar.
 //   - Yerel unix soketi: sunucunun kendisinde çalışırken kullanılır.
 //
 // Hiçbir durumda ağ portu açılmaz.
@@ -23,18 +23,23 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // DefaultSSHUser, bootstrap'in oluşturduğu yetkisiz istemci kullanıcısıdır.
-const DefaultSSHUser = "panely-client"
+const DefaultSSHUser = "kadran-client"
+
+// legacySSHUser, v0.4.0'dan önceki adı; göç (K-136) onu DefaultSSHUser yaptı.
+const legacySSHUser = "panely-client"
 
 // DefaultSocketPath, sunucudaki api soketidir.
-const DefaultSocketPath = "/run/panely/api.sock"
+const DefaultSocketPath = "/run/kadran/api.sock"
 
 // sshExitGrace, bağlantı kapandıktan sonra ssh alt sürecinin kendiliğinden
 // çıkması için tanınan süre. Dolarsa süreç öldürülür; asılı bir süreç
@@ -76,8 +81,8 @@ func (t Target) String() string {
 //
 // Kabul edilen biçimler:
 //
-//	/run/panely/api.sock        → yerel soket (mutlak yol)
-//	unix:///run/panely/api.sock → yerel soket (açık)
+//	/run/kadran/api.sock        → yerel soket (mutlak yol)
+//	unix:///run/kadran/api.sock → yerel soket (açık)
 //	kullanici@sunucu            → SSH
 //	kullanici@sunucu:2222       → SSH, özel port
 //	sunucu                      → SSH, varsayılan kullanıcı
@@ -120,6 +125,14 @@ func ParseTarget(s string) (Target, error) {
 	}
 	if err := rejectOptionLike(user, host); err != nil {
 		return Target{}, err
+	}
+	// v0.4.0'dan önceki istemci kullanıcısı. ssh'a gitseydi sebebini
+	// söylemeyen bir "Permission denied" görülürdü (K-136).
+	if user == legacySSHUser {
+		return Target{}, fmt.Errorf(
+			"client: v0.4.0'dan beri istemci kullanıcısı %s: %s@%s yazın "+
+				"(sunucu henüz eski sürümdeyse önce `kadran bootstrap` ile yükseltin)",
+			DefaultSSHUser, DefaultSSHUser, s[strings.Index(s, "@")+1:])
 	}
 	return Target{SSHUser: user, SSHHost: host, SSHPort: port}, nil
 }
@@ -211,17 +224,17 @@ func parsePort(s string) (int, error) {
 	return port, nil
 }
 
-// Client, panelyd'ye bağlı bir istemcidir.
+// Client, kadrand'ye bağlı bir istemcidir.
 type Client struct {
 	conn   *grpc.ClientConn
-	rpc    panelyv1.PanelyServiceClient
+	rpc    kadranv1.KadranServiceClient
 	target Target
 }
 
 // Dial, hedefe bağlanır.
 //
 // Bağlantı tembeldir: gerçek bağlantı ilk RPC'de kurulur. Bu kasıtlıdır —
-// SSH alt sürecini ancak gerçekten ihtiyaç duyulduğunda başlatmak, `panely
+// SSH alt sürecini ancak gerçekten ihtiyaç duyulduğunda başlatmak, `kadran
 // --help` gibi komutların sunucuya dokunmamasını sağlar.
 func Dial(target Target) (*Client, error) {
 	dialer, err := dialerFor(target)
@@ -229,7 +242,7 @@ func Dial(target Target) (*Client, error) {
 		return nil, err
 	}
 
-	conn, err := grpc.NewClient("passthrough:///panely",
+	conn, err := grpc.NewClient("passthrough:///kadran",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(dialer),
 	)
@@ -239,7 +252,7 @@ func Dial(target Target) (*Client, error) {
 
 	return &Client{
 		conn:   conn,
-		rpc:    panelyv1.NewPanelyServiceClient(conn),
+		rpc:    kadranv1.NewKadranServiceClient(conn),
 		target: target,
 	}, nil
 }
@@ -251,15 +264,15 @@ func (c *Client) Close() error { return c.conn.Close() }
 func (c *Client) Target() Target { return c.target }
 
 // RPC, alt seviye gRPC istemcisini döndürür.
-func (c *Client) RPC() panelyv1.PanelyServiceClient { return c.rpc }
+func (c *Client) RPC() kadranv1.KadranServiceClient { return c.rpc }
 
 // dialerFor, hedefe uygun bağlantı kurucuyu üretir.
 //
 // # Önsöz asimetrisi — kasıtlı
 //
 // Yerel yol kimlik önsözünü KENDİ yazar; SSH yolu yazmaz. SSH'ta önsözü
-// sunucu tarafında panely-connect yazıyor (bkz. cmd/panely-connect).
-// Burada da yazmak iki önsöz üretirdi: panelyd ilkini okur, ardından
+// sunucu tarafında kadran-connect yazıyor (bkz. cmd/kadran-connect).
+// Burada da yazmak iki önsöz üretirdi: kadrand ilkini okur, ardından
 // HTTP/2 beklediği yerde dört baytlık bir uzunluk artı JSON bulurdu ve
 // bağlantı kurulmadan ölürdü.
 func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error) {
@@ -312,17 +325,17 @@ func dialLocal(ctx context.Context, path string) (net.Conn, error) {
 // # Bu, önsözü uydurulabilir yapmıyor mu?
 //
 // Hayır — çünkü uydurma zaten mümkündü ve bu kod onu kolaylaştırmıyor.
-// Önsözün bütünlüğü "api.sock'a yalnızca panely-connect yazabilir"
+// Önsözün bütünlüğü "api.sock'a yalnızca kadran-connect yazabilir"
 // varsayımına DAYANMAZ; "SSH_USER_AUTH'ı yalnızca sshd ayarlayabilir"
 // varsayımına dayanır. İstemci kullanıcısı olarak rastgele kod
-// çalıştırabilen biri panely-connect'i düzmece bir ortamla çağırıp
+// çalıştırabilen biri kadran-connect'i düzmece bir ortamla çağırıp
 // istediği kimliği zaten yazdırabilir; yerel yol yeni bir yüzey açmıyor.
 //
 // Sabit tutmanın nedeni budur: kimlik uydurmak bir sömürü adımı olarak
 // kalmalı, hazır bir kod yolu haline gelmemeli.
 //
-// Rol yönetici: sokete yerelden ulaşabilen, panely-client grubunda bir
-// sunucu kullanıcısıdır. Rolsüz önsözü panelyd reddeder (K-131).
+// Rol yönetici: sokete yerelden ulaşabilen, kadran-client grubunda bir
+// sunucu kullanıcısıdır. Rolsüz önsözü kadrand reddeder (K-131).
 func localIdentity() connproto.Identity {
 	return connproto.Identity{Origin: "local", Role: connproto.RoleAdmin}
 }
@@ -336,7 +349,7 @@ var sshCommand = "ssh"
 
 // dialSSH, `ssh` alt sürecini başlatır ve borularını net.Conn'a sarar.
 //
-// Buraya kimlik önsözü YAZILMAZ; sunucuda panely-connect yazıyor.
+// Buraya kimlik önsözü YAZILMAZ; sunucuda kadran-connect yazıyor.
 // Gerekçe için dialerFor'daki "önsöz asimetrisi" notuna bakın.
 func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 	// ParseTarget tek savunma olsaydı, doğrudan kurulan bir Target
@@ -479,8 +492,16 @@ func (b *syncBuffer) String() string {
 //
 // Protokol sürümü farklıysa bağlantı reddedilir: uyumsuz sözleşmelerle
 // konuşmak, sessizce yanlış davranmaktan iyidir.
-func (c *Client) CheckProtocol(ctx context.Context) (*panelyv1.PingResponse, error) {
-	resp, err := c.rpc.Ping(ctx, &panelyv1.PingRequest{ClientVersion: version.Version})
+func (c *Client) CheckProtocol(ctx context.Context) (*kadranv1.PingResponse, error) {
+	resp, err := c.rpc.Ping(ctx, &kadranv1.PingRequest{ClientVersion: version.Version})
+	if status.Code(err) == codes.Unimplemented {
+		// v0.4.0'dan önceki sunucular `panely.v1` konuşuyor; `kadran.v1`
+		// servisini tanımıyorlar ve Ping'e bile cevap veremiyorlar (K-136).
+		return nil, fmt.Errorf(
+			"sunucu bu istemcinin servisini tanımıyor: büyük ihtimalle v0.4.0'dan "+
+				"eski (panely adlı) bir kurulum. Önce sunucuyu bu sürümle yükseltin: "+
+				"kadran bootstrap (eski kurulum yerinde taşınır). Ayrıntı: %w", err)
+	}
 	if err != nil {
 		return nil, err
 	}

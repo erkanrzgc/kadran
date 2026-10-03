@@ -16,11 +16,11 @@ cd "$(dirname "$0")/.."
 AUTHZ=internal/api/authz.go
 CRED=internal/api/credentials.go
 ROLE=internal/connproto/role.go
-CONN=cmd/panely-connect/main.go
+CONN=cmd/kadran-connect/main.go
 LOCAL=internal/client/client.go
 DEPLOY=cmd/kadran/deploy.go
 SSHENV=internal/sshenv/sshenv.go
-PKGS=(./internal/api/ ./internal/connproto/ ./cmd/panely-connect/ ./internal/client/ ./cmd/kadran/ ./internal/sshenv/)
+PKGS=(./internal/api/ ./internal/connproto/ ./cmd/kadran-connect/ ./internal/client/ ./cmd/kadran/ ./internal/sshenv/)
 TESTS='TestDeployKey|TestAdminReaches|TestDeployAllowlist|TestInvalidRole|TestInterceptorRejects|TestUnaryScope|TestAppIDPatternMatches|TestParseDeployScope|TestCheckRole|TestCanDeploy|TestRoleRoundTrips|TestNoFlagMeansAdmin|TestDeployFlagSetsScope|TestBadArguments|TestIdentityCarriesRole|TestLocalIdentityIsAdmin|TestParseReadsSSHUserAuthFile|TestFirstPublickeyLineWins|TestMalformedAuthInfo|TestMissingAuthInfo'
 FILES=("$AUTHZ" "$CRED" "$ROLE" "$CONN" "$LOCAL" "$DEPLOY" "$SSHENV")
 
@@ -99,10 +99,10 @@ echo "== İzin listesi =="
 
 # GetApp ortam değişkenlerinin DEĞERLERİNİ döndürüyor.
 mutate_in "$AUTHZ" "GetApp dağıtım anahtarına açık" \
-    "s=s.replace('\tpanelyv1.PanelyService_Ping_FullMethodName: nil,\n','\tpanelyv1.PanelyService_Ping_FullMethodName: nil,\n\tpanelyv1.PanelyService_GetApp_FullMethodName: nil,\n',1)"
+    "s=s.replace('\tkadranv1.KadranService_Ping_FullMethodName: nil,\n','\tkadranv1.KadranService_Ping_FullMethodName: nil,\n\tkadranv1.KadranService_GetApp_FullMethodName: nil,\n',1)"
 
 mutate_in "$AUTHZ" "StreamLogs dağıtım anahtarına açık" \
-    "s=s.replace('\tpanelyv1.PanelyService_Ping_FullMethodName: nil,\n','\tpanelyv1.PanelyService_Ping_FullMethodName: nil,\n\tpanelyv1.PanelyService_StreamLogs_FullMethodName: nil,\n',1)"
+    "s=s.replace('\tkadranv1.KadranService_Ping_FullMethodName: nil,\n','\tkadranv1.KadranService_Ping_FullMethodName: nil,\n\tkadranv1.KadranService_StreamLogs_FullMethodName: nil,\n',1)"
 
 mutate_in "$AUTHZ" "listede olmayan yöntem dağıtım anahtarına açık" \
     "s=s.replace('return id, nil, deny(id, method, \"bu anahtar yalnızca dağıtım yapabilir\")','return id, nil, nil',1)"
@@ -129,7 +129,7 @@ echo "== Rol doğrulaması =="
 mutate_in "$CRED" "el sıkışma rolü denetlemiyor" \
     "s=s.replace('if err := identity.CheckRole(); err != nil {','if err := identity.CheckRole(); false && err != nil {',1)"
 
-# Boş rol eski bir panely-connect ya da rolü yazmayı unutan bir kod yolu.
+# Boş rol eski bir kadran-connect ya da rolü yazmayı unutan bir kod yolu.
 mutate_in "$ROLE" "boş rol yönetici sayılıyor" \
     "s=s.replace('\tcase RoleAdmin:\n\t\tif len(id.Apps) != 0 {','\tcase RoleAdmin, \"\":\n\t\tif len(id.Apps) != 0 {',1)"
 
@@ -155,7 +155,7 @@ mutate_in "$ROLE" "dağıtım anahtarı her uygulamayı dağıtıyor" \
 mutate_in "$ROLE" "geçersiz kimlik dağıtabiliyor" \
     "s=s.replace('\tif id.CheckRole() != nil {\n\t\treturn false\n\t}','\tif false && id.CheckRole() != nil {\n\t\treturn false\n\t}',1)"
 
-echo "== panely-connect =="
+echo "== kadran-connect =="
 
 mutate_in "$CONN" "argümansız anahtar yönetici değil" \
     "s=s.replace('opts := options{role: connproto.RoleAdmin}','opts := options{}',1)"
@@ -183,7 +183,7 @@ echo "== Anahtar parmak izi (K-134: canlıda 56 kaydın 0'ında yoktu) =="
 mutate_in "$SSHENV" "parmak izi SSH_AUTH_INFO_0'dan okunuyor" \
     "s=s.replace('authFileKey(getenv(\"SSH_USER_AUTH\"), readFile)','authFileKey(getenv(\"SSH_AUTH_INFO_0\"), readFile)',1)"
 
-mutate_in "$CONN" "panely-connect kimlik dosyasını okumuyor" \
+mutate_in "$CONN" "kadran-connect kimlik dosyasını okumuyor" \
     "s=s.replace('sshenv.Parse(getenv, os.ReadFile)','sshenv.Parse(getenv, func(string) ([]byte, error) { return nil, os.ErrNotExist })',1)"
 
 mutate_in "$SSHENV" "açık anahtar dışı satır da çözülüyor" \

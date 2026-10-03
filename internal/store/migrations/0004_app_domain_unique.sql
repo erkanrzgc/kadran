@@ -7,7 +7,7 @@
 -- bağlı olurdu). Sonuç tek bir uygulamanın bozulması değil:
 --
 --   * o andan sonra hiçbir uzlaştırma başarılı olamaz
---   * panelyd yeniden başladığında sıfırdan uzlaştırır ve HİÇBİR rota
+--   * kadrand yeniden başladığında sıfırdan uzlaştırır ve HİÇBİR rota
 --     kurulamaz → sunucudaki BÜTÜN siteler düşer
 --
 -- Bunu bir doğrulayıcıya bırakmak, o doğrulayıcıyı atlayan her yolun

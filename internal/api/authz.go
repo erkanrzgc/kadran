@@ -10,7 +10,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/connproto"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Yetki ayrımı (K-131) ─────────────────────────────────────────────
@@ -34,10 +34,10 @@ type scopeCheck func(id connproto.Identity, req any) bool
 // ile çalışır; CI commit'i zaten biliyor ($GITHUB_SHA).
 var deployAllowed = map[string]scopeCheck{
 	// Bağlanırken protokol sürümü soruluyor (client.go).
-	panelyv1.PanelyService_Ping_FullMethodName: nil,
+	kadranv1.KadranService_Ping_FullMethodName: nil,
 
-	panelyv1.PanelyService_Deploy_FullMethodName: func(id connproto.Identity, req any) bool {
-		r, ok := req.(*panelyv1.DeployRequest)
+	kadranv1.KadranService_Deploy_FullMethodName: func(id connproto.Identity, req any) bool {
+		r, ok := req.(*kadranv1.DeployRequest)
 		return ok && id.CanDeploy(r.GetAppId())
 	},
 }
@@ -139,6 +139,6 @@ func NewGRPCServer(service *Server, creds credentials.TransportCredentials) *grp
 		grpc.ChainUnaryInterceptor(LoggingInterceptor(), AuthzUnaryInterceptor()),
 		grpc.ChainStreamInterceptor(AuthzStreamInterceptor()),
 	)
-	panelyv1.RegisterPanelyServiceServer(server, service)
+	kadranv1.RegisterKadranServiceServer(server, service)
 	return server
 }

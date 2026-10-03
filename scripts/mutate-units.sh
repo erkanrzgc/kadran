@@ -21,15 +21,15 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 FILES=(
-    deploy/systemd/panely-exec.service
-    deploy/systemd/panely-tmpfiles.conf
-    deploy/systemd/panely-offsite.service
-    deploy/systemd/panely-notify.service
-    deploy/systemd/panely-notify-failure@.service
-    deploy/systemd/panely-volume-backup.service
-    deploy/systemd/panely-volume-backup.timer
-    deploy/systemd/panely-caddy.service
-    deploy/systemd/panelyd.service
+    deploy/systemd/kadran-exec.service
+    deploy/systemd/kadran-tmpfiles.conf
+    deploy/systemd/kadran-offsite.service
+    deploy/systemd/kadran-notify.service
+    deploy/systemd/kadran-notify-failure@.service
+    deploy/systemd/kadran-volume-backup.service
+    deploy/systemd/kadran-volume-backup.timer
+    deploy/systemd/kadran-caddy.service
+    deploy/systemd/kadrand.service
 )
 BAK=$(mktemp -d)
 for f in "${FILES[@]}"; do cp "$f" "$BAK/$(basename "$f")"; done
@@ -115,50 +115,50 @@ echo "== Executor denetim günlüğü =="
 # eşleşmeyi, yani yorumu değiştiriyordu. Test yorumları okumadığı için
 # yeşil kaldı ve betik "KIRMIZI OLMADI" dedi — zayıf olan test değil
 # mutasyondu (K-080'in ikinci sebebi).
-mutate "günlük daemon'un dizinine geri taşındı" deploy/systemd/panely-exec.service \
-    "s=s.replace('\n    --journal /var/lib/panely-exec/exec-audit.log','\n    --journal /var/lib/panely/exec-audit.log',1)"
+mutate "günlük daemon'un dizinine geri taşındı" deploy/systemd/kadran-exec.service \
+    "s=s.replace('\n    --journal /var/lib/kadran-exec/exec-audit.log','\n    --journal /var/lib/kadran/exec-audit.log',1)"
 
-mutate "günlük dizini grup-yazılabilir" deploy/systemd/panely-tmpfiles.conf \
-    "s=s.replace('d /var/lib/panely-exec        0700 root   root   -','d /var/lib/panely-exec        0770 root   panely -',1)"
+mutate "günlük dizini grup-yazılabilir" deploy/systemd/kadran-tmpfiles.conf \
+    "s=s.replace('d /var/lib/kadran-exec        0700 root   root   -','d /var/lib/kadran-exec        0770 root   kadran -',1)"
 
-mutate "günlük dizininin sahibi panely" deploy/systemd/panely-tmpfiles.conf \
-    "s=s.replace('d /var/lib/panely-exec        0700 root   root   -','d /var/lib/panely-exec        0700 panely root   -',1)"
+mutate "günlük dizininin sahibi kadran" deploy/systemd/kadran-tmpfiles.conf \
+    "s=s.replace('d /var/lib/kadran-exec        0700 root   root   -','d /var/lib/kadran-exec        0700 kadran root   -',1)"
 
-mutate "günlük dizinini kimse yaratmıyor" deploy/systemd/panely-tmpfiles.conf \
-    "s=s.replace('d /var/lib/panely-exec        0700 root   root   -\n','',1)"
+mutate "günlük dizinini kimse yaratmıyor" deploy/systemd/kadran-tmpfiles.conf \
+    "s=s.replace('d /var/lib/kadran-exec        0700 root   root   -\n','',1)"
 
 echo "== Uzak yedek rclone yapılandırması =="
 
-mutate "RCLONE_CONFIG tanımlanmıyor" deploy/systemd/panely-offsite.service \
-    "s=s.replace('Environment=RCLONE_CONFIG=/etc/panely/rclone.conf\n','',1)"
+mutate "RCLONE_CONFIG tanımlanmıyor" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('Environment=RCLONE_CONFIG=/etc/kadran/rclone.conf\n','',1)"
 
-mutate "rclone yapılandırması daemon'un dizininde" deploy/systemd/panely-offsite.service \
-    "s=s.replace('Environment=RCLONE_CONFIG=/etc/panely/rclone.conf','Environment=RCLONE_CONFIG=/var/lib/panely/.config/rclone/rclone.conf',1)"
+mutate "rclone yapılandırması daemon'un dizininde" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('Environment=RCLONE_CONFIG=/etc/kadran/rclone.conf','Environment=RCLONE_CONFIG=/var/lib/kadran/.config/rclone/rclone.conf',1)"
 
 echo "== Uzak yedek DNS istisnası (K-107) =="
 
-mutate "DNS çözücüsü istisnası kaldırıldı" deploy/systemd/panely-offsite.service \
+mutate "DNS çözücüsü istisnası kaldırıldı" deploy/systemd/kadran-offsite.service \
     "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\n',1)"
 
-mutate "istisna tüm localhost'a genişletildi" deploy/systemd/panely-offsite.service \
+mutate "istisna tüm localhost'a genişletildi" deploy/systemd/kadran-offsite.service \
     "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\nIPAddressAllow=localhost\n',1)"
 
-mutate "istisna 127.0.0.0/8'e genişletildi" deploy/systemd/panely-offsite.service \
+mutate "istisna 127.0.0.0/8'e genişletildi" deploy/systemd/kadran-offsite.service \
     "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\nIPAddressAllow=127.0.0.53 127.0.0.0/8\n',1)"
 
 echo "== Alarm göndericisi (K-108) =="
 
-N=deploy/systemd/panely-notify.service
-NF=deploy/systemd/panely-notify-failure@.service
+N=deploy/systemd/kadran-notify.service
+NF=deploy/systemd/kadran-notify-failure@.service
 
-mutate "gönderici panely kullanıcısıyla koşuyor" "$N" \
-    "s=s.replace('\nDynamicUser=yes\n','\nUser=panely\n',1)"
+mutate "gönderici kadran kullanıcısıyla koşuyor" "$N" \
+    "s=s.replace('\nDynamicUser=yes\n','\nUser=kadran\n',1)"
 
 mutate "hata birimi DynamicUser'ı kaybetti" "$NF" \
     "s=s.replace('\nDynamicUser=yes\n','\n',1)"
 
 mutate "anahtar dosyası daemon'un dizininde" "$N" \
-    "s=s.replace('\nLoadCredential=notify:/etc/panely/notify.conf\n','\nLoadCredential=notify:/var/lib/panely/notify.conf\n',1)"
+    "s=s.replace('\nLoadCredential=notify:/etc/kadran/notify.conf\n','\nLoadCredential=notify:/var/lib/kadran/notify.conf\n',1)"
 
 mutate "journal grubu yok (alarmlar SESSİZCE görünmez)" "$N" \
     "s=s.replace('\nSupplementaryGroups=systemd-journal\n','\n',1)"
@@ -172,18 +172,18 @@ mutate "hata biriminde DNS istisnası yok" "$NF" \
 mutate "gönderici IPv6'ya çıkamıyor" "$N" \
     "s=s.replace('\nRestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX\n','\nRestrictAddressFamilies=AF_INET AF_UNIX\n',1)"
 
-mutate "uzak yedek arızası bildirilmiyor" deploy/systemd/panely-offsite.service \
-    "s=s.replace('\nOnFailure=panely-notify-failure@%n.service\n','\n',1)"
+mutate "uzak yedek arızası bildirilmiyor" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('\nOnFailure=kadran-notify-failure@%n.service\n','\n',1)"
 
-mutate "OnFailure olmayan bir birimi adlandırıyor" deploy/systemd/panely-offsite.service \
-    "s=s.replace('\nOnFailure=panely-notify-failure@%n.service\n','\nOnFailure=panely-notify-fail@%n.service\n',1)"
+mutate "OnFailure olmayan bir birimi adlandırıyor" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('\nOnFailure=kadran-notify-failure@%n.service\n','\nOnFailure=kadran-notify-fail@%n.service\n',1)"
 
 mutate "gönderici journal'ı dolduruyor" "$N" \
     "s=s.replace('\nLogLevelMax=notice\n','\n',1)"
 
 echo "== Hacim arşivleyicisi (K-111) =="
 
-H=deploy/systemd/panely-volume-backup.service
+H=deploy/systemd/kadran-volume-backup.service
 
 mutate "arşivleyici YAZMA yetkisi de aldı" "$H" \
     "s=s.replace('\nCapabilityBoundingSet=CAP_DAC_READ_SEARCH\n','\nCapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_DAC_OVERRIDE\n',1)"
@@ -194,34 +194,34 @@ mutate "arşivleyici Docker soketine bağlanabilir" "$H" \
 mutate "arşivleyici ağa çıkabilir" "$H" \
     "s=s.replace('\nPrivateNetwork=yes\n','\n',1)"
 
-mutate "arşivleyici panely kullanıcısıyla (daemon arşivi silebilir)" "$H" \
-    "s=s.replace('\nGroup=panely\n','\nUser=panely\nGroup=panely\n',1)"
+mutate "arşivleyici kadran kullanıcısıyla (daemon arşivi silebilir)" "$H" \
+    "s=s.replace('\nGroup=kadran\n','\nUser=kadran\nGroup=kadran\n',1)"
 
 mutate "arşivler daemon'un dizininde" "$H" \
-    "s=s.replace('\nStateDirectory=panely-volume-backup\n','\nStateDirectory=panely/volume-backup\n',1)"
+    "s=s.replace('\nStateDirectory=kadran-volume-backup\n','\nStateDirectory=kadran/volume-backup\n',1)"
 
 mutate "arşivleyici başka yere de yazabilir" "$H" \
-    "s=s.replace('\nProtectSystem=strict\n','\nProtectSystem=strict\nReadWritePaths=/var/lib/panely\n',1)"
+    "s=s.replace('\nProtectSystem=strict\n','\nProtectSystem=strict\nReadWritePaths=/var/lib/kadran\n',1)"
 
-mutate "arşivlere panely grubu yazabilir" "$H" \
+mutate "arşivlere kadran grubu yazabilir" "$H" \
     "s=s.replace('\nUMask=0027\n','\nUMask=0007\n',1)"
 
 mutate "hacim yedeği arızası bildirilmiyor" "$H" \
-    "s=s.replace('\nOnFailure=panely-notify-failure@%n.service\n','\n',1)"
+    "s=s.replace('\nOnFailure=kadran-notify-failure@%n.service\n','\n',1)"
 
-mutate "zamanlayıcı kaçan koşuyu atlıyor" deploy/systemd/panely-volume-backup.timer \
+mutate "zamanlayıcı kaçan koşuyu atlıyor" deploy/systemd/kadran-volume-backup.timer \
     "s=s.replace('\nPersistent=true\n','\nPersistent=false\n',1)"
 
 echo "== Ters vekilde reload yok (K-112) =="
 
-C=deploy/systemd/panely-caddy.service
+C=deploy/systemd/kadran-caddy.service
 
 mutate "ExecReload geri eklendi" "$C" \
-    "s=s.replace('\nExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json\n','\nExecStart=/usr/local/lib/panely/panely-caddy run --config /etc/panely/caddy.json\nExecReload=/usr/local/lib/panely/panely-caddy reload --config /etc/panely/caddy.json --force\n',1)"
+    "s=s.replace('\nExecStart=/usr/local/lib/kadran/kadran-caddy run --config /etc/kadran/caddy.json\n','\nExecStart=/usr/local/lib/kadran/kadran-caddy run --config /etc/kadran/caddy.json\nExecReload=/usr/local/lib/kadran/kadran-caddy reload --config /etc/kadran/caddy.json --force\n',1)"
 
 echo "== Daemon watchdog'u (K-115) =="
 
-P=deploy/systemd/panelyd.service
+P=deploy/systemd/kadrand.service
 
 mutate "WatchdogSec yok (tespit sessizce kapalı)" "$P" \
     "s=s.replace('\nWatchdogSec=60s\n','\n',1)"

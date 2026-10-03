@@ -48,7 +48,7 @@ func backupsOf(t *testing.T, dbPath string) []string {
 // TestFreshDatabaseTakesNoBackup, yeni kurulumda boş bir kopya
 // üretilmediğini doğrular.
 func TestFreshDatabaseTakesNoBackup(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 	db, err := Open(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
@@ -72,7 +72,7 @@ func TestFreshDatabaseTakesNoBackup(t *testing.T) {
 // satırı okuyor — geri dönüşün kendisi ölçülüyor, varlığı değil.
 func TestBrokenMigrationIsRecoverableFromBackup(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 
 	// 1. Gerçek göçlerle aç ve GERÇEK veri yaz.
 	db, err := Open(ctx, path)
@@ -154,7 +154,7 @@ func TestBrokenMigrationIsRecoverableFromBackup(t *testing.T) {
 // satır içine girer; ezilmezse girmez. Ayrım artık gözlenebilir.
 func TestBackupIsNotOverwrittenOnRetry(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 
 	db, err := Open(ctx, path)
 	if err != nil {
@@ -220,7 +220,7 @@ func TestBackupIsNotOverwrittenOnRetry(t *testing.T) {
 // kendisi onu doldurmamalı.
 func TestBackupsArePruned(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "panely.db")
+	path := filepath.Join(dir, "kadran.db")
 
 	// backupKeep + 2 tane sahte yedek üret.
 	for i := 1; i <= backupKeep+2; i++ {

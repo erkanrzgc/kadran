@@ -43,12 +43,12 @@ func logYakala(t *testing.T) *bytes.Buffer {
 //
 // ── Neden var (K-095) ────────────────────────────────────────────────
 //
-// root ve panely api.sock'a bağlanınca reddediliyordu — doğru davranış —
+// root ve kadran api.sock'a bağlanınca reddediliyordu — doğru davranış —
 // ama journal'da TEK SATIR yoktu. gRPC el sıkışma hatalarını kendi
 // günlükçüsüne yazıyor ve o günlükçü varsayılan olarak sessiz. İstemci
 // tarafı yalnızca "connection reset by peer" görüyor.
 //
-// Sonuç: `usermod -aG panely-client` ile ikinci bir yönetici ekleyen
+// Sonuç: `usermod -aG kadran-client` ile ikinci bir yönetici ekleyen
 // operatör (SECURITY.md: SO_PEERCRED yalnızca BİRİNCİL grubu raporlar)
 // sunucu tarafında hiçbir iz bulamaz. Teşhis edilemeyen bir ret, yanlış
 // alarm kadar güven yakar.

@@ -11,15 +11,15 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // AuditRecordToProto, iç denetim kaydını protobuf mesajına çevirir.
-func AuditRecordToProto(r audit.Record) *panelyv1.AuditRecord {
-	return &panelyv1.AuditRecord{
+func AuditRecordToProto(r audit.Record) *kadranv1.AuditRecord {
+	return &kadranv1.AuditRecord{
 		Seq: r.Seq,
 		Ts:  timestamppb.New(r.TS),
-		Actor: &panelyv1.Actor{
+		Actor: &kadranv1.Actor{
 			SshKeyFingerprint: r.Actor.KeyFingerprint,
 			SourceIp:          r.Actor.SourceIP,
 			Label:             r.Actor.Label,
@@ -37,37 +37,37 @@ func AuditRecordToProto(r audit.Record) *panelyv1.AuditRecord {
 }
 
 // AuditRecordsToProto, kayıt dilimini çevirir.
-func AuditRecordsToProto(records []audit.Record) []*panelyv1.AuditRecord {
+func AuditRecordsToProto(records []audit.Record) []*kadranv1.AuditRecord {
 	if len(records) == 0 {
 		return nil
 	}
-	out := make([]*panelyv1.AuditRecord, 0, len(records))
+	out := make([]*kadranv1.AuditRecord, 0, len(records))
 	for _, r := range records {
 		out = append(out, AuditRecordToProto(r))
 	}
 	return out
 }
 
-func outcomeToProto(o audit.Outcome) panelyv1.AuditOutcome {
+func outcomeToProto(o audit.Outcome) kadranv1.AuditOutcome {
 	switch o {
 	case audit.OutcomeSuccess:
-		return panelyv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS
+		return kadranv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS
 	case audit.OutcomeFailure:
-		return panelyv1.AuditOutcome_AUDIT_OUTCOME_FAILURE
+		return kadranv1.AuditOutcome_AUDIT_OUTCOME_FAILURE
 	case audit.OutcomeDenied:
-		return panelyv1.AuditOutcome_AUDIT_OUTCOME_DENIED
+		return kadranv1.AuditOutcome_AUDIT_OUTCOME_DENIED
 	default:
-		return panelyv1.AuditOutcome_AUDIT_OUTCOME_UNSPECIFIED
+		return kadranv1.AuditOutcome_AUDIT_OUTCOME_UNSPECIFIED
 	}
 }
 
-func sourceToProto(s audit.Source) panelyv1.AuditSource {
+func sourceToProto(s audit.Source) kadranv1.AuditSource {
 	switch s {
 	case audit.SourceDaemon:
-		return panelyv1.AuditSource_AUDIT_SOURCE_DAEMON
+		return kadranv1.AuditSource_AUDIT_SOURCE_DAEMON
 	case audit.SourceExecutor:
-		return panelyv1.AuditSource_AUDIT_SOURCE_EXECUTOR
+		return kadranv1.AuditSource_AUDIT_SOURCE_EXECUTOR
 	default:
-		return panelyv1.AuditSource_AUDIT_SOURCE_UNSPECIFIED
+		return kadranv1.AuditSource_AUDIT_SOURCE_UNSPECIFIED
 	}
 }

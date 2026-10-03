@@ -47,14 +47,14 @@ var ErrNoPreviousDeployment = errors.New("geri alınacak önceki sürüm yok")
 // ⚠ Bu çağrı ters vekile DOKUNMAZ; yalnızca kontrol düzlemindeki gerçeği
 // günceller. Caddy'ye yükleme ayrı bir adım ve SIRASI ÖNEMLİ: önce
 // buraya yazılır, sonra yapılandırma üretilip yüklenir. Ters yapılsaydı,
-// arada düşen bir panelyd canlıda kayıtsız bir rota bırakırdı ve bir
+// arada düşen bir kadrand canlıda kayıtsız bir rota bırakırdı ve bir
 // sonraki uzlaştırma onu SESSİZCE silerdi.
 //
 // ── Ekle-sadece: eskisi KAPATILIR, yenisi EKLENİR ───────────────────
 //
 // Göç 0005'ten beri `deployments` bir GEÇMİŞ. Aktivasyon artık üzerine
 // yazmıyor; açık satır kapanıyor ve yeni bir satır açılıyor. İkisi TEK
-// transaction'da: arada düşen bir panelyd, uygulamayı hiç aktif sürümü
+// transaction'da: arada düşen bir kadrand, uygulamayı hiç aktif sürümü
 // olmayan bir durumda bırakırdı ve bir sonraki uzlaştırma siteyi
 // internetten düşürürdü.
 //

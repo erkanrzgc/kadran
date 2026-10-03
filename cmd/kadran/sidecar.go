@@ -13,7 +13,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/client"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -215,7 +215,7 @@ func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError)
 
 	case "status":
 		return s.withConn(ctx, req.Params, func(ctx context.Context, conn *client.Client) (any, error) {
-			info, err := conn.RPC().GetSystemInfo(ctx, &panelyv1.GetSystemInfoRequest{})
+			info, err := conn.RPC().GetSystemInfo(ctx, &kadranv1.GetSystemInfoRequest{})
 			if err != nil {
 				return nil, err
 			}
@@ -232,7 +232,7 @@ func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError)
 			return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
 		}
 		return s.withConn(ctx, req.Params, func(ctx context.Context, conn *client.Client) (any, error) {
-			resp, err := conn.RPC().ListAuditRecords(ctx, &panelyv1.ListAuditRecordsRequest{
+			resp, err := conn.RPC().ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{
 				AfterSeq: p.AfterSeq,
 				Limit:    p.Limit,
 			})
@@ -244,7 +244,7 @@ func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError)
 
 	case "audit.verify":
 		return s.withConn(ctx, req.Params, func(ctx context.Context, conn *client.Client) (any, error) {
-			resp, err := conn.RPC().VerifyAuditChain(ctx, &panelyv1.VerifyAuditChainRequest{})
+			resp, err := conn.RPC().VerifyAuditChain(ctx, &kadranv1.VerifyAuditChainRequest{})
 			if err != nil {
 				return nil, err
 			}

@@ -551,7 +551,7 @@ func TestAlarmClearsWhenAppRecovers(t *testing.T) {
 //
 // ── Neden bu ayrım önemli ───────────────────────────────────────────
 //
-// panelyd çöküp kalktığında bellekteki gözetim durumu sıfırlanır ama
+// kadrand çöküp kalktığında bellekteki gözetim durumu sıfırlanır ama
 // alarm satırı DİSKTE durur. Kapatmayı `st.unhealthy`'ye bağlasaydık,
 // yeniden başlatmadan sonra sağlıklı dönen bir uygulamanın alarmı
 // sonsuza kadar açık kalırdı — ve tam da o alarm, operatörün "bozuk"
@@ -576,7 +576,7 @@ func TestHealthyAppClearsAlarmEvenWithoutPriorFailure(t *testing.T) {
 //
 // Tur başı: uygulamasız bir sunucuda gözetmen hiçbir şey ziyaret etmez;
 // damga yalnızca ziyaretlerde tazelenseydi boş sunucu "takılmış" görünür
-// ve watchdog panelyd'yi boş yere yeniden başlatırdı.
+// ve watchdog kadrand'yi boş yere yeniden başlatırdı.
 //
 // Ziyaret başı: iyileştirme turun içinde uygulama uygulama koşuyor; tek
 // bir tur sonu damgası uygulama sayısıyla büyüyen meşru bir turu

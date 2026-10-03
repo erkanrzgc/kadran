@@ -1,4 +1,4 @@
-name: Panely derleme ortamı
+name: Kadran derleme ortamı
 description: >
   Go ve buf kurar, protobuf kodunu üretir. Üretilen kod depoda tutulmadığı
   için (.gitignore: *.pb.go) her iş bu adımı çalıştırmak zorunda.

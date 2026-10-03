@@ -12,14 +12,14 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-WSL_DISTRO="${PANELY_WSL_DISTRO:-Ubuntu}"
+WSL_DISTRO="${KADRAN_WSL_DISTRO:-Ubuntu}"
 OUT_DIR="bin/linux"
 
 echo "==> linux/amd64 binary'leri derleniyor"
 mkdir -p "$OUT_DIR"
-GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/panelyd" ./cmd/panelyd
+GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/kadrand" ./cmd/kadrand
 GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/kadran" ./cmd/kadran
-GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/panely-connect" ./cmd/panely-connect
+GOOS=linux GOARCH=amd64 go build -o "$OUT_DIR/kadran-connect" ./cmd/kadran-connect
 
 # Windows yolunu WSL'in gördüğü yola çevir: C:\x\y -> /mnt/c/x/y
 wsl_path() {

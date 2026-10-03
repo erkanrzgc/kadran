@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/dockerdrv"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/pbconv"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
@@ -32,7 +32,7 @@ type Server struct {
 	// allowedGitHosts, ImageBuild'in kabul ettiği kaynak sunucularıdır.
 	//
 	// Executor'ın YAPILANDIRMASINDAN gelir, istekten değil. Ele geçirilmiş
-	// bir panelyd listeye ekleme yapamamalıdır; `-docker-socket` ve
+	// bir kadrand listeye ekleme yapamamalıdır; `-docker-socket` ve
 	// `-owner-group` ile aynı desen.
 	allowedGitHosts []string
 
@@ -69,9 +69,9 @@ type ServerOptions struct {
 
 // DefaultVolumeRoot, uygulama hacimlerinin varsayılan köküdür.
 //
-// tmpfiles bu dizini oluşturur, var-lib-panely-volumes.mount birimi
+// tmpfiles bu dizini oluşturur, var-lib-kadran-volumes.mount birimi
 // `bind,nodev,nosuid` ile bağlar.
-const DefaultVolumeRoot = "/var/lib/panely/volumes"
+const DefaultVolumeRoot = "/var/lib/kadran/volumes"
 
 // NewServer, executor servisini oluşturur.
 func NewServer(opts ServerOptions) (*Server, error) {
@@ -104,7 +104,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 // Yalnızca DURUM DEĞİŞTİREN işlemler günlüğe yazılır. Ping, GetHostInfo ve
 // ReadAuditJournal salt okunurdur ve kaydedilmez.
 //
-// Gerekçe: panelyd bu uçları düzenli olarak çağırır (durum ekranı, zincir
+// Gerekçe: kadrand bu uçları düzenli olarak çağırır (durum ekranı, zincir
 // doğrulaması). Her çağrıyı kaydetmek günlüğü gürültüyle doldurur ve asıl
 // önemli olan ayrıcalıklı işlemleri görünmez kılar. Denetim günlüğünün
 // değeri okunabilirliğinde; her şeyi kaydeden bir günlük hiçbir şey
@@ -114,29 +114,29 @@ func NewServer(opts ServerOptions) (*Server, error) {
 // kaydedilir — reddedilenler dahil (AUDIT_OUTCOME_DENIED).
 
 // Ping, executor'ın canlılığını, sürümünü ve efektif kullanıcısını döner.
-func (s *Server) Ping(context.Context, *panelyv1.ExecutorServicePingRequest) (*panelyv1.ExecutorServicePingResponse, error) {
-	return &panelyv1.ExecutorServicePingResponse{
+func (s *Server) Ping(context.Context, *kadranv1.ExecutorServicePingRequest) (*kadranv1.ExecutorServicePingResponse, error) {
+	return &kadranv1.ExecutorServicePingResponse{
 		ExecutorVersion: version.Version,
 		ProtocolVersion: version.Protocol,
-		// Kurulum doğrulaması için: panelyd bu değeri kontrol ederek
+		// Kurulum doğrulaması için: kadrand bu değeri kontrol ederek
 		// executor'ın gerçekten ayrıcalıklı çalıştığını teyit eder.
 		EffectiveUid: uint32(os.Geteuid()), //nolint:gosec // uid daima 32 bite sığar
 	}, nil
 }
 
 // GetHostInfo, çekirdek, bellek ve Docker bilgisini döner. Salt okunur.
-func (s *Server) GetHostInfo(ctx context.Context, _ *panelyv1.GetHostInfoRequest) (*panelyv1.GetHostInfoResponse, error) {
-	return &panelyv1.GetHostInfoResponse{
+func (s *Server) GetHostInfo(ctx context.Context, _ *kadranv1.GetHostInfoRequest) (*kadranv1.GetHostInfoResponse, error) {
+	return &kadranv1.GetHostInfoResponse{
 		Host: collectHostInfo(ctx, s.docker),
 	}, nil
 }
 
 // ReadAuditJournal, executor'ın kendi denetim zincirini döner.
 //
-// panelyd bunu kendi SQLite zinciriyle karşılaştırmak için çağırır.
+// kadrand bunu kendi SQLite zinciriyle karşılaştırmak için çağırır.
 // Journal.Read her çağrıda zinciri seq 1'den yeniden doğruladığı için
 // buradan dönen kayıtlar okuma anında kanıtlanmış olur.
-func (s *Server) ReadAuditJournal(_ context.Context, req *panelyv1.ReadAuditJournalRequest) (*panelyv1.ReadAuditJournalResponse, error) {
+func (s *Server) ReadAuditJournal(_ context.Context, req *kadranv1.ReadAuditJournalRequest) (*kadranv1.ReadAuditJournalResponse, error) {
 	records, err := s.journal.Read(req.GetAfterSeq(), int(req.GetLimit()))
 	if err != nil {
 		// Zincir doğrulanamıyorsa bu bir iç tutarsızlık değil, güvenlik
@@ -145,7 +145,7 @@ func (s *Server) ReadAuditJournal(_ context.Context, req *panelyv1.ReadAuditJour
 	}
 
 	latestSeq, _ := s.journal.Head()
-	return &panelyv1.ReadAuditJournalResponse{
+	return &kadranv1.ReadAuditJournalResponse{
 		Records:   pbconv.AuditRecordsToProto(records),
 		LatestSeq: latestSeq,
 	}, nil

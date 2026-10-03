@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { SidecarClient } from "../shared/sidecar-client.ts";
 import type { SidecarProcess } from "../shared/sidecar-client.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
-import { loadProfiles, saveProfiles } from "./profiles.ts";
+import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
 import { CHANNELS } from "../shared/channels.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -35,7 +35,7 @@ const repoRoot = resolve(here, "..", "..", "..");
  * elle bakmak CI'da tekrarlanamaz ve bu projede ölçülmeyen iddia
  * sayılmıyor.
  */
-const SMOKE_TEST = process.env.PANELY_SMOKE_TEST === "1";
+const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
 
 let client: SidecarClient | null = null;
 
@@ -110,7 +110,7 @@ function createWindow(): void {
  * Üç şey sınanıyor:
  *
  *  1. Renderer yükleniyor mu (CSP ihlali ya da eksik dosya yükü keser).
- *  2. Preload köprüsü yerinde mi — `window.panely` ve beklenen metotlar.
+ *  2. Preload köprüsü yerinde mi — `window.kadran` ve beklenen metotlar.
  *     Sandbox açıkken preload'un ESM olması bu adımı sessizce düşürür.
  *  3. Konsola hata düşüyor mu.
  *
@@ -142,7 +142,7 @@ async function runSmokeTest(window: BrowserWindow): Promise<void> {
   // süreçten bakmak preload'un gerçekten çalıştığını kanıtlamazdı.
   try {
     const surface = (await window.webContents.executeJavaScript(
-      "Object.keys(window.panely ?? {}).sort()",
+      "Object.keys(window.kadran ?? {}).sort()",
     )) as string[];
 
     const expected = [
@@ -247,7 +247,15 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    // Eski adlı uygulamanın (panely-desktop) profilleri, pencere onları
+    // okumadan ÖNCE taşınır (K-136). Hata uygulamayı durdurmaz: en kötü
+    // durumda profiller boş açılır, eski dosya yerinde durur.
+    await migrateLegacyProfiles(
+      app.getPath("userData"),
+      join(app.getPath("appData"), "panely-desktop"),
+      (msg) => console.warn("[profiller]", msg),
+    ).catch((err: unknown) => console.warn("[profiller]", (err as Error).message));
     registerHandlers();
     createWindow();
 

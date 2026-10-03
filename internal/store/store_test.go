@@ -15,7 +15,7 @@ func newTestStore(t *testing.T) *Store {
 
 	// Gerçek dosya kullanılır: WAL modu, tetikleyiciler ve göç akışı
 	// bellek veritabanında tam olarak aynı davranmayabilir.
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 
 	s, err := Open(context.Background(), path)
 	if err != nil {
@@ -61,7 +61,7 @@ func TestOpenAppliesMigrations(t *testing.T) {
 
 func TestOpenIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 
 	s1, err := Open(ctx, path)
 	if err != nil {

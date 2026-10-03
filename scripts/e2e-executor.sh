@@ -18,11 +18,11 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-EXEC_BIN="${PANELY_EXEC_BIN:-$REPO_ROOT/bin/panely-exec}"
+EXEC_BIN="${KADRAN_EXEC_BIN:-$REPO_ROOT/bin/kadran-exec}"
 
 if [[ ! -x "$EXEC_BIN" ]]; then
-    echo "panely-exec bulunamadı: $EXEC_BIN" >&2
-    echo "Önce derleyin: GOOS=linux GOARCH=amd64 go build -o bin/panely-exec ./cmd/panely-exec" >&2
+    echo "kadran-exec bulunamadı: $EXEC_BIN" >&2
+    echo "Önce derleyin: GOOS=linux GOARCH=amd64 go build -o bin/kadran-exec ./cmd/kadran-exec" >&2
     exit 1
 fi
 
@@ -41,32 +41,32 @@ bad()  { echo "  [KALDI]  $1" >&2; fail=$((fail+1)); }
 cleanup() {
     [[ -n "$EXEC_PID" ]] && kill "$EXEC_PID" 2>/dev/null || true
     wait "$EXEC_PID" 2>/dev/null || true
-    userdel  panely-e2e-daemon  2>/dev/null || true
-    userdel  panely-e2e-intruder 2>/dev/null || true
-    groupdel panely-e2e-daemon   2>/dev/null || true
-    groupdel panely-e2e-intruder 2>/dev/null || true
+    userdel  kadran-e2e-daemon  2>/dev/null || true
+    userdel  kadran-e2e-intruder 2>/dev/null || true
+    groupdel kadran-e2e-daemon   2>/dev/null || true
+    groupdel kadran-e2e-intruder 2>/dev/null || true
     rm -rf "$WORK"
 }
 trap cleanup EXIT
 
 echo "==> Test kimlikleri oluşturuluyor"
-# panelyd'yi taklit eden kullanıcı: executor yalnızca bunu kabul etmeli.
-useradd --system --no-create-home --shell /usr/sbin/nologin panely-e2e-daemon
+# kadrand'yi taklit eden kullanıcı: executor yalnızca bunu kabul etmeli.
+useradd --system --no-create-home --shell /usr/sbin/nologin kadran-e2e-daemon
 # Yetkisiz üçüncü taraf: reddedilmeli.
-useradd --system --no-create-home --shell /usr/sbin/nologin panely-e2e-intruder
+useradd --system --no-create-home --shell /usr/sbin/nologin kadran-e2e-intruder
 
-DAEMON_UID="$(id -u panely-e2e-daemon)"
-DAEMON_GID="$(id -g panely-e2e-daemon)"
+DAEMON_UID="$(id -u kadran-e2e-daemon)"
+DAEMON_GID="$(id -g kadran-e2e-daemon)"
 
 mkdir -p "$SOCK_DIR"
-# Üretimdeki /run/panely-exec ile aynı: 0750 root:<daemon grubu>.
+# Üretimdeki /run/kadran-exec ile aynı: 0750 root:<daemon grubu>.
 chown root:"$DAEMON_GID" "$SOCK_DIR"
 chmod 0750 "$SOCK_DIR"
 chmod 0755 "$WORK"
 
 echo "==> Executor başlatılıyor"
 
-# PANELY_E2E_ALLOW_INTRUDER, testin KENDİSİNİ sınamak içindir.
+# KADRAN_E2E_ALLOW_INTRUDER, testin KENDİSİNİ sınamak içindir.
 #
 # Ayarlandığında executor davetsiz kullanıcıyı da kabul eder — yani
 # SO_PEERCRED politikası kasten "bozulur". Bu durumda 5. doğrulamanın
@@ -74,9 +74,9 @@ echo "==> Executor başlatılıyor"
 #
 # Hiç ateşlenmeyen bir güvenlik testi, yeşil bir rozet ve sahte bir
 # güven duygusundan başka bir şey üretmez.
-ALLOW_USER=panely-e2e-daemon
-if [[ -n "${PANELY_E2E_ALLOW_INTRUDER:-}" ]]; then
-    ALLOW_USER=panely-e2e-intruder
+ALLOW_USER=kadran-e2e-daemon
+if [[ -n "${KADRAN_E2E_ALLOW_INTRUDER:-}" ]]; then
+    ALLOW_USER=kadran-e2e-intruder
     echo "  (kendini sınama kipi: executor DAVETSİZ kullanıcıyı kabul edecek)"
 fi
 
@@ -84,7 +84,7 @@ fi
     --socket "$SOCKET" \
     --journal "$JOURNAL" \
     --allow-user "$ALLOW_USER" \
-    --owner-group panely-e2e-daemon &
+    --owner-group kadran-e2e-daemon &
 EXEC_PID=$!
 
 for _ in $(seq 1 50); do
@@ -108,13 +108,13 @@ if [[ "$sock_perm" == "660" ]]; then
 else
     bad "soket izinleri $sock_perm, beklenen 660"
 fi
-if [[ "$sock_group" == "panely-e2e-daemon" ]]; then
+if [[ "$sock_group" == "kadran-e2e-daemon" ]]; then
     ok "soket grubu doğru"
 else
-    bad "soket grubu $sock_group, beklenen panely-e2e-daemon"
+    bad "soket grubu $sock_group, beklenen kadran-e2e-daemon"
 fi
 
-# 2. Günlük dosyası panelyd tarafından OKUNABİLİR ama YAZILAMAZ olmalı.
+# 2. Günlük dosyası kadrand tarafından OKUNABİLİR ama YAZILAMAZ olmalı.
 journal_perm="$(stat -c '%a' "$JOURNAL")"
 if [[ "$journal_perm" == "640" ]]; then
     ok "denetim günlüğü 0640 (grup yazamaz; üretimde dizin 0700 root, K-102)"
@@ -123,7 +123,7 @@ else
 fi
 
 # 3. İzinli kullanıcı bağlanabilmeli.
-if runuser -u panely-e2e-daemon -- \
+if runuser -u kadran-e2e-daemon -- \
        python3 -c "
 import socket,sys
 s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -132,14 +132,14 @@ try:
 except Exception as e:
     print(e, file=sys.stderr); sys.exit(1)
 " 2>/dev/null; then
-    ok "izinli kullanıcı (panelyd) bağlanabildi"
+    ok "izinli kullanıcı (kadrand) bağlanabildi"
 else
     bad "izinli kullanıcı bağlanamadı"
 fi
 
 # 4. ASIL TEST: yetkisiz kullanıcı dizini traverse edemediği için
-#    sokete ulaşamamalı. Bu, /run/panely-exec izolasyonunun ta kendisi.
-if runuser -u panely-e2e-intruder -- \
+#    sokete ulaşamamalı. Bu, /run/kadran-exec izolasyonunun ta kendisi.
+if runuser -u kadran-e2e-intruder -- \
        python3 -c "
 import socket,sys
 s=socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -167,7 +167,7 @@ fi
 chmod 0755 "$SOCK_DIR"
 chmod 0666 "$SOCKET"
 
-intruder_result="$(runuser -u panely-e2e-intruder -- \
+intruder_result="$(runuser -u kadran-e2e-intruder -- \
     python3 -c "
 import socket
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -206,7 +206,7 @@ esac
 # durumda da geçerdi. İki kullanıcı arasındaki TEK fark uid/gid; izinler
 # birebir aynı. Farklı sonuç almak, ayrımın gerçekten kimliğe dayandığını
 # kanıtlıyor.
-allowed_result="$(runuser -u panely-e2e-daemon -- \
+allowed_result="$(runuser -u kadran-e2e-daemon -- \
     python3 -c "
 import socket
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)

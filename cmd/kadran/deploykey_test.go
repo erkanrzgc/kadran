@@ -9,16 +9,16 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // yalnizDagitim, dağıtım anahtarıyla bağlanmış bir sunucuyu taklit eder:
 // GetApp'i K-131'deki gibi reddeder. Diğer yöntemler çağrılırsa panikler.
-type yalnizDagitim struct{ panelyv1.PanelyServiceClient }
+type yalnizDagitim struct{ kadranv1.KadranServiceClient }
 
-func (yalnizDagitim) GetApp(context.Context, *panelyv1.GetAppRequest, ...grpc.CallOption) (*panelyv1.GetAppResponse, error) {
+func (yalnizDagitim) GetApp(context.Context, *kadranv1.GetAppRequest, ...grpc.CallOption) (*kadranv1.GetAppResponse, error) {
 	return nil, status.Error(codes.PermissionDenied,
-		"bu anahtar yalnızca dağıtım yapabilir (/panely.v1.PanelyService/GetApp)")
+		"bu anahtar yalnızca dağıtım yapabilir (/kadran.v1.KadranService/GetApp)")
 }
 
 // TestDeployKeyWithoutCommitGetsAHint: dağıtım anahtarı uygulama tanımını

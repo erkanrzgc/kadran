@@ -294,7 +294,7 @@ test("stderr protokol olarak ayrıştırılmaz, tanılamaya gider", async () => 
   const promise = client.call("version");
   const [req] = proc.requests();
 
-  proc.emitStderr("panely: ssh: Permission denied\n");
+  proc.emitStderr("kadran: ssh: Permission denied\n");
   proc.emitStdout(JSON.stringify({ jsonrpc: "2.0", id: req.id, result: "ok" }) + "\n");
 
   assert.equal(await promise, "ok");

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // newTestCLI, çıktısı yakalanabilen bir cli üretir.
@@ -52,7 +52,7 @@ func TestHelpExitsSuccessfully(t *testing.T) {
 //
 // Bağlantı tembel olduğu için bu zaten böyle; test, ileride birinin
 // yardım yolunda bir "sunucudan komut listesi al" fikri denemesini
-// engellemek için var. `panely --help` çevrimdışı çalışmalı.
+// engellemek için var. `kadran --help` çevrimdışı çalışmalı.
 func TestHelpNeverTouchesTheServer(t *testing.T) {
 	c, _, _ := newTestCLI("")
 
@@ -142,14 +142,14 @@ func TestBootstrapRequiresExactlyOneTarget(t *testing.T) {
 // TestBootstrapRejectsLocalTarget, kurulumun yerel sokete
 // yönlendirilemeyeceğini doğrular.
 //
-// `kadran bootstrap /run/panely/api.sock` anlamsız: bootstrap SSH ile
+// `kadran bootstrap /run/kadran/api.sock` anlamsız: bootstrap SSH ile
 // root olarak bağlanan tek komut.
 func TestBootstrapRejectsLocalTarget(t *testing.T) {
 	c, _, errOut := newTestCLI("")
 
 	done := make(chan int, 1)
 	go func() {
-		done <- c.run(context.Background(), []string{"bootstrap", "/run/panely/api.sock"})
+		done <- c.run(context.Background(), []string{"bootstrap", "/run/kadran/api.sock"})
 	}()
 
 	select {
@@ -174,16 +174,16 @@ func TestBootstrapRejectsLocalTarget(t *testing.T) {
 // alarm üretilir, ya da gerçek bir kurcalama gürültüde kaybolur.
 func TestVerifyExitCodeSeparatesTamperFromUnreachable(t *testing.T) {
 	const (
-		valid       = panelyv1.ChainStatus_CHAIN_STATUS_VALID
-		invalid     = panelyv1.ChainStatus_CHAIN_STATUS_INVALID
-		unreachable = panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE
-		unspecified = panelyv1.ChainStatus_CHAIN_STATUS_UNSPECIFIED
+		valid       = kadranv1.ChainStatus_CHAIN_STATUS_VALID
+		invalid     = kadranv1.ChainStatus_CHAIN_STATUS_INVALID
+		unreachable = kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE
+		unspecified = kadranv1.ChainStatus_CHAIN_STATUS_UNSPECIFIED
 	)
 
 	tests := []struct {
 		name     string
-		daemon   panelyv1.ChainStatus
-		executor panelyv1.ChainStatus
+		daemon   kadranv1.ChainStatus
+		executor kadranv1.ChainStatus
 		want     int
 	}{
 		{"iki zincir de geçerli", valid, valid, exitOK},
@@ -199,7 +199,7 @@ func TestVerifyExitCodeSeparatesTamperFromUnreachable(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			resp := &panelyv1.VerifyAuditChainResponse{
+			resp := &kadranv1.VerifyAuditChainResponse{
 				DaemonStatus:   tc.daemon,
 				ExecutorStatus: tc.executor,
 			}
@@ -214,16 +214,16 @@ func TestVerifyExitCodeSeparatesTamperFromUnreachable(t *testing.T) {
 // raporlandığını doğrular.
 //
 // Tek bir "geçerli" satırında birleştirmek, modelin tamamının dayandığı
-// ayrımı gizlerdi: ele geçirilmiş bir panelyd kendi zincirini temiz
+// ayrımı gizlerdi: ele geçirilmiş bir kadrand kendi zincirini temiz
 // tutabilir ama executor'ınkine dokunamaz.
 func TestPrintVerifyResultShowsBothChainsSeparately(t *testing.T) {
 	c, out, _ := newTestCLI("")
 
-	c.printVerifyResult("unix:/run/panely/api.sock", &panelyv1.VerifyAuditChainResponse{
-		DaemonStatus:           panelyv1.ChainStatus_CHAIN_STATUS_VALID,
+	c.printVerifyResult("unix:/run/kadran/api.sock", &kadranv1.VerifyAuditChainResponse{
+		DaemonStatus:           kadranv1.ChainStatus_CHAIN_STATUS_VALID,
 		RecordsChecked:         12,
 		Detail:                 "daemon zinciri geçerli",
-		ExecutorStatus:         panelyv1.ChainStatus_CHAIN_STATUS_UNREACHABLE,
+		ExecutorStatus:         kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE,
 		ExecutorDetail:         "executor günlüğü okunamadı",
 		ExecutorRecordsChecked: 0,
 	})
@@ -243,12 +243,12 @@ func TestPrintVerifyResultShowsBothChainsSeparately(t *testing.T) {
 func TestPrintVerifyResultWarnsOnBrokenChain(t *testing.T) {
 	c, _, errOut := newTestCLI("")
 
-	c.printVerifyResult("unix:/x.sock", &panelyv1.VerifyAuditChainResponse{
-		DaemonStatus:    panelyv1.ChainStatus_CHAIN_STATUS_INVALID,
+	c.printVerifyResult("unix:/x.sock", &kadranv1.VerifyAuditChainResponse{
+		DaemonStatus:    kadranv1.ChainStatus_CHAIN_STATUS_INVALID,
 		RecordsChecked:  41,
 		FirstInvalidSeq: 42,
 		Detail:          "kayıt 42 kurcalanmış",
-		ExecutorStatus:  panelyv1.ChainStatus_CHAIN_STATUS_VALID,
+		ExecutorStatus:  kadranv1.ChainStatus_CHAIN_STATUS_VALID,
 	})
 
 	msg := errOut.String()
@@ -260,10 +260,10 @@ func TestPrintVerifyResultWarnsOnBrokenChain(t *testing.T) {
 	}
 }
 
-// TestDaemonUserCellFlagsRoot, panelyd'nin root çalıştığının sessiz
+// TestDaemonUserCellFlagsRoot, kadrand'nin root çalıştığının sessiz
 // geçilmediğini doğrular.
 //
-// panelyd zaten root ile başlamayı reddediyor; bu satır o kontrolün
+// kadrand zaten root ile başlamayı reddediyor; bu satır o kontrolün
 // yedeği. İkisinin birden atlandığı bir kurulumda ürünün merkezî iddiası
 // çökmüş olur ve durum ekranı bunu göstermek zorunda.
 func TestDaemonUserCellFlagsRoot(t *testing.T) {
@@ -272,18 +272,18 @@ func TestDaemonUserCellFlagsRoot(t *testing.T) {
 		t.Errorf("root sessizce gösterildi: %q", cell)
 	}
 
-	if got := daemonUserCell("panely"); got != "panely" {
-		t.Errorf("normal kullanıcı = %q, beklenen \"panely\"", got)
+	if got := daemonUserCell("kadran"); got != "kadran" {
+		t.Errorf("normal kullanıcı = %q, beklenen \"kadran\"", got)
 	}
 }
 
 func TestExecutorCellReportsUnreachable(t *testing.T) {
-	cell := executorCell(&panelyv1.GetSystemInfoResponse{ExecutorReachable: false})
+	cell := executorCell(&kadranv1.GetSystemInfoResponse{ExecutorReachable: false})
 	if !strings.Contains(cell, "ERİŞİLEMİYOR") {
 		t.Errorf("erişilemeyen executor belirtilmedi: %q", cell)
 	}
 
-	cell = executorCell(&panelyv1.GetSystemInfoResponse{
+	cell = executorCell(&kadranv1.GetSystemInfoResponse{
 		ExecutorReachable: true,
 		ExecutorVersion:   "v0.1.0",
 	})
@@ -299,7 +299,7 @@ func TestExecutorCellReportsUnreachable(t *testing.T) {
 // diye göstermek, ölçülemeyen bir diski sağlıklı gösterirdi — yani en
 // çok bilgiye ihtiyaç duyulan anda en yanıltıcı çıktıyı verirdi.
 func TestDiskCellSeparatesUnknownFromEmpty(t *testing.T) {
-	got := diskCell(&panelyv1.HostInfo{})
+	got := diskCell(&kadranv1.HostInfo{})
 	if !strings.Contains(got, "ölçülemedi") {
 		t.Errorf("ölçülemeyen disk %q olarak gösterildi — sıfır, "+
 			"'boş disk' diye okunamaz", got)
@@ -315,7 +315,7 @@ func TestDiskCellWarnsOnlyWhenNearlyFull(t *testing.T) {
 	const gb = uint64(1) << 30
 
 	// Rahat: 32 GB / 40 GB boş → %80.
-	roomy := diskCell(&panelyv1.HostInfo{
+	roomy := diskCell(&kadranv1.HostInfo{
 		DiskTotalBytes: 40 * gb, DiskAvailableBytes: 32 * gb})
 	if strings.Contains(roomy, "DOLMAK ÜZERE") {
 		t.Errorf("boş diskte uyarı verildi: %q", roomy)
@@ -325,7 +325,7 @@ func TestDiskCellWarnsOnlyWhenNearlyFull(t *testing.T) {
 	}
 
 	// Dar: 2 GB / 40 GB boş → %5.
-	tight := diskCell(&panelyv1.HostInfo{
+	tight := diskCell(&kadranv1.HostInfo{
 		DiskTotalBytes: 40 * gb, DiskAvailableBytes: 2 * gb})
 	if !strings.Contains(tight, "DOLMAK ÜZERE") {
 		t.Errorf("%%5 boş diskte uyarı YOK: %q — tek sunuculu kurulumda "+
@@ -339,7 +339,7 @@ func TestDiskCellWarnsOnlyWhenNearlyFull(t *testing.T) {
 // ── Neden var ────────────────────────────────────────────────────────
 //
 // `app update` ve `app delete` eklendi, dağıtıcıya ve hata mesajına
-// yazıldı — ama `panely -h` haftalarca `app <create|list|show>` demeye
+// yazıldı — ama `kadran -h` haftalarca `app <create|list|show>` demeye
 // devam etti. Yardım metnine bakan biri iki komutun varlığından
 // habersiz kalıyordu. Hiçbir test yakalamadı, çünkü iki liste ayrı
 // ayrı elle tutuluyor ve kimse onları karşılaştırmıyordu.
@@ -372,7 +372,7 @@ func TestUsageListsEverySubcommand(t *testing.T) {
 				func(r rune) bool { return r == ',' || r == ' ' || r == '\n' })
 
 			if strings.Join(usage, ",") != strings.Join(accepted, ",") {
-				t.Errorf("`panely -h` %q diyor, dağıtıcı %q kabul ediyor — "+
+				t.Errorf("`kadran -h` %q diyor, dağıtıcı %q kabul ediyor — "+
 					"yardım metni bir alt komutu gizliyor ya da olmayan birini vaat ediyor",
 					usage, accepted)
 			}

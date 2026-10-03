@@ -75,9 +75,9 @@ func TestMigration0005CarriesExistingDeploymentsForward(t *testing.T) {
 			release_seq, created_at, updated_at
 		) VALUES (?,?,?,?,?, ?,?, ?,?,?,?, ?,?,?, 0,?,?)`
 	if _, err := db.ExecContext(ctx, insertOldApp,
-		"portfolio", "github.com", "erkanrzgc", "panely", "main",
+		"portfolio", "github.com", "erkanrzgc", "kadran", "main",
 		"Dockerfile", "{}",
-		8080, 2, "/healthz", "panely.erkanrzgc.dev",
+		8080, 2, "/healthz", "kadran.erkanrzgc.dev",
 		256<<20, 500, 500,
 		activatedAt, activatedAt,
 	); err != nil {
@@ -107,7 +107,7 @@ func TestMigration0005CarriesExistingDeploymentsForward(t *testing.T) {
 	if live.ReleaseID != rel.ID {
 		t.Errorf("aktif sürüm %q, %q bekleniyordu", live.ReleaseID, rel.ID)
 	}
-	if live.Domain != "panely.erkanrzgc.dev" {
+	if live.Domain != "kadran.erkanrzgc.dev" {
 		t.Errorf("alan adı taşınmadı: %q — ters vekil rotası üretilemez", live.Domain)
 	}
 	if got := live.ActivatedAt.UnixNano(); got != activatedAt {

@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/erkanrzgc/kadran/internal/dockerdrv"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // collectHostInfo, sunucunun çekirdek ve donanım bilgisini toplar.
@@ -22,8 +22,8 @@ import (
 // Tamamı salt okunur ve /proc üzerinden yapılır; hiçbir dış komut
 // çalıştırılmaz. Ayrıcalıklı süreçte alt süreç doğurmak, tam olarak
 // kaçındığımız şeydir.
-func collectHostInfo(ctx context.Context, probe *dockerdrv.Client) *panelyv1.HostInfo {
-	info := &panelyv1.HostInfo{
+func collectHostInfo(ctx context.Context, probe *dockerdrv.Client) *kadranv1.HostInfo {
+	info := &kadranv1.HostInfo{
 		CpuCount: uint32(runtime.NumCPU()),
 		Os:       readOSPrettyName(),
 	}
@@ -41,11 +41,11 @@ func collectHostInfo(ctx context.Context, probe *dockerdrv.Client) *panelyv1.Hos
 	// Disk: durum dizinini taşıyan dosya sistemi. Gerekçe common.proto'da.
 	//
 	// Yol olarak DefaultVolumeRoot kullanılıyor, yeni bir sabit
-	// tanımlanmıyor: hacim kökü /var/lib/panely altında, yani AYNI
+	// tanımlanmıyor: hacim kökü /var/lib/kadran altında, yani AYNI
 	// dosya sisteminde. statfs zaten birimi ölçüyor, dizini değil.
 	//
 	// Bavail kullanılıyor, Bfree DEĞİL: ikisinin farkı root'a ayrılmış
-	// yedek bloklar. panelyd root DEĞİL, dolayısıyla o yedeği
+	// yedek bloklar. kadrand root DEĞİL, dolayısıyla o yedeği
 	// kullanamaz. Bfree raporlamak, ulaşılamayan alanı boş göstermek
 	// olurdu.
 	var st unix.Statfs_t

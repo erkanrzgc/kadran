@@ -29,7 +29,7 @@ func TestListenRequiresMode(t *testing.T) {
 // soket OLMAYAN bir dosyayı silmek asla değildir. Bu durumda süreç
 // başlamamalı, sessizce dosyayı yok etmemelidir.
 func TestRemoveStaleSocketRefusesRegularFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "panely.db")
+	path := filepath.Join(t.TempDir(), "kadran.db")
 	const payload = "degerli veri"
 	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
 		t.Fatalf("test dosyası yazılamadı: %v", err)
@@ -88,8 +88,8 @@ func TestEnsureParentDirAcceptsExistingDirectory(t *testing.T) {
 //
 // Üretimde dizinler systemd-tmpfiles tarafından kesin sahiplik ve
 // izinlerle kurulur. Burada oluşturmak, yanlış sahiplikli bir dizinin
-// sessizce kabul edilmesine yol açardı — tam da /run/panely-exec'in
-// root:panely 0750 olmasına bağlı olan izolasyonu delerdi.
+// sessizce kabul edilmesine yol açardı — tam da /run/kadran-exec'in
+// root:kadran 0750 olmasına bağlı olan izolasyonu delerdi.
 func TestEnsureParentDirDoesNotCreate(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "olusturma-beni")
 	_ = EnsureParentDir(filepath.Join(missing, "x.sock"))

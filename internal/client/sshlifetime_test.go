@@ -16,7 +16,7 @@ import (
 //	rpc error: code = Unavailable desc = connection error:
 //	desc = "error reading server preface: EOF"
 //
-// Daemon sağlamdı: aynı sunucuda panely-client kullanıcısı yerel sokete
+// Daemon sağlamdı: aynı sunucuda kadran-client kullanıcısı yerel sokete
 // bağlanıp tam çıktı alıyordu. Kopan tek şey SSH taşımasıydı.
 //
 // Neden: `dialSSH`, ssh alt sürecini `exec.CommandContext(ctx, ...)` ile
@@ -48,7 +48,7 @@ func TestSSHProcessSurvivesDialContextCancel(t *testing.T) {
 	t.Cleanup(func() { sshCommand = original })
 
 	ctx, cancel := context.WithCancel(context.Background())
-	conn, err := dialSSH(ctx, Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+	conn, err := dialSSH(ctx, Target{SSHUser: "kadran-client", SSHHost: "sunucu"})
 	if err != nil {
 		t.Fatalf("bağlantı kurulamadı: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestSSHProcessSurvivesDialContextCancel(t *testing.T) {
 	cancel()
 	time.Sleep(200 * time.Millisecond)
 
-	mesaj := []byte("panely-canli\n")
+	mesaj := []byte("kadran-canli\n")
 	if _, err := conn.Write(mesaj); err != nil {
 		t.Fatalf("iptalden sonra yazılamadı — ssh süreci öldürülmüş: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestSSHProcessDiesWhenConnectionCloses(t *testing.T) {
 	t.Cleanup(func() { sshCommand = original })
 
 	conn, err := dialSSH(context.Background(),
-		Target{SSHUser: "panely-client", SSHHost: "sunucu"})
+		Target{SSHUser: "kadran-client", SSHHost: "sunucu"})
 	if err != nil {
 		t.Fatalf("bağlantı kurulamadı: %v", err)
 	}

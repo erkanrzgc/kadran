@@ -1,0 +1,147 @@
+[Unit]
+Description=Kadran privileged executor (typed RPC whitelist)
+Documentation=https://github.com/erkanrzgc/kadran
+After=docker.service
+Wants=docker.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+# Bayraklar açık; gerekçe için kadrand.service'teki nota bakın.
+# --allow-user, executor'ın SO_PEERCRED ile kabul ettiği TEK kullanıcı.
+#
+# ── ÖZEL DEPOLAR: --allow-repo ───────────────────────────────────────
+#
+# ⚠ Hostta duran bir git kimlik bilgisi bugün İŞE YARAMIYOR. Ölçüldü
+# (K-057): dockerd, git'i `HOME=/dev/null` + `GIT_CONFIG_NOSYSTEM=1` ile
+# çalıştırıyor, yani ne `~/.gitconfig`'i ne `/etc/gitconfig`'i okuyor.
+# Kimlik bilgisinin nerede durduğu fark etmiyor. Bir zamanlar bunun
+# çalıştığı yazıyordu; o ölçüm yanlış yorumlanmıştı.
+#
+# Beyaz liste yine de burada ve GEREKLİ: özel depo desteği hangi
+# mekanizmayla gelirse gelsin, kimlik bir kez derlemeye ulaştığında
+# ImageBuild çağırabilen biri owner/repo'yu kurbanın deposuna
+# çevirebilir — kurban deposunda Dockerfile olmasına bile gerek yok,
+# çünkü dockerfile_path de istekten geliyor ve derleme çıktısı istemciye
+# aynen akıyor. Kısıt BURAYA eklenir:
+#
+#   systemctl edit kadran-exec.service
+#   [Service]
+#   ExecStart=
+#   ExecStart=/usr/local/lib/kadran/kadran-exec \
+#       --socket /run/kadran-exec/exec.sock \
+#       --journal /var/lib/kadran-exec/exec-audit.log \
+#       --allow-user kadran --owner-group kadran \
+#       --allow-repo erkanrzgc/portfolio,erkanrzgc/retain-io
+#
+# Executor açılışta `depo_kisiti=` alanını günlüğe yazıyor; "YOK" diyorsa
+# kısıt uygulanmıyor demektir.
+ExecStart=/usr/local/lib/kadran/kadran-exec \
+    --socket /run/kadran-exec/exec.sock \
+    --journal /var/lib/kadran-exec/exec-audit.log \
+    --allow-user kadran \
+    --owner-group kadran
+Restart=on-failure
+RestartSec=2s
+
+# Executor ROOT çalışır — bu kaçınılmaz, çünkü Docker soketine erişim
+# pratikte root yetkisidir. Modelin özü, bu ayrıcalığın ~1500 satırlık
+# şema doğrulamalı bir yüzeye hapsedilmesidir.
+User=root
+Group=root
+
+# ── Sıkılaştırma ─────────────────────────────────────────────────
+# Root olsa bile gereksiz her şey kapatılır.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+# # Bu filtre kadrand'ninkiyle KASTEN aynı değil — eşitlemeyin.
+#
+# kadrand `~@privileged` çıkarıyor, bu birim çıkarmıyor. Executor root
+# çalışıyor ve soket/günlük sahipliklerini kurmak için chown'a ihtiyacı
+# var. kadrand'de aynı çıkarma, api.sock'un grubunu ayarlarken
+# SIGSYS/çökme döngüsü ürettiği için orada `@chown` ayrıca geri
+# veriliyor (gerekçesi kadrand.service'te).
+#
+# İki birimi "tutarlılık" adına eşitlemek o çökmeyi geri getirir.
+SystemCallFilter=@system-service
+SystemCallFilter=~@obsolete @cpu-emulation @swap @reboot @raw-io
+
+# Yalnızca unix soketi: Docker Engine API ve kendi dinleyicisi.
+# Executor'ın ağa çıkması gerekmez; imaj çekme Docker daemon'ının işidir.
+RestrictAddressFamilies=AF_UNIX
+
+# Root'un tüm yeteneklerini almasına gerek yok. Hacim dizinlerinin
+# sahipliğini ayarlamak için gerekenler dışında hepsi düşürülür.
+CapabilityBoundingSet=CAP_CHOWN CAP_FOWNER CAP_DAC_OVERRIDE
+
+# ProtectSystem=strict tüm dosya sistemini salt okunur yapar;
+# yazılabilir alanlar burada tek tek açılır.
+#
+# /var/lib/kadran yalnızca hacimler için (/var/lib/kadran/volumes).
+# Denetim günlüğü BURADA DEĞİL, root'un kendi dizininde: /var/lib/kadran
+# daemon'undur ve daemon oradaki her dosyayı — sahibi root olsa bile —
+# silip yerine kendisininkini koyabilir (K-100, canlıda ölçüldü).
+ReadWritePaths=/var/lib/kadran
+ReadWritePaths=/var/lib/kadran-exec
+ReadWritePaths=/run/kadran-exec
+
+# Docker soketine erişim (ProtectSystem=strict /run'ı kapsamaz ama
+# açıkça belirtmek niyeti belgelendirir).
+#
+# # Baştaki `-` neden ŞART?
+#
+# `-` olmadan systemd, kaynak yol yoksa ad alanını kuramaz ve birimi
+# HİÇ başlatmaz:
+#
+#   Failed to set up mount namespacing: /run/docker.sock: No such file
+#   or directory              → status=226/NAMESPACE
+#
+# Taze bir sunucuda Docker kurulu değil (Faz 0 kurmuyor; Docker
+# sürücüsü Faz 1). Yani `-` olmadan bootstrap TAZE MAKİNEDE ÇALIŞMAZ —
+# ve tam olarak böyle oldu: hata ancak gerçek sunucuda ortaya çıktı,
+# çünkü WSL ve CI systemd ad alanı yalıtımını bu biçimde kurmuyor.
+#
+# Executor Docker yokluğunu zaten çalışma anında bildiriyor
+# (internal/exec/dockerprobe.go); başlamamak yerine "Docker yok"
+# demek doğru davranış.
+#
+# # İki sıra da ÖLÇÜLDÜ (docs/decisions.md K-037)
+#
+# Bir dönem şu varsayılıyordu: `-` kaynağı atladığı için, Docker
+# SONRADAN kurulursa executor soketi göremez ve `systemctl restart
+# kadran-exec` şart olur. **Yanlış çıktı.** Gerçek sunucuda ölçüldü:
+#
+#   soket YOKKEN başlat → docker'ı başlat → executor sokete yeniden
+#   başlatılmadan ULAŞIYOR
+#
+# Sebep: `/run` paylaşımlı bir tmpfs ve ProtectSystem=strict onu
+# kapsamıyor; sonradan oluşan soket ad alanında görünüyor. Bu yüzden
+# bootstrap'a "Docker'dan sonra executor'ı yeniden başlat" kısıtı
+# EKLENMEDİ — gereksiz.
+#
+# Ters yön daha kritikti ve o da ölçüldü: soket başlangıçta VARSA bind
+# mount `ro,nosuid,nodev,noexec` olarak uygulanır. `connect()` sokete
+# yazma izni ister, yani salt-okunur mount bunu engelleyebilirdi — ve
+# bu, NORMAL durumda (Docker zaten kurulu) patlardı. Engellemiyor:
+# salt-okunur bind mount üzerinden Docker API sürüm yanıtı alındı.
+BindReadOnlyPaths=-/run/docker.sock
+
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

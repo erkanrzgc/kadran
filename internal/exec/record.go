@@ -32,7 +32,7 @@ import (
 // Doğrulamada reddedilen istek ayrıcalıklı hiçbir şey YAPMAZ — yani
 // yukarıdaki kurala göre yazılmaması gerekirdi. Yine de yazılıyor, çünkü
 // reddedilen istek güvenlik modelinin DEVREYE GİRDİĞİ andır ve tam olarak
-// izlenmesi gereken şey odur: ele geçirilmiş bir panelyd'nin şemayı
+// izlenmesi gereken şey odur: ele geçirilmiş bir kadrand'nin şemayı
 // zorlama denemeleri ancak böyle görünür olur (AUDIT_OUTCOME_DENIED).
 //
 // Zincire "olmamış olay" da koymaz: reddetme GERÇEKTEN olmuştur.
@@ -52,7 +52,7 @@ func (s *Server) record(action, target string, params map[string]string, outcome
 	}
 
 	_, err := s.journal.Append(audit.Record{
-		// Aktör executor'ın kendisidir. Çağıranın kimliği panelyd'nin
+		// Aktör executor'ın kendisidir. Çağıranın kimliği kadrand'nin
 		// zincirinde durur; buradaki zincir "ayrıcalıklı süreç ne yaptı"
 		// sorusunu yanıtlar ve ikisinin karşılaştırılması farkı ortaya
 		// çıkarır.

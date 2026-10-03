@@ -39,9 +39,9 @@ type VolumeMount struct {
 // App, kontrol düzlemindeki bir uygulama tanımıdır.
 //
 // Alanlar proto'daki AppSpec ile birebir eşleşir. Dönüşüm internal/api
-// içinde yapılır, internal/pbconv'da DEĞİL: pbconv, panely-exec'in içe
+// içinde yapılır, internal/pbconv'da DEĞİL: pbconv, kadran-exec'in içe
 // aktarma grafiğinde olduğu için ayrıcalıklı yüzey bütçesine yazılır
-// (bkz. scripts/check-exec-surface.sh). panelyd tarafına ait bir
+// (bkz. scripts/check-exec-surface.sh). kadrand tarafına ait bir
 // dönüştürücüyü oraya koymak, ayrıcalıklı süreçle hiç ilgisi olmayan
 // kodu root bütçesinden harcamak olurdu.
 type App struct {

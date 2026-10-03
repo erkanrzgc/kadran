@@ -31,7 +31,7 @@ plugins:
       # false ile gömme zorunluluğu kalkar; gömmediğimiz için yeni bir RPC
       # DERLEMEYİ KIRAR ve bilinçli uygulamaya zorlar.
       #
-      # Bedeli ileriye uyumluluğun kaybı. Panely'de üç binary birlikte
-      # sürümlenip `panely bootstrap` ile birlikte kurulduğu için bu bedel
+      # Bedeli ileriye uyumluluğun kaybı. Kadran'da üç binary birlikte
+      # sürümlenip `kadran bootstrap` ile birlikte kurulduğu için bu bedel
       # yok sayılabilir; sürüm uyumu ayrıca Protocol sabiti ile denetlenir.
       - require_unimplemented_servers=false

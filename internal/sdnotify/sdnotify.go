@@ -2,7 +2,7 @@
 //
 // Type=notify unit dosyaları servisin "hazırım" demesini bekler. Bunun
 // alternatifi Type=simple'dır, ama o durumda systemd süreç doğar doğmaz
-// servisi hazır sayar — oysa panelyd o anda henüz veritabanını açmamış,
+// servisi hazır sayar — oysa kadrand o anda henüz veritabanını açmamış,
 // göçleri uygulamamış ve executor'a bağlanmamıştır. Bağımlı servisler ve
 // `kadran bootstrap`'in sağlık kontrolü yanlış zamanda yeşil görürdü.
 //
@@ -27,15 +27,15 @@ func Ready() error { return Send("READY=1") }
 func Stopping() error { return Send("STOPPING=1") }
 
 // Status, systemd'ye insan tarafından okunabilir bir durum metni bildirir.
-// `systemctl status panelyd` çıktısında görünür.
+// `systemctl status kadrand` çıktısında görünür.
 func Status(text string) error { return Send("STATUS=" + text) }
 
 // Send, systemd'ye ham bir bildirim satırı gönderir.
 //
-// Dışa açık, çünkü panelyd'nin watchdog'u WATCHDOG=1 gönderiyor
+// Dışa açık, çünkü kadrand'nin watchdog'u WATCHDOG=1 gönderiyor
 // (internal/liveness, K-115). Onun için ayrı bir `Watchdog()` yazmak,
 // executor'ın hiç çağırmadığı bir fonksiyonu ayrıcalıklı yüzeye eklerdi;
-// bu paket panely-exec'in bağımlılığı ve bütçe 2498/2500.
+// bu paket kadran-exec'in bağımlılığı ve bütçe 2498/2500.
 func Send(payload string) error {
 	addr := os.Getenv("NOTIFY_SOCKET")
 	if addr == "" {

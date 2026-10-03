@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // rollbackTimeout, geri almanın varsayılan süre sınırı.
@@ -49,7 +49,7 @@ func (c *cli) runRollback(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	resp, err := conn.RPC().Rollback(ctx, &panelyv1.RollbackRequest{AppId: fs.Arg(0)})
+	resp, err := conn.RPC().Rollback(ctx, &kadranv1.RollbackRequest{AppId: fs.Arg(0)})
 	if err != nil {
 		// ⚠ "geri alınamadı" ÖN EKİ YOK ve bu K-068'in dersi. Sunucunun
 		// hataları kendi kendini açıklıyor ("geri alınacak önceki sürüm

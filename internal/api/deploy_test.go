@@ -15,7 +15,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -43,9 +43,9 @@ type fakeExec struct {
 	lastLogs execclient.LogOptions
 	logCalls int
 
-	build      func(ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
+	build      func(ctx context.Context, req *kadranv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
 	buildCalls int
-	lastReq    *panelyv1.ImageBuildRequest
+	lastReq    *kadranv1.ImageBuildRequest
 
 	// ── Silme yolu için DURUM MODELLİYOR ────────────────────────────
 	//
@@ -127,7 +127,7 @@ func (f *fakeExec) Ping(context.Context) (execclient.PingResult, error) {
 	return execclient.PingResult{}, errors.New("fakeExec: Ping beklenmiyordu")
 }
 
-func (f *fakeExec) HostInfo(context.Context) (*panelyv1.HostInfo, error) {
+func (f *fakeExec) HostInfo(context.Context) (*kadranv1.HostInfo, error) {
 	return nil, errors.New("fakeExec: HostInfo beklenmiyordu")
 }
 
@@ -136,7 +136,7 @@ func (f *fakeExec) ReadJournal(context.Context, uint64, uint32) (execclient.Jour
 }
 
 func (f *fakeExec) ImageBuild(
-	ctx context.Context, req *panelyv1.ImageBuildRequest, sink execclient.BuildSink,
+	ctx context.Context, req *kadranv1.ImageBuildRequest, sink execclient.BuildSink,
 ) (string, error) {
 	f.buildCalls++
 	f.lastReq = req
@@ -154,7 +154,7 @@ func (f *fakeExec) ImageBuild(
 type deployStream struct {
 	grpc.ServerStream
 	ctx      context.Context
-	sent     []*panelyv1.DeployResponse
+	sent     []*kadranv1.DeployResponse
 	failFrom int // bu indisten itibaren Send hata döner; 0 = hiç
 	sendErr  error
 }
@@ -168,7 +168,7 @@ func (s *deployStream) SetHeader(metadata.MD) error  { return nil }
 func (s *deployStream) SendHeader(metadata.MD) error { return nil }
 func (s *deployStream) SetTrailer(metadata.MD)       {}
 
-func (s *deployStream) Send(m *panelyv1.DeployResponse) error {
+func (s *deployStream) Send(m *kadranv1.DeployResponse) error {
 	if s.failFrom >= 0 && len(s.sent) >= s.failFrom {
 		return s.sendErr
 	}
@@ -176,7 +176,7 @@ func (s *deployStream) Send(m *panelyv1.DeployResponse) error {
 	return nil
 }
 
-func (s *deployStream) succeeded() *panelyv1.DeploySucceeded {
+func (s *deployStream) succeeded() *kadranv1.DeploySucceeded {
 	for _, m := range s.sent {
 		if v := m.GetSucceeded(); v != nil {
 			return v
@@ -198,7 +198,7 @@ func (s *deployStream) outputs() string {
 func newDeployServer(t *testing.T, fe *fakeExec) (*Server, *store.Store) {
 	t.Helper()
 
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
@@ -214,18 +214,18 @@ func newDeployServer(t *testing.T, fe *fakeExec) (*Server, *store.Store) {
 	return srv, db
 }
 
-func testSpec() *panelyv1.AppSpec {
-	return &panelyv1.AppSpec{
+func testSpec() *kadranv1.AppSpec {
+	return &kadranv1.AppSpec{
 		AppId:          "blog",
 		GitHost:        "github.com",
 		GitOwner:       "erkanrzgc",
-		GitRepo:        "panely",
+		GitRepo:        "kadran",
 		GitBranch:      "main",
 		DockerfilePath: "Dockerfile",
 		ContainerPort:  8080,
 		Replicas:       1,
 		HealthPath:     "/healthz",
-		Limits: &panelyv1.ResourceLimits{
+		Limits: &kadranv1.ResourceLimits{
 			MemoryBytes: 256 << 20,
 			CpuMillis:   500,
 			BlkioWeight: 500,
@@ -235,10 +235,10 @@ func testSpec() *panelyv1.AppSpec {
 
 const apiSHA = "0123456789abcdef0123456789abcdef01234567"
 
-func mustCreateApp(t *testing.T, srv *Server, spec *panelyv1.AppSpec) {
+func mustCreateApp(t *testing.T, srv *Server, spec *kadranv1.AppSpec) {
 	t.Helper()
 	if _, err := srv.CreateApp(context.Background(),
-		&panelyv1.CreateAppRequest{Spec: spec}); err != nil {
+		&kadranv1.CreateAppRequest{Spec: spec}); err != nil {
 		t.Fatalf("uygulama yaratılamadı: %v", err)
 	}
 }
@@ -256,7 +256,7 @@ func auditActions(t *testing.T, db *store.Store) []audit.Record {
 
 func TestDeployStreamsOutputAndSucceeds(t *testing.T) {
 	fe := &fakeExec{
-		build: func(_ context.Context, _ *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error) {
+		build: func(_ context.Context, _ *kadranv1.ImageBuildRequest, sink execclient.BuildSink) (string, error) {
 			if err := sink([]byte("Step 1/2\n"), false); err != nil {
 				return "", err
 			}
@@ -270,7 +270,7 @@ func TestDeployStreamsOutputAndSucceeds(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(context.Background())
-	err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
+	err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
 	if err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
 	}
@@ -318,12 +318,12 @@ func TestDeployBuildsTheRequestedCommit(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(context.Background())
-	if err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
+	if err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
 	}
 
 	src := fe.lastReq.GetSource()
-	if src.GetHost() != "github.com" || src.GetOwner() != "erkanrzgc" || src.GetRepo() != "panely" {
+	if src.GetHost() != "github.com" || src.GetOwner() != "erkanrzgc" || src.GetRepo() != "kadran" {
 		t.Errorf("kaynak üçlüsü uygulama tanımından gelmedi: %v", src)
 	}
 	if src.GetCommitSha() != apiSHA {
@@ -346,7 +346,7 @@ func TestDeployRejectsShortSHABeforeTouchingAnything(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(context.Background())
-	err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: "abc123"}, st)
+	err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: "abc123"}, st)
 
 	if status.Code(err) != codes.InvalidArgument {
 		t.Fatalf("kod = %v, beklenen InvalidArgument (%v)", status.Code(err), err)
@@ -372,7 +372,7 @@ func TestDeployReportsUnknownAppAsNotFound(t *testing.T) {
 	srv, _ := newDeployServer(t, fe)
 
 	st := newDeployStream(context.Background())
-	err := srv.Deploy(&panelyv1.DeployRequest{AppId: "yok", CommitSha: apiSHA}, st)
+	err := srv.Deploy(&kadranv1.DeployRequest{AppId: "yok", CommitSha: apiSHA}, st)
 
 	// NotFound, InvalidArgument DEĞİL: "yazım hatası yaptım" ile "bu
 	// uygulama yok" istemci için ayırt edilebilir kalmalı.
@@ -389,7 +389,7 @@ func TestDeployReportsUnknownAppAsNotFound(t *testing.T) {
 func TestFailedBuildSealsReleaseAndSendsNoSuccess(t *testing.T) {
 	buildErr := errors.New("docker: derleme başarısız: npm ERR! kayıp bağımlılık")
 	fe := &fakeExec{
-		build: func(_ context.Context, _ *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error) {
+		build: func(_ context.Context, _ *kadranv1.ImageBuildRequest, sink execclient.BuildSink) (string, error) {
 			_ = sink([]byte("Step 1/2\n"), false)
 			return "", buildErr
 		},
@@ -398,7 +398,7 @@ func TestFailedBuildSealsReleaseAndSendsNoSuccess(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(context.Background())
-	err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
+	err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
 	if err == nil {
 		t.Fatal("başarısız derleme hata döndürmedi")
 	}
@@ -435,7 +435,7 @@ func TestFailedBuildSealsReleaseAndSendsNoSuccess(t *testing.T) {
 func TestBuildErrorTextNeverEntersTheAuditChain(t *testing.T) {
 	const leak = "AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI"
 	fe := &fakeExec{
-		build: func(context.Context, *panelyv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
+		build: func(context.Context, *kadranv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
 			return "", errors.New("derleme başarısız: " + leak)
 		},
 	}
@@ -443,7 +443,7 @@ func TestBuildErrorTextNeverEntersTheAuditChain(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(context.Background())
-	_ = srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
+	_ = srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
 
 	for _, rec := range auditActions(t, db) {
 		if strings.Contains(rec.Detail, leak) || strings.Contains(rec.ParamsJSON, leak) {
@@ -467,7 +467,7 @@ func TestReleaseIsSealedEvenWhenTheClientDisconnects(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	fe := &fakeExec{
-		build: func(context.Context, *panelyv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
+		build: func(context.Context, *kadranv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
 			// İstemci derleme sürerken gitti.
 			cancel()
 			return "", context.Canceled
@@ -477,7 +477,7 @@ func TestReleaseIsSealedEvenWhenTheClientDisconnects(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(ctx)
-	_ = srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
+	_ = srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
 
 	rel, err := db.GetRelease(context.Background(), "blog", "r1")
 	if err != nil {
@@ -501,7 +501,7 @@ func TestAuditIsWrittenEvenWhenTheClientDisconnects(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	fe := &fakeExec{
-		build: func(context.Context, *panelyv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
+		build: func(context.Context, *kadranv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
 			cancel()
 			return "", context.Canceled
 		},
@@ -510,7 +510,7 @@ func TestAuditIsWrittenEvenWhenTheClientDisconnects(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(ctx)
-	_ = srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
+	_ = srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st)
 
 	var found bool
 	for _, rec := range auditActions(t, db) {
@@ -531,7 +531,7 @@ func TestAuditIsWrittenEvenWhenTheClientDisconnects(t *testing.T) {
 // edilebilmeli.
 func TestSuccessfulDeployRecordsImageIDInAudit(t *testing.T) {
 	fe := &fakeExec{
-		build: func(context.Context, *panelyv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
+		build: func(context.Context, *kadranv1.ImageBuildRequest, execclient.BuildSink) (string, error) {
 			return "sha256:denetlenebilir", nil
 		},
 	}
@@ -539,7 +539,7 @@ func TestSuccessfulDeployRecordsImageIDInAudit(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	st := newDeployStream(context.Background())
-	if err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
+	if err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
 	}
 
@@ -570,7 +570,7 @@ func TestDeployStopsWhenTheClientCannotBeWritten(t *testing.T) {
 	sinkErr := errors.New("istemci gitti")
 	chunks := 0
 	fe := &fakeExec{
-		build: func(_ context.Context, _ *panelyv1.ImageBuildRequest, sink execclient.BuildSink) (string, error) {
+		build: func(_ context.Context, _ *kadranv1.ImageBuildRequest, sink execclient.BuildSink) (string, error) {
 			for range 10 {
 				if err := sink([]byte("satir\n"), false); err != nil {
 					return "", err
@@ -586,7 +586,7 @@ func TestDeployStopsWhenTheClientCannotBeWritten(t *testing.T) {
 	st := newDeployStream(context.Background())
 	st.failFrom, st.sendErr = 2, sinkErr // Accepted + 1 çıktı geçer, sonra kopar.
 
-	if err := srv.Deploy(&panelyv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err == nil {
+	if err := srv.Deploy(&kadranv1.DeployRequest{AppId: "blog", CommitSha: apiSHA}, st); err == nil {
 		t.Fatal("istemci yazılamazken dağıtım başarılı sayıldı")
 	}
 	if chunks >= 10 {
@@ -608,7 +608,7 @@ func TestDeployStopsWhenTheClientCannotBeWritten(t *testing.T) {
 func newDeployServerWith(t *testing.T, fe *fakeExec, ro *fakeRollout) (*Server, *store.Store) {
 	t.Helper()
 
-	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "panely.db"))
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "kadran.db"))
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
@@ -636,7 +636,7 @@ func TestDeployHandsTheBuiltReleaseToTheRollout(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	stream := &deployStream{ctx: context.Background()}
-	if err := srv.Deploy(&panelyv1.DeployRequest{
+	if err := srv.Deploy(&kadranv1.DeployRequest{
 		AppId: "blog", CommitSha: apiSHA,
 	}, stream); err != nil {
 		t.Fatalf("dağıtım başarısız: %v", err)
@@ -662,7 +662,7 @@ func TestFailedBuildNeverReachesTheRollout(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	stream := &deployStream{ctx: context.Background()}
-	if err := srv.Deploy(&panelyv1.DeployRequest{
+	if err := srv.Deploy(&kadranv1.DeployRequest{
 		AppId: "blog", CommitSha: apiSHA,
 	}, stream); err == nil {
 		t.Fatal("başarısız derleme başarı sayıldı")
@@ -684,7 +684,7 @@ func TestRolloutFailureIsNotReportedAsSuccess(t *testing.T) {
 	mustCreateApp(t, srv, testSpec())
 
 	stream := &deployStream{ctx: context.Background()}
-	err := srv.Deploy(&panelyv1.DeployRequest{
+	err := srv.Deploy(&kadranv1.DeployRequest{
 		AppId: "blog", CommitSha: apiSHA,
 	}, stream)
 	if err == nil {
@@ -710,7 +710,7 @@ func TestRolloutFailureIsNotReportedAsSuccess(t *testing.T) {
 
 // okBuild, aux karesinden imaj kimliği dönen bir executor taklidi.
 func okBuild() *fakeExec {
-	return &fakeExec{build: func(context.Context, *panelyv1.ImageBuildRequest,
+	return &fakeExec{build: func(context.Context, *kadranv1.ImageBuildRequest,
 		execclient.BuildSink) (string, error) {
 		return "sha256:kabul", nil
 	}}
@@ -718,7 +718,7 @@ func okBuild() *fakeExec {
 
 // failBuild, derlemesi çöken bir executor taklidi.
 func failBuild() *fakeExec {
-	return &fakeExec{build: func(context.Context, *panelyv1.ImageBuildRequest,
+	return &fakeExec{build: func(context.Context, *kadranv1.ImageBuildRequest,
 		execclient.BuildSink) (string, error) {
 		return "", errors.New("derleme çöktü")
 	}}

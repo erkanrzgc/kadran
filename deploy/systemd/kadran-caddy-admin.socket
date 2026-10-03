@@ -1,0 +1,48 @@
+[Unit]
+Description=Kadran ters vekili — admin soketi
+Documentation=https://github.com/erkanrzgc/kadran
+
+# ══════════════════════════════════════════════════════════════════════
+#  Soketi neden systemd yaratıyor, Caddy değil?
+# ══════════════════════════════════════════════════════════════════════
+#
+# kadrand bu sokete yazıyor (K-050), yani sokete `kadran` kullanıcısının
+# ERİŞEBİLMESİ ama Caddy'nin `kadran` GRUBUNA GİRMEMESİ gerekiyor. İkisi
+# aynı şey değil ve fark kritik: Caddy kadran grubuna girseydi
+# `/run/kadran-exec/exec.sock`'a (0660 root:kadran) ulaşabilirdi — yani
+# ters vekil, ayrıcalıklı executor'a konuşabilir hâle gelirdi.
+#
+# Caddy soketi kendisi yaratırsa GRUP olarak kendi birincil grubunu
+# kullanır. `unix//path|0660` sözdizimi MODU ayarlar ama GRUBU ayarlamaz —
+# bu ölçüldü: soket `srw-rw---- caddy:caddy` çıkıyor ve kadran
+# bağlanamıyor.
+#
+# systemd soket aktivasyonu bunu temiz çözüyor: soketi systemd (root)
+# doğru sahiplik ve modla yaratıyor, Caddy onu `fd/3` olarak devralıyor.
+#
+# Değerlendirilen alternatif: ExecStartPost ile root'un `chgrp` yapması.
+# Çalışıyor ama soketin doğru gruba geçmesi Caddy'nin başlamasından
+# SONRAYA kalıyor ve bu, kurulum sırasını bir zamanlama yarışına bağlıyor.
+# Soket aktivasyonunda böyle bir pencere yok: soket, Caddy hiç başlamadan
+# önce doğru izinlerle hazır.
+
+[Socket]
+ListenStream=/run/kadran-caddy/admin.sock
+
+# Sahip kadran-caddy, grup kadran.
+#
+# ⚠ Bu satır kadran-caddy'yi kadran grubunun ÜYESİ YAPMAZ. Yalnızca bu
+# soketin grup sahipliğini belirler. Servisin kendi grup üyeliği
+# kadran-caddy.service'te (`Group=kadran-caddy`) ve orası
+# DEĞİŞTİRİLMEMELİDİR.
+SocketUser=kadran-caddy
+SocketGroup=kadran
+SocketMode=0660
+
+# .socket birimi varsayılan olarak AYNI ADLI .service'i tetikler; bizimki
+# farklı adda. Bu satır olmadan birim "kadran-caddy-admin.service
+# bulunamadı" diye başlamıyor (ölçüldü).
+Service=kadran-caddy.service
+
+[Install]
+WantedBy=sockets.target

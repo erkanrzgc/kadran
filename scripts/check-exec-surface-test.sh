@@ -39,7 +39,7 @@ expect "gerçek exec.proto temiz" 0 $?
 # yorum içinde örnekliyor ve tarama onları gerçek alan sanıyordu.
 cat > "$WORK/yorumlu.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 // Faz 1'de eklenecek şekil:
 //
@@ -69,7 +69,7 @@ fi
 for field in "${forbidden[@]}"; do
     cat > "$WORK/tek.proto" <<EOF
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 message ContainerCreateRequest {
   string app_id = 1;
@@ -89,7 +89,7 @@ shape_case() {
     local name="$1" line="$2"
     cat > "$WORK/sekil.proto" <<EOF
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 message ContainerCreateRequest {
   string app_id = 1;
@@ -108,7 +108,7 @@ shape_case "optional etiketi: optional bool privileged" "optional bool privilege
 # ── 5. Serbest argv YAKALANMALI ──────────────────────────────────────
 cat > "$WORK/argv.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 message RunRequest {
   repeated string argv = 1;
@@ -120,7 +120,7 @@ expect "serbest argv yakalandı" 1 $?
 # ── 6. Serbest kabuk alanı YAKALANMALI ───────────────────────────────
 cat > "$WORK/shell.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 message RunRequest {
   string shell = 1;
@@ -137,51 +137,51 @@ expect "serbest kabuk alanı yakalandı" 1 $?
 # yani oraya yazılan yasak bir alan ayrıcalıklı şemanın parçası olurdu ama
 # kontrol "değişmezler korunuyor" derdi.
 #
-mkdir -p "$WORK/panely/v1"
-cat > "$WORK/panely/v1/ortak.proto" <<'EOF'
+mkdir -p "$WORK/kadran/v1"
+cat > "$WORK/kadran/v1/ortak.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 message Paylasilan {
   string host_path = 1;
 }
 EOF
-cat > "$WORK/panely/v1/ana.proto" <<'EOF'
+cat > "$WORK/kadran/v1/ana.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
-import "panely/v1/ortak.proto";
+import "kadran/v1/ortak.proto";
 
 message Istek {
   Paylasilan ortak = 1;
 }
 EOF
-bash "$CHECKER" "$WORK/panely/v1/ana.proto" >/dev/null 2>&1
+bash "$CHECKER" "$WORK/kadran/v1/ana.proto" >/dev/null 2>&1
 expect "içe aktarılan şemadaki yasak alan yakalandı" 1 $?
 
 # ── 8. KONTROL GRUBU: temiz bir içe aktarma yanlış alarm üretmemeli ───
 #
 # Üsttteki test tek başına "her içe aktarmada patla" diyen bir uygulamayı
 # da geçirirdi.
-cat > "$WORK/panely/v1/temiz.proto" <<'EOF'
+cat > "$WORK/kadran/v1/temiz.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
 message Temiz {
   string ad = 1;
 }
 EOF
-cat > "$WORK/panely/v1/ana2.proto" <<'EOF'
+cat > "$WORK/kadran/v1/ana2.proto" <<'EOF'
 syntax = "proto3";
-package panely.v1;
+package kadran.v1;
 
-import "panely/v1/temiz.proto";
+import "kadran/v1/temiz.proto";
 
 message Istek2 {
   Temiz temiz = 1;
 }
 EOF
-bash "$CHECKER" "$WORK/panely/v1/ana2.proto" >/dev/null 2>&1
+bash "$CHECKER" "$WORK/kadran/v1/ana2.proto" >/dev/null 2>&1
 expect "temiz içe aktarma yanlış alarm üretmiyor" 0 $?
 
 # ── 9. Satır sınırı gerçekten uygulanıyor mu? ────────────────────────

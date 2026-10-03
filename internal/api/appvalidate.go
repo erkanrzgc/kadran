@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // ── Doğrulama: KARAKTER KÜMELERİ evet, POLİTİKA hayır ────────────────
@@ -26,7 +26,7 @@ import (
 //
 // POLİTİKA burada YOK. İzinli git host listesi executor'ın
 // `-allow-git-host` bayrağındadır ve daemon onu BİLMEMELİDİR: liste bir
-// işletme kararıdır ve ele geçirilmiş bir panelyd ona ekleme yapamamalı.
+// işletme kararıdır ve ele geçirilmiş bir kadrand ona ekleme yapamamalı.
 // Daemon yalnızca "bu bir host adına benziyor mu" der.
 
 var (
@@ -53,7 +53,7 @@ const (
 	//
 	// Bu üç sabit internal/exec/validate.go'daki maxEnvEntries,
 	// maxEnvBytes ve maxEnvKeyBytes ile birebir aynıdır. Kopya olmaları
-	// kasıtlı: panelyd ayrıcalıklı paketi içe aktarmıyor ve aktarmamalı
+	// kasıtlı: kadrand ayrıcalıklı paketi içe aktarmıyor ve aktarmamalı
 	// (yetki sınırı ikilinin kendisinde, ortak bir kütüphanede değil).
 	//
 	// ⚠ Buradaki sınır executor'ınkinden GEVŞEK OLAMAZ. Gevşek olsaydı
@@ -71,7 +71,7 @@ const (
 )
 
 // validateAppSpec, uygulama tanımının tamamını doğrular.
-func validateAppSpec(spec *panelyv1.AppSpec) error {
+func validateAppSpec(spec *kadranv1.AppSpec) error {
 	if spec == nil {
 		return errors.New("uygulama tanımı zorunludur")
 	}
@@ -111,7 +111,7 @@ func validateAppSpec(spec *panelyv1.AppSpec) error {
 	return validateLimits(spec.GetLimits())
 }
 
-func validateSource(spec *panelyv1.AppSpec) error {
+func validateSource(spec *kadranv1.AppSpec) error {
 	host := spec.GetGitHost()
 	switch {
 	case host == "":
@@ -277,7 +277,7 @@ func validateDomain(d string) error {
 
 // validateLimits, kaynak kotalarını doğrular. Sıfır KABUL EDİLMEZ:
 // limitsiz bir konteyner, tek sunucudaki diğer her şeyi aç bırakabilir.
-func validateLimits(l *panelyv1.ResourceLimits) error {
+func validateLimits(l *kadranv1.ResourceLimits) error {
 	if l == nil {
 		return errors.New("limits zorunludur — limitsiz konteyner yoktur")
 	}

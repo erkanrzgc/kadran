@@ -113,7 +113,7 @@ mutate "uyumsuz protokol kabul ediliyor" \
     "s=s.replace('\tif resp.GetProtocolVersion() != version.Protocol {','\tif false {',1)"
 
 mutate "istemci sürümünü göndermiyor" \
-    "s=s.replace('&panelyv1.PingRequest{ClientVersion: version.Version}','&panelyv1.PingRequest{}',1)"
+    "s=s.replace('&kadranv1.PingRequest{ClientVersion: version.Version}','&kadranv1.PingRequest{}',1)"
 
 echo "== ssh'ın hata mesajı kullanıcıya ulaşıyor (K-120) =="
 

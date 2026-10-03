@@ -27,17 +27,17 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 L=internal/liveness/liveness.go
 H=internal/health/supervisor.go
-W=cmd/panelyd/proxywatch.go
-A=cmd/panelyd/alarmwatch.go
-B=cmd/panelyd/backup.go
-D=cmd/panelyd/watchdog.go
+W=cmd/kadrand/proxywatch.go
+A=cmd/kadrand/alarmwatch.go
+B=cmd/kadrand/backup.go
+D=cmd/kadrand/watchdog.go
 S=internal/store/store.go
-M=cmd/panelyd/main.go
-U=deploy/systemd/panelyd.service
+M=cmd/kadrand/main.go
+U=deploy/systemd/kadrand.service
 FILES=("$L" "$H" "$W" "$A" "$B" "$D" "$S" "$M" "$U")
 LIV=./internal/liveness/
 HEA=./internal/health/
-PAN=./cmd/panelyd/
+PAN=./cmd/kadrand/
 
 BAK=$(mktemp -d)
 for f in "${FILES[@]}"; do cp "$f" "$BAK/$(basename "$f")"; done

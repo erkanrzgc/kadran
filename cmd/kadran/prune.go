@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/erkanrzgc/kadran/internal/client"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runPrune, eski sürümlerin konteynerlerini kaldırır.
@@ -60,7 +60,7 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 
 	ids := []string{appID}
 	if *all {
-		list, err := conn.RPC().ListApps(ctx, &panelyv1.ListAppsRequest{})
+		list, err := conn.RPC().ListApps(ctx, &kadranv1.ListAppsRequest{})
 		if err != nil {
 			return c.fail(fmt.Errorf("prune -all: %w", err))
 		}
@@ -95,7 +95,7 @@ func (c *cli) pruneEach(
 		failed  int
 	)
 	for _, id := range ids {
-		resp, err := conn.RPC().PruneApp(ctx, &panelyv1.PruneAppRequest{
+		resp, err := conn.RPC().PruneApp(ctx, &kadranv1.PruneAppRequest{
 			AppId: id, DryRun: dry,
 		})
 		if err != nil {
@@ -131,7 +131,7 @@ func (c *cli) pruneEach(
 // ⚠ NE SİLİNDİĞİ kadar NE SİLİNMEDİĞİ de yazılıyor (K-088). "3
 // konteyner silindi" operatöre en çok merak ettiği şeyi söylemiyor:
 // geri alma hâlâ çalışıyor mu, ve disk gerçekten toparlandı mı?
-func (c *cli) printPrune(resp *panelyv1.PruneAppResponse, dry bool) {
+func (c *cli) printPrune(resp *kadranv1.PruneAppResponse, dry bool) {
 	head := "budandı"
 	if dry {
 		head = "DENEME (hiçbir şey silinmedi)"
@@ -156,7 +156,7 @@ func (c *cli) printPrune(resp *panelyv1.PruneAppResponse, dry bool) {
 
 	if resp.GetImagesUntouched() {
 		fmt.Fprintf(c.stdout,
-			"  ⚠ İMAJLARA DOKUNULMADI — `panely/%s:<sha>` imajları yerinde.\n"+
+			"  ⚠ İMAJLARA DOKUNULMADI — `kadran/%s:<sha>` imajları yerinde.\n"+
 				"    Silinmiş uygulamaların yetim konteynerleri de kapsam dışı.\n",
 			resp.GetAppId())
 	}

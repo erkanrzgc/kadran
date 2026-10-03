@@ -90,16 +90,16 @@ func TestRootInstallRunsTheScriptDirectly(t *testing.T) {
 	}
 }
 
-// panely-client zorlanmış komutlu, yetkisiz istemci kullanıcısı; bir kurulum
+// kadran-client zorlanmış komutlu, yetkisiz istemci kullanıcısı; bir kurulum
 // hesabı OLAMAZ. Kullanıcı adı verilmeyen hedef ona düşüyor
 // (client.DefaultSSHUser) ve kurulum anlaşılmaz biçimde zorlanmış komuta
 // çarpardı.
 func TestBootstrapRefusesTheClientUser(t *testing.T) {
 	repo := newFakeRepo(t)
 	for _, sudo := range []bool{false, true} {
-		err := Run(context.Background(), kurulumSecenekleri(t, repo, "panely-client@sunucu", sudo))
-		if err == nil || !strings.Contains(err.Error(), "panely-client") {
-			t.Errorf("sudo=%v: panely-client ile kurulum reddedilmedi: %v", sudo, err)
+		err := Run(context.Background(), kurulumSecenekleri(t, repo, "kadran-client@sunucu", sudo))
+		if err == nil || !strings.Contains(err.Error(), "kadran-client") {
+			t.Errorf("sudo=%v: kadran-client ile kurulum reddedilmedi: %v", sudo, err)
 		}
 	}
 }

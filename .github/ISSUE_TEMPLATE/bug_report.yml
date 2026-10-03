@@ -14,10 +14,10 @@ body:
     attributes:
       label: Component
       options:
-        - panelyd (server daemon)
-        - panely-exec (privileged executor)
-        - panely-connect (forced-command proxy)
-        - panely (CLI / sidecar)
+        - kadrand (server daemon)
+        - kadran-exec (privileged executor)
+        - kadran-connect (forced-command proxy)
+        - kadran (CLI / sidecar)
         - Desktop app (Electron)
         - bootstrap / systemd units
         - Build, CI, or tooling
@@ -60,7 +60,7 @@ body:
       label: Steps to reproduce
       placeholder: |
         1. kadran bootstrap root@...
-        2. kadran status panely-client@...
+        2. kadran status kadran-client@...
         3. ...
     validations:
       required: true
@@ -71,7 +71,7 @@ body:
       label: Relevant logs
       description: |
         Useful commands — remember that `cmd | tail` reports tail's exit status, not the command's.
-        `journalctl -u panelyd -n 100 --no-pager`
-        `journalctl -u panely-exec -n 100 --no-pager`
-        `systemctl status panelyd panely-exec`
+        `journalctl -u kadrand -n 100 --no-pager`
+        `journalctl -u kadran-exec -n 100 --no-pager`
+        `systemctl status kadrand kadran-exec`
       render: shell

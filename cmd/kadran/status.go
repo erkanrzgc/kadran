@@ -7,7 +7,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
 // runStatus, sunucunun ve daemon'ın durumunu gösterir.
@@ -31,7 +31,7 @@ func (c *cli) runStatus(ctx context.Context, args []string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	info, err := conn.RPC().GetSystemInfo(ctx, &panelyv1.GetSystemInfoRequest{})
+	info, err := conn.RPC().GetSystemInfo(ctx, &kadranv1.GetSystemInfoRequest{})
 	if err != nil {
 		return c.fail(fmt.Errorf("sistem bilgisi alınamadı: %w", err))
 	}
@@ -43,7 +43,7 @@ func (c *cli) runStatus(ctx context.Context, args []string) int {
 	return exitOK
 }
 
-func (c *cli) printStatus(target string, ping *panelyv1.PingResponse, info *panelyv1.GetSystemInfoResponse) {
+func (c *cli) printStatus(target string, ping *kadranv1.PingResponse, info *kadranv1.GetSystemInfoResponse) {
 	tw := tabwriter.NewWriter(c.stdout, 0, 0, 3, ' ', 0)
 	row := func(key, value string) { fmt.Fprintf(tw, "%s\t%s\n", key, value) }
 
@@ -90,13 +90,13 @@ func (c *cli) printStatus(target string, ping *panelyv1.PingResponse, info *pane
 
 // daemonUserCell, daemon'ın hangi kullanıcı olarak çalıştığını gösterir.
 //
-// root ise bu SESSİZ GEÇİLMEZ. panelyd root çalışıyorsa executor ayrımı
-// dekoratiftir ve ürünün merkezî iddiası çökmüş demektir. panelyd zaten
+// root ise bu SESSİZ GEÇİLMEZ. kadrand root çalışıyorsa executor ayrımı
+// dekoratiftir ve ürünün merkezî iddiası çökmüş demektir. kadrand zaten
 // root ile başlamayı reddediyor; bu satır o kontrolün yedeği ve aynı
 // zamanda değişmezin ekrandaki belgesi.
 func daemonUserCell(u string) string {
 	if u == "root" {
-		return "root  ⚠ KURULUM BOZUK — panelyd root çalışmamalı"
+		return "root  ⚠ KURULUM BOZUK — kadrand root çalışmamalı"
 	}
 	if u == "" {
 		return "bilinmiyor"
@@ -104,7 +104,7 @@ func daemonUserCell(u string) string {
 	return u
 }
 
-func executorCell(info *panelyv1.GetSystemInfoResponse) string {
+func executorCell(info *kadranv1.GetSystemInfoResponse) string {
 	if !info.GetExecutorReachable() {
 		return "ERİŞİLEMİYOR — ayrıcalıklı işlemler çalışmayacak"
 	}
@@ -114,7 +114,7 @@ func executorCell(info *panelyv1.GetSystemInfoResponse) string {
 	return "erişilebilir"
 }
 
-func (c *cli) printStatusJSON(target string, ping *panelyv1.PingResponse, info *panelyv1.GetSystemInfoResponse) int {
+func (c *cli) printStatusJSON(target string, ping *kadranv1.PingResponse, info *kadranv1.GetSystemInfoResponse) int {
 	pingJSON, err := protoToJSON(ping)
 	if err != nil {
 		return c.fail(err)
@@ -145,7 +145,7 @@ func (c *cli) printStatusJSON(target string, ping *panelyv1.PingResponse, info *
 //  2. Mutlak sayı tek başına bilgi taşımıyor. "8 GB kullanılabilir"
 //     40 GB'lık diskte rahat, 500 GB'lık diskte alarm demek. Operatörün
 //     baktığı şey oran, o yüzden yüzde de yazılıyor.
-func diskCell(host *panelyv1.HostInfo) string {
+func diskCell(host *kadranv1.HostInfo) string {
 	total := host.GetDiskTotalBytes()
 	if total == 0 {
 		return "ölçülemedi"

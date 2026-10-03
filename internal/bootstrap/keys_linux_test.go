@@ -43,7 +43,7 @@ func keyServer(t *testing.T, sudo bool) (KeyOptions, string, string) {
 	t.Cleanup(func() { sshCommand, clientAuthorizedKeys = oldSSH, oldPath })
 
 	adminLine, _, adminFP := testKey(t, 10, "erkan@dizustu")
-	admin := `command="/usr/local/lib/panely/panely-connect",restrict ` + adminLine + "\n"
+	admin := `command="/usr/local/lib/kadran/kadran-connect",restrict ` + adminLine + "\n"
 	if err := os.WriteFile(clientAuthorizedKeys, []byte(admin), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -171,13 +171,13 @@ func TestRemoteScriptRevalidatesTheLine(t *testing.T) {
 	_, evilBody, _ := testKey(t, 14, "")
 
 	for _, line := range []string{
-		`command="/usr/local/lib/panely/panely-connect -deploy=site",restrict ` + ciBody + "\n" + evilBody,
-		`command="/usr/local/lib/panely/panely-connect",restrict ` + ciBody, // yönetici: key add ekleyemez
+		`command="/usr/local/lib/kadran/kadran-connect -deploy=site",restrict ` + ciBody + "\n" + evilBody,
+		`command="/usr/local/lib/kadran/kadran-connect",restrict ` + ciBody, // yönetici: key add ekleyemez
 		`command="/bin/sh",restrict ` + ciBody,
 		ciBody,
 		// Geçerli bir satır, ama yinelenme denetimine giden gövde başka
 		// bir anahtarın: denetim yanlış anahtara bakardı.
-		`command="/usr/local/lib/panely/panely-connect -deploy=site",restrict ` + evilBody,
+		`command="/usr/local/lib/kadran/kadran-connect -deploy=site",restrict ` + evilBody,
 	} {
 		code, err := sshRun(context.Background(), opts.options(),
 			privileged(opts.options(), remoteKeys, "add", clientAuthorizedKeys, line, ciBody), nil, nil)

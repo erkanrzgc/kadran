@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
-	panelyv1 "github.com/erkanrzgc/kadran/internal/pb/panely/v1"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/proxydrv"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
@@ -58,7 +58,7 @@ func (f *fakeProxy) Load(_ context.Context, cfg *proxydrv.Config) error {
 func running(app, rel string, idx uint32, ip string) execclient.Replica {
 	return execclient.Replica{
 		AppID: app, ReleaseID: rel, Index: idx,
-		State:     panelyv1.ContainerState_CONTAINER_STATE_RUNNING,
+		State:     kadranv1.ContainerState_CONTAINER_STATE_RUNNING,
 		IPAddress: ip,
 	}
 }
@@ -245,11 +245,11 @@ func TestReplicaWithoutAnAddressIsNotRouted(t *testing.T) {
 func TestStoppedReplicaIsNotRouted(t *testing.T) {
 	for _, tc := range []struct {
 		ad    string
-		state panelyv1.ContainerState
+		state kadranv1.ContainerState
 	}{
-		{"durmuş", panelyv1.ContainerState_CONTAINER_STATE_EXITED},
-		{"yeniden başlıyor", panelyv1.ContainerState_CONTAINER_STATE_RESTARTING},
-		{"ölü", panelyv1.ContainerState_CONTAINER_STATE_DEAD},
+		{"durmuş", kadranv1.ContainerState_CONTAINER_STATE_EXITED},
+		{"yeniden başlıyor", kadranv1.ContainerState_CONTAINER_STATE_RESTARTING},
+		{"ölü", kadranv1.ContainerState_CONTAINER_STATE_DEAD},
 	} {
 		t.Run(tc.ad, func(t *testing.T) {
 			rep := running("blog", "r2", 0, "172.18.0.5")
@@ -305,7 +305,7 @@ func TestAppWithoutDomainIsNotSkippedItIsOutOfScope(t *testing.T) {
 // uzlaştırıcının hiç kurulamadığını doğrular.
 //
 // Admin'siz bir yapılandırma yüklenirse Caddy varsayılan TCP :2019'a
-// döner ve panelyd unix soketinden bir daha ULAŞAMAZ — sistem kendini
+// döner ve kadrand unix soketinden bir daha ULAŞAMAZ — sistem kendini
 // kalıcı olarak kilitler. Hatanın yükleme anında değil KURULUM anında
 // çıkması için burada da kontrol ediliyor.
 func TestReconcilerRefusesToBuildWithoutAdmin(t *testing.T) {

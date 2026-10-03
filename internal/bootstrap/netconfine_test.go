@@ -11,8 +11,8 @@ import (
 
 // # Bu dosya neden var?
 //
-// Sağlık kapısı için panelyd'ye ağ verildi (AF_INET). Bu, en-az-yetki
-// modelinde ölçülü bir taviz: yoklama panelyd'de yapılıyor çünkü
+// Sağlık kapısı için kadrand'ye ağ verildi (AF_INET). Bu, en-az-yetki
+// modelinde ölçülü bir taviz: yoklama kadrand'de yapılıyor çünkü
 // ayrıcalıklı yüzey bütçesi (2500 satır) bir HTTP istemcisini kaldırmıyor.
 //
 // Tavizin dar kalmasını sağlayan tek şey birim dosyasındaki çit. Çit bir
@@ -49,13 +49,13 @@ func birimAnahtarlari(t *testing.T, birim, anahtar string) []string {
 
 // ⚠ EN ÖNEMLİ TEST: ayrıcalıklı binary ağa ÇIKAMAZ.
 //
-// panely-exec root çalışıyor ve Docker soketine erişiyor. Ona ağ vermek,
+// kadran-exec root çalışıyor ve Docker soketine erişiyor. Ona ağ vermek,
 // "en az yetki" iddiasının kalan yarısını da silerdi: ele geçirilen bir
 // executor hem konteyner çalıştırabilir hem dışarıyla konuşabilirdi.
 func TestPrivilegedExecutorHasNoNetworkAtAll(t *testing.T) {
-	degerler := birimAnahtarlari(t, "panely-exec.service", "RestrictAddressFamilies")
+	degerler := birimAnahtarlari(t, "kadran-exec.service", "RestrictAddressFamilies")
 	if len(degerler) == 0 {
-		t.Fatal("panely-exec.service içinde RestrictAddressFamilies YOK — " +
+		t.Fatal("kadran-exec.service içinde RestrictAddressFamilies YOK — " +
 			"ayrıcalıklı süreç her adres ailesini açabilir")
 	}
 	for _, d := range degerler {
@@ -68,11 +68,11 @@ func TestPrivilegedExecutorHasNoNetworkAtAll(t *testing.T) {
 	}
 }
 
-// panelyd ağa çıkabiliyor ama YALNIZCA yoklama için gereken kadar.
+// kadrand ağa çıkabiliyor ama YALNIZCA yoklama için gereken kadar.
 func TestDaemonOpensOnlyTheAddressFamiliesTheProbeNeeds(t *testing.T) {
-	degerler := birimAnahtarlari(t, "panelyd.service", "RestrictAddressFamilies")
+	degerler := birimAnahtarlari(t, "kadrand.service", "RestrictAddressFamilies")
 	if len(degerler) == 0 {
-		t.Fatal("panelyd.service içinde RestrictAddressFamilies YOK")
+		t.Fatal("kadrand.service içinde RestrictAddressFamilies YOK")
 	}
 
 	izinli := map[string]bool{"AF_UNIX": true, "AF_INET": true}
@@ -81,13 +81,13 @@ func TestDaemonOpensOnlyTheAddressFamiliesTheProbeNeeds(t *testing.T) {
 		for _, aile := range strings.Fields(d) {
 			gorulen[aile] = true
 			if !izinli[aile] {
-				t.Errorf("panelyd %s ailesini açıyor — sağlık yoklaması için "+
+				t.Errorf("kadrand %s ailesini açıyor — sağlık yoklaması için "+
 					"gerekmiyor (AF_NETLINK/AF_PACKET ham erişim demektir)", aile)
 			}
 		}
 	}
 	if !gorulen["AF_UNIX"] {
-		t.Error("AF_UNIX kapalı — panelyd kendi soketini açamaz")
+		t.Error("AF_UNIX kapalı — kadrand kendi soketini açamaz")
 	}
 	if !gorulen["AF_INET"] {
 		t.Error("AF_INET kapalı — sağlık yoklaması hiç çalışamaz")
@@ -96,9 +96,9 @@ func TestDaemonOpensOnlyTheAddressFamiliesTheProbeNeeds(t *testing.T) {
 
 // Çitin kendisi: varsayılan REDDET olmalı.
 func TestDaemonDeniesAllAddressesByDefault(t *testing.T) {
-	deny := birimAnahtarlari(t, "panelyd.service", "IPAddressDeny")
+	deny := birimAnahtarlari(t, "kadrand.service", "IPAddressDeny")
 	if len(deny) == 0 {
-		t.Fatal("IPAddressDeny YOK — AF_INET açıkken panelyd İNTERNETE çıkabilir")
+		t.Fatal("IPAddressDeny YOK — AF_INET açıkken kadrand İNTERNETE çıkabilir")
 	}
 	var anyVar bool
 	for _, d := range deny {
@@ -119,7 +119,7 @@ func TestDaemonDeniesAllAddressesByDefault(t *testing.T) {
 //   - 192.168.0.0/16: kalıcı sunucunun EV AĞI orada
 //   - loopback: hostun kendi servisleri
 func TestDaemonAllowListStaysInsideDockersRange(t *testing.T) {
-	allow := birimAnahtarlari(t, "panelyd.service", "IPAddressAllow")
+	allow := birimAnahtarlari(t, "kadrand.service", "IPAddressAllow")
 	if len(allow) == 0 {
 		t.Fatal("IPAddressAllow YOK — IPAddressDeny=any ile yoklama HİÇ çalışamaz")
 	}

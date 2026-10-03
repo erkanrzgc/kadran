@@ -9710,9 +9710,9 @@ geri dönüş → yeniden göç, her birinde yoklama açık.
   `geri.sh` (göç başlarken sunucuya `/usr/local/lib/kadran/kadran-geri-donus.sh`
   olarak kurulur). Paket ikisini ve seçimli birimlerin dosyalarını taşıyor;
   test betiklerin okuduğu her `$STAGE/<ad>`'ı pakette arıyor.
-- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 48 senaryo;
-  `scripts/mutate-goc.sh` 23/23 mutant (güvenlik incelemesinden sonra;
-  provada 37 ve 15'ti). Kullanıcı adlandırma, systemd ve
+- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 51 senaryo;
+  `scripts/mutate-goc.sh` 25/25 mutant (güvenlik incelemesi ve ikinci
+  provadan sonra; ilk provada 37 ve 15'ti). Kullanıcı adlandırma, systemd ve
   Docker adımları gerçek sunucuda ölçüldü (aşağıda).
 - CLI: eski sunucu (`Unimplemented`) ve `panely-client@` hedefi için yol
   gösteren hata; protokol 3. Masaüstü: `panely-desktop` profilleri taşınıyor,
@@ -9810,7 +9810,37 @@ dizin ve bağlı authorized_keys'te DURDU; yarıda kalan koşu tamamlandı; boş
 `goc.sh`'ta her saldırıyı yeniden üretti. Hepsi `check-goc-sh.sh`'ta
 senaryo ve `mutate-goc.sh`'ta mutant.
 
-⚠ `install.sh`'ın sırası provadan SONRA değişti (temizlik doğrulamanın
-arkasına). Canlıdan önce GCP'de yayın dosyalarıyla yeniden prova edilir:
-v0.4.0'a yükselt → yeni `kadran-geri-donus.sh` ile v0.3.0'a dön → v0.4.0
-yayınıyla göç. Böylece canlıya giden paket prova edilen paket olur.
+### İkinci GCP provası (3 Ekim, inceleme düzeltmeleriyle)
+
+`install.sh`'ın sırası ilk provadan SONRA değiştiği için (temizlik
+doğrulamanın arkasına) canlıdan önce yeniden prova edildi. Normal yükseltme
+geri dönüş betiğini GÜNCELLEMEZ (onu yalnızca göç kurar); yeni `goc.sh` ve
+`geri.sh` sunucuya elle kondu (özetleri depodakiyle aynı).
+
+- **Geri dönüş (yeni betik):** 17 sn. Göçten sonra elle eklenen işaret
+  drop-in'i (`kadran-exec.service.d/20-olcum.conf`) silinmedi, göç kaydının
+  `yeni-dropin` dizinine alındı ve uyarı basıldı (bulgu 9, sahada).
+- **v0.3.0 bootstrap:** 17/17.
+- **Göç (rc6, `c0b80c8`):** 57 sn, 17/17; temizlik doğrulamadan SONRA koştu
+  ("eski kalıntılar kaldırıldı"). Günlükten pencere: eski vekil 13:18:22,364'te
+  durdu, yeni vekil rotalarla 23,076'da sunuyordu: **~0,7 sn**. Yoklayıcı
+  62/63 `200`; tek hata 22,327'de (bağlantı sıfırlandı), pencereyle aynı an.
+- **Tabana karşı:** uid/gid, hacim işareti, 24 yedek, authorized_keys,
+  drop-in'ler, beyaz liste aynı; `rclone.conf`/`offsite.conf` 640
+  root:kadran, `authorized_keys` 600; hiçbir dizinde `.goc*` geçici dosyası
+  yok; uzak yedek yeni adla koştu (`success`).
+
+Bu prova bir hata daha buldu: **kurulu ama zamanlayıcısı kapalı seçimli
+birimler düşüyordu.** Göç yalnızca etkin zamanlayıcıların birimlerini yeni
+adla kuruyordu; GCP'de bildirim zamanlayıcısı kapalıydı ve
+`kadran-notify.*` birimleri göçten sonra yoktu (eskileri göç kaydında).
+CHANGELOG "taşınır" diyordu. Düzeltme: göç, eski adla kurulu olanları da
+kaydediyor (`kurulu`), kurulu ∪ etkin olanları kuruyor, yalnızca etkin
+olanları açıyor. Senaryo + iki mutant (mutate-goc 25/25).
+
+GCP'de yeniden ölçüldü: geri dönüş → v0.3.0 (17/17; bildirim birimi kurulu,
+zamanlayıcı kapalı) → **göç (rc7)** 66 sn, 17/17. "seçimli birim kuruldu,
+zamanlayıcısı eskisi gibi KAPALI: kadran-notify"; `kadran-notify.timer`
+disabled, offsite ve volume-backup enabled. Pencere (günlük): eski vekil
+13:25:17,253'te durmaya başladı, yeni rotalar 18,527'de: ~1,3 sn. Yoklayıcı
+58/58 `200`. Geçici dosya kalıntısı 0.

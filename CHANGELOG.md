@@ -19,7 +19,7 @@ It detects the old (`panely`) install and migrates it in place (K-136).
 - Users are renamed with `usermod`: uid/gid and the ownership of every file stay the
   same. The database, backups, volumes, deploy keys, TLS certificates, both audit
   chains and the optional offsite, volume-backup and alarm units move to the new
-  names.
+  names. A timer that was off stays off.
 - Your own systemd drop-ins follow their units. The migration stops before the new
   executor starts if its effective `--allow-repo` list differs from the old one.
 - The old proxy and containers keep serving until the new control plane has started
@@ -53,8 +53,8 @@ It detects the old (`panely`) install and migrates it in place (K-136).
 ### Found by rehearsing the migration
 
 The migration was run on the Debian 13 test server against a copy of the live setup:
-migrate, reboot, roll back, migrate again (K-136). That found three problems before
-they reached the live server:
+migrate, reboot, roll back, migrate again, and once more after the security fixes
+(K-136). That found four problems before they reached the live server:
 
 - **The executor's repository allowlist would have been dropped.** On the live server it
   lives in an operator drop-in (`panely-exec.service.d`). Without carrying it over, the
@@ -67,6 +67,10 @@ they reached the live server:
 - **The first version was down for 16 s,** mostly waiting for the proxy watcher's 10 s
   tick. The daemon now restarts right after the new proxy, and startup reconciliation
   writes the routes immediately: about 1.3 s.
+- **An installed but disabled optional unit was dropped** (found in a second rehearsal
+  after the security fixes). Only units with an enabled timer were reinstalled under the
+  new names. Every installed one is now carried over, and only the enabled ones are
+  turned on.
 
 ### Found by a security review of the migration
 

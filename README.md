@@ -256,7 +256,7 @@ place** (K-136):
 
 - Users are renamed with `usermod`, so uid/gid and every file's ownership stay the same.
   The database, backups, volumes, keys, TLS certificates, audit chains and the optional
-  backup and alarm units move to the new names.
+  backup and alarm units move to the new names; a timer that was off stays off.
 - Your own systemd drop-ins (for example an `--allow-repo` list) follow the units, and the
   migration stops before starting the new executor if its effective allowlist differs
   from the old one.

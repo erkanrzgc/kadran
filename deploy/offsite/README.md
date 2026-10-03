@@ -85,6 +85,16 @@ eskiyenleri sağlayıcının yaşam döngüsü kuralına bırak.
 yedek × 90 gün ≈ 310 MB — ücretsiz katmanın çok altında. Uygulama
 eklendikçe veritabanı büyür; oran değişirse yeniden ölç.
 
+> **v0.4.0'dan önce kurduysan (panely adları, K-136):** göç kovana ve
+> yoluna DOKUNMAZ; `offsite.conf` aynı kovayı göstermeye devam eder (yalnız
+> rclone hedefinin adı `panely-offsite` → `kadran-offsite` olur). Ama yeni
+> nesneler `kadran-…` adıyla yüklenir ve kilit kuralı önekle eşleşir:
+> **göçten ÖNCE** kovaya `kadran-` öneki için de aynı iki kuralı ekle
+> (aşağıda 2. ve 3. adım: kilit 30 gün, yaşam döngüsü 90 gün). `panely-`
+> kurallarını eski nesneler süresini doldurana kadar silme. Ardından kilidi
+> aşağıdaki "Kilit ölçülmeden güvenilmez" yöntemiyle `kadran-` önekinde ölç.
+> Göç yerel yedekleri yeni adla bir kez daha yükler (canlıda ~3,4 MB).
+
 ⚠ **R2 token'larında silmesiz yazma izni YOK.** Seçenekler Admin
 Read & Write, Admin Read, Object Read & Write, Object Read. Yazabilen
 her token SİLEBİLİR. Silmeyi durduran şey kovadaki **bucket lock**:

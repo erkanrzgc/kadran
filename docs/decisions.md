@@ -9573,7 +9573,8 @@ dokunulmadı: oraya her push canlıya dağıtım demek, karar kullanıcıda.
 ## K-136 — Ad değişikliğinin ikinci yarısı: sunucu tarafı panely → kadran
 
 **Tarih:** 2 Ekim 2026
-**Durum:** TASARIM. Kullanıcı kararı: "her şey şimdi" (K-130'un "bilerek
+**Durum:** UYGULANDI, GCP'de PROVA EDİLDİ (3 Ekim); canlı göç ayrı adım.
+Kullanıcı kararı: "her şey şimdi" (K-130'un "bilerek
 değişmeyen" listesinin tamamı). Kod ayrı dalda; önce GCP'de prova, sonra
 canlı.
 
@@ -9697,3 +9698,88 @@ geri dönüş → yeniden göç, her birinde yoklama açık.
 - Canlıdan önce kullanıcıya durum verilir. R2'de `kadran-` öneki için
   kilit ve yaşam döngüsü kurallarını kullanıcı ekler; kilit, uzak yedek
   README'sindeki yöntemle ölçülür.
+
+### Uygulama (dal `kadran-rename`, PR #1)
+
+- Mekanik kısım: `git mv` + toplu değiştirme (tarih dosyaları hariç);
+  Türkçe ekler ünlü uyumuna göre (`Panely'nin` → `Kadran'ın`, 'de→'da,
+  'dir→'dır, 'ye→'a). `panelyd'nin` gibi okunuşu "-de" olanlara dokunulmadı.
+  Yorumları anlamsızlaştıran iki yer elle düzeltildi (K-130'a atıf yapan
+  "bilerek değişmedi" cümleleri).
+- `internal/bootstrap/goc.sh` (install.sh `source` eder), geri dönüş
+  `geri.sh` (göç başlarken sunucuya `/usr/local/lib/kadran/kadran-geri-donus.sh`
+  olarak kurulur). Paket ikisini ve seçimli birimlerin dosyalarını taşıyor;
+  test betiklerin okuduğu her `$STAGE/<ad>`'ı pakette arıyor.
+- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 37 senaryo;
+  `scripts/mutate-goc.sh` 15/15 mutant. Kullanıcı adlandırma, systemd ve
+  Docker adımları gerçek sunucuda ölçüldü (aşağıda).
+- CLI: eski sunucu (`Unimplemented`) ve `panely-client@` hedefi için yol
+  gösteren hata; protokol 3. Masaüstü: `panely-desktop` profilleri taşınıyor,
+  hedefler `kadran-client@` oluyor (4 test).
+
+### GCP provası (3 Ekim): göç → reboot → geri dönüş → yeniden göç
+
+GCP önce v0.3.0 yayın dosyalarıyla kuruldu (ikililer canlıdakiyle birebir:
+`ca82f5a7b87a`, `a3c1c1cf9f8b`, `bf8360893f0f`) ve canlıya benzetildi:
+hacimli bir uygulama, dağıtım anahtarı satırı, canlının birebir kopyası
+`--allow-repo` drop-in'i, uzak yedek (yerel rclone hedefi, test age
+anahtarı), hacim yedeği, bildirim (SAHTE Telegram anahtarı).
+
+Provanın canlıya çıkmadan bulduğu üç hata:
+
+1. **Depo beyaz listesi kaybolacaktı.** Canlıda `--allow-repo` (K-056)
+   `panely-exec.service.d/10-allow-repo.conf` drop-in'inde. Göç drop-in'leri
+   taşımıyordu: yeni executor KISITSIZ açılacaktı ve hiçbir denetim bunu
+   görmeyecekti. Şimdi drop-in'ler yeni birime kopyalanıp çevriliyor ve
+   executor başlamadan etkin `--allow-repo` eskisiyle karşılaştırılıyor;
+   farklıysa göç DURUYOR. GCP'de: "depo beyaz listesi korundu".
+2. **Alan adsız uygulama göçü hiç bitirmeyecekti** (danışman yakaladı).
+   Temizlik her konteynerin IP'sini Caddy'de arıyordu; rotasız uygulamanın
+   IP'si orada olmaz, "tamam" yazılmaz ve sonraki her bootstrap bayat
+   kayıtla göçe girerdi. Bitiş temizlikten ayrıldı; temizliğin ölçütü
+   "eski konteynerlerin hiçbiri yapılandırmada yok" (okunamazsa silmez).
+3. **İlk sürüm 16 sn kesinti verdi.** Günlükten: eski vekil 07:57:49,6'da
+   durdu, yeni vekil 56,2'de açıldı (6,5 sn; ~3 sn'si modül denetimi, ~1,6
+   sn'si dört `daemon-reload`), sonra 9,5 sn yeni vekil rotasız bekledi:
+   rotaları vekil izleyicisinin 10 sn'lik turu yazdı. Düzeltme: vekil
+   kurulumu hazırlık/başlatma diye ikiye bölündü (hazırlık eski vekil
+   sunarken), eski birimler durdurulmadan devre dışı bırakılıyor, kadrand
+   eski vekilden önce durup yenisinden sonra başlıyor; açılış uzlaştırması
+   rotaları hemen yazıyor.
+
+Ayrıca: `goc_gerekli` sahte kökte makinenin GERÇEK kullanıcılarına
+bakıyordu; GCP'de (eski kurulumlu) testi koşturunca kızardı, CI'da (o
+kullanıcılar yok) asla görülmezdi. Geri dönüş `kadran/` imaj etiketlerini
+bırakıyordu.
+
+Ölçümler:
+
+- **Göç 1** (rc3): 90 sn, 17/17 kurulum sonrası denetim. Yoklayıcı
+  (curl çıkış koduyla) 4 hata, hepsi `exit=7` (443'te dinleyen yok),
+  07:57:52–58:03 arası: ~16 sn.
+- **Göçten sonra, tabana karşı:** uid/gid aynı (999/988, 997/986,
+  994/985); hacimdeki işaret dosyasının sha256'sı aynı; 24 yedek yeni
+  adla; iki zincir geçerli (executor 36→42, daemon 37→44); TLS sertifika
+  seri numarası aynı (`062D…A503`); authorized_keys iki satırı da yeni
+  yolda; eski konteyner/ağ/etiket kaldırıldı. Uzak yedek yeni adla 25
+  nesne yükledi (eskiler duruyor). Bildirim, göçte açılıp kapanan
+  "vekil uzlaştırılamadı" alarmını (2 olay) göndermeye çalıştı (sahte
+  anahtar: 401). Canlıda bu iki mesaj Telegram'a gider.
+- **Dağıtım anahtarı göçten sonra:** yalnız test anahtarıyla
+  `deploy -commit` başarılı, denetim kaydında `app.deploy` o anahtarın
+  parmak iziyle; aynı anahtarla `app show` → PermissionDenied, kapsam dışı
+  uygulamaya deploy → PermissionDenied.
+- **Reboot:** bütün birimler active, NRestarts 0, hacim kökü
+  `nosuid,nodev`, uygulamalar kendiliğinden iyileşti; site çekirdek
+  açıldıktan ~52 sn sonra 200 (e2-micro).
+- **Geri dönüş:** betik 9 sn, ardından v0.3.0 bootstrap 17/17; uid/gid,
+  dizinler, drop-in'ler, beyaz liste, hacim işareti tabanla aynı; iki zincir
+  geçerli (57/59). Kesinti ~75 sn (acil durum yolu, belgelendi).
+- **Göç 2** (rc5, yeni sıralama): 64 sn, 17/17. Yoklayıcı 80/80 `200`.
+  Günlükten gerçek pencere: eski vekil dinleyiciyi 08:10:48,9'da kapattı,
+  yeni vekil rotalarla 08:10:50,2'de sunuyordu: **~1,3 sn**. Yoklayıcının
+  çözünürlüğü ~1,1 sn olduğu için pencereye denk gelmedi; betiğin raporladığı
+  "~4 sn" 1 sn'lik yoklama döngüsüyle şişmiş bir üst sınır.
+
+Sınırlar: GCP'de yalnız `hello` rotalı (portfolio alan adsız), yoklama
+onu ölçüyor. Canlıda bütün rotalı alan adları yoklanmalı.

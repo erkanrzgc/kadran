@@ -55,6 +55,19 @@ HEARTBEAT_TOKEN=<aynı PING_TOKEN>
 
 Bir dakika içinde ilk nabız gider.
 
+> **v0.4.0'dan önce `panely-nabiz` adıyla dağıttıysan (K-136):** sunucu
+> göçü Worker'a dokunmaz; `notify.conf`'taki adres eski Worker'ı göstermeye
+> devam eder ve her şey çalışır. Yeniden adlandırmak zorunda değilsin.
+> `wrangler deploy` bu dizinden çalıştırılırsa `kadran-nabiz` adıyla YENİ
+> bir Worker ve yeni bir adres oluşur; eskisi zamanlayıcısıyla çalışmaya
+> devam eder. Taşıyacaksan sıra önemli, yoksa eski Worker nabız alamayıp
+> sahte "NABIZ YOK" yazar:
+>
+> 1. `npx wrangler deploy`, sonra yukarıdaki üç sırrı YENİ Worker'a gir
+>    (KV aynı, `wrangler.jsonc`'taki kimlik; durum korunur).
+> 2. Sunucuda `HEARTBEAT_URL`'i yeni adrese çevir, bir dakika bekle.
+> 3. Eskisini sil: `npx wrangler delete --name panely-nabiz`.
+
 ## Doğrulama
 
 Kontrol grubu şart: yalnızca "alarm geldi" görmek, Worker'ın ayırt

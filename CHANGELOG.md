@@ -3,7 +3,7 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased (v0.4.1)
+## v0.4.1 — 2026-10-04
 
 ### Audit chain anchors (K-126)
 

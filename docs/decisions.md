@@ -8369,7 +8369,7 @@ ayrı bir K kaydı ve testlerle gelmesi gereken iş.
 ## K-126 — Denetim zincirlerinin çapraz denetimi: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** C UYGULANDI (3 Ekim, v0.4.1; canlı ölçüm sonda). KARAR
+**Durum:** C UYGULANDI, v0.4.1 ile yayınlandı (4 Ekim; canlı ölçüm sonda). KARAR
 (kullanıcı): **önce C**, B ayrıcalıklı yüzey
 kararıyla sonra. C'nin dayandığı kilit artık var ve ölçüldü: R2'de
 `kadran-` öneki 30 gün kilitli (K-136, "Canlı göç").
@@ -9984,8 +9984,8 @@ kapsamında); 409 yok. Dış nabız yeni birimle atılıyor (`son-nabiz` 19:37:1
 ## K-137 — Kurulum, kadran-client'ın `.ssh`'ında bağları izliyordu
 
 **Tarih:** 3 Ekim 2026
-**Durum:** DÜZELTİLDİ (kod; PR #2, `kadran-rename` üstüne ayrı dal). v0.4.0
-yayınına yetişmedi; v0.4.1 ile gelir.
+**Durum:** DÜZELTİLDİ, v0.4.1 ile yayınlandı (4 Ekim; PR #4 — #2 tabanı silinince
+kapandı, aynı dal). v0.4.0 yayınına yetişmemişti.
 
 ### Nasıl bulundu
 

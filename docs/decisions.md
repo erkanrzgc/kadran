@@ -8097,7 +8097,7 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** KARAR B (3 Ekim); ölçüldü, yüzey sınırı kararı kullanıcıda (sonda)
+**Durum:** KARAR B (3 Ekim); ölçüldü, yüzey sınırı 2600'e çekilecek (sonda)
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
 stored in the daemon's database and are visible to `docker inspect`."
@@ -8219,8 +8219,10 @@ sürecin bağımlılık yüzeyi 17 paket büyüyor.
 Sonuç: B, sınırı **~70 satır** aşıyor. Prototip sıkıştırılabilir (yalnız
 X25519 kimliği, tek hata yolu) ama 2500'ün altına inmiyor: kalan pay 2
 satır. Yani B, gerekçeli bir sınır kararı gerektiriyor (K-040'ın kuralı:
-tahmin değil ölçüm, kural sessizce gevşetilmez). Karar kullanıcıda:
-sınır 2500 → 2600 mü, yoksa önce executor'da başka yerden yer açmak mı?
+tahmin değil ölçüm, kural sessizce gevşetilmez). Kullanıcı (3 Ekim):
+**sınır 2500 → 2600.** `MAX_EXEC_LINES` kasanın kodunu getiren commit'te
+değişir, öncesinde değil: ayrı bir commit'te açılan boşluk, gerekçesiz
+büyümeyi davet ederdi. Kalan pay ~30 satır.
 
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 

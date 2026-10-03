@@ -204,6 +204,36 @@ alır ve geri yüklenen dosyanın bütünlüğünü doğrular (K-091).
 > Konteynerlerin kalıcı diskleri (`/var/lib/kadran/volumes`) için
 > aşağıdaki **hacim yedeği** ayrıca kurulmalı.
 
+> Geri yüklemeden sonra denetim zinciri o yedeğin anından itibaren
+> çatallanır: daha yeni çapalar artık çelişir (aşağıda). Geri yükleme
+> anını not et ve çapa denetiminde `-anchors-since` ile ver.
+
+## Zincir çapaları (K-126)
+
+kadrand her yedeğin yanına denetim zincirinin ucunu yazar
+(`kadran-<damga>.capa`: sıra no + hash) ve bu birim onu **şifrelemeden**
+yükler. İçinde sır yok; `kadran-` öneki kova kilidinin kapsamında,
+yani yüklenmiş bir çapa 30 gün değiştirilemez ve silinemez. Budama
+çapalara dokunmaz, eskiyenleri yaşam döngüsü kuralı siler.
+
+Ele geçirilmiş bir kadrand kendi zincirini baştan yazabilir ve
+`audit verify` yine "geçerli" der. Çapalar bunu yakalar; KENDİ
+makinende:
+
+```bash
+rclone copy kadran-offsite:kadran-yedek ./capalar --include 'kadran-*.capa'
+kadran audit verify -anchors ./capalar kadran-client@sunucu
+```
+
+CLI zinciri kendisi hesaplar, sunucunun gönderdiği hash'lere güvenmez.
+Tek bir çapa çelişirse ya da zincir bir çapadan kısaysa çıkış `3`.
+Çapası olmayan günler uyarı olarak listelenir (o gün yükleme olmamış).
+
+Sınırlar: yalnızca daemon zinciri (executor'ınki çapalanmıyor), kilit
+süresi kadar geriye (30 gün) ve en yeni çapaya kadar. Daemon kullanıcısı
+`rclone.conf`'u okuyabildiği için SAHTE çapa ekleyebilir; kilitli
+gerçekleri değiştiremez, ve çelişen tek çapa sonucu kırmızı yapar.
+
 ## Hacim yedeği — uygulama verisi (K-111)
 
 kadrand uygulamaların kalıcı disklerini okuyamıyor ve bu bir güvence

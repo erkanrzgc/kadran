@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"text/tabwriter"
+	"time"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
@@ -120,11 +121,29 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("audit verify")
 	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
 	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
+	anchorsDir := fs.String("anchors", "",
+		"R2'den indirilen kadran-*.capa dosyalarının dizini: zincir istemcide hesaplanıp çapalarla karşılaştırılır (K-126)")
+	anchorsSince := fs.String("anchors-since", "",
+		"bu andan eski çapaları atla (veritabanı geri yüklendiyse): 2006-01-02 ya da RFC3339")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
 		return c.usageError("`audit verify` en fazla bir hedef alır, %d verildi", fs.NArg())
+	}
+	if *anchorsDir != "" && *asJSON {
+		return c.usageError("-anchors ile -json birlikte kullanılamaz")
+	}
+	var since time.Time
+	if *anchorsSince != "" {
+		if *anchorsDir == "" {
+			return c.usageError("-anchors-since yalnız -anchors ile anlamlı")
+		}
+		t, err := parseAnchorsSince(*anchorsSince)
+		if err != nil {
+			return c.usageError("%v", err)
+		}
+		since = t
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -151,7 +170,26 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 	}
 
 	c.printVerifyResult(conn.Target().String(), resp)
-	return verifyExitCode(resp)
+	code := verifyExitCode(resp)
+	if *anchorsDir == "" {
+		return code
+	}
+	page := func(ctx context.Context, after uint64) ([]*kadranv1.AuditRecord, error) {
+		r, err := conn.RPC().ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{AfterSeq: after, Limit: 1000})
+		return r.GetRecords(), err
+	}
+	return worseExit(code, c.runAnchorCheck(ctx, page, *anchorsDir, since))
+}
+
+// worseExit, iki çıkış kodundan ağır olanı seçer: kırık zincir, erişim
+// hatasından; erişim hatası, başarıdan ağır.
+func worseExit(a, b int) int {
+	for _, k := range []int{exitChainInvalid, exitError} {
+		if a == k || b == k {
+			return k
+		}
+	}
+	return exitOK
 }
 
 func (c *cli) printVerifyResult(target string, resp *kadranv1.VerifyAuditChainResponse) {

@@ -51,7 +51,11 @@ case "$1" in
             for f in "$UZAK"/*; do [ -f "$f" ] && basename "$f"; done
         fi
         exit 0 ;;
-    copyto) cp "$2" "$(yol "$3")" ;;
+    copyto)
+        if [ -n "${SAHTE_CAPA_KILITLI:-}" ] && [[ "$3" == *.capa ]]; then
+            echo "sahte rclone: ObjectLockedByBucketPolicy" >&2; exit 1
+        fi
+        cp "$2" "$(yol "$3")" ;;
     size) f="$(yol "$3")"; [ -f "$f" ] && echo "{\"count\":1,\"bytes\":$(stat -c %s "$f")}" ;;
     deletefile) rm -f "$(yol "$2")" ;;
     *) echo "sahte rclone: bilinmeyen $1" >&2; exit 1 ;;
@@ -189,6 +193,22 @@ dene "uygulama başına: aa'nın en yenisi kaldı" \
 dene "uygulama başına: zz'nin en yenisi kaldı" \
     '[[ -e $UZAK/kadran-hacim-zz-20190102T000000Z.tar.zst.age && ! -e $UZAK/kadran-hacim-zz-20190101T000000Z.tar.zst.age ]]'
 conf_yaz
+
+echo "== Zincir çapaları (K-126 C) =="
+printf 'kadran-capa 1\nseq 7\nhash %064d\n' 0 > "$YEDEK/kadran-20260926T110000Z.capa"
+conf_yaz "OFFSITE_KEEP=1"
+echo eski > "$UZAK/kadran-20190101T000000Z.capa"   # yerelde karşılığı yok
+yukle; kod=$?
+dene "çapa yüklendi, BAYT BAYT aynı (şifrelenmedi)" \
+    '[[ $kod == 0 ]] && cmp -s "$YEDEK/kadran-20260926T110000Z.capa" "$UZAK/kadran-20260926T110000Z.capa"'
+dene "budama yerelde olmayan eski çapayı SİLMEDİ (yaşam döngüsünün işi)" '[[ -e $UZAK/kadran-20190101T000000Z.capa ]]'
+conf_yaz
+rm -f "$UZAK/kadran-20260926T110000Z.capa" "$UZAK"/kadran-2026*.db.age
+SAHTE_CAPA_KILITLI=1 yukle; kod=$?
+dene "çapa yüklenemezse: veritabanı yedekleri YİNE yüklendi" '[[ -e $UZAK/kadran-20260926T100000Z.db.age && -e $UZAK/kadran-20260926T110000Z.db.age ]]'
+dene "çapa yüklenemezse: çıkış≠0 (alarm), hata yazılı" '[[ $kod != 0 ]] && grep -q "yüklenemedi kadran-20260926T110000Z.capa" "$KOK/cikti"'
+yukle
+rm -f "$YEDEK"/kadran-*.capa
 
 echo "== Uzak yükleyici: sınırlar =="
 mv "$CIKTI" "$CIKTI.x"; yukle; kod=$?

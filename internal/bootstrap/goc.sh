@@ -356,16 +356,25 @@ goc_vekil() {
     # Kesinti raporu için: eski vekilin GERÇEKTEN rotaladığı uygulamalar.
     # Alan adı olmayan bir uygulamanın rotası yoktur; onu beklemek anlamsız.
     goc_rotali_kaydet
+    local mevcut=()
     for b in "${ESKI_VEKIL_BIRIMLERI[@]}"; do
-        [ -e "$KOK/etc/systemd/system/$b" ] || continue
-        systemctl disable --now "$b" >/dev/null 2>&1 || systemctl stop "$b" 2>/dev/null || true
+        [ -e "$KOK/etc/systemd/system/$b" ] && mevcut+=("$b")
     done
-    date +%s > "$GOC_DIR/vekil-durdu"
+    if [ "${#mevcut[@]}" -gt 0 ]; then
+        # ÖNCE devre dışı (systemd'yi yeniden yükler, eski vekil hâlâ
+        # sunuyor), SONRA durdur: yeniden yükleme kesinti penceresine girmez.
+        systemctl disable "${mevcut[@]}" >/dev/null 2>&1 || true
+        date +%s > "$GOC_DIR/vekil-durdu"
+        systemctl stop "${mevcut[@]}" 2>/dev/null || true
+    else
+        date +%s > "$GOC_DIR/vekil-durdu"
+    fi
     goc_kullanici panely-caddy kadran-caddy /var/lib/kadran-caddy "Kadran ters vekili"
     goc_tasi "$KOK/var/lib/panely-caddy" "$KOK/var/lib/kadran-caddy"
     rm -f "$KOK/etc/tmpfiles.d/panely-caddy.conf"
+    # Birim dosyaları kenara alınır; systemd'yi yeniden yüklemek goc_bitir'de
+    # (pencerenin DIŞINDA). Yüklü kalan eski tanımlar durmuş ve devre dışı.
     goc_birimleri_kaldir "${ESKI_VEKIL_BIRIMLERI[@]}"
-    systemctl daemon-reload
     rm -rf "$KOK/run/panely-caddy"
 }
 
@@ -500,6 +509,7 @@ goc_rota_bekle() {
 # goc_bitir — göç tamam. Eski ikililer kenara alınır (eski vekil artık
 # durdu, onlara gerek yok). Temizlik AYRI: goc_temizle.
 goc_bitir() {
+    systemctl daemon-reload
     goc_tasi "$ESKI_LIB" "$GOC_DIR/eski-lib"
     touch "$GOC_DIR/tamam"
     say "göç tamamlandı; eski ikililer ve veritabanı kopyası: $GOC_DIR"

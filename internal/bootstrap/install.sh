@@ -305,34 +305,15 @@ say "hacim kökü sertleştirildi ($vol_opts)"
 # deploy/systemd/kadran-caddy.service'in başında. Kurulan her şey depodan
 # geliyor: birim, soket, tmpfiles kuralı ve yol açıcı yapılandırma.
 
-# ters_vekil_kur — ters vekili kurar ya da yükseltir. Taze kurulum ve
-# yükseltmede yerinde çağrılır. Göçte (K-136) kontrol düzlemi yeni
-# konteynerleri kurduktan SONRA çağrılır: eski vekil o ana kadar siteyi
-# sunmaya devam eder (bkz. goc.sh).
-ters_vekil_kur() {
+# ters_vekil_hazirla / ters_vekil_baslat — ters vekili kurar ya da yükseltir.
+#
+# İki parça çünkü göçte (K-136) arada eski vekil duruyor: ESKİ vekil siteyi
+# sunarken yapılabilen her şey (K-050 denetimi, dosyalar, enable) hazırlıkta;
+# kullanıcıya ve porta bağlı olanlar başlatmada. GCP provasında ilk sürümün
+# 6,5 sn'lik vekil geçişinin ~3 sn'si modül denetimiydi. Taze kurulum ve
+# yükseltmede ikisi art arda çalışır (ters_vekil_kur), davranış aynı.
+ters_vekil_hazirla() {
     step "Ters vekil"
-
-    getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
-
-    if ! id -u kadran-caddy >/dev/null 2>&1; then
-        useradd --system --gid kadran-caddy \
-            --home-dir /var/lib/kadran-caddy --no-create-home \
-            --shell "$NOLOGIN" \
-            --comment "Kadran ters vekili" kadran-caddy
-    fi
-
-    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
-    #
-    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
-    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
-    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
-    # sağlanıyor.
-    if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
-        die \
-"kadran-caddy kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
-ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
-Düzeltmek için:  gpasswd -d kadran-caddy kadran"
-    fi
 
     # ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
     #
@@ -370,11 +351,6 @@ uymuyor — K-050 sınırı ETKİSİZ."
 
     install -d -m 0755 -o root -g root /etc/kadran
     install -m 0644 -o root -g root "$STAGE/caddy.json" /etc/kadran/caddy.json
-
-    install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
-        /etc/tmpfiles.d/kadran-caddy.conf
-    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
-
     install -m 0644 -o root -g root "$STAGE/kadran-caddy.service" \
         /etc/systemd/system/kadran-caddy.service
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-admin.socket" \
@@ -403,6 +379,34 @@ kadran-caddy bu portlara bağlanamaz. Devam etmek için:
     # ikisi de aşağıda DOĞRULANIYOR.
     systemctl enable kadran-caddy-admin.socket
     systemctl enable kadran-caddy.service
+}
+
+ters_vekil_baslat() {
+    getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
+
+    if ! id -u kadran-caddy >/dev/null 2>&1; then
+        useradd --system --gid kadran-caddy \
+            --home-dir /var/lib/kadran-caddy --no-create-home \
+            --shell "$NOLOGIN" \
+            --comment "Kadran ters vekili" kadran-caddy
+    fi
+
+    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
+    #
+    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
+    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
+    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
+    # sağlanıyor.
+    if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
+        die \
+"kadran-caddy kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
+ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
+Düzeltmek için:  gpasswd -d kadran-caddy kadran"
+    fi
+
+    install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
+        /etc/tmpfiles.d/kadran-caddy.conf
+    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
 
     # Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
     # Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
@@ -423,6 +427,11 @@ kadran-caddy bu portlara bağlanamaz. Devam etmek için:
         systemctl restart kadran-caddy-admin.socket
         systemctl restart kadran-caddy.service
     fi
+}
+
+ters_vekil_kur() {
+    ters_vekil_hazirla
+    ters_vekil_baslat
 }
 
 if [ "$GOC" -eq 0 ]; then
@@ -569,8 +578,15 @@ say "kadran-exec ve kadrand çalışıyor"
 # kesinti yalnız bu adımda.
 if [ "$GOC" -eq 1 ]; then
     goc_bekle
+    ters_vekil_hazirla
+    # kadrand eski vekil DURMADAN önce durur ve yenisi açılınca başlar:
+    # açılış uzlaştırması rotaları hemen yazar. Çalışır bırakılsaydı rotaları
+    # vekil izleyicisinin 10 sn'lik turu yazardı (GCP provası: 16 sn'lik
+    # kesintinin 9,5 sn'si bu bekleyişti).
+    systemctl stop kadrand.service
     goc_vekil
-    ters_vekil_kur
+    ters_vekil_baslat
+    systemctl start kadrand.service
     goc_secimli
     goc_rota_bekle
     goc_bitir

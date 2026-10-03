@@ -93,8 +93,8 @@ executor without its allowlist. Fixed, each with a test scenario and a mutant (K
 
 ### Documentation
 
-- The README is reorganized around a quick start, with a new wordmark, the migration
-  guide, and long reference material folded into collapsible sections.
+- The README is reorganized around a quick start, the migration guide, and long
+  reference material folded into collapsible sections.
 - The README's GitHub Actions example is now a complete workflow: the one that
   deploys the author's site on every push to `main`. It downloads the CLI and
   checks it against `SHA256SUMS`, reads only repository contents, and queues

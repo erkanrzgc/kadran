@@ -1,9 +1,6 @@
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kadran-wordmark-dark.svg">
-  <img alt="Kadran" src="docs/assets/kadran-wordmark-light.svg" width="440">
-</picture>
+# KΛDRΛN
 
 ### Self-hosted Git deployments, with a control panel that never runs as root.
 

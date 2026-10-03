@@ -133,6 +133,22 @@ dene "= biçimi ve birden çok bayrak yakalanıyor" \
     "$(on i1) [ \"\$(goc_izinli_depo 'argv[]=/x --allow-repo=a/b --allow-repo c/d ;')\" = \"\$(printf -- '--allow-repo=a/b\n--allow-repo c/d')\" ]"
 
 echo
+echo "== goc_ip_var / goc_temizlenebilir: eski konteynerler ne zaman silinir =="
+YAPI='{"apps":{"http":{"servers":{"srv0":{"routes":[{"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"172.21.0.20:8000"}]}]}]}}}}}'
+k="$(kok r1)"
+dene "upstream'deki IP bulunuyor" "$(on r1) goc_ip_var '$YAPI' 172.21.0.20"
+dene "bir IP başka bir IP'nin ÖNEKİ olarak sayılmıyor (172.21.0.2 ≠ 172.21.0.20)" \
+    "! bash -c '$(on r1) goc_ip_var '\"'\"'$YAPI'\"'\"' 172.21.0.2'"
+dene "eski konteyner trafik alıyorsa SİLİNMİYOR" \
+    "! bash -c '$(on r1) goc_temizlenebilir '\"'\"'$YAPI'\"'\"' 172.18.0.2 172.21.0.20'"
+dene "eski konteynerlerin hiçbiri yapılandırmada yoksa siliniyor (rotasız uygulama engel değil)" \
+    "$(on r1) goc_temizlenebilir '$YAPI' 172.18.0.2 172.18.0.3"
+dene "yapılandırma OKUNAMADIYSA silinmiyor" \
+    "! bash -c '$(on r1) goc_temizlenebilir \"\" 172.18.0.2'"
+dene "eski konteyner hiç yoksa ve yapılandırma okunduysa siliniyor" \
+    "$(on r1) goc_temizlenebilir '$YAPI'"
+
+echo
 echo "== goc_gerekli =="
 k="$(kok g1)"
 dene "temiz kökte göç GEREKMİYOR" "! bash -c '$(on g1) goc_gerekli'"
@@ -144,6 +160,9 @@ k="$(kok g3)"; mkdir -p "$k/var/lib/kadran-goc"; touch "$k/var/lib/kadran-goc/as
 dene "yarıda kalmış göç (asama1 var, tamam yok) yeniden tetikliyor" "$(on g3) goc_gerekli"
 touch "$k/var/lib/kadran-goc/tamam"
 dene "bitmiş göç tetiklemiyor" "! bash -c '$(on g3) goc_gerekli'"
+mkdir -p "$k/usr/local/lib/panely"
+dene "bitmiş göç, eski bir iz kalsa da yeniden BAŞLAMIYOR (bayat kayıtla göç yok)" \
+    "! bash -c '$(on g3) goc_gerekli'"
 
 echo
 echo "== KONTROL: düzenek kırmızıyı görebiliyor =="

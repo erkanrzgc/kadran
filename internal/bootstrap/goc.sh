@@ -45,7 +45,9 @@ SECIMLI=(notify offsite volume-backup)
 # goc_gerekli — sunucuda eski adlı kurulumun izi var mı. Yarıda kalmış bir
 # göç de "gerekli" sayılır.
 goc_gerekli() {
-    [ -e "$GOC_DIR/asama1" ] && [ ! -e "$GOC_DIR/tamam" ] && return 0
+    # Bitmiş göç bir daha başlamaz; kalıntı temizliği ayrı (goc_temizle).
+    [ -e "$GOC_DIR/tamam" ] && return 1
+    [ -e "$GOC_DIR/asama1" ] && return 0
     local ad yol
     for ad in panely panely-client panely-caddy; do
         goc_kullanici_var "$ad" && return 0
@@ -351,6 +353,9 @@ Düzeltip kurulumu yeniden çalıştır; göç kaldığı yerden sürer."
 # (rotaları kadrand'ın vekil izleyicisi yazar, K-055).
 goc_vekil() {
     local b
+    # Kesinti raporu için: eski vekilin GERÇEKTEN rotaladığı uygulamalar.
+    # Alan adı olmayan bir uygulamanın rotası yoktur; onu beklemek anlamsız.
+    goc_rotali_kaydet
     for b in "${ESKI_VEKIL_BIRIMLERI[@]}"; do
         [ -e "$KOK/etc/systemd/system/$b" ] || continue
         systemctl disable --now "$b" >/dev/null 2>&1 || systemctl stop "$b" 2>/dev/null || true
@@ -411,44 +416,125 @@ goc_birim_kur() {
     install -m 0644 -o root -g root "$STAGE/$1" "$KOK/etc/systemd/system/$1"
 }
 
-# goc_temizle — ters vekilin rotaları YENİ konteynerlere gidiyorsa eski
-# konteynerleri, ağları ve etiketleri kaldırır. Doğrulanamazsa eskilere
-# DOKUNMAZ ve ne yapılacağını yazar.
-goc_temizle() {
-    local sure="${GOC_ROTA_SN:-60}" bas yapi ipler ip eski_ipler ok=0
-    if ! command -v curl >/dev/null; then
-        say "⚠ curl yok: rotalar doğrulanamadı, eski konteynerlere dokunulmadı"
-        goc_temizle_yazdir; return 0
-    fi
-    ipler="$(docker ps -q --filter label=kadran.app_id --filter status=running |
-        xargs -r docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}')"
-    eski_ipler="$(docker ps -q --filter label=panely.app_id --filter status=running |
-        xargs -r docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}')"
+# goc_ip_var <yapılandırma> <ip…> — Caddy yapılandırmasında verilen IP'lerden
+# biri upstream olarak geçiyor mu. Eşleşme `"IP:` biçiminde: 172.21.0.2,
+# 172.21.0.20'nin ÖNEKİ olarak sayılmasın.
+goc_ip_var() {
+    local yapi="$1" ip
+    shift
+    for ip in "$@"; do
+        [ -n "$ip" ] || continue
+        [[ "$yapi" == *"\"$ip:"* ]] && return 0
+    done
+    return 1
+}
+
+# goc_temizlenebilir <yapılandırma> <eski ip…> — eski konteynerler silinebilir
+# mi: yapılandırma OKUNABİLDİ ve eski konteynerlerin hiçbiri trafik almıyor.
+# Yeni konteynerlerin rotalı olup olmadığı burada sorulmuyor: eski bir
+# konteyneri silmenin güvenliği yalnızca onun trafik alıp almadığına bağlı.
+goc_temizlenebilir() {
+    local yapi="$1"
+    shift
+    [ -n "$yapi" ] || return 1
+    ! goc_ip_var "$yapi" "$@"
+}
+
+# goc_ipler <docker filtresi> — süzgece uyan ÇALIŞAN konteynerlerin IP'leri.
+goc_ipler() {
+    docker ps -q --filter "$1" --filter status=running |
+        xargs -r docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}'
+}
+
+# goc_vekil_yapisi <admin soketi> — ters vekilin canlı yapılandırması (boş:
+# okunamadı).
+goc_vekil_yapisi() {
+    command -v curl >/dev/null || return 0
+    curl -sf --unix-socket "$1" http://localhost/config/ 2>/dev/null || true
+}
+
+# goc_rotali_kaydet — eski vekilin yapılandırmasında IP'si geçen uygulamalar
+# (her satırda bir uygulama). Okunamazsa liste boş: kesinti yine ölçülür ama
+# bekleme yapılmaz.
+goc_rotali_kaydet() {
+    local yapi uyg
+    [ -e "$GOC_DIR/rotali" ] && return 0
+    yapi="$(goc_vekil_yapisi /run/panely-caddy/admin.sock)"
+    while read -r uyg; do
+        [ -n "$uyg" ] || continue
+        # shellcheck disable=SC2046
+        if goc_ip_var "$yapi" $(goc_ipler "label=panely.app_id=$uyg"); then
+            echo "$uyg"
+        fi
+    done < <(docker ps --filter label=panely.app_id --filter status=running \
+                 --format '{{.Label "panely.app_id"}}' | sort -u) > "$GOC_DIR/rotali.yeni"
+    mv "$GOC_DIR/rotali.yeni" "$GOC_DIR/rotali"
+    say "eski vekilin rotaladığı uygulama: $(grep -c '' "$GOC_DIR/rotali")"
+}
+
+# goc_rota_bekle — rotalı her uygulamanın yeni konteynerlerinden biri yeni
+# vekilde görünene kadar bekler ve kesintiyi raporlar. Görünmezse UYARIR
+# (durmaz): yeni vekil çalışıyor, sebep kadrand'ın günlüğünde.
+goc_rota_bekle() {
+    local sure="${GOC_ROTA_SN:-60}" bas yapi uyg eksik
+    [ -s "$GOC_DIR/rotali" ] || { say "rotalı uygulama yok; bekleme yapılmadı"; return 0; }
     bas=$SECONDS
-    while [ $((SECONDS - bas)) -lt "$sure" ]; do
-        yapi="$(curl -sf --unix-socket /run/kadran-caddy/admin.sock http://localhost/config/ 2>/dev/null || true)"
-        ok=1
-        for ip in $ipler; do [[ "$yapi" == *"\"$ip:"* ]] || ok=0; done
-        for ip in $eski_ipler; do [[ "$yapi" == *"\"$ip:"* ]] && ok=0; done
-        [ "$ok" -eq 1 ] && break
+    while :; do
+        yapi="$(goc_vekil_yapisi /run/kadran-caddy/admin.sock)"
+        eksik=0
+        while read -r uyg; do
+            [ -n "$uyg" ] || continue
+            # shellcheck disable=SC2046
+            goc_ip_var "$yapi" $(goc_ipler "label=kadran.app_id=$uyg") || eksik=$((eksik + 1))
+        done < "$GOC_DIR/rotali"
+        [ "$eksik" -eq 0 ] && break
+        if [ $((SECONDS - bas)) -ge "$sure" ]; then
+            say "⚠ $eksik uygulamanın rotası $sure sn içinde yeni vekilde görünmedi: journalctl -u kadrand -n 50"
+            return 0
+        fi
         sleep 1
     done
-    if [ "$ok" -ne 1 ]; then
-        say "⚠ ters vekilin rotaları $sure sn içinde yeni konteynerlere geçmedi; eski konteynerlere dokunulmadı"
-        goc_temizle_yazdir; return 0
-    fi
-    if [ -e "$GOC_DIR/vekil-durdu" ]; then
-        say "ters vekil kesintisi (durdurma → yeni rotalar): ~$(( $(date +%s) - $(cat "$GOC_DIR/vekil-durdu") )) sn"
-    fi
+    say "ters vekil kesintisi (eski vekil durdu → yeni rotalar): ~$(( $(date +%s) - $(cat "$GOC_DIR/vekil-durdu") )) sn"
+}
 
+# goc_bitir — göç tamam. Eski ikililer kenara alınır (eski vekil artık
+# durdu, onlara gerek yok). Temizlik AYRI: goc_temizle.
+goc_bitir() {
+    goc_tasi "$ESKI_LIB" "$GOC_DIR/eski-lib"
+    touch "$GOC_DIR/tamam"
+    say "göç tamamlandı; eski ikililer ve veritabanı kopyası: $GOC_DIR"
+}
+
+# goc_artik_var — eski adlı Docker kalıntısı var mı (konteyner, ağ, imaj).
+goc_artik_var() {
+    local aglar
+    [ -n "$(docker ps -aq --filter label=panely.app_id)" ] && return 0
+    # Çıktı önce değişkene: `… | grep -q` pipefail altında yarışa açık
+    # (grep erken çıkar, sol taraf SIGPIPE alır; install.sh'taki not).
+    aglar="$(docker network ls --format '{{.Name}}')"
+    [[ $'\n'"$aglar" == *$'\n'panely-* ]] && return 0
+    [ -n "$(docker images -q --filter reference='panely/*')" ]
+}
+
+# goc_temizle — eski konteynerleri, ağları ve imaj etiketlerini kaldırır;
+# ancak hiçbiri trafik almıyorsa. Göçten bağımsız ve tekrar denenebilir:
+# her kurulumda kalıntı varsa çağrılır.
+goc_temizle() {
+    local yapi
+    yapi="$(goc_vekil_yapisi /run/kadran-caddy/admin.sock)"
+    # shellcheck disable=SC2046
+    if ! goc_temizlenebilir "$yapi" $(goc_ipler label=panely.app_id); then
+        say "⚠ eski konteynerler kaldırılmadı: ters vekilin yapılandırması okunamadı ya da onlar hâlâ trafik alıyor."
+        say "  Bir sonraki kurulum yeniden dener. Elle:"
+        goc_temizle_yazdir
+        return 0
+    fi
     docker ps -aq --filter label=panely.app_id | xargs -r docker rm -f >/dev/null
     docker network ls --format '{{.Name}}' | { grep '^panely-' || true; } |
         xargs -r docker network rm >/dev/null
     docker images --filter reference='panely/*' --format '{{.Repository}}:{{.Tag}}' |
         xargs -r docker rmi >/dev/null
-    goc_tasi "$ESKI_LIB" "$GOC_DIR/eski-lib"
-    touch "$GOC_DIR/tamam"
-    say "eski konteynerler, ağlar ve imaj etiketleri kaldırıldı; eski ikililer $GOC_DIR/eski-lib"
+    say "eski konteynerler, ağlar ve imaj etiketleri kaldırıldı"
 }
 
 goc_temizle_yazdir() {

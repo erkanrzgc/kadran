@@ -572,6 +572,14 @@ if [ "$GOC" -eq 1 ]; then
     goc_vekil
     ters_vekil_kur
     goc_secimli
+    goc_rota_bekle
+    goc_bitir
+fi
+
+# Eski adlı Docker kalıntıları (konteyner, ağ, imaj etiketi) yalnızca hiçbiri
+# trafik almıyorsa kaldırılır. Göçten AYRI: o kurulumda kaldırılamadıysa
+# sonraki her kurulum yeniden dener.
+if goc_artik_var; then
     goc_temizle
 fi
 

@@ -94,7 +94,18 @@ mutate_in "$GOC" "goc_onek var olan hedefin üstüne taşıyor" \
     "s=s.replace('        [ -e \"\$hedef\" ] && die','        false && die',1)"
 
 mutate_in "$GOC" "goc_gerekli bitmiş göçü yeniden başlatıyor" \
-    "s=s.replace(' && [ ! -e \"\$GOC_DIR/tamam\" ]','',1)"
+    "s=s.replace('    [ -e \"\$GOC_DIR/tamam\" ] && return 1\n','',1)"
+
+echo "== Temizlik: eski konteynerler ne zaman silinir =="
+
+mutate_in "$GOC" "IP eşleşmesi önekle yapılıyor (172.21.0.2 ~ 172.21.0.20)" \
+    "s=s.replace('[[ \"\$yapi\" == *\"\\\\\"\$ip:\"* ]] && return 0','[[ \"\$yapi\" == *\"\$ip\"* ]] && return 0',1)"
+
+mutate_in "$GOC" "okunamayan yapılandırma silmeye izin veriyor" \
+    "s=s.replace('    [ -n \"\$yapi\" ] || return 1\n    ! goc_ip_var','    ! goc_ip_var',1)"
+
+mutate_in "$GOC" "trafik alan eski konteyner siliniyor" \
+    "s=s.replace('    ! goc_ip_var \"\$yapi\" \"\$@\"','    true',1)"
 
 echo "== Erişim =="
 

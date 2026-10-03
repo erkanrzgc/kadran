@@ -90,9 +90,14 @@ Hangisinin gerçek olduğuna elle karar verilmeli; hiçbiri silinmedi."
 
 # goc_onek <dizin> <eski önek> <yeni önek> — dizindeki (alt dizinlere
 # inmeden) adı eski önekle başlayan girdileri yeni önekle yeniden
-# adlandırır. Hedef ad zaten varsa DURUR.
+# adlandırır. Hedef ad zaten varsa DURUR. Dizin sembolik bağsa DURUR:
+# backups daemon'un yazabildiği /var/lib/kadran içinde ve root bağın
+# gösterdiği başka bir dizindeki dosyaları yeniden adlandırırdı.
 goc_onek() {
     local dizin="$1" eski="$2" yeni="$3" f ad hedef
+    if [ -L "$dizin" ]; then
+        die "göç: $dizin sembolik bağ; içindeki dosyalar yeniden adlandırılmadı"
+    fi
     [ -d "$dizin" ] || return 0
     for f in "$dizin/$eski"*; do
         [ -e "$f" ] || continue
@@ -105,12 +110,26 @@ goc_onek() {
 
 # goc_yerinde_sed <dosya> <sed ifadesi> — dosyayı geçici kopyayla yeniden
 # yazar; sahiplik ve izin korunur. İçerik ekrana basılmaz (sır taşıyabilir).
+#
+# Dosya sembolik bağsa DURUR. Geçici kopya mktemp ile açılır: adı tahmin
+# edilemez (authorized_keys kadran-client'ın dizininde; o kullanıcı sabit
+# adlı kopyanın yerine bir bağ koyup root'a istediği dosyanın üstüne
+# yazdırabiliyordu) ve 0600 doğar (rclone.conf'un anahtarı umask'la 0644
+# açılan kopyada bir an herkese okunurdu). Güvenlik incelemesi, K-136.
+#
+# Kalan dar pencere: dizinin sahibi mktemp ile sed arasında kopyayı bağla
+# değiştirebilir. Kapatmak kopyayı o kullanıcı olarak yazmayı gerektirir;
+# kadran-client'ın tek yetkisi zorlanmış komut olduğu için kabul edildi.
 goc_yerinde_sed() {
-    local f="$1" ifade="$2"
-    sed "$ifade" "$f" > "$f.goc"
-    chown --reference="$f" "$f.goc"
-    chmod --reference="$f" "$f.goc"
-    mv "$f.goc" "$f"
+    local f="$1" ifade="$2" gecici
+    if [ -L "$f" ]; then
+        die "göç: $f sembolik bağ; yerinde yeniden yazılmadı"
+    fi
+    gecici="$(mktemp "$f.goc.XXXXXX")"
+    sed "$ifade" "$f" > "$gecici"
+    chown --reference="$f" "$gecici"
+    chmod --reference="$f" "$gecici"
+    mv -fT "$gecici" "$f"
 }
 
 # goc_ak <authorized_keys> — zorlanmış komutun YOLUNU yeni ada çevirir.
@@ -126,19 +145,25 @@ goc_ak() {
 
 # goc_uzak_yedek <etc dizini> — rclone hedefinin ADINI çevirir
 # ([panely-offsite] → [kadran-offsite]) ve offsite.conf'taki başvuruyu.
-# İkisi birlikte değişir ya da hiç değişmez: yalnız biri değişse uzak yedek
-# hedefi bulamazdı. Kova adı ve yol KORUNUR: kova kullanıcının hesabında.
+# Kova adı ve yol KORUNUR: kova kullanıcının hesabında.
+#
+# Önce rclone.conf, sonra offsite.conf; her biri kendi durumuna bakar. İki
+# sed arasında kesilen bir koşu (rclone.conf çevrilmiş, offsite.conf değil)
+# yeniden koşunca tamamlanır. Eskiden burada DURUYORDU ve o noktada eski
+# kontrol düzlemi çoktan durmuş olurdu (güvenlik incelemesi, K-136).
 goc_uzak_yedek() {
-    local etc="$1"
-    [ -f "$etc/offsite.conf" ] && [ -f "$etc/rclone.conf" ] || return 0
-    grep -q '^OFFSITE_REMOTE=panely-offsite:' "$etc/offsite.conf" || return 0
-    grep -qx '\[panely-offsite\]' "$etc/rclone.conf" \
-        || die "göç: offsite.conf panely-offsite hedefini gösteriyor ama rclone.conf'ta [panely-offsite] yok"
-    if grep -qx '\[kadran-offsite\]' "$etc/rclone.conf"; then
-        die "göç: rclone.conf'ta hem [panely-offsite] hem [kadran-offsite] var"
+    local rc="$1/rclone.conf" oc="$1/offsite.conf"
+    [ -f "$oc" ] && [ -f "$rc" ] || return 0
+    grep -q '^OFFSITE_REMOTE=panely-offsite:' "$oc" || return 0
+    if grep -qx '\[panely-offsite\]' "$rc"; then
+        if grep -qx '\[kadran-offsite\]' "$rc"; then
+            die "göç: rclone.conf'ta hem [panely-offsite] hem [kadran-offsite] var"
+        fi
+        goc_yerinde_sed "$rc" 's/^\[panely-offsite\]$/[kadran-offsite]/'
+    elif ! grep -qx '\[kadran-offsite\]' "$rc"; then
+        die "göç: offsite.conf panely-offsite hedefini gösteriyor ama rclone.conf'ta ne [panely-offsite] ne [kadran-offsite] var"
     fi
-    goc_yerinde_sed "$etc/rclone.conf" 's/^\[panely-offsite\]$/[kadran-offsite]/'
-    goc_yerinde_sed "$etc/offsite.conf" 's/^OFFSITE_REMOTE=panely-offsite:/OFFSITE_REMOTE=kadran-offsite:/'
+    goc_yerinde_sed "$oc" 's/^OFFSITE_REMOTE=panely-offsite:/OFFSITE_REMOTE=kadran-offsite:/'
 }
 
 # goc_kullanici <eski> <yeni> <ev> <açıklama> — grubu ve kullanıcıyı
@@ -199,7 +224,15 @@ goc_dropin_tasi() {
 # goc_izinli_depo <systemctl show -p ExecStart çıktısı> — etkin komut
 # satırındaki her `--allow-repo` değerini satır satır yazar (yoksa boş).
 # `--allow-repo x` ve `--allow-repo=x` ikisi de yakalanır.
+#
+# Pozitif kontrol: çıktıda komut satırı (`argv[]=`) yoksa DURUR. systemctl
+# okunamadığında boş çıktı "beyaz liste yok" sayılsaydı, iki uç birden
+# okunamadığında karşılaştırma eşit görünür ve kısıtsız bir executor
+# geçerdi (güvenlik incelemesi, K-136).
 goc_izinli_depo() {
+    if [[ "$1" != *'argv[]='* ]]; then
+        die "göç: executor'ın komut satırı okunamadı (systemctl show); depo beyaz listesi doğrulanamıyor"
+    fi
     printf '%s\n' "$1" | { grep -oE -- '--allow-repo[ =][^ ;]*' || true; }
 }
 
@@ -529,8 +562,13 @@ goc_artik_var() {
 # goc_temizle — eski konteynerleri, ağları ve imaj etiketlerini kaldırır;
 # ancak hiçbiri trafik almıyorsa. Göçten bağımsız ve tekrar denenebilir:
 # her kurulumda kalıntı varsa çağrılır.
+#
+# Hiçbir adım kurulumu DÜŞÜRMEZ: kullanımdaki bir ağ ya da imaj set -e
+# altında kurulumu öldürürdü ve kalıntı durduğu için sonraki her kurulum
+# aynı yerde ölürdü (güvenlik incelemesi, K-136). Kalan, sonraki kurulumda
+# yeniden denenir.
 goc_temizle() {
-    local yapi
+    local yapi eksik=0
     yapi="$(goc_vekil_yapisi /run/kadran-caddy/admin.sock)"
     # shellcheck disable=SC2046
     if ! goc_temizlenebilir "$yapi" $(goc_ipler label=panely.app_id); then
@@ -539,12 +577,20 @@ goc_temizle() {
         goc_temizle_yazdir
         return 0
     fi
-    docker ps -aq --filter label=panely.app_id | xargs -r docker rm -f >/dev/null
+    docker ps -aq --filter label=panely.app_id | xargs -r docker rm -f >/dev/null ||
+        { say "⚠ bazı eski konteynerler kaldırılamadı"; eksik=1; }
     docker network ls --format '{{.Name}}' | { grep '^panely-' || true; } |
-        xargs -r docker network rm >/dev/null
+        xargs -r docker network rm >/dev/null ||
+        { say "⚠ bazı eski ağlar kaldırılamadı"; eksik=1; }
     docker images --filter reference='panely/*' --format '{{.Repository}}:{{.Tag}}' |
-        xargs -r docker rmi >/dev/null
-    say "eski konteynerler, ağlar ve imaj etiketleri kaldırıldı"
+        xargs -r docker rmi >/dev/null ||
+        { say "⚠ bazı eski imaj etiketleri kaldırılamadı"; eksik=1; }
+    if [ "$eksik" -eq 0 ]; then
+        say "eski kalıntılar kaldırıldı (konteyner, ağ, imaj etiketi)"
+    else
+        say "  Kalanları bir sonraki kurulum yeniden dener. Elle:"
+        goc_temizle_yazdir
+    fi
 }
 
 goc_temizle_yazdir() {

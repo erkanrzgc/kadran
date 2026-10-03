@@ -9710,8 +9710,9 @@ geri dönüş → yeniden göç, her birinde yoklama açık.
   `geri.sh` (göç başlarken sunucuya `/usr/local/lib/kadran/kadran-geri-donus.sh`
   olarak kurulur). Paket ikisini ve seçimli birimlerin dosyalarını taşıyor;
   test betiklerin okuduğu her `$STAGE/<ad>`'ı pakette arıyor.
-- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 37 senaryo;
-  `scripts/mutate-goc.sh` 15/15 mutant. Kullanıcı adlandırma, systemd ve
+- `scripts/check-goc-sh.sh` (CI, sahte kökte root'suz) 48 senaryo;
+  `scripts/mutate-goc.sh` 23/23 mutant (güvenlik incelemesinden sonra;
+  provada 37 ve 15'ti). Kullanıcı adlandırma, systemd ve
   Docker adımları gerçek sunucuda ölçüldü (aşağıda).
 - CLI: eski sunucu (`Unimplemented`) ve `panely-client@` hedefi için yol
   gösteren hata; protokol 3. Masaüstü: `panely-desktop` profilleri taşınıyor,
@@ -9783,3 +9784,33 @@ bırakıyordu.
 
 Sınırlar: GCP'de yalnız `hello` rotalı (portfolio alan adsız), yoklama
 onu ölçüyor. Canlıda bütün rotalı alan adları yoklanmalı.
+
+### Güvenlik incelemesi (3 Ekim, provadan sonra)
+
+`goc.sh`, `geri.sh` ve `install.sh` ayrı bir güvenlik incelemesinden
+geçti. Executor'ın beyaz listesiz başlayabileceği bir yol bulunmadı. Yeniden
+üretilen bulgular ve kararlar (sıra: canlıyı takılı bırakabilir mi):
+
+| # | Bulgu | Karar |
+|---|---|---|
+| 6 | `goc_temizle` doğrulamadan ÖNCE koşuyordu ve borularının biri (kullanımdaki ağ/imaj) `set -e` altında kurulumu düşürürdü; kalıntı durduğu için sonraki HER kurulum aynı yerde ölürdü, 17 kontrol hiç koşmazdı. | Düzeltildi: temizlik doğrulama geçtikten SONRA (düşerse eski konteynerler, yani son çalışan sürüm, yerinde kalır); her adım uyarıyla sürer. Sahte `docker` ile senaryo + iki mutant. |
+| 4 | `goc_uzak_yedek`'in iki sed'i arasında kesilen koşu (rclone.conf çevrilmiş, offsite.conf değil) her yeniden koşuda DURUYORDU; o noktada eski kontrol düzlemi çoktan durmuş olurdu. | Düzeltildi: her dosya kendi durumuna bakıyor; ikisi birden varsa ya da hiçbiri yoksa durur. Canlıda uzak yedek kurulu: bu yol gerçek. |
+| 2 | `goc_yerinde_sed` sabit adlı `$f.goc` kullanıyordu; authorized_keys kadran-client'ın `.ssh`'ında, o kullanıcı oraya bir bağ koyup root'a istediği dosyanın üstüne yazdırabiliyordu (yeniden üretildi: kurbanın içeriği değişti, sahibi istemci uid'i oldu). | Düzeltildi: dosya bağsa durur, kopya `mktemp` (O_EXCL, tahmin edilemez ad), `mv -T`. Kalan dar pencere (dizinin sahibi mktemp ile sed arasında kopyayı değiştirebilir) KABUL: kapatmak kopyayı o kullanıcı olarak yazmayı ister; kadran-client'ın tek yetkisi zorlanmış komut. `install.sh`'taki `yonetici_satiri_yaz` aynı sınıftan (v0.3.0'dan beri), ayrı iş. |
+| 3 | Kopya umask'la 0644 açılıyordu: `rclone.conf`'un anahtarı (0640, `/etc/kadran` 0755) bir an kadran-caddy'ye de okunurdu. | Düzeltildi (`mktemp` 0600 doğuruyor); senaryo `chown` anındaki izni ölçüyor. |
+| 8 | `goc_onek` bağlı bir `backups` dizinini izliyordu; `backups` daemon'un yazabildiği `/var/lib/kadran` içinde (K-100'ün sınıfı). | Düzeltildi: dizin bağsa durur. |
+| 5 | `systemctl show` okunamazsa boş çıktı "beyaz liste yok" sayılıyordu. | Düzeltildi: komut satırı (`argv[]=`) yoksa durur. Beyaz listede "panely" geçen bir depo `s/panely/kadran/g` ile değişir ve karşılaştırma durdurur (güvenli); canlıda yok (`erkanrzgc/portfolio,crccheck/docker-hello-world`, ölçüldü). |
+| 9 | Geri dönüş yeni drop-in'leri siliyordu; göçten sonra daraltılmış bir beyaz liste sessizce eskisine dönerdi. | Düzeltildi: drop-in'ler göç kaydına (`yeni-dropin`) alınıyor, uyarı basılıyor. |
+| 1 | Göçte eski ve yeni replikalar aynı hacim dizinine birlikte yazar; temizlik reddederse süresiz. | Belgelendi: mavi-yeşil dağıtım da aynı örtüşmeyi yaşıyor, göç yalnız uzatıyor. Tek yazarlı veritabanı tutan uygulamalar göçten önce durdurulmalı (CHANGELOG, README "Known gaps"). Canlıda hiçbir uygulamanın hacmi yok (ölçüldü). |
+| 7 | `60-panely.conf` göçün başında siliniyor, yenisi servislerden önce yazılıyor; arada yeniden adlanmış kullanıcının Match bloğu yok. | Kabul: arada kontrol düzlemi zaten kapalı ve `restrict` yönlendirmeyi/PTY'yi yine kapatıyor; bedeli o pencerede denetim parmak izinin boş kalması. Geri dönüşte v0.3.0 bootstrap dosyayı yeniden yazıyor. |
+
+Kanıt: inceleme betiği düzeltilmiş koda karşı yeniden koşturuldu (kopya
+`chown` anında 600; kurban dosyası aynı, authorized_keys düz dosya; bağlı
+dizin ve bağlı authorized_keys'te DURDU; yarıda kalan koşu tamamlandı; boş
+`systemctl` çıktısında DURDU). Kontrol grubu: aynı betik `HEAD`'deki eski
+`goc.sh`'ta her saldırıyı yeniden üretti. Hepsi `check-goc-sh.sh`'ta
+senaryo ve `mutate-goc.sh`'ta mutant.
+
+⚠ `install.sh`'ın sırası provadan SONRA değişti (temizlik doğrulamanın
+arkasına). Canlıdan önce GCP'de yayın dosyalarıyla yeniden prova edilir:
+v0.4.0'a yükselt → yeni `kadran-geri-donus.sh` ile v0.3.0'a dön → v0.4.0
+yayınıyla göç. Böylece canlıya giden paket prova edilen paket olur.

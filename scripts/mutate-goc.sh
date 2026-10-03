@@ -17,7 +17,8 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 GOC=internal/bootstrap/goc.sh
 BOOT=internal/bootstrap/bootstrap.go
-FILES=("$GOC" "$BOOT")
+INST=internal/bootstrap/install.sh
+FILES=("$GOC" "$BOOT" "$INST")
 
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -64,7 +65,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
     # Sözdizimi bozuk bir kabuk mutantı her denetimi düşürür ve sahte
     # "yakalandı" üretirdi; Go mutantı için aynı şey derleme.
     local build_out
-    if ! build_out=$(bash -n "$GOC" 2>&1 && go test ./internal/bootstrap/ -run '^$' -count=1 2>&1); then
+    if ! build_out=$(bash -n "$GOC" 2>&1 && bash -n "$INST" 2>&1 && go test ./internal/bootstrap/ -run '^$' -count=1 2>&1); then
         echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI. Çıktı:"
         echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
@@ -113,10 +114,35 @@ mutate_in "$GOC" "goc_ak satır başına çapalanmıyor" \
     "s=s.replace('\"s#^\$ESKI_CONNECT#','\"s#\$ESKI_CONNECT#',1)"
 
 mutate_in "$GOC" "goc_uzak_yedek offsite.conf'u çevirmiyor" \
-    "s=s.replace('    goc_yerinde_sed \"\$etc/offsite.conf\"','    : goc_yerinde_sed \"\$etc/offsite.conf\"',1)"
+    "s=s.replace('    goc_yerinde_sed \"\$oc\"','    : goc_yerinde_sed \"\$oc\"',1)"
 
 mutate_in "$GOC" "goc_uzak_yedek iki hedef birden varken sürüyor" \
     "s=s.replace('        die \"göç: rclone.conf\\'ta hem','        : \"x',1)"
+
+mutate_in "$GOC" "goc_uzak_yedek yarıda kalan koşuyu tamamlayamıyor" \
+    "s=s.replace('    elif ! grep -qx','    elif true || grep -qx',1)"
+
+echo "== Güvenlik: root dosya yazarken (güvenlik incelemesi) =="
+
+mutate_in "$GOC" "goc_yerinde_sed sembolik bağı yeniden yazıyor" \
+    "s=s.replace('    if [ -L \"\$f\" ]; then\n        die \"göç: \$f sembolik','    if false; then\n        die \"göç: \$f sembolik',1)"
+
+mutate_in "$GOC" "goc_yerinde_sed tahmin edilebilir geçici ad kullanıyor" \
+    "s=s.replace('gecici=\"\$(mktemp \"\$f.goc.XXXXXX\")\"','gecici=\"\$f.goc\"',1)"
+
+mutate_in "$GOC" "geçici kopya umask'la açılıyor (anahtar bir an herkese okunur)" \
+    "s=s.replace('gecici=\"\$(mktemp \"\$f.goc.XXXXXX\")\"','gecici=\"\$f.goc.r\"',1)"
+
+mutate_in "$GOC" "goc_onek sembolik bağ dizinini izliyor" \
+    "s=s.replace('    if [ -L \"\$dizin\" ]; then\n        die','    if false; then\n        die',1)"
+
+echo "== Kurulumu takılı bırakmamak (güvenlik incelemesi) =="
+
+mutate_in "$GOC" "silinemeyen eski ağ kurulumu düşürüyor" \
+    "s=s.replace('        xargs -r docker network rm >/dev/null ||\n','        xargs -r docker network rm >/dev/null\n',1)"
+
+mutate_in "$INST" "eski kalıntılar doğrulamadan ÖNCE temizleniyor" \
+    "s=s.replace('# (son çalışan sürüm) yerinde kalsın.\nif goc_artik_var; then\n    goc_temizle\nfi\n','# (son çalışan sürüm) yerinde kalsın.\n',1); s=s.replace('\n# ── Kurulum sonrası doğrulama','\nif goc_artik_var; then\n    goc_temizle\nfi\n\n# ── Kurulum sonrası doğrulama',1)"
 
 echo "== Güvenlik: depo beyaz listesi (K-056) =="
 
@@ -125,6 +151,9 @@ mutate_in "$GOC" "drop-in yeni birime taşınmıyor" \
 
 mutate_in "$GOC" "drop-in içindeki eski adlar çevrilmiyor" \
     "s=s.replace('        sed \\'s/panely/kadran/g\\' \"\$f\" > \"\$hedef\"','        cat \"\$f\" > \"\$hedef\"',1)"
+
+mutate_in "$GOC" "okunamayan komut satırı 'beyaz liste yok' sayılıyor" \
+    "s=s.replace('        die \"göç: executor\\'ın komut satırı okunamadı','        : \"x',1)"
 
 mutate_in "$GOC" "beyaz liste değerinin yalnız ilki okunuyor" \
     "s=s.replace('{ grep -oE -- \\'--allow-repo[ =][^ ;]*\\' || true; }','{ grep -oE -- \\'--allow-repo[ =][^ ;]*\\' || true; } | head -1',1)"

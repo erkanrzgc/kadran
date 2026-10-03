@@ -592,13 +592,6 @@ if [ "$GOC" -eq 1 ]; then
     goc_bitir
 fi
 
-# Eski adlı Docker kalıntıları (konteyner, ağ, imaj etiketi) yalnızca hiçbiri
-# trafik almıyorsa kaldırılır. Göçten AYRI: o kurulumda kaldırılamadıysa
-# sonraki her kurulum yeniden dener.
-if goc_artik_var; then
-    goc_temizle
-fi
-
 # ── Kurulum sonrası doğrulama ────────────────────────────────────────
 #
 # Ürünün merkezî iddiası burada sınanıyor. Bu kontroller geçmiyorsa
@@ -767,6 +760,15 @@ else
 fi
 
 [ "$fail" -eq 0 ] || die "kurulum sonrası doğrulama başarısız — yukarıya bakın"
+
+# Eski adlı Docker kalıntıları (konteyner, ağ, imaj etiketi; K-136) yalnızca
+# hiçbiri trafik almıyorsa kaldırılır. Göçten AYRI: o kurulumda
+# kaldırılamadıysa sonraki her kurulum yeniden dener. Doğrulamadan SONRA:
+# temizlik kontrollerin önüne geçmesin, doğrulama düşerse eski konteynerler
+# (son çalışan sürüm) yerinde kalsın.
+if goc_artik_var; then
+    goc_temizle
+fi
 
 printf '\nKurulum tamamlandı.\n'
 printf 'Artık root erişimine gerek yok; bağlanmak için:\n'

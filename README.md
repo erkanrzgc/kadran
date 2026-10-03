@@ -264,6 +264,9 @@ place** (K-136):
   own containers. The site is down only while the proxy switches: **about 1.3 s** in the
   rehearsal on Debian 13, read from the server's journal, with 0 of 80 probe requests
   failing.
+- During that overlap the old and new replicas of an app mount **the same volume**, as in
+  any blue-green deploy, only for longer. Stop apps that keep a single-writer database
+  in a volume before migrating.
 - If new containers do not come up, the migration stops and the site keeps running on
   the old stack. Rerunning `bootstrap` continues where it stopped.
 - A rollback script is installed before anything moves:
@@ -540,6 +543,9 @@ Tracked in the open rather than hidden. Each is a real limitation today.
 - **Volume backups are not snapshots.** Files are read while the app runs, so a database's
   files can come from different moments. Dump the database into the volume (`pg_dump`,
   `sqlite3 .backup`). Archives are full copies every night.
+- **Replicas share a volume.** Every replica, and both releases during a blue-green deploy,
+  mount the same directory. Apps that keep a single-writer database in a volume should run
+  one replica and accept that a deploy overlaps two writers for a few seconds.
 - **The desktop app is read-only:** version, status and the audit log. Management is CLI only.
 - **CLI messages are in Turkish.** Commands and flags are English; output and help are not
   yet.

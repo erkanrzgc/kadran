@@ -25,6 +25,9 @@ It detects the old (`panely`) install and migrates it in place (K-136).
 - The old proxy and containers keep serving until the new control plane has started
   its own containers. The site is down only while the proxy switches: about 1.3 s on
   the Debian 13 test server, read from the journal; 0 of 80 probe requests failed.
+- While they overlap, the old and new replicas of an app mount the same volume, as in a
+  blue-green deploy but for longer. Stop apps that keep a single-writer database in a
+  volume before migrating.
 - If the new containers don't come up within 5 minutes, the migration stops and the
   site stays on the old stack. Running `bootstrap` again continues where it stopped.
 - The daemon briefly cannot reach the proxy during the switch and raises "proxy not
@@ -64,6 +67,25 @@ they reached the live server:
 - **The first version was down for 16 s,** mostly waiting for the proxy watcher's 10 s
   tick. The daemon now restarts right after the new proxy, and startup reconciliation
   writes the routes immediately: about 1.3 s.
+
+### Found by a security review of the migration
+
+The migration scripts were reviewed separately after the rehearsal. No path started the
+executor without its allowlist. Fixed, each with a test scenario and a mutant (K-136):
+
+- **Cleanup could wedge every later install.** It ran before the post-install checks, and
+  a network or image still in use aborted the install, again on every rerun. It now runs
+  after the checks pass and only warns.
+- **An interrupted run could not resume** if it stopped between renaming the rclone remote
+  and updating `offsite.conf`. Each file is now handled on its own.
+- **Root rewrote files through symlinks.** A fixed temporary name inside the client user's
+  `.ssh` let that user make root overwrite another file. Temporary copies now come from
+  `mktemp`, which also keeps the rclone key from being briefly world-readable, and
+  symlinked files or directories stop the migration.
+- **An unreadable `systemctl show` counted as "no allowlist".** It now stops the
+  migration.
+- **Rollback deleted drop-ins edited after the migration.** It now keeps them in the
+  migration record.
 
 ### Documentation
 

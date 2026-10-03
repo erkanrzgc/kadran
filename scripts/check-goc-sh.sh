@@ -2,10 +2,12 @@
 # Göç betiğinin (internal/bootstrap/goc.sh, K-136) dosya adımlarını
 # GERÇEKTEN çalıştırır: sahte bir kök dizinde (KOK), root gerekmeden.
 #
-# Kullanıcı yeniden adlandırma, systemctl ve docker burada sınanmıyor; onlar
-# gerçek sunucuda ölçülüyor (K-136, GCP provası). Burada sınanan, yanlış
-# yapıldığında VERİ kaybettirecek ya da erişimi kıracak adımlar: taşıma,
-# önek değiştirme, authorized_keys ve uzak yedek yapılandırması.
+# Kullanıcı yeniden adlandırma ve systemctl burada sınanmıyor; onlar gerçek
+# sunucuda ölçülüyor (K-136, GCP provası). Burada sınanan, yanlış yapıldığında
+# VERİ kaybettirecek, erişimi kıracak ya da kurulumu takılı bırakacak
+# adımlar: taşıma, önek değiştirme, authorized_keys, uzak yedek
+# yapılandırması, root'un dosya yazarken bağ izlememesi ve eski kalıntıların
+# temizliği (docker sahte bir betikle).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -58,6 +60,31 @@ dene "yalnız önekli dosyalar değişiyor, içerik korunuyor" \
 k="$(kok o3)"; d="$k/y"; mkdir -p "$d"; echo eski > "$d/panely-1.db"; echo yeni > "$d/kadran-1.db"
 dene "hedef ad zaten varsa DURUYOR, iki dosya da yerinde" \
     "! bash -c '$(on o3) goc_onek \$KOK/y panely- kadran-'; [ \"\$(cat '$d/panely-1.db')\" = eski ] && [ \"\$(cat '$d/kadran-1.db')\" = yeni ]"
+# backups, daemon'un yazabildiği /var/lib/kadran içinde: daemon onu bir
+# sembolik bağla değiştirirse root başka bir dizindeki dosyaları yeniden
+# adlandırırdı (güvenlik incelemesi, K-136).
+k="$(kok o4)"; mkdir -p "$k/baska"; echo onemli > "$k/baska/panely-onemli.conf"; ln -s "$k/baska" "$k/backups"
+dene "dizin sembolik bağsa DURUYOR, bağın gösterdiği dosyalar yeniden adlanmıyor" \
+    "! bash -c '$(on o4) goc_onek \$KOK/backups panely- kadran-'; [ -f '$k/baska/panely-onemli.conf' ]"
+
+echo
+echo "== goc_yerinde_sed: root yeniden yazarken bağ izlemiyor, sırrı açmıyor =="
+# authorized_keys kadran-client'ın .ssh dizininde: o kullanıcı orada dosya
+# açabilir. Sabit adlı geçici kopyaya önceden konan bağ, root'a istenen
+# dosyanın üstüne yazdırıyordu (güvenlik incelemesi, K-136).
+k="$(kok s1)"; echo kurban > "$k/kurban"; printf '%s\n' 'command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA x' > "$k/ak"
+ln -s "$k/kurban" "$k/ak.goc"
+dene "önceden konmuş .goc bağı izlenmiyor: kurban dosyası aynı, ak düz dosya ve çevrilmiş" \
+    "$(on s1) goc_ak \$KOK/ak; [ \"\$(cat \$KOK/kurban)\" = kurban ] && [ ! -L \$KOK/ak ] && grep -q kadran-connect \$KOK/ak"
+k="$(kok s2)"; printf '%s\n' 'command="/usr/local/lib/panely/panely-connect",restrict ssh-ed25519 AAAA x' > "$k/kurban"; ln -s "$k/kurban" "$k/ak"
+dene "dosyanın kendisi sembolik bağsa DURUYOR, bağ ve hedefi değişmiyor" \
+    "! bash -c '$(on s2) goc_ak \$KOK/ak'; [ -L '$k/ak' ] && grep -q panely-connect '$k/kurban'"
+# rclone.conf 0640 ve /etc/kadran 0755: geçici kopya umask'la (0644)
+# açılsaydı anahtar bir an herkese okunur olurdu.
+k="$(kok s3)"; printf 'gizli\n' > "$k/rc"; chmod 0640 "$k/rc"
+dene "geçici kopya yazılırken yalnız sahibine açık (0600), sonuç eski izinde (0640)" \
+    "$(on s3) chown(){ stat -c %a \"\${@: -1}\" > \$KOK/kip; command chown \"\$@\"; }; goc_yerinde_sed \$KOK/rc s/gizli/x/; [ \"\$(cat \$KOK/kip)\" = 600 ] && [ \"\$(stat -c %a \$KOK/rc)\" = 640 ] && [ \"\$(cat \$KOK/rc)\" = x ]"
+dene "geride geçici dosya kalmıyor" "[ -z \"\$(ls '$k' | grep goc)\" ]"
 
 echo
 echo "== goc_ak: authorized_keys (K-131 satırları) =="
@@ -99,6 +126,15 @@ dene "kullanıcının kendi adlı hedefine dokunulmuyor" \
 uy u3; printf '[kadran-offsite]\ntype = s3\n' >> "$KOK/u3/rclone.conf"
 dene "iki hedef birden varsa DURUYOR, dosyalar değişmiyor" \
     "! bash -c '$(on u3) goc_uzak_yedek \$KOK'; grep -qx 'OFFSITE_REMOTE=panely-offsite:panely-yedek' '$KOK/u3/offsite.conf'"
+# İki sed arasında kesilen koşu: rclone.conf çevrilmiş, offsite.conf değil.
+# Eski sürüm her yeniden koşuda burada DURUYORDU; o noktada eski kontrol
+# düzlemi çoktan durmuş olurdu (güvenlik incelemesi, K-136).
+uy u4; sed -i 's/^\[panely-offsite\]$/[kadran-offsite]/' "$KOK/u4/rclone.conf"
+dene "yarıda kalmış koşu (rclone.conf çevrilmiş, offsite.conf değil) yeniden koşunca TAMAMLANIYOR" \
+    "$(on u4) goc_uzak_yedek \$KOK; grep -qx '\\[kadran-offsite\\]' \$KOK/rclone.conf && grep -qx 'OFFSITE_REMOTE=kadran-offsite:panely-yedek' \$KOK/offsite.conf"
+uy u5; printf '[baska]\ntype = s3\n' > "$KOK/u5/rclone.conf"
+dene "offsite.conf eski hedefi gösteriyor ama rclone.conf'ta ikisi de yoksa DURUYOR" \
+    "! bash -c '$(on u5) goc_uzak_yedek \$KOK'; grep -qx 'OFFSITE_REMOTE=panely-offsite:panely-yedek' '$KOK/u5/offsite.conf'"
 
 echo
 echo "== goc_dropin_tasi: operatör drop-in'leri (K-056 beyaz listesi) =="
@@ -131,6 +167,12 @@ dene "beyaz liste yoksa boş, kurulum DURMUYOR" \
     "$(on i1) x=\"\$(goc_izinli_depo 'ExecStart={ argv[]=/x --socket /y ; }')\"; [ -z \"\$x\" ]"
 dene "= biçimi ve birden çok bayrak yakalanıyor" \
     "$(on i1) [ \"\$(goc_izinli_depo 'argv[]=/x --allow-repo=a/b --allow-repo c/d ;')\" = \"\$(printf -- '--allow-repo=a/b\n--allow-repo c/d')\" ]"
+# Pozitif kontrol: systemctl okunamadığında boş çıktı "beyaz liste yok"
+# sayılırsa iki uç da boş görünür ve karşılaştırma geçerdi.
+dene "systemctl çıktısı boşsa 'beyaz liste yok' SAYILMIYOR, DURUYOR" \
+    "! bash -c '$(on i1) goc_izinli_depo \"\" >/dev/null'"
+dene "komut satırı taşımayan çıktı (dbus hatası) da DURUYOR" \
+    "! bash -c '$(on i1) goc_izinli_depo \"Failed to connect to bus\" >/dev/null'"
 
 echo
 echo "== goc_ip_var / goc_temizlenebilir: eski konteynerler ne zaman silinir =="
@@ -147,6 +189,35 @@ dene "yapılandırma OKUNAMADIYSA silinmiyor" \
     "! bash -c '$(on r1) goc_temizlenebilir \"\" 172.18.0.2'"
 dene "eski konteyner hiç yoksa ve yapılandırma okunduysa siliniyor" \
     "$(on r1) goc_temizlenebilir '$YAPI'"
+
+echo
+echo "== goc_temizle: bir kalıntı silinemese de kurulum DÜŞMÜYOR =="
+# Kullanımdaki bir ağ ya da imaj set -e altında kurulumu düşürüyordu; kalıntı
+# kaldığı için sonraki her kurulum aynı satırda ölürdü (güvenlik incelemesi,
+# K-136). Sahte docker: konteyner silinir, ağ ve imaj silinemez.
+k="$(kok c1)"; mkdir -p "$k/bin"
+cat > "$k/bin/docker" <<'EOF'
+#!/bin/sh
+case "$1 $2" in
+    "ps -aq") echo eskikonteyner ;;
+    "network ls") echo panely-web ;;
+    "network rm") echo "ağ kullanımda" >&2; exit 1 ;;
+    "images --filter") echo panely/web:abc ;;
+    rmi*) echo "imaj kullanımda" >&2; exit 1 ;;
+esac
+exit 0
+EOF
+chmod +x "$k/bin/docker"
+dene "ağ ve imaj silinemezse uyarı verip sürüyor" \
+    "$(on c1) PATH=\$KOK/bin:\$PATH; goc_vekil_yapisi(){ echo '{\"apps\":{}}'; }; goc_ipler(){ :; }; say(){ echo \"\$*\"; }; goc_temizle > \$KOK/cikti 2>&1; echo sonrasi >> \$KOK/cikti; grep -q 'ağlar kaldırılamadı' \$KOK/cikti && grep -q 'imaj etiketleri kaldırılamadı' \$KOK/cikti && grep -q sonrasi \$KOK/cikti && ! grep -q 'kalıntılar kaldırıldı' \$KOK/cikti"
+
+echo
+echo "== install.sh: eski kalıntılar ancak doğrulama GEÇİNCE temizleniyor =="
+# Temizlik doğrulamadan önce koşuyordu: düşerse 17 kontrol hiç koşmazdı ve
+# doğrulama düşse de eski konteynerler (son çalışan sürüm) silinirdi.
+IS=internal/bootstrap/install.sh
+dene "goc_temizle çağrısı 'doğrulama başarısız' çıkışından SONRA, tek yerde" \
+    "d=\$(grep -n 'kurulum sonrası doğrulama başarısız' $IS | cut -d: -f1); t=\$(grep -n '^    goc_temizle\$' $IS | cut -d: -f1); [ -n \"\$d\" ] && [ -n \"\$t\" ] && [ \"\$(printf '%s\n' \"\$t\" | wc -l)\" = 1 ] && [ \"\$t\" -gt \"\$d\" ]"
 
 echo
 echo "== goc_gerekli =="

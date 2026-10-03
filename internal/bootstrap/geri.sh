@@ -89,12 +89,18 @@ if [ -f /etc/panely/offsite.conf ] && grep -q '^OFFSITE_REMOTE=kadran-offsite:' 
 fi
 
 # Yeni birimler ve kurallar kalkar; eskiler göçün sakladığı yerden döner.
+# Yeni drop-in'ler SİLİNMEZ, göç kaydına alınır: göçten sonra elle
+# değiştirilmiş olabilirler (ör. daraltılmış --allow-repo) ve geri dönen
+# eski drop-in onları sessizce geri alırdı (güvenlik incelemesi, K-136).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \
          var-lib-kadran-volumes.mount kadran-notify.service kadran-notify.timer \
          kadran-notify-failure@.service kadran-offsite.service kadran-offsite.timer \
          kadran-volume-backup.service kadran-volume-backup.timer; do
     rm -f "/etc/systemd/system/$b"
-    rm -rf "/etc/systemd/system/$b.d"
+    if [ -d "/etc/systemd/system/$b.d" ]; then
+        install -d -m 0700 "$GOC_DIR/yeni-dropin"
+        mv "/etc/systemd/system/$b.d" "$GOC_DIR/yeni-dropin/"
+    fi
 done
 rm -f /etc/tmpfiles.d/kadran.conf /etc/tmpfiles.d/kadran-caddy.conf \
       /etc/ssh/sshd_config.d/60-kadran.conf
@@ -119,6 +125,11 @@ mv "$GOC_DIR" "$kenar"
 rm -rf /usr/local/lib/kadran
 
 say "eski adlar geri geldi; göç kaydı ve veritabanı kopyası: $kenar"
+if [ -d "$kenar/yeni-dropin" ]; then
+    say "⚠ kadran drop-in'leri $kenar/yeni-dropin altında. Göçten sonra"
+    say "  değiştirdiyseniz geri dönen eskileriyle karşılaştırın:"
+    say "  systemctl cat panely-exec.service | grep -- --allow-repo"
+fi
 if [ -n "$zamanlayicilar" ]; then
     say "göçten önce etkin zamanlayıcılar (bootstrap'tan SONRA yeniden etkinleştirin):"
     for s in $zamanlayicilar; do say "  systemctl enable --now panely-$s.timer"; done

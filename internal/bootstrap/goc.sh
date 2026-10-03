@@ -164,6 +164,12 @@ goc_1() {
     step "Göç: panely → kadran (K-136)"
     install -d -m 0700 -o root -g root "$GOC_DIR"
 
+    # Geri dönüş betiği İLK iş kurulur: göç yarıda kalsa da sunucuda hazır.
+    install -d -m 0755 -o root -g root "$LIB_DIR"
+    install -m 0644 -o root -g root "$STAGE/goc.sh" "$LIB_DIR/goc.sh"
+    install -m 0755 -o root -g root "$STAGE/geri.sh" "$LIB_DIR/kadran-geri-donus.sh"
+    say "geri dönüş betiği: $LIB_DIR/kadran-geri-donus.sh"
+
     # Süren bir istemci oturumu (ör. bir CI dağıtımı) yarıda kesilmesin.
     if getent passwd panely-client >/dev/null && pgrep -u panely-client >/dev/null; then
         die "panely-client'ın açık oturumu var (süren bir dağıtım olabilir).

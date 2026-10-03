@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-//go:embed install.sh goc.sh
+//go:embed install.sh goc.sh geri.sh
 var installScript embed.FS
 
 // serverBinaries, sunucuya kurulan binary'lerdir.
@@ -296,7 +296,7 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 		return err
 	}
 
-	for _, name := range []string{"install.sh", "goc.sh"} {
+	for _, name := range []string{"install.sh", "goc.sh", "geri.sh"} {
 		script, err := installScript.ReadFile(name)
 		if err != nil {
 			return nil, fmt.Errorf("bootstrap: kurulum betiği okunamadı (%s): %w", name, err)

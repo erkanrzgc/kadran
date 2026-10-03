@@ -113,7 +113,7 @@ mutate_in "$BOOT" "göçün okuduğu bir birim pakette yok" \
     "s=s.replace('\"kadran-offsite.timer\":','\"kadran-offsite.timer-YOK\":',1)"
 
 mutate_in "$BOOT" "goc.sh pakete girmiyor" \
-    "s=s.replace('range []string{\"install.sh\", \"goc.sh\"}','range []string{\"install.sh\"}',1)"
+    "s=s.replace('range []string{\"install.sh\", \"goc.sh\", \"geri.sh\"}','range []string{\"install.sh\", \"geri.sh\"}',1)"
 
 echo
 if [[ "$fail" -ne 0 ]]; then

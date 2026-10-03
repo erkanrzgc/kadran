@@ -1,6 +1,6 @@
 <div align="center">
 
-# Kadran
+# KΛDRΛN
 
 **A self-hosted deployment platform whose control panel never runs as root.**
 

@@ -129,7 +129,7 @@ mutate_in "$CLI" "sırayı geri saran sunucu döngüye sokuyor" \
     "s=s.replace('\t\t\tif p.GetSeq() <= after {','\t\t\tif false {',1)"
 
 mutate_in "$CLI" "bozuk çapa sessizce atlanıyor" \
-    "s=s.replace('\t\t\treturn nil, fmt.Errorf(\"%w: %v\", errBadAnchor, err)','\t\t\tcontinue',1)"
+    "s=s.replace('\t\t\treturn nil, fmt.Errorf(\"%w: %w\", errBadAnchor, err)','\t\t\tcontinue',1)"
 
 mutate_in "$CLI" "çelişkide çıkış kodu başarı" \
     "s=s.replace('araştırılmalıdır.\")\n\t\treturn exitChainInvalid','araştırılmalıdır.\")\n\t\treturn exitOK',1)"

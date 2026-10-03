@@ -82,7 +82,17 @@ func TestFetchAllAuditStartsFromTheFirstRecord(t *testing.T) {
 
 func TestFetchAllAuditStopsIfTheServerRewinds(t *testing.T) {
 	zincir := pbconv.AuditRecordsToProto(testZinciri(t, 2))
-	geriSar := func(context.Context, uint64) ([]*kadranv1.AuditRecord, error) { return zincir, nil }
+	// Sınırlı: koruma bozulursa test sonsuz döngüde belleği tüketmesin
+	// (CI'da mutasyon işini öldürdü). 5 turdan sonra boş sayfa: bozuk kod
+	// o zaman hatasız döner ve test kırmızı olur.
+	cagri := 0
+	geriSar := func(context.Context, uint64) ([]*kadranv1.AuditRecord, error) {
+		cagri++
+		if cagri > 5 {
+			return nil, nil
+		}
+		return zincir, nil
+	}
 	if _, err := fetchAllAudit(t.Context(), geriSar); err == nil {
 		t.Fatal("sırayı geri saran sunucu sonsuz döngüye soktu ya da kabul edildi")
 	}

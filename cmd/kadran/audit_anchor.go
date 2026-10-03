@@ -100,11 +100,11 @@ func loadAnchors(dir string) ([]anchor.Anchor, error) {
 		}
 		data, err := readLimited(filepath.Join(dir, e.Name()))
 		if err != nil {
-			return nil, fmt.Errorf("%w: %s okunamadı: %v", errBadAnchor, e.Name(), err)
+			return nil, fmt.Errorf("%w: %s okunamadı: %w", errBadAnchor, e.Name(), err)
 		}
 		a, err := anchor.Parse(e.Name(), data)
 		if err != nil {
-			return nil, fmt.Errorf("%w: %v", errBadAnchor, err)
+			return nil, fmt.Errorf("%w: %w", errBadAnchor, err)
 		}
 		out = append(out, a)
 	}

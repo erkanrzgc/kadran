@@ -17,6 +17,14 @@ database restore. It covers the daemon chain only, back to the lock period.
 
 - `ListAuditRecordsRequest.after_seq` is exclusive; its comment said inclusive.
 
+### Security
+
+- **The install followed symlinks in the client user's `.ssh`** (K-137), the same
+  class the v0.4.0 migration fixed. Writing the admin key used a fixed temporary name
+  and appended through the path; creating `.ssh` followed a symlink and handed the
+  target directory to the client user. Both now stop on a symlink, and the new
+  `authorized_keys` is written to a `mktemp` copy and moved into place.
+
 ## v0.4.0 — 2026-10-03
 
 The second half of the rename: every name on the server is now `kadran`, and

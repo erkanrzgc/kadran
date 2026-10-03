@@ -67,8 +67,23 @@ vekil_parmak_izi() {
 # yenisiyle DEĞİŞTİRİLİR, yorum alanı değişebilir. Başka anahtarların
 # satırları — `kadran key` ile eklenen dağıtım anahtarları dahil —
 # KORUNUR. Tek-satır denetimi de sınanıyor: scripts/check-install-sh.sh.
+#
+# Root burada kadran-client'ın dizinine yazıyor (K-137). Eskiden sabit adlı
+# `$auth_file.yeni`'ye yazıp `>>` ile ekliyordu: o kullanıcı `.yeni`'nin
+# ya da authorized_keys'in yerine bir bağ koyup root'a istediği dosyaya
+# KENDİ satırlarını yazdırabiliyordu (yeniden üretildi). Şimdi dosya bağsa
+# ya da düzenli dosya değilse DURUR; yeni içerik bütünüyle `mktemp`
+# kopyasına (O_EXCL, tahmin edilemez ad, 0600) yazılır ve `mv -T` ile
+# yerine konur. Yol üzerinden hiçbir yazma yok; sabit bağ da izlenmez.
+#
+# Fonksiyon kurulumda `|| die` bağlamında çağrılıyor; orada `set -e`
+# KAPALI. Bu yüzden her adım kendi hatasını denetliyor.
+#
+# Kalan dar pencere goc_yerinde_sed'inkiyle aynı sınıftan (K-136): denetim
+# ile kullanım arasında dizinin sahibi adları değiştirebilir. Kapatmak
+# yazmayı kadran-client olarak yapmayı ister; ayrı iş (K-137).
 yonetici_satiri_yaz() {
-    local auth_file="$1" key_file="$2" lib_dir="$3" key key_body
+    local auth_file="$1" key_file="$2" lib_dir="$3" key key_body gecici rc=0
     [ "$(grep -c '' "$key_file")" -eq 1 ] || return 1
     key="$(cat "$key_file")"
     # CR denetimi Linux'ta anlamlı (kurulum ve CI orada). Git Bash hem
@@ -76,12 +91,37 @@ yonetici_satiri_yaz() {
     # sınanamaz.
     case "$key" in *$'\r'*) return 1 ;; esac
     key_body="$(printf '%s' "$key" | awk '{print $1" "$2}')"
-    touch "$auth_file"
-    if [ -s "$auth_file" ] && grep -qF "$key_body" "$auth_file"; then
-        grep -vF "$key_body" "$auth_file" > "$auth_file.yeni" || true
-        mv "$auth_file.yeni" "$auth_file"
+    if [ -L "$auth_file" ] || { [ -e "$auth_file" ] && [ ! -f "$auth_file" ]; }; then
+        die "$auth_file sembolik bağ ya da düzenli dosya değil; yazılmadı"
     fi
-    printf '%s\n' "command=\"$lib_dir/kadran-connect\",restrict $key" >> "$auth_file"
+    gecici="$(mktemp "$auth_file.XXXXXX")" || die "$auth_file için geçici dosya açılamadı"
+    if [ -e "$auth_file" ]; then
+        # grep'in 1'i "hiç satır kalmadı" (dosyada yalnız bu anahtar
+        # vardı); 2 okuma hatası. Yutulsa dağıtım satırları sessizce düşerdi.
+        grep -vF -- "$key_body" "$auth_file" > "$gecici" || rc=$?
+        [ "$rc" -le 1 ] || { rm -f "$gecici"; die "$auth_file okunamadı; dokunulmadı"; }
+    fi
+    printf '%s\n' "command=\"$lib_dir/kadran-connect\",restrict $key" >> "$gecici" \
+        || { rm -f "$gecici"; die "$gecici yazılamadı"; }
+    if [ -e "$auth_file" ]; then
+        { chown --reference="$auth_file" "$gecici" && chmod --reference="$auth_file" "$gecici"; } \
+            || { rm -f "$gecici"; die "$auth_file'ın sahipliği kopyaya aktarılamadı"; }
+    fi
+    mv -fT "$gecici" "$auth_file" || { rm -f "$gecici"; die "$auth_file yerine konamadı"; }
+}
+
+# ssh_dizini_hazirla <dizin> <kullanıcı> <grup> — `.ssh`'yi kurar ya da
+# sahipliğini ve iznini düzeltir.
+#
+# Dizin kadran-client'ın ev dizininde; o kullanıcı `.ssh`'nin yerine bir
+# bağ koyabilir. `install -d` bağı İZLER ve HEDEF dizini o kullanıcıya
+# 0700 ile devreder (Debian 13'te ölçüldü). Bu yüzden bağsa DURUR (K-137).
+ssh_dizini_hazirla() {
+    local dizin="$1" kullanici="$2" grup="$3"
+    if [ -L "$dizin" ]; then
+        die "$dizin sembolik bağ; .ssh kurulmadı"
+    fi
+    install -d -m 0700 -o "$kullanici" -g "$grup" "$dizin"
 }
 
 # kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — kadran-connect'e
@@ -444,7 +484,7 @@ step "SSH yapılandırması"
 
 [ -f "$STAGE/client_key.pub" ] || die "istemci açık anahtarı hazırlık dizininde yok"
 
-install -d -m 0700 -o kadran-client -g kadran-client "$CLIENT_HOME/.ssh"
+ssh_dizini_hazirla "$CLIENT_HOME/.ssh" kadran-client kadran-client
 
 # authorized_keys satırı:
 #

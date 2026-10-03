@@ -261,9 +261,9 @@ place** (K-136):
   migration stops before starting the new executor if its effective allowlist differs
   from the old one.
 - The old proxy and containers keep serving until the new control plane has started its
-  own containers. The site is down only while the proxy switches: **about 1.3 s** in the
-  rehearsal on Debian 13, read from the server's journal, with 0 of 80 probe requests
-  failing.
+  own containers. The site is down only while the proxy switches: **about 0.6 s** on the
+  live server (Ubuntu 24.04, three routed apps, read from the journal; 188 of 189 probe
+  requests succeeded) and about 1.3 s in the rehearsals on Debian 13.
 - During that overlap the old and new replicas of an app mount **the same volume**, as in
   any blue-green deploy, only for longer. Stop apps that keep a single-writer database
   in a volume before migrating.

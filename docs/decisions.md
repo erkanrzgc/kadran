@@ -9573,7 +9573,7 @@ dokunulmadı: oraya her push canlıya dağıtım demek, karar kullanıcıda.
 ## K-136 — Ad değişikliğinin ikinci yarısı: sunucu tarafı panely → kadran
 
 **Tarih:** 2 Ekim 2026
-**Durum:** UYGULANDI, GCP'de PROVA EDİLDİ (3 Ekim); canlı göç ayrı adım.
+**Durum:** CANLIDA (3 Ekim, v0.4.0); GCP'de üç kez prova edildi.
 Kullanıcı kararı: "her şey şimdi" (K-130'un "bilerek
 değişmeyen" listesinin tamamı). Kod ayrı dalda; önce GCP'de prova, sonra
 canlı.
@@ -9844,3 +9844,44 @@ zamanlayıcısı eskisi gibi KAPALI: kadran-notify"; `kadran-notify.timer`
 disabled, offsite ve volume-backup enabled. Pencere (günlük): eski vekil
 13:25:17,253'te durmaya başladı, yeni rotalar 18,527'de: ~1,3 sn. Yoklayıcı
 58/58 `200`. Geçici dosya kalıntısı 0.
+
+### Canlı göç (3 Ekim, v0.4.0 yayın dosyalarıyla)
+
+Yayın `b216f23` (iki temiz klon aynı `SHA256SUMS`; GitHub'dan indirilip
+doğrulandı). GCP önce aynı dosyalarla v0.4.0'a yükseltildi (17/17, göç
+tetiklenmedi). Canlı sunucuda önce salt okunur denetim: v0.3.0, üç rotalı
+ad 200, hacimli uygulama yok, beyaz liste `erkanrzgc/portfolio,
+crccheck/docker-hello-world`, portfolio CI boşta. R2'de `kadran-` öneki
+için kilit (30 g) ve yaşam döngüsü (90 g) kuralları eklendi; kilit
+sunucunun kendi token'ıyla ölçüldü (kilitli sil/üzerine yaz 409
+`ObjectLockedByBucketPolicy`, kilitsiz kontrol silindi).
+
+- **Göç:** 59 sn, 17/17. 3 eski replika, üç zamanlayıcı da etkin ve yeni
+  adla yeniden açıldı; drop-in taşındı, beyaz liste korundu; temizlik
+  doğrulamadan sonra ("eski kalıntılar kaldırıldı").
+- **Kesinti:** günlükten, eski vekil 19:29:50,178'de durmaya başladı, yeni
+  vekil üç uygulamayı (`pfprobe portfolio web`) 50,750'de rotaladı:
+  **~0,6 sn**. Yoklayıcı üç adı birlikte yokladı: 188/189 `200`; tek hata
+  50,526'da (`hello`, bağlantı sıfırlandı), pencerenin içinde.
+- **Tabana karşı:** uid/gid aynı (999/988, 996/987, 993/985); 24 yedek
+  `kadran-` adıyla, `panely-` 0; authorized_keys iki satırı yeni yolda,
+  dağıtım satırının `-deploy=portfolio` kapsamı korundu (yönetici satırı
+  bootstrap'ın kendi yenilemesiyle sona geçti); `rclone.conf`/`offsite.conf`
+  640 root:kadran; geçici dosya 0; eski konteyner/ağ/birim 0. İki zincir
+  geçerli (executor 199 kayıt).
+- **Bildirim:** "vekil uzlaştırılamadı" alarmı 19:29:34'te açıldı (yeni
+  kontrol düzlemi eski vekil sunarken başladı), 50,757'de kapandı;
+  `kadran-notify: 2 alarm olayı gönderildi`.
+- **CI:** göçten hemen sonra portfolio'nun `KADRAN_TARGET` sırrı
+  `kadran-client@…` yapıldı ve `KADRAN_VERSION: v0.4.0` commit'i push
+  edildi. İş akışı v0.4.0 CLI'ını indirip doğruladı, r10'u 55 sn'de canlıya
+  aldı; denetim kaydında `app.deploy r10` dağıtım anahtarının parmak
+  iziyle. Eski hedef (`panely-client@`) yeni CLI'da yol gösteren hatayla
+  reddediliyor.
+
+Denetim kaydında beklenen bir iz: göç sırasında `app.unhealthy` ve
+`app.heal BAŞARISIZ` (portfolio, web; pfprobe yalnız günlükte). Yeni kontrol
+düzlemi eski vekil sunarken konteynerleri kuruyor; iyileştirmenin son adımı
+(vekile rota yazmak) yeni vekil henüz olmadığı için düşüyor, 2 sn sonraki
+turda "iyileşti" yazılıyor ve rotalar vekil değişince yazılıyor. Hata değil,
+göçün sırasının sonucu.

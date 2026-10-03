@@ -8097,7 +8097,7 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda (aşağıda "Kararlar")
+**Durum:** KARAR B (3 Ekim); ölçüldü, yüzey sınırı kararı kullanıcıda (sonda)
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
 stored in the daemon's database and are visible to `docker inspect`."
@@ -8195,10 +8195,38 @@ B'yi uygulamadan önce ölçülmesi gerekenler:
 3. Anahtar yedeği nerede durmalı? Uzak yedek anahtarıyla AYNI yerde
    olmamalı.
 
+### Karar ve ölçüm (3 Ekim)
+
+Kullanıcı: **B**, önce ölç. Atılacak bir çalışma ağacında executor'ın
+payına düşen en küçük gerçekçi yol yazıldı (depoya girmedi):
+
+- `-vault-key` bayrağı, açılışta `age.ParseIdentities`;
+- `age:` önekli değerler `ContainerCreate`'te çözülüyor, çözülmüş değer
+  64 KiB ile sınırlı, anahtar yoksa ya da çözülemezse istek reddediliyor;
+- şifresiz değerler olduğu gibi geçiyor (göç dönemi).
+
+| | Bugün | Prototip | Fark |
+|---|---|---|---|
+| Ayrıcalıklı kod (yorum/boş hariç, `check-exec-surface.sh`) | 2498 | 2568 | **+70** |
+| `kadran-exec` (linux/amd64, `-s -w`) | 12 427 426 B | 12 628 130 B | +200 KB (%1,6) |
+| Standart dışı paket (`go list -deps`) | 140 | 157 | +17 |
+
+Yeni paketler: `filippo.io/age` v1.3.2, `filippo.io/hpke` v0.4.0,
+`golang.org/x/crypto` (chacha20poly1305, curve25519, hkdf, scrypt…).
+Üçüncü taraf kod bütçeye sayılmıyor (govulncheck'in işi), ama root
+sürecin bağımlılık yüzeyi 17 paket büyüyor.
+
+Sonuç: B, sınırı **~70 satır** aşıyor. Prototip sıkıştırılabilir (yalnız
+X25519 kimliği, tek hata yolu) ama 2500'ün altına inmiyor: kalan pay 2
+satır. Yani B, gerekçeli bir sınır kararı gerektiriyor (K-040'ın kuralı:
+tahmin değil ölçüm, kural sessizce gevşetilmez). Karar kullanıcıda:
+sınır 2500 → 2600 mü, yoksa önce executor'da başka yerden yer açmak mı?
+
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+**Durum:** ERTELENDİ (3 Ekim, kullanıcı): bugünkü uygulamaların hepsi
+herkese açık depo; ihtiyaç doğunca C yolu (aşağıda) uygulanır.
 
 ### Bugün (koddan okundu)
 
@@ -8339,7 +8367,9 @@ ayrı bir K kaydı ve testlerle gelmesi gereken iş.
 ## K-126 — Denetim zincirlerinin çapraz denetimi: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** TASLAK — kod YOK; seçim kullanıcıda
+**Durum:** KARAR (3 Ekim, kullanıcı): **önce C**, B ayrıcalıklı yüzey
+kararıyla sonra. C'nin dayandığı kilit artık var ve ölçüldü: R2'de
+`kadran-` öneki 30 gün kilitli (K-136, "Canlı göç").
 
 ### Sorun (README "Audit log" bölümü)
 

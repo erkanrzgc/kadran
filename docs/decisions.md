@@ -8378,8 +8378,23 @@ sorun ve yapılan:
 | 5 | ORTA | `--allow-repo` boşken (varsayılan) ele geçirilmiş daemon kendi seçtiği imajı bir uygulama olarak başlatıp değerlerini günlüğe yazdırabilir. | Kurulum uyarıyor. Hetzner'da liste tanımlı. |
 | 6 | DÜŞÜK | 13. kontrol dosyanın iznine bakıyor, dizinin yazılabilirliğine değil. | `/etc/kadran`'a kadran'ın yazamadığı da sınanıyor. |
 
-GCP'de rc1 eski 0009'u (sütunsuz) uygulamıştı; yalnız o test sunucusu için
-sütun elle eklendi.
+GCP'de rc1 eski 0009'u (sütunsuz) uygulamıştı. İkinci provada sunucu
+Hetzner'in durumuna getirildi; göç yeni hâliyle sıfırdan uygulandı.
+
+**İkinci GCP provası (4 Ekim, inceleme düzeltmeleriyle, rc2):** Hetzner'da
+izlenecek sıra birebir denendi.
+
+| Adım | Ölçülen |
+|---|---|
+| rc1'li sunucuda yeni `kadran-kasa-coz.sh`, gerçek root | root değilken ve kadrand açıkken reddetti; durdurunca 2 değer düz, yedek `999:988` (kadran'ın, root'un değil); ikinci koşu "işaret yok". Çıktıya `PRAGMA busy_timeout`'un sonucu ("5000") karışıyordu: yazma adımının standart çıktısı artık atılıyor, test çıktıyı üç satırla sınıyor |
+| v0.4.1'e `bootstrap` | 17/17; `app show -json` değeri düz |
+| Hetzner'e benzetme | `env_seal` tablosu, göç 0009 kaydı ve `pre-0009` silindi; rc1 anahtarı sunucudan kaldırıldı |
+| önce anahtar: yalnız `kadran-vault -key …` | anahtar 600 root, alıcı basıldı; ikinci koşu aynı alıcı; `kadran` okuyamıyor |
+| rc2'ye `bootstrap -sudo` | 19/19; "YENİ KASA ANAHTARI" yok; `pre-0009_env_seal` silme komutuyla listelendi; `--allow-repo` tanımlı, uyarı yok |
+| açılış | `muhurlenen_deger=2`; `vault.pub`, `env_seal.recipient`, kadrand ve kadran-exec günlükleri ve anahtardan türetilen alıcı TAM aynı; `scrubbed_at` dolu; değer `.db`, `-wal`, `-shm`'de 0, `pre-0009`'da 1 |
+| `deploy hello`, yeni anahtarla ilk konteyner | r6; değer açılmış, boş değer boş |
+| kurulu `/usr/local/lib/kadran/kadran-kasa-coz.sh`, yeni şema | 2 değer düz, yedek `999:988` |
+| rc2 kadrand yeniden | `muhurlenen_deger=2`, aynı alıcı, temizlendi, dosyalarda 0 |
 
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 

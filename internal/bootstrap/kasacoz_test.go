@@ -129,6 +129,12 @@ func TestKasaCozRoundTrip(t *testing.T) {
 	if markerCount(t, o.db) != 0 {
 		t.Fatal("kasa işareti silinmedi")
 	}
+	// GCP'de ölçüldü: PRAGMA busy_timeout'un sonucu ("5000") operatörün
+	// gördüğü çıktıya karışıyordu. Çıktı yalnız betiğin kendi satırları.
+	if lines := strings.Split(strings.TrimSpace(out), "\n"); len(lines) != 3 ||
+		!strings.HasPrefix(lines[0], "yedek: ") {
+		t.Errorf("beklenmeyen çıktı:\n%s", out)
+	}
 
 	ctx := context.Background()
 	s, err := store.Open(ctx, o.db)

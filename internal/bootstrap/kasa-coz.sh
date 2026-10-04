@@ -90,7 +90,9 @@ done < <(kdb -separator $'\t' "$DB" "SELECT a.id, e.key, e.value FROM apps a, js
 [ "$n" = "$toplam" ] || die "$toplam değerden $n tanesi okundu; hiçbir şey yazılmadı"
 printf 'DELETE FROM env_seal;\nCOMMIT;\n' >> "$sql"
 
-kdb "$DB" < "$sql" || die "yazılamadı; değişiklik geri alındı (yedek: $yedek)"
+# Standart çıktı atılıyor: PRAGMA sonucunu ("5000") basıyordu. Hatalar
+# standart hataya gidiyor.
+kdb "$DB" < "$sql" >/dev/null || die "yazılamadı; değişiklik geri alındı (yedek: $yedek)"
 
 # Sonuç ölçülüyor, varsayılmıyor: mühürlü değer kalmamalı, işaret gitmeli.
 kalan="$(kdb "$DB" "SELECT count(*) FROM apps a, json_each(a.env_json) e WHERE e.value LIKE '$MUHUR_BASI%'")"

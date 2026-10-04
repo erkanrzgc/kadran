@@ -3,6 +3,53 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased (v0.5.0)
+
+### Secret store (K-123)
+
+Environment variable values are now sealed with the executor's key before they reach
+the database. The daemon writes them but cannot read them; the executor opens them only
+while it creates a container.
+
+- **Each value is bound to its app and name.** The sealed plaintext is
+  `app NUL name NUL value`, and the executor refuses a value moved to another variable or
+  app. A compromised daemon can no longer copy one app's database password into a
+  variable another app logs.
+- **The store is mandatory.** The executor rejects unsealed values; there is no plaintext
+  mode.
+- **Upgrading seals existing values** on first start, empty ones included, in one
+  transaction, then runs `VACUUM` so old plaintext pages leave the database file. Measured:
+  without it, 17 of 30 fragments of a deleted app's secret stayed in the file.
+- `bootstrap` creates the key with the new `kadran-vault` tool (`/var/lib/kadran-exec/vault.key`,
+  root 0600) and prints a reminder to save it. **Save it in a password manager, not next
+  to the offsite backup key.** Losing it makes every value unrecoverable. The public key
+  goes to `/etc/kadran/vault.pub`.
+- If the database is sealed to a different key (for example a lost key replaced by a new
+  one), the daemon refuses to start instead of failing at the next deploy.
+
+### Breaking changes
+
+- `app show --json` and the API return variable names only; values come back empty. No
+  client reads values back, so nothing is silently cleared.
+- The executor's privileged code limit went from 2500 to 2600 lines; the vault adds 83
+  (measured 2581). Key generation lives in `kadran-vault`, outside the executor.
+
+### Rolling back to v0.4.x
+
+Stop `kadrand`, run `/usr/local/lib/kadran/kadran-kasa-coz.sh` as root (needs `sqlite3`
+and `age`), then install v0.4.x. The script copies the database first, writes the values
+back as plaintext and removes the seal marker; upgrading again reseals them.
+
+### What still holds plaintext
+
+- Backups taken before the upgrade: hourly local backups for 24 hours, offsite backups
+  (age-encrypted with the offsite key) until the bucket's lifecycle removes them, and the
+  pre-migration copies `kadran.db.pre-*` next to the database. The upgrade itself writes
+  `kadran.db.pre-0009_env_seal` before sealing, and these copies are only pruned when later
+  migrations add newer ones. Delete them by hand once v0.5.0 runs.
+- Running containers: `docker inspect` on the host still shows the environment. Moving
+  values out of the environment into files is a separate step (K-123 option C).
+
 ## Unreleased (v0.4.2)
 
 ### Fixed

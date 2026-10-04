@@ -397,6 +397,26 @@ forced command closes that class entirely.
 
 </details>
 
+### Secrets are sealed with the executor's key
+
+Environment values are sealed with [age](https://age-encryption.org) to the executor's
+public key before they reach the database (v0.5.0, [K-123](docs/decisions.md)). The daemon
+writes them but cannot read them; the executor opens them only while it creates a
+container. A leaked disk, database or local backup gives away no values, and a compromised
+daemon cannot read past ones.
+
+- Each value is bound to its app and variable name. The executor refuses a sealed value
+  moved to another variable or app, so a compromised daemon cannot get one app's password
+  opened under a name another app logs. Restrict builds with `--allow-repo` too: a daemon
+  that can build an app from any repository could ship an image that prints its own
+  environment.
+- `bootstrap` creates the key once, as `/var/lib/kadran-exec/vault.key` (root `0600`), and
+  reminds you to save it. **Keep a copy in a password manager**, not next to the offsite
+  backup key: without it the values cannot be recovered. `sudo cat` that file to copy it.
+- `kadran app show --json` returns variable names only.
+- To go back to v0.4.x, stop `kadrand` and run `/usr/local/lib/kadran/kadran-kasa-coz.sh`
+  first; it writes the values back as plaintext using the key and `age`.
+
 ### Audit log
 
 Both the daemon and the executor keep independent hash-chained, append-only logs:
@@ -550,8 +570,11 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   its four loops make progress and its database pool can hand out a connection. An RPC
   handler stuck on something no loop touches goes unnoticed. The hung-executor cases the
   thresholds exist for were not measured (K-115).
-- **No secret store.** Environment variables are stored in the daemon's database and are
-  visible to `docker inspect` on the host. Don't put secrets you cannot rotate in them.
+- **Secrets are sealed at rest, not in the container.** Environment values are sealed
+  with the executor's key in the database and its backups (K-123), but a running
+  container still gets them as environment variables: `docker inspect` on the host and
+  every process in the container can read them. Backups from before v0.5.0 hold them in
+  plaintext.
 - **Volume backups are not snapshots.** Files are read while the app runs, so a database's
   files can come from different moments. Dump the database into the volume (`pg_dump`,
   `sqlite3 .backup`). Archives are full copies every night.

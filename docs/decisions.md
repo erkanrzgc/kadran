@@ -8097,7 +8097,8 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** KARAR B (3 Ekim); ölçüldü, yüzey sınırı 2600'e çekilecek (sonda)
+**Durum:** B UYGULANDI (kod, 4 Ekim; v0.5.0 ile gelir). Canlıya kullanıcı
+anahtarın yedeğini aldıktan sonra. Yüzey 2581/2600.
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
 stored in the daemon's database and are visible to `docker inspect`."
@@ -8288,6 +8289,55 @@ pakete girmiyor; kurulum yalnız yedekleme komutunu hatırlatıyor.
 Kırıcı değişiklik, bu yüzden v0.5.0. İstemciler değerleri okuyup geri
 göndermiyor (CLI ve masaüstü okundu); boş dönen değer sessiz silmeye yol
 açmıyor.
+
+### Uygulama ve ölçüm (4 Ekim)
+
+**Satır sınırı.** Anahtar üretimi executor'dayken yüzey **2608** ölçüldü
+(sınır 2600). Karar 6'nın ilk adımı uygulandı: üretim ayrı bir ikiliye,
+`kadran-vault`'a taşındı. O ikili yalnız kurulumda, root olarak, daemon'dan
+hiçbir girdi almadan koşuyor. Yüzey **2581**'e indi; 2650'ye gerek kalmadı.
+Executor'ın payı: anahtarı okuma (yalnız X25519, kip 0600), base64'ten önce
+boyut sınırı, çözme, bağ denetimi ve bağlantı.
+
+**Daemon boyutu açmadan ölçüyor.** Güncelleme birleşik tanımı doğruluyor;
+var olan değerler mühürlü olduğu için boyutları `vault.PlainLen` ile
+şifreli metinden hesaplanıyor. age'in tek X25519 alıcılı ek boyutu ölçüldü:
+bir parçada 200 bayt, her ek 64 KiB'lık parçada +16 (0'dan 130 KiB'a kadar
+denendi). Mühürlü metni doğrudan ölçmek sınırı ~1,4 kat erken doldururdu:
+24 KiB'lık değeri olan bir uygulama hiçbir değişken ekleyemezdi (test).
+
+**Göçte VACUUM şart, ölçüldü.** İlk kabul testi yalnız mühürlenen değerleri
+arıyordu ve VACUUM'suz mutant yeşil kaldı: büyüyen mühürlü değer boşalan
+sayfaları hemen yeniden kullanıyor. Gerçek açık silinmiş uygulamalarda:
+satır gidiyor, taşma sayfaları içerikleriyle boş listede kalıyor
+(`secure_delete` kapalı, ölçüldü). 30 parçalı bir sırla: VACUUM'suz **17**
+parça dosyada kaldı, VACUUM'la **0**. WAL'ı kesen checkpoint de gerekli
+(mutantı yakalandı); VACUUM'dan önceki ikinci bir checkpoint gerekmiyordu,
+ölçülüp kaldırıldı.
+
+**Sınama:**
+- executor 14 test: düz değer reddi; başka uygulamaya/ada taşınan değer;
+  önek çakışmaları (`blog`/`blog2`, `A`/`AB`); yanlış anahtar; scrypt
+  alıcısı; çözmeden önce boyut; açılan değerde NUL ve toplam; meşru en büyük
+  istek; anahtar dosyası.
+- depo 6 test, kabul testi dahil: düz metin `.db`/`-wal`/`-shm`'de önce var,
+  sonra yok.
+- geri dönüş betiği gerçek `sqlite3` ve `age` ile 4 test: boş, satır sonlu,
+  tırnaklı, Türkçe ve tekrar eden (od -v) değerler birebir döndü, sonra
+  yeniden mühürlendi; yanlış anahtar, düşmanca ad ve taşınmış değer
+  veritabanına dokunmadan durdu.
+- `mutate-kasa.sh` 26 mutant. Her biri kendi testiyle yakalanıyor.
+
+**Kalan düz kopyalar (dürüst liste):**
+- yükseltmeden önceki saatlik yerel yedekler (24 saat içinde dönüyor);
+- uzak yedekler (uzak yedek anahtarıyla şifreli) kova yaşam döngüsü
+  silene kadar;
+- `kadran.db.pre-*` göç kopyaları. Yükseltme mühürlemeden önce
+  `pre-0009_env_seal`'ı yazıyor. Bunlar ancak sonraki göçler yenilerini
+  ekleyince budanıyor; elle silinmeli. Hetzner'da bugün pre-0006, pre-0007 ve
+  pre-0008 var;
+- çalışan konteynerin ortamı (`docker inspect`, konteynerdeki her süreç):
+  C'nin işi.
 
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 

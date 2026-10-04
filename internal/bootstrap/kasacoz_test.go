@@ -117,6 +117,8 @@ func TestKasaCozRoundTrip(t *testing.T) {
 		"SATIRLI":      "bir\niki\n\n",
 		"TIRNAKLI":     `'"$x` + "`;--",
 		"TURKCE":       "ğüşöçİı",
+		// od -v olmadan tekrar eden 16 baytlık satırlar '*' ile kısalır.
+		"TEKRAR": strings.Repeat("a", 64),
 	}
 	o := kasaliVeritabani(t, map[string]map[string]string{"blog": degerler, "shop": {"A": "1"}})
 

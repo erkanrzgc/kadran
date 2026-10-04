@@ -200,7 +200,10 @@ func TestLargestLegitimateEnvPassesSealedLimits(t *testing.T) {
 		cok[k] = strings.Repeat("v", pay-len(k))
 	}
 	sealed := sealedEnv(t, id, app, cok)
-	if err := validateEnv(sealed, maxSealedEnvBytes); err != nil {
+	req := validCreateRequest()
+	req.Ref.Release.AppId = app
+	req.Env = sealed
+	if err := validateCreate(req); err != nil {
 		t.Fatalf("meşru en büyük mühürlü harita ham doğrulamadan geçmedi: %v", err)
 	}
 	if _, err := openEnv(id, app, sealed); err != nil {

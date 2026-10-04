@@ -8406,10 +8406,16 @@ izlenecek sıra birebir denendi.
 | açılış | `muhurlenen_deger=1` (değeri olan tek uygulama); alıcı beş yerde aynı; temizlendi; uyarı düzeyinde günlük yok |
 | düz değer | `.db`, `-wal`, `-shm`'de 0; `pre-0007`, `pre-0008`, `pre-0009`'da 1 (kontrol). `pre-0006` budandı (en fazla üç kopya) |
 
-Canlıda ölçülmeyen: yeni bir konteynerde açılma (değeri olan uygulama
-yeniden dağıtılmadı; GCP'de ölçüldü). `pre-*` kopyaları ve yükseltmeden
-önceki saatlik ve uzak yedekler değeri hâlâ düz taşıyor; kopyaları silmek
-kullanıcıda.
+Sonra, aynı gün:
+
+| Adım | Ölçülen |
+|---|---|
+| `pre-*` kopyaları | kullanıcı sildi; `kadran.db.pre-*` sayısı 0 |
+| değeri olan uygulamayı yeniden dağıtma (canlı anahtarla ilk açılış) | r8; yeni konteynerdeki değerin SHA-256'sı, yükseltmeden önce düz değerle başlamış r7'ninkiyle aynı (değer basılmadan karşılaştırıldı); yoklama 198/198 200 |
+| kasa dışı, v0.4.1 sonrası tabanla fark | yalnız beklenenler (dizin zamanları, bildirim imleçleri, `pre-*`); birimler, drop-in'ler, `--allow-repo` ve `authorized_keys` aynı; seçimli betikler v0.5.0'dakiyle aynı (K-138 canlıda çalıştı), üç zamanlayıcı planlı |
+
+Yükseltmeden önceki saatlik yedekler 24 saat, uzak yedekler bucket'ın ömür
+kuralı dolana kadar değeri düz taşıyor.
 
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 

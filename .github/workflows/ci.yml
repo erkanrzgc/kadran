@@ -154,12 +154,19 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           buf-version: ${{ env.BUF_VERSION }}
 
+      # Kasanın geri dönüş betiği (K-123) gerçek sqlite3 ve age ile sınanıyor;
+      # Linux'ta değişken set olduğu için araç eksikse test atlanmıyor, düşüyor.
+      - name: Kasa geri dönüş araçları
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
+
       - name: go test -race
         # Linux runner'larında parolasız sudo var: bootstrap'ın sudo kipi
         # gerçek `sudo -n` ile koşuyor (TestRealScriptsInstallUnderSudo,
         # K-127). Değişken set iken test atlanmıyor; sudo yoksa düşüyor.
         env:
           KADRAN_TEST_REAL_SUDO: ${{ runner.os == 'Linux' && '1' || '' }}
+          KADRAN_TEST_REQUIRE_KASA_TOOLS: ${{ runner.os == 'Linux' && '1' || '' }}
         run: go test -race -count=1 ./...
 
   build:
@@ -264,7 +271,8 @@ jobs:
             listed="$(tar -tzf "$t" | sort)"
             for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
                      "bin/linux-$arch/kadrand" "bin/linux-$arch/kadran-exec" \
-                     "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy"                      "bin/linux-$arch/kadran-vault"; do
+                     "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy" \
+                     "bin/linux-$arch/kadran-vault"; do
               grep -qxF "$f" <<<"$listed" || { echo "::error::$t içinde $f yok" >&2; exit 1; }
             done
             # Tar'daki lisans dosyası boş ya da yanlış olmamalı: içinden oku.

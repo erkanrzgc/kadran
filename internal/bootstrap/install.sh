@@ -254,6 +254,8 @@ install -m 0755 -o root -g root "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect
 install -m 0755 -o root -g root "$STAGE/kadran-caddy"  "$LIB_DIR/kadran-caddy"
 # Kasa anahtarını üretir (K-123). Yalnız kurulumda, root olarak koşuyor.
 install -m 0755 -o root -g root "$STAGE/kadran-vault"  "$LIB_DIR/kadran-vault"
+# Kasanın geri dönüşü (v0.4.x'e inmeden önce elle çalıştırılır).
+install -m 0755 -o root -g root "$STAGE/kasa-coz.sh"   "$LIB_DIR/kadran-kasa-coz.sh"
 
 say "$LIB_DIR içine kuruldu"
 "$LIB_DIR/kadrand" -version || die "kadrand çalıştırılamadı — mimari uyuşmuyor olabilir"
@@ -285,7 +287,8 @@ VAULT_KEY=/var/lib/kadran-exec/vault.key
 VAULT_PUB=/etc/kadran/vault.pub
 vault_yeni=0
 [ -e "$VAULT_KEY" ] || vault_yeni=1
-vault_alici="$("$LIB_DIR/kadran-vault" -key "$VAULT_KEY")"     || die "kasa anahtarı hazırlanamadı (yukarıda). Bozuksa yedeğinden geri koyun: $VAULT_KEY — üstüne yenisi YAZILMADI."
+vault_alici="$("$LIB_DIR/kadran-vault" -key "$VAULT_KEY")" \
+    || die "kasa anahtarı hazırlanamadı (yukarıda). Bozuksa yedeğinden geri koyun: $VAULT_KEY — üstüne yenisi YAZILMADI."
 case "$vault_alici" in
     age1*) ;;
     *) die "kadran-vault beklenmeyen çıktı verdi" ;;
@@ -295,8 +298,7 @@ esac
 sync
 install -d -m 0755 -o root -g root /etc/kadran
 vault_gecici="$(mktemp)"
-printf '%s
-' "$vault_alici" > "$vault_gecici"
+printf '%s\n' "$vault_alici" > "$vault_gecici"
 install -m 0644 -o root -g root "$vault_gecici" "$VAULT_PUB"
 rm -f "$vault_gecici"
 say "kasa alıcısı: $vault_alici"
@@ -843,7 +845,8 @@ fi
 #     hiçbir şeyi korumazdı. Kontrol: root okuyabiliyor, yani "kadran
 #     okuyamıyor" sonucu dosyanın yokluğundan gelmiyor.
 vault_kip="$(stat -c '%a %U:%G' "$VAULT_KEY" 2>/dev/null || echo yok)"
-if [ "$vault_kip" = "600 root:root" ] && test -r "$VAULT_KEY"    && ! setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_KEY" 2>/dev/null; then
+if [ "$vault_kip" = "600 root:root" ] && test -r "$VAULT_KEY" \
+   && ! setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_KEY" 2>/dev/null; then
     check_ok "kasa anahtarı yalnız root'un ($vault_kip), kadran okuyamıyor"
 else
     check_fail "kasa anahtarı $vault_kip — 600 root:root olmalı ve kadran okuyamamalı"
@@ -852,7 +855,9 @@ fi
 # 13. Kasanın açık anahtarı root'un; daemon okuyabiliyor ama değiştiremiyor.
 #     Değiştirebilseydi yeni değerleri kendi anahtarına mühürletebilirdi.
 pub_kip="$(stat -c '%a %U:%G' "$VAULT_PUB" 2>/dev/null || echo yok)"
-if [ "$pub_kip" = "644 root:root" ]    && setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_PUB" 2>/dev/null    && ! setpriv --reuid kadran --regid kadran --clear-groups test -w "$VAULT_PUB" 2>/dev/null; then
+if [ "$pub_kip" = "644 root:root" ] \
+   && setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_PUB" 2>/dev/null \
+   && ! setpriv --reuid kadran --regid kadran --clear-groups test -w "$VAULT_PUB" 2>/dev/null; then
     check_ok "kasa açık anahtarı $pub_kip, kadran okuyor ama yazamıyor"
 else
     check_fail "kasa açık anahtarı $pub_kip — 644 root:root olmalı"

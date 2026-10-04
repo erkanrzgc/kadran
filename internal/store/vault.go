@@ -55,9 +55,14 @@ func (s *Store) EnableVault(ctx context.Context, sealer *vault.Sealer) (int, err
 	if err != nil {
 		return 0, err
 	}
-	// VACUUM WAL kipinde yeni sayfaları WAL'a yazıyor; ikinci checkpoint onu
-	// da veritabanına aktarıp WAL'ı kesiyor.
-	for _, q := range []string{"PRAGMA wal_checkpoint(TRUNCATE)", "VACUUM", "PRAGMA wal_checkpoint(TRUNCATE)"} {
+	// Silinmiş uygulamaların ve eski değerlerin sayfaları boş listede
+	// içerikleriyle duruyor (secure_delete kapalı); VACUUM dosyayı baştan
+	// kuruyor. WAL kipinde yeni sayfalar WAL'a yazılıyor; checkpoint onları
+	// dosyaya aktarıp WAL'ı kesiyor. İkisi de ölçüldü (mutate-kasa.sh):
+	// VACUUM'suz silinen bir uygulamanın sırrının 30 parçasından 17'si,
+	// checkpoint'siz WAL'daki düz metin kalıyor. VACUUM'dan ÖNCE ayrıca
+	// checkpoint gerekmiyor (ölçüldü).
+	for _, q := range []string{"VACUUM", "PRAGMA wal_checkpoint(TRUNCATE)"} {
 		if _, err := s.db.ExecContext(ctx, q); err != nil {
 			return 0, fmt.Errorf("eski düz metin temizlenemedi (%s): %w", q, err)
 		}

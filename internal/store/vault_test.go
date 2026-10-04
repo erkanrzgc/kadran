@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -86,28 +87,68 @@ func TestEnableVaultSealsPlaintextAndScrubsFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	const sir = "kasa-kabul-testi-benzersiz-deger-7f3a9c"
-	plantPlaintext(t, s, "blog", `{"DB_PASSWORD":"`+sir+`","BOS":"","ONEKLI":"age:merhaba"}`)
+	// Sayfadan büyük bir değer (sertifika, özel anahtar) taşma sayfalarına
+	// yazılıyor; mühürlenince o sayfalar boş listeye düşüyor ve içerikleri
+	// ancak VACUUM ile gidiyor. Küçük değer tek başına bunu sınamıyordu:
+	// VACUUM'suz mutant yeşil kaldı (mutate-kasa.sh).
+	buyuk := "SERTIFIKA-" + strings.Repeat("9c1e7b3a", 10<<10/8)
+	plantPlaintext(t, s, "blog", `{"DB_PASSWORD":"`+sir+`","CERT":"`+buyuk+`","BOS":"","ONEKLI":"age:merhaba"}`)
 
-	if !dbFilesContain(t, s, sir) {
+	if !dbFilesContain(t, s, sir) || !dbFilesContain(t, s, buyuk[:64]) {
 		t.Fatal("KONTROL: düz değer göçten önce dosyalarda yok — ölçüm bir şey kanıtlamaz")
+	}
+	// Silinmiş bir uygulamanın sırrı: satır gitti ama taşma sayfaları boş
+	// listede, içerikleriyle duruyor. Mühürleme onları yeniden kullanmıyor
+	// (silinen uygulamanın değeri yok); ancak VACUUM temizliyor. Yalnız
+	// mühürlenen değerler sınansaydı VACUUM'suz mutant yeşil kalıyordu:
+	// büyüyen mühürlü değer boşalan sayfaları hemen yeniden kullanıyor.
+	//
+	// Değer 30 parça; her parçanın başında benzersiz bir işaret var. Boş
+	// sayfaların bir kısmı mühürlemede yeniden kullanılıyor, hangisi olduğu
+	// belirsiz: işaretlerin HİÇBİRİ kalmamalı.
+	var silinenler []string
+	var sb strings.Builder
+	for i := range 30 {
+		isaret := fmt.Sprintf("SILINEN-SIR-%02d-c7d1", i)
+		silinenler = append(silinenler, isaret)
+		sb.WriteString(isaret + strings.Repeat("x", 1000-len(isaret)))
+	}
+	if _, err := s.CreateApp(ctx, sampleApp("eski")); err != nil {
+		t.Fatal(err)
+	}
+	plantPlaintext(t, s, "eski", `{"TOKEN":"`+sb.String()+`"}`)
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM apps WHERE id = 'eski'`); err != nil {
+		t.Fatal(err)
+	}
+	// İçerik ana dosyaya insin: aksi hâlde düz metin yalnız WAL'da durur ve
+	// WAL'ı kesmek tek başına yeterli görünürdü.
+	if _, err := s.db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		t.Fatal(err)
+	}
+	for _, isaret := range silinenler {
+		if !dbFilesContain(t, s, isaret) {
+			t.Fatalf("KONTROL: %s silmeden sonra dosyada yok — VACUUM'un gereği ölçülemez", isaret)
+		}
 	}
 
 	n, err := s.EnableVault(ctx, vaulttest.Sealer(t, storeTestIdentity))
 	if err != nil {
 		t.Fatalf("kasa açılamadı: %v", err)
 	}
-	if n != 3 {
-		t.Errorf("%d değer mühürlendi, 3 bekleniyordu", n)
+	if n != 4 {
+		t.Errorf("%d değer mühürlendi, 4 bekleniyordu", n)
 	}
-	if dbFilesContain(t, s, sir) {
-		t.Fatal("düz değer göçten sonra veritabanı dosyalarında duruyor")
+	for _, v := range append([]string{sir, buyuk[:64]}, silinenler...) {
+		if dbFilesContain(t, s, v) {
+			t.Errorf("düz metin göçten sonra veritabanı dosyalarında duruyor: %s", v)
+		}
 	}
 
 	got, err := s.GetApp(ctx, "blog")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]string{"DB_PASSWORD": sir, "BOS": "", "ONEKLI": "age:merhaba"}
+	want := map[string]string{"DB_PASSWORD": sir, "CERT": buyuk, "BOS": "", "ONEKLI": "age:merhaba"}
 	p := plain(t, got)
 	for k, v := range want {
 		if p[k] != v {

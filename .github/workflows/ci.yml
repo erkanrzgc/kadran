@@ -470,11 +470,16 @@ jobs:
         with:
           python-version: '3.x'
 
+      # mutate-kasa.sh geri dönüş betiğini gerçek sqlite3 ve age ile ölçüyor.
+      - name: Kasa geri dönüş araçları
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
+
       - name: Bütün mutasyon betikleri
         # Sudo kipinin umask mutasyonunu yalnızca gerçek sudo testi
         # yakalıyor (mutate-bootstrapssh.sh, K-127).
         env:
           KADRAN_TEST_REAL_SUDO: "1"
+          KADRAN_TEST_REQUIRE_KASA_TOOLS: "1"
         run: |
           set -uo pipefail
 

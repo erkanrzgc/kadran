@@ -8097,7 +8097,7 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** B UYGULANDI (kod, 4 Ekim; v0.5.0 ile gelir). Canlıya kullanıcı
+**Durum:** B UYGULANDI, v0.5.0 ile yayınlandı (4 Ekim). Canlıya kullanıcı
 anahtarın yedeğini aldıktan sonra. Yüzey 2581/2600.
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
@@ -10301,7 +10301,8 @@ ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.
 ## K-138 — Yükseltme, kurulu seçimli birimleri güncellemiyordu
 
 **Tarih:** 4 Ekim 2026
-**Durum:** DÜZELTİLDİ (PR #5, `96e0c73`); v0.4.2 ile gelir.
+**Durum:** DÜZELTİLDİ (PR #5, `96e0c73`); v0.5.0 ile yayınlandı (ayrı bir
+v0.4.2 çıkmadı).
 
 ### Nasıl bulundu
 

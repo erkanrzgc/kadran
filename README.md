@@ -416,6 +416,8 @@ them, and the daemon can read them.
 - `bootstrap` creates the key once, as `/var/lib/kadran-exec/vault.key` (root `0600`), and
   reminds you to save it. **Keep a copy in a password manager**, not next to the offsite
   backup key: without it the values cannot be recovered. `sudo cat` that file to copy it.
+  Upgrading a server that already has values: create and save the key **before**
+  `bootstrap` seals them ([v0.5.0 notes](CHANGELOG.md)).
 - `kadran app show --json` returns variable names only.
 - To go back to v0.4.x, stop `kadrand` and run `/usr/local/lib/kadran/kadran-kasa-coz.sh`
   first; it writes the values back as plaintext using the key and `age`.
@@ -518,7 +520,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KADRAN_VERSION: v0.4.0   # the release your server runs
+      KADRAN_VERSION: v0.5.0   # the release your server runs
     steps:
       - name: Download and verify kadran
         working-directory: ${{ runner.temp }}
@@ -599,7 +601,7 @@ Tracked in the open rather than hidden. Each is a real limitation today.
 | **0** | Foundation: proto contract, store, audit chain, executor, SSH transport, bootstrap, CI | ✅ done, verified on a real server |
 | **1** | Deployment loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | ✅ done, verified on a real server |
 | — | Operations: env vars, scaling, pruning, log caps | ✅ done |
-| 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes done |
+| 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes and the secret vault done |
 | 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarms, Telegram delivery, crash notices and an external heartbeat done |
 | 4 | Webhook receiver, deploy-on-push, cron manager | 🔨 deploy-on-push through CI with deploy-only keys done |
 | 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots and volume backups done |

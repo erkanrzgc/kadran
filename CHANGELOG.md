@@ -3,7 +3,7 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased (v0.5.0)
+## v0.5.0 — 2026-10-04
 
 ### Secret store (K-123)
 
@@ -37,15 +37,20 @@ while it creates a container.
 
 Create and save the key **before** the upgrade seals anything:
 
-1. Copy `kadran-vault` from the v0.5.0 server package to the server and run it once as
-   root: `kadran-vault -key /var/lib/kadran-exec/vault.key`. It creates the key and prints
-   the public key; nothing is sealed yet.
+1. Copy `kadran-vault` from the v0.5.0 server package (`bin/linux-<arch>/kadran-vault` in
+   `kadran-server-v0.5.0-linux-<arch>.tar.gz`) to the server and run it once as root:
+   `kadran-vault -key /var/lib/kadran-exec/vault.key`. It creates the key and prints the
+   public key; nothing is sealed yet. Running it again keeps the key and prints the same
+   public key.
 2. Save the key in a password manager: `sudo cat /var/lib/kadran-exec/vault.key`.
 3. Run `kadran bootstrap` with the v0.5.0 files. It reuses the key, so the
    `YENİ KASA ANAHTARI` (new vault key) warning does not appear. The daemon seals the
    existing values on start.
 4. Check the sites, then delete the plaintext pre-migration copies:
    `sudo rm /var/lib/kadran/kadran.db.pre-*`.
+
+A v0.4.x CLI keeps working against v0.5.0: the protocol did not change. Measured: a v0.4.1
+CLI deployed to the release candidate and the new container got the value.
 
 ⚠ Never install v0.4.x over v0.5.0 without running `kadran-kasa-coz.sh` first: v0.4.x
 would hand the sealed text (`age:…`) to containers as the value.
@@ -75,8 +80,6 @@ committed and the marker stays.
   migrations add newer ones. Delete them by hand once v0.5.0 runs.
 - Running containers: `docker inspect` on the host still shows the environment. Moving
   values out of the environment into files is a separate step (K-123 option C).
-
-## Unreleased (v0.4.2)
 
 ### Fixed
 

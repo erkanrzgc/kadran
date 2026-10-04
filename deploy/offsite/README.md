@@ -182,7 +182,7 @@ journalctl -u kadran-offsite -n 30 --no-pager
 
 ### Yükseltme
 
-v0.4.2'den itibaren `kadran bootstrap`, kurulu bulduğu betiği ve birimleri
+v0.5.0'dan itibaren `kadran bootstrap`, kurulu bulduğu betiği ve birimleri
 her yükseltmede pakettekiyle değiştirir; zamanlayıcı açıksa açık, kapalıysa
 kapalı kalır (K-138). Kendi ayarlarınızı birim dosyasına değil
 `systemctl edit` ile drop-in'e yazın; drop-in'ler korunur.

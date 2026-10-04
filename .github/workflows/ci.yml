@@ -154,12 +154,19 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           buf-version: ${{ env.BUF_VERSION }}
 
+      # Kasanın geri dönüş betiği (K-123) gerçek sqlite3 ve age ile sınanıyor;
+      # Linux'ta değişken set olduğu için araç eksikse test atlanmıyor, düşüyor.
+      - name: Kasa geri dönüş araçları
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
+
       - name: go test -race
         # Linux runner'larında parolasız sudo var: bootstrap'ın sudo kipi
         # gerçek `sudo -n` ile koşuyor (TestRealScriptsInstallUnderSudo,
         # K-127). Değişken set iken test atlanmıyor; sudo yoksa düşüyor.
         env:
           KADRAN_TEST_REAL_SUDO: ${{ runner.os == 'Linux' && '1' || '' }}
+          KADRAN_TEST_REQUIRE_KASA_TOOLS: ${{ runner.os == 'Linux' && '1' || '' }}
         run: go test -race -count=1 ./...
 
   build:
@@ -191,7 +198,7 @@ jobs:
           ldflags="-s -w"
           ldflags="$ldflags -X $mod/internal/version.Version=$version"
           ldflags="$ldflags -X $mod/internal/version.Commit=${GITHUB_SHA::12}"
-          for binary in kadrand kadran-exec kadran-connect kadran; do
+          for binary in kadrand kadran-exec kadran-connect kadran-vault kadran; do
             go build -trimpath -ldflags "$ldflags" -o "dist/$binary" "./cmd/$binary"
           done
           ls -la dist/
@@ -264,7 +271,8 @@ jobs:
             listed="$(tar -tzf "$t" | sort)"
             for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
                      "bin/linux-$arch/kadrand" "bin/linux-$arch/kadran-exec" \
-                     "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy"; do
+                     "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy" \
+                     "bin/linux-$arch/kadran-vault"; do
               grep -qxF "$f" <<<"$listed" || { echo "::error::$t içinde $f yok" >&2; exit 1; }
             done
             # Tar'daki lisans dosyası boş ya da yanlış olmamalı: içinden oku.
@@ -298,6 +306,7 @@ jobs:
           go build -o bin/linux/kadrand ./cmd/kadrand
           go build -o bin/linux/kadran ./cmd/kadran
           go build -o bin/linux/kadran-connect ./cmd/kadran-connect
+          go build -o bin/linux/kadran-vault ./cmd/kadran-vault
 
       - name: E2E CLI kontrolleri
         run: bash scripts/e2e-cli-runner.sh bin/linux
@@ -412,18 +421,22 @@ jobs:
       - name: Ayrıcalık izolasyonu (root)
         run: |
           GOOS=linux GOARCH=amd64 go build -o bin/kadran-exec ./cmd/kadran-exec
+          GOOS=linux GOARCH=amd64 go build -o bin/kadran-vault ./cmd/kadran-vault
           export KADRAN_EXEC_BIN="$PWD/bin/kadran-exec"
+          export KADRAN_VAULT_BIN="$PWD/bin/kadran-vault"
 
           echo "── 1/2: testin kendisi bozuk politikayı yakalıyor mu?"
           if sudo -E KADRAN_E2E_ALLOW_INTRUDER=1 \
-               KADRAN_EXEC_BIN="$KADRAN_EXEC_BIN" bash scripts/e2e-executor.sh; then
+               KADRAN_EXEC_BIN="$KADRAN_EXEC_BIN" KADRAN_VAULT_BIN="$KADRAN_VAULT_BIN" \
+               bash scripts/e2e-executor.sh; then
             echo "::error::SO_PEERCRED kasten gevşetildiği hâlde test geçti — test hiçbir şey ölçmüyor." >&2
             exit 1
           fi
           echo "  ✓ test bozuk politikayı yakaladı"
 
           echo "── 2/2: gerçek doğrulama"
-          sudo -E KADRAN_EXEC_BIN="$KADRAN_EXEC_BIN" bash scripts/e2e-executor.sh
+          sudo -E KADRAN_EXEC_BIN="$KADRAN_EXEC_BIN" KADRAN_VAULT_BIN="$KADRAN_VAULT_BIN" \
+            bash scripts/e2e-executor.sh
 
       - name: govulncheck
         run: |
@@ -457,11 +470,16 @@ jobs:
         with:
           python-version: '3.x'
 
+      # mutate-kasa.sh geri dönüş betiğini gerçek sqlite3 ve age ile ölçüyor.
+      - name: Kasa geri dönüş araçları
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
+
       - name: Bütün mutasyon betikleri
         # Sudo kipinin umask mutasyonunu yalnızca gerçek sudo testi
         # yakalıyor (mutate-bootstrapssh.sh, K-127).
         env:
           KADRAN_TEST_REAL_SUDO: "1"
+          KADRAN_TEST_REQUIRE_KASA_TOOLS: "1"
         run: |
           set -uo pipefail
 

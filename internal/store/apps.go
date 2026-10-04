@@ -112,7 +112,14 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 	// kayıt ayrışırdı: biri nil, diğeri boş harita. Aynı satırı iki farklı
 	// şekilde tanımlayan bir API, çağıranı her ikisine de hazırlıklı
 	// olmaya zorlar.
-	app.Env = sortedArgs(app.Env)
+	//
+	// Değerler YAZILMADAN mühürleniyor (K-123); dönen kayıt da GetApp
+	// gibi mühürlü değerleri taşıyor.
+	sealed, err := s.sealEnv(app.ID, app.Env)
+	if err != nil {
+		return App{}, err
+	}
+	app.Env = sortedArgs(sealed)
 	env, err := json.Marshal(app.Env)
 	if err != nil {
 		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)

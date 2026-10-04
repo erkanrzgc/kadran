@@ -155,7 +155,7 @@ func validateImageBuild(req *kadranv1.ImageBuildRequest, allowedHosts, allowedRe
 		return fmt.Errorf("çok fazla derleme argümanı (%d, sınır %d)",
 			len(req.GetBuildArgs()), maxBuildArgs)
 	}
-	return validateEnv(req.GetBuildArgs())
+	return validateEnv(req.GetBuildArgs(), maxEnvBytes)
 }
 
 // BuildContextURL, doğrulanmış parçalardan BuildKit'e verilecek uzak

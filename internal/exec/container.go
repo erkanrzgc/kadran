@@ -95,13 +95,17 @@ func (s *Server) ContainerCreate(ctx context.Context, req *kadranv1.ContainerCre
 	if err := validateCreate(req); err != nil {
 		return nil, s.denied(action, tgt, params, err)
 	}
+	env, err := openEnv(s.vault, ref.GetRelease().GetAppId(), req.GetEnv())
+	if err != nil {
+		return nil, s.denied(action, tgt, params, err)
+	}
 
 	opErr := s.docker.ContainerCreate(ctx, dockerdrv.CreateSpec{
 		AppID:         ref.GetRelease().GetAppId(),
 		ReleaseID:     ref.GetRelease().GetReleaseId(),
 		Replica:       ref.GetReplica(),
 		CommitSHA:     req.GetCommitSha(),
-		Env:           req.GetEnv(),
+		Env:           env,
 		MemoryBytes:   req.GetLimits().GetMemoryBytes(),
 		CPUMillis:     req.GetLimits().GetCpuMillis(),
 		BlkioWeight:   req.GetLimits().GetBlkioWeight(),

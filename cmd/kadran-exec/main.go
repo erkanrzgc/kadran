@@ -35,8 +35,12 @@ import (
 )
 
 const (
-	defaultSocket      = "/run/kadran-exec/exec.sock"
-	defaultJournal     = "/var/lib/kadran-exec/exec-audit.log"
+	defaultSocket  = "/run/kadran-exec/exec.sock"
+	defaultJournal = "/var/lib/kadran-exec/exec-audit.log"
+	// defaultVaultKey, kasa anahtarı (K-123). Yol bayrak VARSAYILANI, birim
+	// dosyasında yazılı değil: ExecStart'ı yeniden yazan bir drop-in
+	// (--allow-repo) yeni bir bayrağı düşürürdü.
+	defaultVaultKey    = "/var/lib/kadran-exec/vault.key"
 	defaultAllowedUser = "kadran"
 	defaultOwnerGroup  = "kadran"
 )
@@ -56,6 +60,7 @@ func run() error {
 		allowUser    = flag.String("allow-user", defaultAllowedUser, "bağlanmasına izin verilen tek kullanıcı")
 		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "soket ve günlük dosyasının grubu")
 		showVersion  = flag.Bool("version", false, "sürümü yazdır ve çık")
+		vaultKey     = flag.String("vault-key", defaultVaultKey, "kasa anahtarı (K-123)")
 		debug        = flag.Bool("debug", false, "ayrıntılı günlük (KADRAN_DEBUG=1 ile de açılır)")
 		gitHosts     = flag.String("allow-git-host", kadranexec.DefaultGitHost,
 			"ImageBuild için izinli git sunucuları (virgülle ayrılmış)")
@@ -80,6 +85,11 @@ func run() error {
 	if euid := os.Geteuid(); euid != 0 {
 		return fmt.Errorf(
 			"executor root çalışmalı, efektif uid %d bulundu — systemd unit dosyasını kontrol edin", euid)
+	}
+
+	vault, err := kadranexec.LoadVaultIdentity(*vaultKey)
+	if err != nil {
+		return err
 	}
 
 	allowedUID, err := lookupUID(*allowUser)
@@ -120,6 +130,7 @@ func run() error {
 		DockerSocket:    *dockerSocket,
 		AllowedGitHosts: splitHosts(*gitHosts),
 		AllowedRepos:    splitHosts(*gitRepos),
+		Vault:           vault,
 	})
 	if err != nil {
 		return err
@@ -159,6 +170,7 @@ func run() error {
 		"izinli_uid", allowedUID,
 		"denetim_kaydi", seq,
 		"depo_kisiti", repoLimit,
+		"kasa", vault.Recipient().String(),
 	)
 
 	if err := sdnotify.Ready(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {

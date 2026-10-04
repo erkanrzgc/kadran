@@ -43,6 +43,7 @@ func newUpdateServer(t *testing.T, rec *fakeReconciler) (*Server, *store.Store) 
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
+	enableTestVault(t, db)
 	t.Cleanup(func() { _ = db.Close() })
 
 	srv, err := NewServer(ServerOptions{

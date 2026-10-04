@@ -75,13 +75,17 @@ temizle() {
 }
 trap temizle EXIT
 
+# Kasa zorunlu (K-123): daemon açık anahtarsız açılmıyor.
+"$BIN/kadran-vault" -key "$WORK/vault.key" > "$WORK/vault.pub"
+chmod 0644 "$WORK/vault.pub"
+
 cat > "/run/systemd/system/$UNIT.service" <<EOF
 [Service]
 Type=notify
 NotifyAccess=main
 User=$KULLANICI
 Group=$GRUP
-ExecStart=$BIN/kadrand -socket $WORK/api.sock -exec-socket $WORK/olmayan-exec.sock -caddy-socket $WORK/olmayan-caddy.sock -db $WORK/kadran.db -client-group $GRUP
+ExecStart=$BIN/kadrand -socket $WORK/api.sock -exec-socket $WORK/olmayan-exec.sock -caddy-socket $WORK/olmayan-caddy.sock -db $WORK/kadran.db -client-group $GRUP -vault-recipient $WORK/vault.pub
 Restart=on-failure
 RestartSec=1s
 WatchdogSec=${WDSEC}s

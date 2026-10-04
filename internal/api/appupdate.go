@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -12,6 +13,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/audit"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
+	"github.com/erkanrzgc/kadran/internal/vault"
 )
 
 // UpdateApp, var olan bir uygulamanın değiştirilebilir alanlarını yazar.
@@ -64,7 +66,13 @@ func (s *Server) UpdateApp(
 		return nil, appError(err)
 	}
 
-	if err := validateAppSpec(appToProto(upd.Apply(current)).GetSpec()); err != nil {
+	merged := appToProto(upd.Apply(current)).GetSpec()
+	view, err := envForValidation(appID, current.Env, upd)
+	if err != nil {
+		return nil, s.denied(ctx, action, tgt, params, err)
+	}
+	merged.Env = view
+	if err := validateAppSpec(merged); err != nil {
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 
@@ -113,6 +121,31 @@ func (s *Server) UpdateApp(
 		resp.VolumeDetail = volumesNeedRedeploy(appID)
 	}
 	return resp, nil
+}
+
+// envForValidation, birleşik tanımın ortamını doğrulama için kurar (K-123).
+//
+// Var olan değerler mühürlü ve daemon onları açamıyor, ama boyut sınırı
+// düz metin üzerinden işliyor. Mühürlü metni olduğu gibi doğrulamak sınırı
+// ~1,4 kat erken doldururdu. Bu yüzden var olan her değerin yerine düz
+// uzunluğunda bir yer tutucu konuyor (vault.PlainLen); yeni değerler kendi
+// düz hâliyle doğrulanıyor.
+func envForValidation(appID string, current map[string]string, upd store.AppUpdate) (map[string]string, error) {
+	out := make(map[string]string, len(current)+len(upd.Env))
+	for k, v := range current {
+		n, err := vault.PlainLen(appID, k, v)
+		if err != nil {
+			return nil, err
+		}
+		out[k] = strings.Repeat("x", n)
+	}
+	for k, v := range upd.Env {
+		out[k] = v
+	}
+	for _, k := range upd.EnvRemove {
+		delete(out, k)
+	}
+	return out, nil
 }
 
 // envNeedsRedeploy, env değişikliğinin HENÜZ ETKİLİ OLMADIĞINI söyler.

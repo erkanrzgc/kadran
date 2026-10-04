@@ -112,8 +112,19 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # kontroller (yasak alanlar, serbest argv) değişmezleri doğrudan zorluyor
 # ve onlar gevşetilmedi.
 #
+# ── 2500 → 2600: kasa (K-123), kullanıcı kararı ─────────────────────
+#
+# Kasa, değerleri yalnız executor'ın açabilmesi demek; çözme kodunun
+# başka bir yere taşınması kasanın var olma sebebini ortadan kaldırır.
+# Ölçüm önce yapıldı (prototip +70), karar ondan sonra verildi. Küçültme
+# seçeneği DENENDİ: anahtar üretimi executor'dan ayrı bir ikiliye
+# (kadran-vault, yalnız kurulumda koşuyor, daemon'dan girdi almıyor)
+# taşındı; yüzey 2608'den 2581'e indi. Kalan +83: anahtar okuma, yalnız
+# X25519, base64'ten önce boyut sınırı, çözme, uygulama/ad bağı ve
+# bağlantı. Sınır kasanın kodunu getiren commit'te değişti.
+#
 # Çıktı HER ZAMAN iki sayıyı da basar; ham sayı gizlenmiyor.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2500}"
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2600}"
 
 fail=0
 note_failure() {

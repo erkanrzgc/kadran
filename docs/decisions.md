@@ -8097,7 +8097,8 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** KARAR B (3 Ekim); ölçüldü, yüzey sınırı 2600'e çekilecek (sonda)
+**Durum:** B UYGULANDI (kod, 4 Ekim; v0.5.0 ile gelir). Canlıya kullanıcı
+anahtarın yedeğini aldıktan sonra. Yüzey 2581/2600.
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
 stored in the daemon's database and are visible to `docker inspect`."
@@ -8138,6 +8139,12 @@ stored in the daemon's database and are visible to `docker inspect`."
   - executor konteyneri kurarken çözüyor.
 - **Kapattığı:** (1) tümüyle; veritabanı ve yerel yedekler artık
   şifreli. (2) GEÇMİŞ değerler için.
+  - ⚠ (4 Ekim düzeltmesi, ölçüldü) İkisi de yükseltmeden ÖNCEKİ kopyalar
+    silinince geçerli. `kadran.db.pre-*` göç kopyaları (yükseltme
+    `pre-0009_env_seal`'ı da yazıyor) ve eski saatlik yedekler düz metin
+    ve `kadran`'ın: daemon onları okuyabiliyor. GCP provasında dikilen
+    değer `pre-0009`'da bulundu. Saatlik yedekler bir günde dönüyor, göç
+    kopyaları elle silinmeli.
 - **Kapatmadığı:**
   - ele geçirilmiş panelyd YENİ değerleri yazılırken görür; değer
     istemciden panelyd'ye düz metin geliyor;
@@ -8223,6 +8230,171 @@ tahmin değil ölçüm, kural sessizce gevşetilmez). Kullanıcı (3 Ekim):
 **sınır 2500 → 2600.** `MAX_EXEC_LINES` kasanın kodunu getiren commit'te
 değişir, öncesinde değil: ayrı bir commit'te açılan boşluk, gerekçesiz
 büyümeyi davet ederdi. Kalan pay ~30 satır.
+
+### Kararlar 3-6 (4 Ekim, kullanıcı)
+
+3. **Anahtar yedeği:** kullanıcının şifre yöneticisinde. Uzak yedek
+   anahtarıyla aynı yerde değil.
+4. **Kasa zorunlu.** v0.5.0'da düz metin kipi yok. Executor öneksiz
+   (şifresiz) değeri reddediyor. `age:` önekinin tek anlamı var.
+5. **Geri dönüş:** root olarak çalışan bir çözme betiği. Betik sunucudaki
+   anahtarla ve `age` aracıyla değerleri yeniden düz metne çeviriyor, sonra
+   v0.4.x kurulabiliyor. Düz kopya saklanmıyor.
+6. **Satır sınırı:** kasa 2600'ü aşarsa önce küçültülecek. Anahtar üretimi
+   executor'dan çıkıp kurulumda bir kez koşan ayrı bir araca taşınacak.
+   Yine aşarsa sınır 2650'ye çekilecek; ölçüm ve gerekçe buraya yazılacak.
+
+### Uygulama tasarımı (4 Ekim)
+
+**Değer kendi yerine bağlı.** Şifrelenen düz metin yalnız değer değil:
+`<app_id> NUL <AD> NUL <değer>`. Executor çözdükten sonra uygulama
+kimliğinin istekteki uygulamayla, adın haritadaki adla aynı olduğunu
+denetliyor; değilse reddediyor. Bağlama olmasaydı ele geçirilmiş bir daemon
+eski bir şifreli değeri kopyalayıp açtırabilirdi: A'nın `DB_PASSWORD`'unu
+A'nın günlüğe yazdığı bir değişkene ya da kendi uygulamasına koyardı. O
+durumda (2) "geçmiş değerler" iddiası çökerdi.
+
+Bağlamanın kapatmadığı: daemon A'yı A'nın şifreli değerleriyle başka bir
+imajdan da başlatabilir. İmaj yalnız izinli depolardan derleniyor
+(`--allow-repo`, K-056). Liste boşsa daemon her depodan derleyebilir; o
+zaman (2) yalnız "imajı sırrı dışarı yazmıyorsa" geçerli. **Depo beyaz
+listesi bu garantinin parçası.**
+
+**Göç işareti.** Düz değer `age:` önekinin yokluğundan tanınmıyor: `age:`
+ile başlayan gerçek bir eski değer atlanır, sonra executor reddederdi.
+Veritabanında tek satırlık bir işaret tutuluyor (`env_seal`: alıcı, zaman).
+İşaret yoksa açılışta BÜTÜN değerler şifreleniyor, boş değerler dahil.
+İşaret şu durumlarda yok: taze kurulum, eski sürümden yükseltme, eski bir
+yedeğin geri yüklenmesi, geri dönüş betiği. Geri dönüş betiği işareti
+siliyor; yeniden yükseltme değerleri tekrar şifreliyor. İşaretteki alıcı
+yapılandırılan alıcıdan farklıysa daemon açılmıyor. Kayıp anahtarın
+yerine sessizce yenisi üretilirse değerler çözülemez olurdu; bu durumda
+hata açılışta görünüyor, dağıtımda değil.
+
+Taşımadan sonra `wal_checkpoint(TRUNCATE)` ve `VACUUM` çalışıyor.
+`secure_delete` açık. Eski düz metin ne WAL'da ne boş sayfalarda kalıyor;
+kabul testi bunu `.db`, `-wal` ve `-shm` dosyalarında grep ile ölçüyor.
+
+**Anahtar yolları bayrak varsayılanı, ExecStart değil.** Executor
+`/var/lib/kadran-exec/vault.key` (root 0600), daemon `/etc/kadran/vault.pub`
+(root 0644; daemon yazamıyor) okuyor. Birim dosyalarındaki ExecStart
+değişmiyor: Hetzner'daki `--allow-repo` drop-in'i ExecStart'ı tümüyle
+yeniden yazıyor, yeni bir bayrak orada düşerdi (K-136'nın dersi).
+
+**Executor'ın payı (sayılan kod):**
+- yalnız X25519 kimliği;
+- şifreli değer base64 çözülmeden önce boyutla sınırlanıyor;
+- çözülmüş değer mevcut doğrulamadan geçiyor (NUL, 32 KiB toplam, ad);
+- öneksiz değer reddediliyor.
+
+**Anahtar üretimi** kadrand'de değil: kadrand root koşmamalı. Kurulum, root
+olarak üretici kodu bir kez çağırıyor. Özel anahtar kurulum çıktısına ve
+pakete girmiyor; kurulum yalnız yedekleme komutunu hatırlatıyor.
+
+**API değer döndürmüyor:** `app show --json` yalnız adları gösteriyor.
+Kırıcı değişiklik, bu yüzden v0.5.0. İstemciler değerleri okuyup geri
+göndermiyor (CLI ve masaüstü okundu); boş dönen değer sessiz silmeye yol
+açmıyor.
+
+### Uygulama ve ölçüm (4 Ekim)
+
+**Satır sınırı.** Anahtar üretimi executor'dayken yüzey **2608** ölçüldü
+(sınır 2600). Karar 6'nın ilk adımı uygulandı: üretim ayrı bir ikiliye,
+`kadran-vault`'a taşındı. O ikili yalnız kurulumda, root olarak, daemon'dan
+hiçbir girdi almadan koşuyor. Yüzey **2581**'e indi; 2650'ye gerek kalmadı.
+Executor'ın payı: anahtarı okuma (yalnız X25519, kip 0600), base64'ten önce
+boyut sınırı, çözme, bağ denetimi ve bağlantı.
+
+**Daemon boyutu açmadan ölçüyor.** Güncelleme birleşik tanımı doğruluyor;
+var olan değerler mühürlü olduğu için boyutları `vault.PlainLen` ile
+şifreli metinden hesaplanıyor. age'in tek X25519 alıcılı ek boyutu ölçüldü:
+bir parçada 200 bayt, her ek 64 KiB'lık parçada +16 (0'dan 130 KiB'a kadar
+denendi). Mühürlü metni doğrudan ölçmek sınırı ~1,4 kat erken doldururdu:
+24 KiB'lık değeri olan bir uygulama hiçbir değişken ekleyemezdi (test).
+
+**Göçte VACUUM şart, ölçüldü.** İlk kabul testi yalnız mühürlenen değerleri
+arıyordu ve VACUUM'suz mutant yeşil kaldı: büyüyen mühürlü değer boşalan
+sayfaları hemen yeniden kullanıyor. Gerçek açık silinmiş uygulamalarda:
+satır gidiyor, taşma sayfaları içerikleriyle boş listede kalıyor
+(`secure_delete` kapalı, ölçüldü). 30 parçalı bir sırla: VACUUM'suz **17**
+parça dosyada kaldı, VACUUM'la **0**. WAL'ı kesen checkpoint de gerekli
+(mutantı yakalandı); VACUUM'dan önceki ikinci bir checkpoint gerekmiyordu,
+ölçülüp kaldırıldı.
+
+**Sınama:**
+- executor 14 test: düz değer reddi; başka uygulamaya/ada taşınan değer;
+  önek çakışmaları (`blog`/`blog2`, `A`/`AB`); yanlış anahtar; scrypt
+  alıcısı; çözmeden önce boyut; açılan değerde NUL ve toplam; meşru en büyük
+  istek; anahtar dosyası.
+- depo 6 test, kabul testi dahil: düz metin `.db`/`-wal`/`-shm`'de önce var,
+  sonra yok.
+- geri dönüş betiği gerçek `sqlite3` ve `age` ile 4 test: boş, satır sonlu,
+  tırnaklı, Türkçe ve tekrar eden (od -v) değerler birebir döndü, sonra
+  yeniden mühürlendi; yanlış anahtar, düşmanca ad ve taşınmış değer
+  veritabanına dokunmadan durdu.
+- `mutate-kasa.sh` 26 mutant. Her biri kendi testiyle yakalanıyor.
+
+**Kalan düz kopyalar (dürüst liste):**
+- yükseltmeden önceki saatlik yerel yedekler (24 saat içinde dönüyor);
+- uzak yedekler (uzak yedek anahtarıyla şifreli) kova yaşam döngüsü
+  silene kadar;
+- `kadran.db.pre-*` göç kopyaları. Yükseltme mühürlemeden önce
+  `pre-0009_env_seal`'ı yazıyor. Bunlar ancak sonraki göçler yenilerini
+  ekleyince budanıyor; elle silinmeli. Hetzner'da bugün pre-0006, pre-0007 ve
+  pre-0008 var;
+- çalışan konteynerin ortamı (`docker inspect`, konteynerdeki her süreç):
+  C'nin işi.
+
+**GCP provası (4 Ekim, Debian 13, dalın rc1 derlemesi):**
+
+| Adım | Ölçülen |
+|---|---|
+| v0.4.1'de `hello`'ya benzersiz bir değer ve boş bir değer | düz değer WAL'da 1 kez (kontrol) |
+| rc1'e `bootstrap -sudo` | 19/19 kontrol, "YENİ KASA ANAHTARI" uyarısı; özel anahtar çıktıda 0 kez |
+| açılış | `kasa açık … muhurlenen_deger=2`; executor ve `vault.pub` aynı alıcı |
+| veritabanı dosyaları | `.db`, `-wal`, `-shm`'de 0; `kadran.db.pre-0009_env_seal`'da 1 (beklenen düz kopya) |
+| `deploy hello` | r3; konteynerde değer AÇILMIŞ, boş değer boş |
+| `app show -json` | adlar var, değerler boş |
+| `apt install sqlite3 age` (3.46.1, 1.2.1), `kadran-kasa-coz.sh` | 2 değer düz metne döndü, işaret silindi, önce yedek |
+| v0.4.1'e `bootstrap` | 17/17; `app show -json` değeri düz gösteriyor; `deploy` r4, konteynerde değer |
+| rc1'e yeniden | 19/19, aynı anahtar (uyarı yok), `muhurlenen_deger=2`, dosyalarda 0; `deploy` r5, konteynerde değer |
+
+Site provanın her adımında 200 döndü; seçimli zamanlayıcılar kapalı kaldı.
+
+### Güvenlik incelemesi (4 Ekim, birleştirmeden önce)
+
+Bağımsız bir inceleme dalın farkını okudu. Executor'ın açma yolunda,
+anahtar üretiminde ve açık anahtar dosyasında sömürülebilir bir şey
+bulmadı: bağ, ad ve uygulama desenleri yüzünden çakışamıyor; hata ve
+günlük yalnız ad taşıyor; boyutlar çözmeden önce sınırlı. Bulduğu altı
+sorun ve yapılan:
+
+| # | Önem | Sorun | Yapılan |
+|---|---|---|---|
+| 1 | YÜKSEK | Geri dönüş betiği root olarak daemon'un dizininde `VACUUM INTO` ve `chmod` çalıştırıyordu; ikisi de sembolik bağ izliyor. Ele geçirilmiş daemon önceden bağ koyup root'a seçtiği yere veritabanı yazdırabilirdi (inceleme bunu aynı SQLite ile root olarak denedi). | sqlite3 artık `kadran` olarak koşuyor; root yalnız anahtarla çözüyor ve SQL'i kendi geçici dosyasından standart girdiye veriyor. `umask 077`. |
+| 2 | ORTA | sqlite3 hatadan sonra devam ediyordu: bir UPDATE düşse de işaret siliniyor, değerler mühürlü kalıyordu. | `-bail`, `busy_timeout`; sonuç ölçülüyor (mühürlü değer kalmadı mı, işaret gitti mi). Test: daemon'un koyduğu bir tetikleyici UPDATE'i düşürüyor, işaret ve değerler yerinde. |
+| 3 | ORTA | İşaret temizlikten önce yazılıyordu: arada çökülürse temizlik hiç tekrarlanmıyordu. Checkpoint'in "meşgul" sonucu okunmuyordu. Geri dönüşsüz eski sürümün yazdığı düz değer işaret altında düz kalıyordu. | `scrubbed_at` sütunu (göç 0009 yayımlanmadığı için yerinde değişti); temizlik ancak VACUUM ve checkpoint bitince yazılıyor, eksikse açılış tekrarlıyor; checkpoint sonucu okunuyor; işaret altındaki düz değerler mühürleniyor. İki test. |
+| 4 | ORTA | `kadran.db.pre-*` göç kopyaları düz ve daemon'un. | Kurulum her seferinde listeliyor ve silme komutunu basıyor. Otomatik silinmiyor: geri alma yolu olabilirler (kullanıcının kararı). |
+| 5 | ORTA | `--allow-repo` boşken (varsayılan) ele geçirilmiş daemon kendi seçtiği imajı bir uygulama olarak başlatıp değerlerini günlüğe yazdırabilir. | Kurulum uyarıyor. Hetzner'da liste tanımlı. |
+| 6 | DÜŞÜK | 13. kontrol dosyanın iznine bakıyor, dizinin yazılabilirliğine değil. | `/etc/kadran`'a kadran'ın yazamadığı da sınanıyor. |
+
+GCP'de rc1 eski 0009'u (sütunsuz) uygulamıştı. İkinci provada sunucu
+Hetzner'in durumuna getirildi; göç yeni hâliyle sıfırdan uygulandı.
+
+**İkinci GCP provası (4 Ekim, inceleme düzeltmeleriyle, rc2):** Hetzner'da
+izlenecek sıra birebir denendi.
+
+| Adım | Ölçülen |
+|---|---|
+| rc1'li sunucuda yeni `kadran-kasa-coz.sh`, gerçek root | root değilken ve kadrand açıkken reddetti; durdurunca 2 değer düz, yedek `999:988` (kadran'ın, root'un değil); ikinci koşu "işaret yok". Çıktıya `PRAGMA busy_timeout`'un sonucu ("5000") karışıyordu: yazma adımının standart çıktısı artık atılıyor, test çıktıyı üç satırla sınıyor |
+| v0.4.1'e `bootstrap` | 17/17; `app show -json` değeri düz |
+| Hetzner'e benzetme | `env_seal` tablosu, göç 0009 kaydı ve `pre-0009` silindi; rc1 anahtarı sunucudan kaldırıldı |
+| önce anahtar: yalnız `kadran-vault -key …` | anahtar 600 root, alıcı basıldı; ikinci koşu aynı alıcı; `kadran` okuyamıyor |
+| rc2'ye `bootstrap -sudo` | 19/19; "YENİ KASA ANAHTARI" yok; `pre-0009_env_seal` silme komutuyla listelendi; `--allow-repo` tanımlı, uyarı yok |
+| açılış | `muhurlenen_deger=2`; `vault.pub`, `env_seal.recipient`, kadrand ve kadran-exec günlükleri ve anahtardan türetilen alıcı TAM aynı; `scrubbed_at` dolu; değer `.db`, `-wal`, `-shm`'de 0, `pre-0009`'da 1 |
+| `deploy hello`, yeni anahtarla ilk konteyner | r6; değer açılmış, boş değer boş |
+| kurulu `/usr/local/lib/kadran/kadran-kasa-coz.sh`, yeni şema | 2 değer düz, yedek `999:988` |
+| rc2 kadrand yeniden | `muhurlenen_deger=2`, aynı alıcı, temizlendi, dosyalarda 0 |
 
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 

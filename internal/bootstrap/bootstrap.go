@@ -32,7 +32,7 @@ import (
 	"time"
 )
 
-//go:embed install.sh goc.sh geri.sh
+//go:embed install.sh goc.sh geri.sh kasa-coz.sh
 var installScript embed.FS
 
 // serverBinaries, sunucuya kurulan binary'lerdir.
@@ -44,7 +44,7 @@ var installScript embed.FS
 // scripts/build-release.sh onu da aynı `bin/linux-<arch>/` dizinine
 // üretiyor, yani burada özel bir muamele gerekmiyor.
 var serverBinaries = []string{
-	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy",
+	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy", "kadran-vault",
 }
 
 // unitFiles, depodan kopyalanan systemd varlıkları.
@@ -296,7 +296,7 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 		return err
 	}
 
-	for _, name := range []string{"install.sh", "goc.sh", "geri.sh"} {
+	for _, name := range []string{"install.sh", "goc.sh", "geri.sh", "kasa-coz.sh"} {
 		script, err := installScript.ReadFile(name)
 		if err != nil {
 			return nil, fmt.Errorf("bootstrap: kurulum betiği okunamadı (%s): %w", name, err)

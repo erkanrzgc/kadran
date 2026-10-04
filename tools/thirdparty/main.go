@@ -61,6 +61,7 @@ var (
 		{"kadrand", ".", "./cmd/kadrand", serverPlatforms},
 		{"kadran-exec", ".", "./cmd/kadran-exec", serverPlatforms},
 		{"kadran-connect", ".", "./cmd/kadran-connect", serverPlatforms},
+		{"kadran-vault", ".", "./cmd/kadran-vault", serverPlatforms},
 		// Ayrı Go modülü (build/caddy/go.mod); build-caddy.sh ile aynı.
 		{"kadran-caddy", "build/caddy", ".", serverPlatforms},
 	}
@@ -328,8 +329,8 @@ func readLicenses(dir string) ([]licenseFile, error) {
 
 const header = `THIRD-PARTY SOFTWARE LICENSES
 
-The Kadran binaries (kadran, kadrand, kadran-exec, kadran-connect, kadran-caddy)
-are built from Kadran's own source, licensed under the Apache License 2.0 (see
+The Kadran binaries (kadran, kadrand, kadran-exec, kadran-connect, kadran-vault,
+kadran-caddy) are built from Kadran's own source, licensed under the Apache License 2.0 (see
 LICENSE and NOTICE), and from the third-party software listed below. Each entry
 reproduces the license, notice and patent files shipped with that software.
 

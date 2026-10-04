@@ -19,7 +19,12 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXEC_BIN="${KADRAN_EXEC_BIN:-$REPO_ROOT/bin/kadran-exec}"
+VAULT_BIN="${KADRAN_VAULT_BIN:-$REPO_ROOT/bin/kadran-vault}"
 
+if [[ ! -x "$VAULT_BIN" ]]; then
+    echo "kadran-vault bulunamadı: $VAULT_BIN (go build -o bin/kadran-vault ./cmd/kadran-vault)" >&2
+    exit 1
+fi
 if [[ ! -x "$EXEC_BIN" ]]; then
     echo "kadran-exec bulunamadı: $EXEC_BIN" >&2
     echo "Önce derleyin: GOOS=linux GOARCH=amd64 go build -o bin/kadran-exec ./cmd/kadran-exec" >&2
@@ -80,9 +85,13 @@ if [[ -n "${KADRAN_E2E_ALLOW_INTRUDER:-}" ]]; then
     echo "  (kendini sınama kipi: executor DAVETSİZ kullanıcıyı kabul edecek)"
 fi
 
+# Kasa zorunlu (K-123): executor anahtarsız açılmıyor.
+"$VAULT_BIN" -key "$WORK/vault.key" > /dev/null
+
 "$EXEC_BIN" \
     --socket "$SOCKET" \
     --journal "$JOURNAL" \
+    --vault-key "$WORK/vault.key" \
     --allow-user "$ALLOW_USER" \
     --owner-group kadran-e2e-daemon &
 EXEC_PID=$!

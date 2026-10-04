@@ -24,10 +24,11 @@ func TestCreateAppRoundTripsEnv(t *testing.T) {
 		t.Fatalf("uygulama yazılamadı: %v", err)
 	}
 
-	got, err := s.GetApp(ctx, "blog")
+	app, err := s.GetApp(ctx, "blog")
 	if err != nil {
 		t.Fatalf("uygulama okunamadı: %v", err)
 	}
+	got := App{Env: plain(t, app)}
 	if len(got.Env) != 2 {
 		t.Fatalf("env %d girdi döndü, 2 bekleniyordu: %+v", len(got.Env), got.Env)
 	}
@@ -94,7 +95,7 @@ func TestUnrelatedUpdatePreservesEnv(t *testing.T) {
 		t.Fatalf("güncelleme başarısız: %v", err)
 	}
 
-	if got.Env["DATABASE_URL"] != "postgres://db/blog" {
+	if plain(t, got)["DATABASE_URL"] != "postgres://db/blog" {
 		t.Errorf("alan adı güncellemesi env'i bozdu: %+v — env'e HİÇ "+
 			"dokunulmamalıydı", got.Env)
 	}
@@ -104,7 +105,7 @@ func TestUnrelatedUpdatePreservesEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("uygulama okunamadı: %v", err)
 	}
-	if reread.Env["DATABASE_URL"] != "postgres://db/blog" {
+	if plain(t, reread)["DATABASE_URL"] != "postgres://db/blog" {
 		t.Errorf("DİSKTEKİ env bozuldu: %+v", reread.Env)
 	}
 }
@@ -141,10 +142,11 @@ func TestUpdateMergesEnv(t *testing.T) {
 	// GEÇER — ölçüldü: sütunu cümleden düşüren mutasyon yeşil kaldı.
 	// Kaydın doğru görünüp gerçekliğin değişmemesi, bu testin var olma
 	// sebebi olan hatanın ta kendisi.
-	got, err := s.GetApp(ctx, "blog")
+	app2, err := s.GetApp(ctx, "blog")
 	if err != nil {
 		t.Fatalf("uygulama okunamadı: %v", err)
 	}
+	got := App{Env: plain(t, app2)}
 
 	if got.Env["DATABASE_URL"] != "postgres://db/blog" {
 		t.Errorf("dokunulmayan anahtar kayboldu: %+v", got.Env)
@@ -179,10 +181,11 @@ func TestUpdateRemovesEnvKeys(t *testing.T) {
 	}
 
 	// Silme de DİSKTEN doğrulanıyor — aynı gerekçe (yukarıya bakın).
-	got, err := s.GetApp(ctx, "blog")
+	app2, err := s.GetApp(ctx, "blog")
 	if err != nil {
 		t.Fatalf("uygulama okunamadı: %v", err)
 	}
+	got := App{Env: plain(t, app2)}
 
 	if _, still := got.Env["ESKI"]; still {
 		t.Errorf("anahtar silinmedi: %+v", got.Env)

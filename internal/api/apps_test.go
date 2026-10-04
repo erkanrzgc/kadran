@@ -310,6 +310,7 @@ func TestNewServerRejectsTypedNilExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
+	enableTestVault(t, db)
 	defer func() { _ = db.Close() }()
 
 	var typedNil *execclient.Client // nil işaretçi, arayüze konuyor

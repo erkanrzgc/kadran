@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"modernc.org/sqlite"
+
+	"github.com/erkanrzgc/kadran/internal/vault/vaulttest"
 )
 
 // newAppStore, disk üzerinde bir depo açar.
@@ -25,6 +27,9 @@ func newAppStore(t *testing.T) *Store {
 		t.Fatalf("depo açılamadı: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
+	if _, err := s.EnableVault(context.Background(), vaulttest.Sealer(t, storeTestIdentity)); err != nil {
+		t.Fatalf("kasa açılamadı: %v", err)
+	}
 	return s
 }
 

@@ -32,6 +32,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/sdnotify"
 	"github.com/erkanrzgc/kadran/internal/sockets"
 	"github.com/erkanrzgc/kadran/internal/store"
+	"github.com/erkanrzgc/kadran/internal/vault"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -41,6 +42,10 @@ const (
 	defaultCaddySocket = "/run/kadran-caddy/admin.sock"
 	defaultDB          = "/var/lib/kadran/kadran.db"
 	defaultClientGroup = "kadran-client"
+	// defaultVaultRecipient, kasanın AÇIK anahtarı (K-123). root 0644:
+	// daemon okur, yazamaz. Yol bayrak varsayılanı, birim dosyasında yazılı
+	// değil: ExecStart'ı yeniden yazan bir drop-in yeni bayrağı düşürürdü.
+	defaultVaultRecipient = "/etc/kadran/vault.pub"
 )
 
 func main() {
@@ -57,6 +62,7 @@ func run() error {
 		caddySocket = flag.String("caddy-socket", defaultCaddySocket, "ters vekil admin soketi")
 		dbPath      = flag.String("db", defaultDB, "SQLite veritabanı yolu")
 		clientGroup = flag.String("client-group", defaultClientGroup, "api.sock'a erişebilecek grup")
+		vaultPub    = flag.String("vault-recipient", defaultVaultRecipient, "kasanın açık anahtar dosyası (K-123)")
 		showVersion = flag.Bool("version", false, "sürümü yazdır ve çık")
 		debug       = flag.Bool("debug", false, "ayrıntılı günlük (KADRAN_DEBUG=1 ile de açılır)")
 
@@ -116,6 +122,19 @@ func run() error {
 			slog.Error("veritabanı kapatılamadı", "hata", err)
 		}
 	}()
+
+	// Kasa zorunlu (K-123): açılamazsa daemon da açılmıyor. Eski sürümden
+	// gelen düz değerler burada, API dinlemeye başlamadan mühürleniyor.
+	sealer, err := vault.LoadSealer(*vaultPub)
+	if err != nil {
+		return err
+	}
+	sealed, err := db.EnableVault(context.Background(), sealer)
+	if err != nil {
+		return fmt.Errorf("kasa açılamadı: %w — kayıp anahtarı yedeğinden "+
+			"/var/lib/kadran-exec/vault.key'e geri koyup kurulumu yeniden çalıştırın", err)
+	}
+	slog.Info("kasa açık", "alici", sealer.Recipient(), "muhurlenen_deger", sealed)
 
 	exec, err := execclient.Dial(*execSocket)
 	if err != nil {

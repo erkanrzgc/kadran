@@ -2,8 +2,8 @@
 # Sunucu binary'lerini `kadran bootstrap`'ın beklediği düzende derler.
 #
 # Çıktı:
-#   bin/linux-amd64/{kadrand,kadran-exec,kadran-connect}
-#   bin/linux-arm64/{kadrand,kadran-exec,kadran-connect}
+#   bin/linux-amd64/{kadrand,kadran-exec,kadran-connect,kadran-vault}
+#   bin/linux-arm64/{kadrand,kadran-exec,kadran-connect,kadran-vault}
 #   bin/kadran[.exe]                 — iş istasyonu aracı (yerel platform)
 #
 # Kullanım:
@@ -28,7 +28,7 @@ MOD="$(go list -m)"
 LDFLAGS="$LDFLAGS -X $MOD/internal/version.Version=$VERSION"
 LDFLAGS="$LDFLAGS -X $MOD/internal/version.Commit=$COMMIT"
 
-SERVER_BINARIES=(kadrand kadran-exec kadran-connect)
+SERVER_BINARIES=(kadrand kadran-exec kadran-connect kadran-vault)
 
 for arch in "${ARCHES[@]}"; do
     out="bin/linux-$arch"

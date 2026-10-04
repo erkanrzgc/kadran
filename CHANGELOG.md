@@ -27,6 +27,23 @@ while it creates a container.
 - If the database is sealed to a different key (for example a lost key replaced by a new
   one), the daemon refuses to start instead of failing at the next deploy.
 
+### Upgrading from v0.4.x
+
+Create and save the key **before** the upgrade seals anything:
+
+1. Copy `kadran-vault` from the v0.5.0 server package to the server and run it once as
+   root: `kadran-vault -key /var/lib/kadran-exec/vault.key`. It creates the key and prints
+   the public key; nothing is sealed yet.
+2. Save the key in a password manager: `sudo cat /var/lib/kadran-exec/vault.key`.
+3. Run `kadran bootstrap` with the v0.5.0 files. It reuses the key, so the
+   `YENİ KASA ANAHTARI` (new vault key) warning does not appear. The daemon seals the
+   existing values on start.
+4. Check the sites, then delete the plaintext pre-migration copies:
+   `sudo rm /var/lib/kadran/kadran.db.pre-*`.
+
+⚠ Never install v0.4.x over v0.5.0 without running `kadran-kasa-coz.sh` first: v0.4.x
+would hand the sealed text (`age:…`) to containers as the value.
+
 ### Breaking changes
 
 - `app show --json` and the API return variable names only; values come back empty. No

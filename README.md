@@ -402,8 +402,11 @@ forced command closes that class entirely.
 Environment values are sealed with [age](https://age-encryption.org) to the executor's
 public key before they reach the database (v0.5.0, [K-123](docs/decisions.md)). The daemon
 writes them but cannot read them; the executor opens them only while it creates a
-container. A leaked disk, database or local backup gives away no values, and a compromised
-daemon cannot read past ones.
+container. A leaked disk, database or backup taken on v0.5.0 gives away no values, and a
+compromised daemon cannot read past ones, **once the copies made before the upgrade are
+gone**: hourly backups rotate out within a day, but the pre-migration copies
+`/var/lib/kadran/kadran.db.pre-*` (the upgrade writes one more) stay until you delete
+them, and the daemon can read them.
 
 - Each value is bound to its app and variable name. The executor refuses a sealed value
   moved to another variable or app, so a compromised daemon cannot get one app's password

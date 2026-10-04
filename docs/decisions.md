@@ -8139,6 +8139,12 @@ stored in the daemon's database and are visible to `docker inspect`."
   - executor konteyneri kurarken çözüyor.
 - **Kapattığı:** (1) tümüyle; veritabanı ve yerel yedekler artık
   şifreli. (2) GEÇMİŞ değerler için.
+  - ⚠ (4 Ekim düzeltmesi, ölçüldü) İkisi de yükseltmeden ÖNCEKİ kopyalar
+    silinince geçerli. `kadran.db.pre-*` göç kopyaları (yükseltme
+    `pre-0009_env_seal`'ı da yazıyor) ve eski saatlik yedekler düz metin
+    ve `kadran`'ın: daemon onları okuyabiliyor. GCP provasında dikilen
+    değer `pre-0009`'da bulundu. Saatlik yedekler bir günde dönüyor, göç
+    kopyaları elle silinmeli.
 - **Kapatmadığı:**
   - ele geçirilmiş panelyd YENİ değerleri yazılırken görür; değer
     istemciden panelyd'ye düz metin geliyor;

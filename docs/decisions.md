@@ -10129,7 +10129,7 @@ ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.
 ## K-138 — Yükseltme, kurulu seçimli birimleri güncellemiyordu
 
 **Tarih:** 4 Ekim 2026
-**Durum:** DÜZELTİLDİ (kod, `k138-secimli` dalı); v0.4.2 ile gelir.
+**Durum:** DÜZELTİLDİ (PR #5, `96e0c73`); v0.4.2 ile gelir.
 
 ### Nasıl bulundu
 
@@ -10182,3 +10182,11 @@ systemctl çağrılmıyor; maskelenmiş birim bağ olarak kalıyor; `install.sh`
 canlı hatası), kurulu denetiminin kalkması, maskenin ezilmesi,
 `daemon-reload`'un düşmesi, güncellemenin zamanlayıcıyı açması, betiğin
 kurulmaması.
+
+**GCP provası (4 Ekim):** v0.4.1 kurulu test sunucusu bu dalın CLI'ıyla
+yükseltildi (betikler CLI'a gömülü; `-repo` yalnız birim ve belgeleri
+veriyor, ilk deneme bu yüzden eski betikle koştu ve hiçbir şey
+değiştirmedi). 17/17; üç seçimli birim için "güncellendi" satırı; uzak yedek
+betiği `352b55a4…` → `ec643c46…` (paketteki); üç zamanlayıcı yine `disabled`;
+`kadran-offsite.service.d/olcum.conf` drop-in'i yerinde ve etkin. Ardından
+uzak yedek bir kez koşturuldu: 3 çapa yüklendi, başarısız 0.

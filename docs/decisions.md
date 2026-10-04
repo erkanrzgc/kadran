@@ -8097,8 +8097,8 @@ açılıp kapatılmıştı; bu her yükseltmede tekrarlanacaktı.
 ## K-123 — Gizli bilgi kasası: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026
-**Durum:** B UYGULANDI, v0.5.0 ile yayınlandı (4 Ekim). Canlıya kullanıcı
-anahtarın yedeğini aldıktan sonra. Yüzey 2581/2600.
+**Durum:** CANLIDA (4 Ekim, v0.5.0; anahtar sunucu dışına kaydedildikten
+sonra). Yüzey 2581/2600.
 
 README'nin bilinen eksiği: "No secret store. Environment variables are
 stored in the daemon's database and are visible to `docker inspect`."
@@ -8395,6 +8395,21 @@ izlenecek sıra birebir denendi.
 | `deploy hello`, yeni anahtarla ilk konteyner | r6; değer açılmış, boş değer boş |
 | kurulu `/usr/local/lib/kadran/kadran-kasa-coz.sh`, yeni şema | 2 değer düz, yedek `999:988` |
 | rc2 kadrand yeniden | `muhurlenen_deger=2`, aynı alıcı, temizlendi, dosyalarda 0 |
+
+**Canlı (Hetzner, 4 Ekim 11:40 UTC, v0.5.0 yayın dosyalarıyla):**
+
+| Adım | Ölçülen |
+|---|---|
+| önce anahtar: yayın paketindeki `kadran-vault` (özeti sunucuda da aynı) | 600 root, 75 bayt; ikinci koşu aynı alıcı; `kadran` okuyamıyor. Kurulum anahtar sunucu dışına kaydedildikten sonra |
+| `bootstrap` | 31 sn, 19/19; "YENİ KASA ANAHTARI" yok; ters vekil ikilisi v0.4.1'inkiyle aynı (`1b77b9f9bffd`), yeniden başlamadı |
+| yoklama, üç rotalı ad | 225/225 200 (yükseltmeyi kapsayan 85 sn) |
+| açılış | `muhurlenen_deger=1` (değeri olan tek uygulama); alıcı beş yerde aynı; temizlendi; uyarı düzeyinde günlük yok |
+| düz değer | `.db`, `-wal`, `-shm`'de 0; `pre-0007`, `pre-0008`, `pre-0009`'da 1 (kontrol). `pre-0006` budandı (en fazla üç kopya) |
+
+Canlıda ölçülmeyen: yeni bir konteynerde açılma (değeri olan uygulama
+yeniden dağıtılmadı; GCP'de ölçüldü). `pre-*` kopyaları ve yükseltmeden
+önceki saatlik ve uzak yedekler değeri hâlâ düz taşıyor; kopyaları silmek
+kullanıcıda.
 
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 

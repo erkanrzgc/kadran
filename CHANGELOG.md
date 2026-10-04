@@ -3,6 +3,17 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased (v0.4.2)
+
+### Fixed
+
+- **Upgrades left the optional units on their old version** (K-138). `bootstrap` never
+  touched the offsite, volume-backup and alarm scripts or their units; they were
+  installed by hand or by the v0.4.0 migration. On the first live v0.4.1 upgrade the
+  daemon wrote its anchor but the old offsite script did not upload it. `bootstrap`
+  now reinstalls every optional unit it finds installed, leaves its timer on or off
+  as it was, and skips masked units. Settings kept in drop-ins survive.
+
 ## v0.4.1 — 2026-10-04
 
 ### Audit chain anchors (K-126)

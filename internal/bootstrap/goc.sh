@@ -422,33 +422,9 @@ goc_secimli() {
     local s liste
     liste="$(goc_secimli_listesi)"
     [ -n "$liste" ] || return 0
-    # Dosya adları AÇIK yazılıyor (değişkenden kurulmuyor): paket testi
-    # (TestArchiveCarriesEveryStageFileTheScriptsRead) her `$STAGE/<ad>`'ı
-    # pakette arıyor; kurulan adı göremeseydi eksik dosyayı da göremezdi.
     while read -r s; do
         [ -n "$s" ] || continue
-        case "$s" in
-            notify)
-                install -d -m 0755 -o root -g root "$LIB_DIR/notify"
-                install -m 0755 -o root -g root "$STAGE/kadran-notify.sh" "$LIB_DIR/notify/kadran-notify.sh"
-                install -m 0644 -o root -g root "$STAGE/notify-README.md" "$LIB_DIR/notify/README.md"
-                goc_birim_kur kadran-notify-failure@.service
-                goc_birim_kur kadran-notify.service
-                goc_birim_kur kadran-notify.timer ;;
-            offsite)
-                install -d -m 0755 -o root -g root "$LIB_DIR/offsite"
-                install -m 0755 -o root -g root "$STAGE/kadran-offsite.sh" "$LIB_DIR/offsite/kadran-offsite.sh"
-                install -m 0644 -o root -g root "$STAGE/offsite-README.md" "$LIB_DIR/offsite/README.md"
-                goc_birim_kur kadran-offsite.service
-                goc_birim_kur kadran-offsite.timer ;;
-            volume-backup)
-                install -d -m 0755 -o root -g root "$LIB_DIR/offsite"
-                install -m 0755 -o root -g root "$STAGE/kadran-volume-backup.sh" \
-                    "$LIB_DIR/offsite/kadran-volume-backup.sh"
-                goc_birim_kur kadran-volume-backup.service
-                goc_birim_kur kadran-volume-backup.timer ;;
-            *) die "göç: tanınmayan zamanlayıcı kaydı: $s" ;;
-        esac
+        secimli_dosyalari_kur "$s"
         if grep -qx "$s" "$GOC_DIR/zamanlayicilar"; then
             say "seçimli birim kuruldu: kadran-$s"
         else
@@ -460,6 +436,63 @@ goc_secimli() {
         [ -n "$s" ] || continue
         systemctl enable --now "kadran-$s.timer"
     done < "$GOC_DIR/zamanlayicilar"
+}
+
+# secimli_dosyalari_kur <ad> — bir seçimli birimin betiğini, belgesini ve
+# systemd birimlerini paketten kurar. Zamanlayıcıyı açmaz, kapatmaz.
+#
+# Dosya adları AÇIK yazılıyor (değişkenden kurulmuyor): paket testi
+# (TestArchiveCarriesEveryStageFileTheScriptsRead) her `$STAGE/<ad>`'ı
+# pakette arıyor; kurulan adı göremeseydi eksik dosyayı da göremezdi.
+secimli_dosyalari_kur() {
+    case "$1" in
+        notify)
+            install -d -m 0755 -o root -g root "$LIB_DIR/notify"
+            install -m 0755 -o root -g root "$STAGE/kadran-notify.sh" "$LIB_DIR/notify/kadran-notify.sh"
+            install -m 0644 -o root -g root "$STAGE/notify-README.md" "$LIB_DIR/notify/README.md"
+            goc_birim_kur kadran-notify-failure@.service
+            goc_birim_kur kadran-notify.service
+            goc_birim_kur kadran-notify.timer ;;
+        offsite)
+            install -d -m 0755 -o root -g root "$LIB_DIR/offsite"
+            install -m 0755 -o root -g root "$STAGE/kadran-offsite.sh" "$LIB_DIR/offsite/kadran-offsite.sh"
+            install -m 0644 -o root -g root "$STAGE/offsite-README.md" "$LIB_DIR/offsite/README.md"
+            goc_birim_kur kadran-offsite.service
+            goc_birim_kur kadran-offsite.timer ;;
+        volume-backup)
+            install -d -m 0755 -o root -g root "$LIB_DIR/offsite"
+            install -m 0755 -o root -g root "$STAGE/kadran-volume-backup.sh" \
+                "$LIB_DIR/offsite/kadran-volume-backup.sh"
+            goc_birim_kur kadran-volume-backup.service
+            goc_birim_kur kadran-volume-backup.timer ;;
+        *) die "tanınmayan seçimli birim: $1" ;;
+    esac
+}
+
+# secimli_guncelle — göç olmayan kurulumda (yükseltme) KURULU seçimli
+# birimleri pakettekiyle değiştirir (K-138). Seçimli birimleri kullanıcı elle
+# ya da v0.4.0 göçü kuruyor; bu adım yokken yükseltme onları eski sürümde
+# bırakıyordu: v0.4.1'in çapaları canlıda bu yüzden yüklenmedi.
+#
+# Kurulu = zamanlayıcı dosyası var. Zamanlayıcı açıksa açık, kapalıysa
+# kapalı kalır. Maskelenmiş birim (/dev/null'a bağ) atlanır: üstüne gerçek
+# birim yazmak maskeyi kaldırırdı. Operatörün değişiklikleri drop-in'de
+# durduğu için korunur; birim dosyasının kendisini düzenleyen, değişikliğini
+# kaybeder (göçle aynı).
+secimli_guncelle() {
+    local s z guncel=0
+    for s in notify offsite volume-backup; do
+        z="$KOK/etc/systemd/system/kadran-$s.timer"
+        [ -e "$z" ] || continue
+        if [ "$(readlink "$z")" = /dev/null ]; then
+            say "seçimli birim maskelenmiş, güncellenmedi: kadran-$s"
+            continue
+        fi
+        secimli_dosyalari_kur "$s"
+        say "seçimli birim güncellendi (zamanlayıcıya dokunulmadı): kadran-$s"
+        guncel=1
+    done
+    [ "$guncel" -eq 0 ] || systemctl daemon-reload
 }
 
 # goc_kurulu_secimliler — eski adla KURULU seçimli birimler, zamanlayıcısı

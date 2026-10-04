@@ -10129,7 +10129,7 @@ ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.
 ## K-138 — Yükseltme, kurulu seçimli birimleri güncellemiyordu
 
 **Tarih:** 4 Ekim 2026
-**Durum:** BULUNDU (canlıda, v0.4.1 yükseltmesinde); düzeltme v0.4.2 ile.
+**Durum:** DÜZELTİLDİ (kod, `k138-secimli` dalı); v0.4.2 ile gelir.
 
 ### Nasıl bulundu
 
@@ -10151,3 +10151,34 @@ Etkisi: yükseltilen her sunucuda çapalar sunucuda kalıyor, R2'ye gitmiyor.
 `audit verify -anchors` "hiçbir çapa denetlenmedi" deyip 1 ile çıkıyor; sessiz
 değil, ama sebebi göstermiyor. v0.4.1'in yayın notu "sonraki koşu yükler"
 diyordu. Not düzeltildi ve elle kopyalama adımı eklendi.
+
+### Düzeltme
+
+`secimli_guncelle` (`goc.sh`), göç olmayan her kurulumda (`install.sh`'ta
+`goc_bitir`'in `else` dalı) koşuyor:
+
+- Kurulu sayılan: zamanlayıcı dosyası `/etc/systemd/system`'de olan seçimli
+  birim. Göçün kurulu tespitiyle aynı ölçüt (`goc_kurulu_secimliler`).
+- Betik, belge ve birim dosyaları paketten yeniden kuruluyor. Kurma işi
+  göçünkiyle aynı fonksiyon: `secimli_dosyalari_kur`, `goc_secimli`'den
+  çıkarıldı. İki yol ayrı kopyalar tutsaydı biri yine geride kalırdı.
+- Zamanlayıcı açılmıyor, kapatılmıyor; yalnız `daemon-reload`.
+- Maskelenmiş birim (`/dev/null`'a bağ) atlanıyor: üstüne gerçek birimi
+  yazmak maskeyi sessizce kaldırırdı.
+- Operatörün ayarları drop-in'de durduğu için korunuyor. Birim dosyasının
+  kendisini düzenleyen, değişikliğini kaybeder; göçte de böyleydi.
+
+Çalışan bir oneshot'ın betiğini değiştirmek güvenli: `install` yeni bir
+inode yazıyor, çalışan bash eskisini okumaya devam ediyor. Debian 13'te
+ölçüldü: inode değişti; kurulum sırasında koşan betik kendi (eski) son
+satırını bastı.
+
+**Sınama:** `check-goc-sh.sh` 6 yeni senaryo, 57/57: kurulu iki birimin
+bütün dosyaları pakettekiyle aynı; kurulu olmayan kurulmuyor; systemctl'e
+yalnız `daemon-reload` gidiyor; hiç birim yokken hiçbir şey kurulmuyor ve
+systemctl çağrılmıyor; maskelenmiş birim bağ olarak kalıyor; `install.sh`
+çağrıyı tek yerde, `else` dalında ve doğrulamadan önce yapıyor.
+`mutate-goc.sh` 6 yeni mutant, 31/31 yakalandı: çağrının silinmesi (v0.4.1'in
+canlı hatası), kurulu denetiminin kalkması, maskenin ezilmesi,
+`daemon-reload`'un düşmesi, güncellemenin zamanlayıcıyı açması, betiğin
+kurulmaması.

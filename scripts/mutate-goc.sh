@@ -144,6 +144,26 @@ mutate_in "$GOC" "kurulu ama kapalı birim taşınmıyor" \
 mutate_in "$GOC" "kurulu kaydı birim dosyasına bakmıyor" \
     "s=s.replace('panely-\$s.timer\" ]; then echo','panely-\$s.timer.YOK\" ]; then echo',1)"
 
+echo "== Yükseltme: kurulu seçimli birimler yenileniyor (K-138) =="
+
+mutate_in "$INST" "yükseltme seçimli birimleri yenilemiyor (v0.4.1'in canlı hatası)" \
+    "s=s.replace('else\n    secimli_guncelle\nfi\n','fi\n',1)"
+
+mutate_in "$GOC" "kurulu olmayan seçimli birim de kuruluyor" \
+    "s=s.replace('        [ -e \"\$z\" ] || continue\n','',1)"
+
+mutate_in "$GOC" "maskelenmiş birimin üstüne yazılıyor" \
+    "s=s.replace('        if [ \"\$(readlink \"\$z\")\" = /dev/null ]; then','        if false; then',1)"
+
+mutate_in "$GOC" "güncellemeden sonra systemd yeniden yüklenmiyor" \
+    "s=s.replace('    [ \"\$guncel\" -eq 0 ] || systemctl daemon-reload\n','    :\n',1)"
+
+mutate_in "$GOC" "güncelleme kapalı zamanlayıcıyı açıyor" \
+    "s=s.replace('        secimli_dosyalari_kur \"\$s\"\n        say \"seçimli birim güncellendi','        secimli_dosyalari_kur \"\$s\"\n        systemctl enable --now \"kadran-\$s.timer\"\n        say \"seçimli birim güncellendi',1)"
+
+mutate_in "$GOC" "uzak yedek betiği yenilenmiyor" \
+    "s=s.replace('            install -m 0755 -o root -g root \"\$STAGE/kadran-offsite.sh\"','            : \"\$STAGE/kadran-offsite.sh\"',1)"
+
 echo "== Kurulumu takılı bırakmamak (güvenlik incelemesi) =="
 
 mutate_in "$GOC" "silinemeyen eski ağ kurulumu düşürüyor" \

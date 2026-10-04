@@ -8501,7 +8501,29 @@ budamanın dokunmaması, kilitli yüklemede yedeklerin yine gitmesi ve
 çıkış≠0). `scripts/mutate-anchor.sh` 14/14 mutant; derleme kapısı bir
 mutantı (kullanılmayan import) sahte "yakalandı" saymadan durdurdu.
 
-**Canlı ölçüm:** v0.4.1 yayınından sonra (aşağıya eklenecek).
+**Canlı ölçüm (4 Ekim, Hetzner, v0.4.1):**
+- Yükseltme 28 sn, 17/17; ters vekil değişmediği için yeniden
+  başlamadı. 3 rotalı ad × 39 tur yoklama: 117/117 yanıt 200. Telegram'a
+  alarm gitmedi. `authorized_keys` aynı kaldı (2 satır, ikisi de zorlanmış
+  komutlu).
+- Daemon açılış yedeğinin yanına çapayı yazdı:
+  `kadran-20261004T000204Z.capa`, 92 bayt, `kadran:kadran 0600`, `seq 171`.
+- ⚠ İlk uzak yedek koşusu çapayı YÜKLEMEDİ: `bootstrap` uzak yedek
+  betiğini güncellemiyor (K-138). v0.4.1 betiği elle kuruldu, ikinci koşu:
+  `yüklendi kadran-20261004T000204Z.capa (92 bayt, doğrulandı)`,
+  başarısız 0.
+- Çapa R2'den sunucuda `rclone copy` ile indirildi, iş istasyonuna alındı,
+  v0.4.1 CLI ile `kadran audit verify -anchors` çalıştırıldı:
+
+| Girdi | Beklenen | Çıkış | CLI'ın söylediği |
+|---|---|---|---|
+| R2'deki gerçek çapa | 0 | **0** | "1 çapa denetlendi … bütün çapalar zincirle tutuyor" |
+| hash'in ilk hanesi değiştirildi | 3 | **3** | "#171 çapayla çelişiyor — geçmiş sonradan yazılmış" |
+| 3. satırı (hash) silinmiş dosya | 3 | **3** | "bozuk çapa: … biçimi tanınmıyor" |
+| `seq` 100171 (zincirden uzun) | 3 | **3** | "zincir çapadan kısa (çapa #100171, zincir 171 kayıt)" |
+
+Kontrol grubu, denetimin gerçekten bir şey ölçtüğünü gösteriyor: aynı
+dosyanın tek hanesi değişince sonuç 0'dan 3'e dönüyor.
 
 ## K-127 — Kaldığı yerden devam eden yükleme, oturumdan ayrılan kurulum
 
@@ -10103,3 +10125,29 @@ zaten kullanıyor). O kullanıcının koyduğu bir bağ kendi yetkisinden fazlas
 açamaz. `kadran key`'in uzak betiği (`keys.go`, `remoteKeys`) de aynı dizinde
 root olarak yol üzerinden çalışıyor: `mktemp` kullanıyor, ama `[ -f ]`, `cat`
 ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.
+
+## K-138 — Yükseltme, kurulu seçimli birimleri güncellemiyordu
+
+**Tarih:** 4 Ekim 2026
+**Durum:** BULUNDU (canlıda, v0.4.1 yükseltmesinde); düzeltme v0.4.2 ile.
+
+### Nasıl bulundu
+
+v0.4.1 Hetzner'a `bootstrap` ile kuruldu (K-126, "Canlı ölçüm"). Daemon
+çapayı yazdı, ama ilk uzak yedek koşusu onu yüklemedi. Sunucudaki
+`/usr/local/lib/kadran/offsite/kadran-offsite.sh`, 3 Ekim 19:29'daki göçün
+kurduğu v0.4.0 betiğiydi: sha256 `352b55a4…`, v0.4.1'inki `ec643c46…`.
+v0.4.1 betiği elle kurulunca çapa yüklendi.
+
+### Sebep
+
+`install.sh` seçimli birimlere hiç dokunmuyor: uzak yedek, hacim yedeği ve
+bildirim. Onları ya kullanıcı elle kuruyor (`deploy/offsite/README.md`) ya
+da v0.4.0 göçü (`goc_secimli`). Normal yükseltme betikleri ve birim
+dosyalarını eski sürümde bırakıyor. Bu şimdiye kadar görünmedi, çünkü
+v0.4.0'dan sonra bu betiklerden yalnız biri değişti, o da K-126 C ile.
+
+Etkisi: yükseltilen her sunucuda çapalar sunucuda kalıyor, R2'ye gitmiyor.
+`audit verify -anchors` "hiçbir çapa denetlenmedi" deyip 1 ile çıkıyor; sessiz
+değil, ama sebebi göstermiyor. v0.4.1'in yayın notu "sonraki koşu yükler"
+diyordu. Not düzeltildi ve elle kopyalama adımı eklendi.

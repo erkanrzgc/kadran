@@ -206,6 +206,46 @@ dene "kurulu kaydı yoksa (eski sürümle başlamış göç) etkinler yine kurul
     "$(on z3) [ \"\$(goc_secimli_listesi | tr '\n' ' ')\" = 'offsite volume-backup ' ]"
 
 echo
+echo "== secimli_guncelle: yükseltme kurulu seçimlileri yeniliyor (K-138) =="
+# v0.4.1 canlıda bulundu: çapa yazıldı ama yüklenmedi, çünkü normal yükseltme
+# uzak yedek betiğini v0.4.0'da bırakmıştı. Root gerekmesin diye install'ın
+# -o/-g'si atılıyor; systemctl yalnız ne istendiğini günlüğe yazıyor.
+SECIMLI_PAKET=(kadran-notify.sh notify-README.md kadran-offsite.sh offsite-README.md
+    kadran-volume-backup.sh kadran-notify-failure@.service kadran-notify.service
+    kadran-notify.timer kadran-offsite.service kadran-offsite.timer
+    kadran-volume-backup.service kadran-volume-backup.timer)
+sg() {
+    local k f; k="$(kok "$1")"
+    mkdir -p "$k/stage" "$k/lib" "$k/etc/systemd/system"
+    for f in "${SECIMLI_PAKET[@]}"; do echo "YENİ $f" > "$k/stage/$f"; done
+}
+sgon() {
+    printf '%s export STAGE=%q LIB_DIR=%q; install(){ local a=(); while [ $# -gt 0 ]; do case "$1" in -o|-g) shift 2 ;; *) a+=("$1"); shift ;; esac; done; command install "${a[@]}"; }; systemctl(){ echo "$*" >> %q; }; ' \
+        "$(on "$1")" "$KOK/$1/stage" "$KOK/$1/lib" "$KOK/$1/systemctl.log"
+}
+sg y1; k="$KOK/y1"
+for f in kadran-offsite.service kadran-offsite.timer kadran-notify.service kadran-notify.timer; do
+    echo ESKİ > "$k/etc/systemd/system/$f"
+done
+mkdir -p "$k/lib/offsite" "$k/lib/notify"
+echo ESKİ > "$k/lib/offsite/kadran-offsite.sh"; echo ESKİ > "$k/lib/notify/kadran-notify.sh"
+dene "kurulu uzak yedek ve bildirimin betikleri, belgeleri ve birimleri yeni sürüme geçiyor" \
+    "$(sgon y1) secimli_guncelle; for f in lib/offsite/kadran-offsite.sh:kadran-offsite.sh lib/offsite/README.md:offsite-README.md etc/systemd/system/kadran-offsite.service:kadran-offsite.service etc/systemd/system/kadran-offsite.timer:kadran-offsite.timer lib/notify/kadran-notify.sh:kadran-notify.sh etc/systemd/system/kadran-notify-failure@.service:kadran-notify-failure@.service etc/systemd/system/kadran-notify.timer:kadran-notify.timer; do cmp -s \$KOK/\${f%%:*} \$KOK/stage/\${f#*:} || exit 1; done"
+dene "kurulu olmayan seçimli birim (hacim yedeği) kurulmuyor" \
+    "[ ! -e '$k/lib/offsite/kadran-volume-backup.sh' ] && [ ! -e '$k/etc/systemd/system/kadran-volume-backup.timer' ]"
+dene "systemd yeniden yükleniyor; zamanlayıcı açılmıyor, kapatılmıyor" \
+    "grep -qx daemon-reload '$k/systemctl.log' && ! grep -qvx daemon-reload '$k/systemctl.log'"
+sg y2
+dene "hiç seçimli birim yoksa hiçbir şey kurulmuyor, systemctl çağrılmıyor" \
+    "$(sgon y2) secimli_guncelle; [ -z \"\$(ls -A \$KOK/lib)\" ] && [ -z \"\$(ls -A \$KOK/etc/systemd/system)\" ] && [ ! -e \$KOK/systemctl.log ]"
+sg y3; ln -s /dev/null "$KOK/y3/etc/systemd/system/kadran-notify.timer"
+dene "maskelenmiş birim (/dev/null'a bağ) olduğu gibi kalıyor, kurulmuyor" \
+    "$(sgon y3) secimli_guncelle; [ \"\$(readlink \$KOK/etc/systemd/system/kadran-notify.timer)\" = /dev/null ] && [ ! -e \$KOK/lib/notify ]"
+IS=internal/bootstrap/install.sh
+dene "install.sh göç OLMAYAN yolda çağırıyor: tek yerde, goc_bitir'in else'inde, doğrulamadan önce" \
+    "b=\$(grep -n '^    goc_bitir\$' $IS | cut -d: -f1); s=\$(grep -n '^    secimli_guncelle\$' $IS | cut -d: -f1); v=\$(grep -n '^step \"Kurulum sonrası doğrulama\"\$' $IS | cut -d: -f1); [ -n \"\$b\" ] && [ -n \"\$s\" ] && [ -n \"\$v\" ] && [ \"\$(printf '%s\n' \"\$s\" | wc -l)\" = 1 ] && [ \"\$b\" -lt \"\$s\" ] && [ \"\$s\" -lt \"\$v\" ] && [ \"\$(sed -n \"\$((s - 1))p\" $IS)\" = else ]"
+
+echo
 echo "== goc_temizle: bir kalıntı silinemese de kurulum DÜŞMÜYOR =="
 # Kullanımdaki bir ağ ya da imaj set -e altında kurulumu düşürüyordu; kalıntı
 # kaldığı için sonraki her kurulum aynı satırda ölürdü (güvenlik incelemesi,

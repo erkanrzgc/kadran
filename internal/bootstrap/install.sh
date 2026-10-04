@@ -630,6 +630,8 @@ if [ "$GOC" -eq 1 ]; then
     goc_secimli
     goc_rota_bekle
     goc_bitir
+else
+    secimli_guncelle
 fi
 
 # ── Kurulum sonrası doğrulama ────────────────────────────────────────

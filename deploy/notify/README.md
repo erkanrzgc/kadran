@@ -92,3 +92,5 @@ sudo systemctl enable --now kadran-notify.timer
 - Bakım için bir çekirdek servisi iki dakikadan uzun durdurmak da
   "🔴 ÇALIŞMIYOR" mesajı üretir. Bu doğru: servis gerçekten çalışmıyor.
 - Bu kurulum `kadran bootstrap` tarafından yapılmıyor (uzak yedek gibi).
+  Kurulduktan sonra `bootstrap` (v0.4.2'den) betiği ve birimleri her
+  yükseltmede yeniler; zamanlayıcının açık/kapalı durumuna dokunmaz (K-138).

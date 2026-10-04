@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 
+	"filippo.io/age"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -42,6 +43,9 @@ type Server struct {
 	// davranış; kimlik bilgisi varken tehlikeli olurdu ve o birleşimi
 	// kurulum betiği engelliyor (repoallow.go).
 	allowedRepos []string
+
+	// vault, ortam değişkeni değerlerini açan kasa anahtarı (K-123).
+	vault age.Identity
 }
 
 // ServerOptions, executor sunucusunu yapılandırır.
@@ -65,6 +69,9 @@ type ServerOptions struct {
 	// Bu dizinin `nodev,nosuid` ile bağlanmış olması gerekir; sürücü bunu
 	// hacim bağlamadan önce çalışma anında DOĞRULAR (K-039).
 	VolumeRoot string
+
+	// Vault, kasa anahtarı (K-123). Zorunlu: kasasız executor yok.
+	Vault *age.X25519Identity
 }
 
 // DefaultVolumeRoot, uygulama hacimlerinin varsayılan köküdür.
@@ -77,6 +84,9 @@ const DefaultVolumeRoot = "/var/lib/kadran/volumes"
 func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Journal == nil {
 		return nil, errors.New("exec: denetim günlüğü zorunludur")
+	}
+	if opts.Vault == nil {
+		return nil, errors.New("exec: kasa anahtarı zorunludur")
 	}
 	if opts.DockerSocket == "" {
 		opts.DockerSocket = DefaultDockerSocket
@@ -95,6 +105,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		dockerSocket:    opts.DockerSocket,
 		allowedGitHosts: opts.AllowedGitHosts,
 		allowedRepos:    opts.AllowedRepos,
+		vault:           opts.Vault,
 		docker:          dockerdrv.New(opts.DockerSocket, opts.VolumeRoot),
 	}, nil
 }

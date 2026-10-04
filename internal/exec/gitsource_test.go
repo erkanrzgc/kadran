@@ -96,7 +96,7 @@ func TestGitHostWhitelistIsEnforced(t *testing.T) {
 // NewServer boş listeyi varsayılana çevirir. Bunu yapmasaydı, bir
 // yapılandırma hatası sessizce güvenlik açığına dönerdi.
 func TestEmptyWhitelistDoesNotMeanAllowAll(t *testing.T) {
-	srv, err := NewServer(ServerOptions{Journal: &Journal{}})
+	srv, err := NewServer(ServerOptions{Journal: &Journal{}, Vault: testVaultIdentity})
 	if err != nil {
 		t.Fatal(err)
 	}

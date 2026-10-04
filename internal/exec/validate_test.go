@@ -21,7 +21,7 @@ func validCreateRequest() *kadranv1.ContainerCreateRequest {
 			Replica: 0,
 		},
 		CommitSha: "a1b2c3d4e5f6",
-		Env:       map[string]string{"PORT": "3000"},
+		Env:       mustSealEnv("blog", map[string]string{"PORT": "3000"}),
 		Limits: &kadranv1.ResourceLimits{
 			MemoryBytes: 256 << 20,
 			CpuMillis:   500,
@@ -179,7 +179,7 @@ func TestEnvRejectsMalformedKeysAndNUL(t *testing.T) {
 	}
 	for ad, env := range cases {
 		t.Run(ad, func(t *testing.T) {
-			if err := validateEnv(env); err == nil {
+			if err := validateEnv(env, maxEnvBytes); err == nil {
 				t.Error("bozuk env kabul edildi")
 			}
 		})
@@ -190,13 +190,13 @@ func TestEnvRejectsMalformedKeysAndNUL(t *testing.T) {
 		tooMany["K"+strings.Repeat("x", i%40)+string(rune('a'+i%26))] = "v"
 	}
 	if len(tooMany) > maxEnvEntries {
-		if err := validateEnv(tooMany); err == nil {
+		if err := validateEnv(tooMany, maxEnvBytes); err == nil {
 			t.Error("sınırsız env kabul edildi")
 		}
 	}
 
 	big := map[string]string{"BIG": strings.Repeat("x", maxEnvBytes+1)}
-	if err := validateEnv(big); err == nil {
+	if err := validateEnv(big, maxEnvBytes); err == nil {
 		t.Error("aşırı büyük env kabul edildi")
 	}
 }
@@ -256,6 +256,7 @@ func newTestServer(t *testing.T) *Server {
 		Journal:      openTestJournal(t),
 		DockerSocket: filepath.Join(t.TempDir(), "yok.sock"),
 		VolumeRoot:   filepath.Join(t.TempDir(), "volumes"),
+		Vault:        testVaultIdentity,
 	})
 	if err != nil {
 		t.Fatalf("sunucu kurulamadı: %v", err)

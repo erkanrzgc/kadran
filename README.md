@@ -346,7 +346,7 @@ removed:
   CVE-2026-33748 are unrepresentable, independently of BuildKit's own validation.
 - **Every container is confined:** empty capability bounding set, `no-new-privileges`, a PID
   limit and memory/CPU/IO limits from the app definition.
-- **Privileged code is size-capped** at 2500 lines, measured from the *actual import graph*
+- **Privileged code is size-capped** at 2600 lines (raised from 2500 for the vault, K-123), measured from the *actual import graph*
   of `cmd/kadran-exec` (not a hand-kept path list a new package could walk around), comments
   excluded. CI fails the build otherwise: a least-privilege boundary that keeps growing
   stops being one.

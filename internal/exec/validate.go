@@ -140,7 +140,7 @@ func validateCreate(req *kadranv1.ContainerCreateRequest) error {
 		return fmt.Errorf("commit_sha biçimi geçersiz (%q): ^[0-9a-f]{7,64}$",
 			req.GetCommitSha())
 	}
-	if err := validateEnv(req.GetEnv()); err != nil {
+	if err := validateEnv(req.GetEnv(), maxSealedEnvBytes); err != nil {
 		return err
 	}
 	if err := validateLimits(req.GetLimits()); err != nil {
@@ -155,7 +155,7 @@ func validateCreate(req *kadranv1.ContainerCreateRequest) error {
 	return nil
 }
 
-func validateEnv(env map[string]string) error {
+func validateEnv(env map[string]string, maxTotal int) error {
 	if len(env) > maxEnvEntries {
 		return fmt.Errorf("env %d girdi, üst sınır %d", len(env), maxEnvEntries)
 	}
@@ -174,8 +174,8 @@ func validateEnv(env map[string]string) error {
 		}
 		total += len(k) + len(v)
 	}
-	if total > maxEnvBytes {
-		return fmt.Errorf("env toplamı %d bayt, üst sınır %d", total, maxEnvBytes)
+	if total > maxTotal {
+		return fmt.Errorf("env toplamı %d bayt, üst sınır %d", total, maxTotal)
 	}
 	return nil
 }

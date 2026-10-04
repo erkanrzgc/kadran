@@ -8224,6 +8224,71 @@ tahmin değil ölçüm, kural sessizce gevşetilmez). Kullanıcı (3 Ekim):
 değişir, öncesinde değil: ayrı bir commit'te açılan boşluk, gerekçesiz
 büyümeyi davet ederdi. Kalan pay ~30 satır.
 
+### Kararlar 3-6 (4 Ekim, kullanıcı)
+
+3. **Anahtar yedeği:** kullanıcının şifre yöneticisinde. Uzak yedek
+   anahtarıyla aynı yerde değil.
+4. **Kasa zorunlu.** v0.5.0'da düz metin kipi yok. Executor öneksiz
+   (şifresiz) değeri reddediyor. `age:` önekinin tek anlamı var.
+5. **Geri dönüş:** root olarak çalışan bir çözme betiği. Betik sunucudaki
+   anahtarla ve `age` aracıyla değerleri yeniden düz metne çeviriyor, sonra
+   v0.4.x kurulabiliyor. Düz kopya saklanmıyor.
+6. **Satır sınırı:** kasa 2600'ü aşarsa önce küçültülecek. Anahtar üretimi
+   executor'dan çıkıp kurulumda bir kez koşan ayrı bir araca taşınacak.
+   Yine aşarsa sınır 2650'ye çekilecek; ölçüm ve gerekçe buraya yazılacak.
+
+### Uygulama tasarımı (4 Ekim)
+
+**Değer kendi yerine bağlı.** Şifrelenen düz metin yalnız değer değil:
+`<app_id> NUL <AD> NUL <değer>`. Executor çözdükten sonra uygulama
+kimliğinin istekteki uygulamayla, adın haritadaki adla aynı olduğunu
+denetliyor; değilse reddediyor. Bağlama olmasaydı ele geçirilmiş bir daemon
+eski bir şifreli değeri kopyalayıp açtırabilirdi: A'nın `DB_PASSWORD`'unu
+A'nın günlüğe yazdığı bir değişkene ya da kendi uygulamasına koyardı. O
+durumda (2) "geçmiş değerler" iddiası çökerdi.
+
+Bağlamanın kapatmadığı: daemon A'yı A'nın şifreli değerleriyle başka bir
+imajdan da başlatabilir. İmaj yalnız izinli depolardan derleniyor
+(`--allow-repo`, K-056). Liste boşsa daemon her depodan derleyebilir; o
+zaman (2) yalnız "imajı sırrı dışarı yazmıyorsa" geçerli. **Depo beyaz
+listesi bu garantinin parçası.**
+
+**Göç işareti.** Düz değer `age:` önekinin yokluğundan tanınmıyor: `age:`
+ile başlayan gerçek bir eski değer atlanır, sonra executor reddederdi.
+Veritabanında tek satırlık bir işaret tutuluyor (`env_seal`: alıcı, zaman).
+İşaret yoksa açılışta BÜTÜN değerler şifreleniyor, boş değerler dahil.
+İşaret şu durumlarda yok: taze kurulum, eski sürümden yükseltme, eski bir
+yedeğin geri yüklenmesi, geri dönüş betiği. Geri dönüş betiği işareti
+siliyor; yeniden yükseltme değerleri tekrar şifreliyor. İşaretteki alıcı
+yapılandırılan alıcıdan farklıysa daemon açılmıyor. Kayıp anahtarın
+yerine sessizce yenisi üretilirse değerler çözülemez olurdu; bu durumda
+hata açılışta görünüyor, dağıtımda değil.
+
+Taşımadan sonra `wal_checkpoint(TRUNCATE)` ve `VACUUM` çalışıyor.
+`secure_delete` açık. Eski düz metin ne WAL'da ne boş sayfalarda kalıyor;
+kabul testi bunu `.db`, `-wal` ve `-shm` dosyalarında grep ile ölçüyor.
+
+**Anahtar yolları bayrak varsayılanı, ExecStart değil.** Executor
+`/var/lib/kadran-exec/vault.key` (root 0600), daemon `/etc/kadran/vault.pub`
+(root 0644; daemon yazamıyor) okuyor. Birim dosyalarındaki ExecStart
+değişmiyor: Hetzner'daki `--allow-repo` drop-in'i ExecStart'ı tümüyle
+yeniden yazıyor, yeni bir bayrak orada düşerdi (K-136'nın dersi).
+
+**Executor'ın payı (sayılan kod):**
+- yalnız X25519 kimliği;
+- şifreli değer base64 çözülmeden önce boyutla sınırlanıyor;
+- çözülmüş değer mevcut doğrulamadan geçiyor (NUL, 32 KiB toplam, ad);
+- öneksiz değer reddediliyor.
+
+**Anahtar üretimi** kadrand'de değil: kadrand root koşmamalı. Kurulum, root
+olarak üretici kodu bir kez çağırıyor. Özel anahtar kurulum çıktısına ve
+pakete girmiyor; kurulum yalnız yedekleme komutunu hatırlatıyor.
+
+**API değer döndürmüyor:** `app show --json` yalnız adları gösteriyor.
+Kırıcı değişiklik, bu yüzden v0.5.0. İstemciler değerleri okuyup geri
+göndermiyor (CLI ve masaüstü okundu); boş dönen değer sessiz silmeye yol
+açmıyor.
+
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026

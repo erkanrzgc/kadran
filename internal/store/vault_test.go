@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -279,5 +280,94 @@ func TestCreateAndUpdatePersistOnlySealedValues(t *testing.T) {
 	p := plain(t, got)
 	if p["A"] != bir || p["B"] != iki {
 		t.Errorf("açılan değerler %+v", p)
+	}
+}
+
+// Geri dönüş betiği koşmadan eski bir sürüm kurulup değer yazılırsa, o değer
+// işaret varken DÜZ kalıyordu (güvenlik incelemesi). Yeni açılış onu
+// mühürlemeli, zaten mühürlü olanlara dokunmamalı.
+func TestEnableVaultRepairsPlaintextWrittenUnderMarker(t *testing.T) {
+	ctx := context.Background()
+	s := newAppStore(t)
+	app := sampleApp("blog")
+	app.Env = map[string]string{"A": "1"}
+	if _, err := s.CreateApp(ctx, app); err != nil {
+		t.Fatal(err)
+	}
+	once, err := s.GetApp(ctx, "blog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE apps SET env_json = json_set(env_json, '$.B', 'eski-surum-duz-deger') WHERE id = 'blog'`); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := s.EnableVault(ctx, vaulttest.Sealer(t, storeTestIdentity))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("%d değer mühürlendi, 1 bekleniyordu", n)
+	}
+	got, err := s.GetApp(ctx, "blog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Env["A"] != once.Env["A"] {
+		t.Error("zaten mühürlü değer yeniden mühürlendi")
+	}
+	if p := plain(t, got); p["B"] != "eski-surum-duz-deger" || p["A"] != "1" {
+		t.Errorf("açılan değerler %+v", p)
+	}
+	if dbFilesContain(t, s, "eski-surum-duz-deger") {
+		t.Error("onarılan düz değer dosyada kaldı")
+	}
+}
+
+// Mühürleme ile temizlik arasında çökülürse (işaret yazıldı, temizlik
+// yazılmadı) bir sonraki açılış temizliği TAMAMLAMALI. Önce işaret
+// temizlikten önce yazılıyor ve açılış onu görünce hiçbir şey yapmıyordu.
+func TestEnableVaultFinishesInterruptedScrub(t *testing.T) {
+	ctx := context.Background()
+	s := newAppStore(t)
+	if _, err := s.CreateApp(ctx, sampleApp("eski")); err != nil {
+		t.Fatal(err)
+	}
+	var sb strings.Builder
+	var isaretler []string
+	for i := range 30 {
+		isaret := fmt.Sprintf("YARIM-TEMIZLIK-%02d-a51f", i)
+		isaretler = append(isaretler, isaret)
+		sb.WriteString(isaret + strings.Repeat("y", 1000-len(isaret)))
+	}
+	plantPlaintext(t, s, "eski", `{"TOKEN":"`+sb.String()+`"}`)
+	for _, q := range []string{
+		`DELETE FROM apps WHERE id = 'eski'`,
+		`UPDATE env_seal SET scrubbed_at = NULL`,
+		"PRAGMA wal_checkpoint(TRUNCATE)",
+	} {
+		if _, err := s.db.ExecContext(ctx, q); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !dbFilesContain(t, s, isaretler[0]) {
+		t.Fatal("KONTROL: silinen sır dosyada yok — ölçüm bir şey kanıtlamaz")
+	}
+
+	if _, err := s.EnableVault(ctx, vaulttest.Sealer(t, storeTestIdentity)); err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range isaretler {
+		if dbFilesContain(t, s, v) {
+			t.Fatalf("yarım kalan temizlik tamamlanmadı: %s dosyada", v)
+		}
+	}
+	var scrubbed sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT scrubbed_at FROM env_seal`).Scan(&scrubbed); err != nil {
+		t.Fatal(err)
+	}
+	if !scrubbed.Valid {
+		t.Error("temizlik işarete yazılmadı")
 	}
 }

@@ -8361,6 +8361,26 @@ parça dosyada kaldı, VACUUM'la **0**. WAL'ı kesen checkpoint de gerekli
 
 Site provanın her adımında 200 döndü; seçimli zamanlayıcılar kapalı kaldı.
 
+### Güvenlik incelemesi (4 Ekim, birleştirmeden önce)
+
+Bağımsız bir inceleme dalın farkını okudu. Executor'ın açma yolunda,
+anahtar üretiminde ve açık anahtar dosyasında sömürülebilir bir şey
+bulmadı: bağ, ad ve uygulama desenleri yüzünden çakışamıyor; hata ve
+günlük yalnız ad taşıyor; boyutlar çözmeden önce sınırlı. Bulduğu altı
+sorun ve yapılan:
+
+| # | Önem | Sorun | Yapılan |
+|---|---|---|---|
+| 1 | YÜKSEK | Geri dönüş betiği root olarak daemon'un dizininde `VACUUM INTO` ve `chmod` çalıştırıyordu; ikisi de sembolik bağ izliyor. Ele geçirilmiş daemon önceden bağ koyup root'a seçtiği yere veritabanı yazdırabilirdi (inceleme bunu aynı SQLite ile root olarak denedi). | sqlite3 artık `kadran` olarak koşuyor; root yalnız anahtarla çözüyor ve SQL'i kendi geçici dosyasından standart girdiye veriyor. `umask 077`. |
+| 2 | ORTA | sqlite3 hatadan sonra devam ediyordu: bir UPDATE düşse de işaret siliniyor, değerler mühürlü kalıyordu. | `-bail`, `busy_timeout`; sonuç ölçülüyor (mühürlü değer kalmadı mı, işaret gitti mi). Test: daemon'un koyduğu bir tetikleyici UPDATE'i düşürüyor, işaret ve değerler yerinde. |
+| 3 | ORTA | İşaret temizlikten önce yazılıyordu: arada çökülürse temizlik hiç tekrarlanmıyordu. Checkpoint'in "meşgul" sonucu okunmuyordu. Geri dönüşsüz eski sürümün yazdığı düz değer işaret altında düz kalıyordu. | `scrubbed_at` sütunu (göç 0009 yayımlanmadığı için yerinde değişti); temizlik ancak VACUUM ve checkpoint bitince yazılıyor, eksikse açılış tekrarlıyor; checkpoint sonucu okunuyor; işaret altındaki düz değerler mühürleniyor. İki test. |
+| 4 | ORTA | `kadran.db.pre-*` göç kopyaları düz ve daemon'un. | Kurulum her seferinde listeliyor ve silme komutunu basıyor. Otomatik silinmiyor: geri alma yolu olabilirler (kullanıcının kararı). |
+| 5 | ORTA | `--allow-repo` boşken (varsayılan) ele geçirilmiş daemon kendi seçtiği imajı bir uygulama olarak başlatıp değerlerini günlüğe yazdırabilir. | Kurulum uyarıyor. Hetzner'da liste tanımlı. |
+| 6 | DÜŞÜK | 13. kontrol dosyanın iznine bakıyor, dizinin yazılabilirliğine değil. | `/etc/kadran`'a kadran'ın yazamadığı da sınanıyor. |
+
+GCP'de rc1 eski 0009'u (sütunsuz) uygulamıştı; yalnız o test sunucusu için
+sütun elle eklendi.
+
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026

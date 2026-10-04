@@ -165,22 +165,32 @@ EOF
 
 mutate "göçten sonra VACUUM yok (düz metin dosyada kalır)" internal/store/vault.go $ST \
     'TestEnableVaultSealsPlaintextAndScrubsFiles' <<'EOF'
-s = s.replace('[]string{"VACUUM", "PRAGMA wal_checkpoint(TRUNCATE)"}', '[]string{"PRAGMA wal_checkpoint(TRUNCATE)"}', 1)
+s = s.replace('if _, err := s.db.ExecContext(ctx, "VACUUM"); err != nil {', 'if _, err := s.db.ExecContext(ctx, "SELECT 1"); err != nil {', 1)
 EOF
 
 mutate "göçten sonra WAL kesilmiyor" internal/store/vault.go $ST \
     'TestEnableVaultSealsPlaintextAndScrubsFiles' <<'EOF'
-s = s.replace('[]string{"VACUUM", "PRAGMA wal_checkpoint(TRUNCATE)"}', '[]string{"VACUUM"}', 1)
+s = s.replace('s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)")', 's.db.QueryRowContext(ctx, "SELECT 0, 0, 0")', 1)
+EOF
+
+mutate "yarım kalan temizlik bir sonraki açılışta tamamlanmıyor" internal/store/vault.go $ST \
+    'TestEnableVaultFinishesInterruptedScrub' <<'EOF'
+s = s.replace('\tif !marked || n > 0 || !scrubbed.Valid {', '\tif !marked || n > 0 || !scrubbed.Valid && false {', 1)
+EOF
+
+mutate "işaret varken eski sürümün düz değeri onarılmıyor" internal/store/vault.go $ST \
+    'TestEnableVaultRepairsPlaintextWrittenUnderMarker' <<'EOF'
+s = s.replace('\t\t\tcase !strings.HasPrefix(v, sealedHead):', '\t\t\tcase !marked && !strings.HasPrefix(v, sealedHead):', 1)
 EOF
 
 mutate "değişen alıcı kabul ediliyor" internal/store/vault.go $ST \
     'TestEnableVaultRefusesChangedRecipient' <<'EOF'
-s = s.replace('\t\tif recipient != sealer.Recipient() {', '\t\tif false {', 1)
+s = s.replace('\tcase marked && recipient != sealer.Recipient():', '\tcase false && recipient != sealer.Recipient():', 1)
 EOF
 
 mutate "işaretsiz mühürlü değer ikinci kez mühürleniyor" internal/store/vault.go $ST \
     'TestEnableVaultRefusesSealedValuesWithoutMarker' <<'EOF'
-s = s.replace('\t\t\tif strings.HasPrefix(v, sealedHead) {', '\t\t\tif false && strings.HasPrefix(v, sealedHead) {', 1)
+s = s.replace('\t\t\tcase !marked:', '\t\t\tcase false && !marked:', 1)
 EOF
 
 mutate "kasa işareti yazılmıyor (her açılışta yeniden mühürler)" internal/store/vault.go $ST \
@@ -234,6 +244,11 @@ EOF
 mutate "geri dönüş bağı denetlemiyor" internal/bootstrap/kasa-coz.sh ./internal/bootstrap/ \
     'TestKasaCozRejectsMovedValue' <<'EOF'
 s = s.replace('[[ "$acik" == "$bag"* ]] || die', 'true || die', 1)
+EOF
+
+mutate "-bail yok (düşen UPDATE'ten sonra işaret yine silinir)" internal/bootstrap/kasa-coz.sh ./internal/bootstrap/ \
+    'TestKasaCozStopsWhenAnUpdateFails' <<'EOF'
+s = s.replace('        sqlite3 -bail "$@"\n    else', '        sqlite3 "$@"\n    else', 1)
 EOF
 
 mutate "od -v yok (tekrar eden satırlar '*' ile kısalır)" internal/bootstrap/kasa-coz.sh ./internal/bootstrap/ \

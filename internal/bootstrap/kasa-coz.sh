@@ -12,17 +12,38 @@
 # Gerekenler: sqlite3 ve age (Debian/Ubuntu: apt-get install -y sqlite3 age).
 # Önce veritabanının bir kopyasını alır (<db>.kasa-oncesi-<zaman>).
 #
+# ── Root, daemon'un dosyalarına dokunmuyor ───────────────────────────
+#
+# Veritabanı, yan dosyaları ve yedeği daemon'un dizininde (kadran 0750).
+# Root orada dosya açsaydı, ele geçirilmiş bir daemon'un önceden koyduğu
+# sembolik bağ root'a seçtiği bir yere veritabanı içeriği yazdırırdı
+# (güvenlik incelemesi). sqlite3 bu yüzden kadran olarak koşuyor; root
+# yalnız kendi anahtarıyla çözüyor ve SQL'i kendi geçici dosyasından
+# standart girdiye veriyor.
+#
 # Veritabanından okunan uygulama ve değişken adları SQL'e girmeden önce
-# kurulumun kabul ettiği desenle sınanıyor: daemon'un yazdığı veriye root
-# olarak güvenilmiyor. Değer SQL'e onaltılık (X'..') olarak giriyor; kabuk ya
-# da SQL kaçışı yok, sondaki satır sonları da korunuyor.
+# kurulumun kabul ettiği desenle sınanıyor; değer SQL'e onaltılık (X'..')
+# olarak giriyor. `-bail`: bir UPDATE düşerse işaret silinmeden duruluyor,
+# transaction geri alınıyor.
 set -euo pipefail
+umask 077
 
 DB="${KADRAN_DB:-/var/lib/kadran/kadran.db}"
 KEY="${KADRAN_VAULT_KEY:-/var/lib/kadran-exec/vault.key}"
+MUHUR_BASI='age:YWdlLWVuY3J5cHRpb24ub3JnL3Yx' # önek + base64("age-encryption.org/v1")
 
 die() { echo "kadran-kasa-coz: $*" >&2; exit 1; }
 hex() { od -An -v -tx1 | tr -d ' \n'; }
+
+# kdb, sqlite3'ü kadran olarak çalıştırır (testte çağıranın kendisi olarak).
+kdb() {
+    if [ -n "${KADRAN_KASA_TEST:-}" ]; then
+        sqlite3 -bail "$@"
+    else
+        setpriv --reuid kadran --regid kadran --clear-groups \
+            env -i PATH="$PATH" sqlite3 -bail "$@"
+    fi
+}
 
 if [ -z "${KADRAN_KASA_TEST:-}" ]; then
     [ "$(id -u)" -eq 0 ] || die "root olarak çalıştırın"
@@ -32,10 +53,9 @@ if [ -z "${KADRAN_KASA_TEST:-}" ]; then
 fi
 command -v sqlite3 >/dev/null || die "sqlite3 yok: apt-get install -y sqlite3"
 command -v age >/dev/null || die "age yok: apt-get install -y age"
-[ -f "$DB" ] || die "veritabanı yok: $DB"
 [ -r "$KEY" ] || die "kasa anahtarı okunamıyor: $KEY"
 
-isaret="$(sqlite3 "$DB" "SELECT count(*) FROM env_seal")" \
+isaret="$(kdb "$DB" "SELECT count(*) FROM env_seal")" \
     || die "kasa işareti okunamadı (v0.5.0 öncesi bir veritabanı mı?)"
 if [ "$isaret" = 0 ]; then
     echo "kasa işareti yok: değerler zaten düz, yapılacak bir şey yok"
@@ -43,18 +63,17 @@ if [ "$isaret" = 0 ]; then
 fi
 
 yedek="$DB.kasa-oncesi-$(date -u +%Y%m%dT%H%M%SZ)"
-sqlite3 "$DB" "VACUUM INTO '$yedek'" || die "yedek alınamadı: $yedek"
-chmod 0600 "$yedek"
+kdb "$DB" "VACUUM INTO '$yedek'" || die "yedek alınamadı: $yedek"
 echo "yedek: $yedek"
 
 # Döngünün beslendiği sorgu başarısız olursa döngü sessizce boş geçer; işaret
 # silinir, değerler mühürlü kalırdı. Beklenen sayı önceden okunuyor.
-toplam="$(sqlite3 "$DB" "SELECT count(*) FROM apps a, json_each(a.env_json) e")" \
+toplam="$(kdb "$DB" "SELECT count(*) FROM apps a, json_each(a.env_json) e")" \
     || die "değerler sayılamadı"
 
 sql="$(mktemp)"
 trap 'rm -f "$sql"' EXIT
-echo "BEGIN IMMEDIATE;" > "$sql"
+printf 'PRAGMA busy_timeout = 5000;\nBEGIN IMMEDIATE;\n' > "$sql"
 n=0
 while IFS=$'\t' read -r app key val; do
     [[ "$app" =~ ^[a-z][a-z0-9-]{0,31}$ ]] || die "geçersiz uygulama adı veritabanında: $app"
@@ -67,11 +86,16 @@ while IFS=$'\t' read -r app key val; do
     printf "UPDATE apps SET env_json = json_set(env_json, '\$.\"%s\"', CAST(X'%s' AS TEXT)) WHERE id = '%s';\n" \
         "$key" "${acik#"$bag"}" "$app" >> "$sql"
     n=$((n + 1))
-done < <(sqlite3 -separator $'\t' "$DB" "SELECT a.id, e.key, e.value FROM apps a, json_each(a.env_json) e")
+done < <(kdb -separator $'\t' "$DB" "SELECT a.id, e.key, e.value FROM apps a, json_each(a.env_json) e")
 [ "$n" = "$toplam" ] || die "$toplam değerden $n tanesi okundu; hiçbir şey yazılmadı"
-echo "DELETE FROM env_seal;" >> "$sql"
-echo "COMMIT;" >> "$sql"
+printf 'DELETE FROM env_seal;\nCOMMIT;\n' >> "$sql"
 
-sqlite3 "$DB" < "$sql" || die "yazılamadı; veritabanı değişmedi (yedek: $yedek)"
+kdb "$DB" < "$sql" || die "yazılamadı; değişiklik geri alındı (yedek: $yedek)"
+
+# Sonuç ölçülüyor, varsayılmıyor: mühürlü değer kalmamalı, işaret gitmeli.
+kalan="$(kdb "$DB" "SELECT count(*) FROM apps a, json_each(a.env_json) e WHERE e.value LIKE '$MUHUR_BASI%'")"
+isaret="$(kdb "$DB" "SELECT count(*) FROM env_seal")"
+[ "$kalan" = 0 ] && [ "$isaret" = 0 ] \
+    || die "TUTARSIZ: $kalan mühürlü değer kaldı, işaret $isaret — v0.4.x KURMAYIN (yedek: $yedek)"
 echo "$n değer düz metne çevrildi, kasa işareti silindi."
 echo "Şimdi v0.4.x kurulabilir. Yedek düz değer içermiyor ama veritabanı artık içeriyor."

@@ -230,3 +230,31 @@ func TestKasaCozRejectsMovedValue(t *testing.T) {
 		t.Fatalf("taşınmış değer reddedilmedi: %v\n%s", err, out)
 	}
 }
+
+// Bir UPDATE düşerse (ele geçirilmiş daemon'un koyduğu bir tetikleyici, dolu
+// disk) betik işareti SİLMEDEN durmalı ve hiçbir değer değişmemeli. `-bail`
+// olmadan sqlite3 hatadan sonra devam ediyor: işaret siliniyor, değerler
+// mühürlü kalıyordu ve v0.4.x konteynerlere şifreli metni verirdi.
+func TestKasaCozStopsWhenAnUpdateFails(t *testing.T) {
+	needKasaTools(t)
+	o := kasaliVeritabani(t, map[string]map[string]string{"blog": {"A": "1", "B": "2"}})
+	db, err := sql.Open("sqlite", "file:"+o.db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TRIGGER engel BEFORE UPDATE ON apps BEGIN SELECT RAISE(ABORT, 'engellendi'); END`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	once := rawEnv(t, o.db, "blog")
+
+	if out, err := kasaCoz(t, o, o.key); err == nil {
+		t.Fatalf("düşen UPDATE'e rağmen başarılı oldu:\n%s", out)
+	}
+	if markerCount(t, o.db) != 1 {
+		t.Fatal("UPDATE düştüğü hâlde kasa işareti silindi")
+	}
+	if rawEnv(t, o.db, "blog") != once {
+		t.Fatal("değerler değişti")
+	}
+}

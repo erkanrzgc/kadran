@@ -26,6 +26,12 @@ while it creates a container.
   goes to `/etc/kadran/vault.pub`.
 - If the database is sealed to a different key (for example a lost key replaced by a new
   one), the daemon refuses to start instead of failing at the next deploy.
+- Scrubbing is recorded only once it finishes; a crash between sealing and scrubbing makes
+  the next start scrub again. A value an older version wrote under the seal marker is
+  sealed on the next start.
+- `bootstrap` warns when the executor has no `--allow-repo` list: without it a
+  compromised daemon could start an image of its choosing as an app and print that app's
+  values. It also lists the plaintext pre-migration copies on every run.
 
 ### Upgrading from v0.4.x
 
@@ -55,7 +61,10 @@ would hand the sealed text (`age:…`) to containers as the value.
 
 Stop `kadrand`, run `/usr/local/lib/kadran/kadran-kasa-coz.sh` as root (needs `sqlite3`
 and `age`), then install v0.4.x. The script copies the database first, writes the values
-back as plaintext and removes the seal marker; upgrading again reseals them.
+back as plaintext and removes the seal marker; upgrading again reseals them. It runs
+`sqlite3` as the `kadran` user and keeps root for decryption, so a symlink the daemon
+planted in its own directory cannot redirect root's writes. If an update fails, nothing is
+committed and the marker stays.
 
 ### What still holds plaintext
 

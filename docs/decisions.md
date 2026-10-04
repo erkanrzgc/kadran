@@ -8339,6 +8339,22 @@ parça dosyada kaldı, VACUUM'la **0**. WAL'ı kesen checkpoint de gerekli
 - çalışan konteynerin ortamı (`docker inspect`, konteynerdeki her süreç):
   C'nin işi.
 
+**GCP provası (4 Ekim, Debian 13, dalın rc1 derlemesi):**
+
+| Adım | Ölçülen |
+|---|---|
+| v0.4.1'de `hello`'ya benzersiz bir değer ve boş bir değer | düz değer WAL'da 1 kez (kontrol) |
+| rc1'e `bootstrap -sudo` | 19/19 kontrol, "YENİ KASA ANAHTARI" uyarısı; özel anahtar çıktıda 0 kez |
+| açılış | `kasa açık … muhurlenen_deger=2`; executor ve `vault.pub` aynı alıcı |
+| veritabanı dosyaları | `.db`, `-wal`, `-shm`'de 0; `kadran.db.pre-0009_env_seal`'da 1 (beklenen düz kopya) |
+| `deploy hello` | r3; konteynerde değer AÇILMIŞ, boş değer boş |
+| `app show -json` | adlar var, değerler boş |
+| `apt install sqlite3 age` (3.46.1, 1.2.1), `kadran-kasa-coz.sh` | 2 değer düz metne döndü, işaret silindi, önce yedek |
+| v0.4.1'e `bootstrap` | 17/17; `app show -json` değeri düz gösteriyor; `deploy` r4, konteynerde değer |
+| rc1'e yeniden | 19/19, aynı anahtar (uyarı yok), `muhurlenen_deger=2`, dosyalarda 0; `deploy` r5, konteynerde değer |
+
+Site provanın her adımında 200 döndü; seçimli zamanlayıcılar kapalı kaldı.
+
 ## K-124 — Özel depolardan derleme: tasarım taslağı
 
 **Tarih:** 1 Ekim 2026

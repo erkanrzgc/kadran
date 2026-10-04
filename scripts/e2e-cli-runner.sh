@@ -69,7 +69,11 @@ cleanup() {
 }
 trap cleanup EXIT
 
-chmod +x "$BIN/kadrand" "$BIN/kadran" "$BIN/kadran-connect"
+chmod +x "$BIN/kadrand" "$BIN/kadran" "$BIN/kadran-connect" "$BIN/kadran-vault"
+
+# Kasa zorunlu (K-123): daemon açık anahtarsız açılmıyor. Anahtarı kurulumun
+# kullandığı araç üretiyor; özel anahtar yalnız $WORK'te kalıyor.
+"$BIN/kadran-vault" -key "$WORK/vault.key" > "$WORK/vault.pub"
 
 echo "==> kadrand başlatılıyor (kullanıcı: $(id -un), grup: $(id -gn))"
 # Executor soketi kasten YOK: erişilemeyen executor'ın DOĞRULANAMADI olarak
@@ -79,6 +83,7 @@ echo "==> kadrand başlatılıyor (kullanıcı: $(id -un), grup: $(id -gn))"
     -db "$DB" \
     -client-group "$(id -gn)" \
     -exec-socket "$WORK/olmayan-exec.sock" \
+    -vault-recipient "$WORK/vault.pub" \
     > "$LOG" 2>&1 &
 DAEMON_PID=$!
 

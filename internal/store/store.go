@@ -31,6 +31,7 @@ import (
 	_ "modernc.org/sqlite" // sqlite sürücüsü
 
 	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/vault"
 )
 
 //go:embed migrations/*.sql
@@ -60,6 +61,10 @@ type Store struct {
 	// girmeden çözer. Zincir sırası doğruluğun parçası olduğu için
 	// burada ucuz olmak yerine bariz olmak tercih edilir.
 	appendMu sync.Mutex
+
+	// sealer, ortam değişkeni değerlerini mühürler (K-123). EnableVault
+	// açılışta kurar; kurulmadan değer yazılamaz.
+	sealer *vault.Sealer
 }
 
 // Open, veritabanını açar, göçleri uygular ve kullanıma hazır bir Store

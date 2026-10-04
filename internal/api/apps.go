@@ -128,7 +128,7 @@ func appToProto(a store.App) *kadranv1.App {
 			GitBranch:      a.GitBranch,
 			DockerfilePath: a.DockerfilePath,
 			BuildArgs:      a.BuildArgs,
-			Env:            a.Env,
+			Env:            envNamesOnly(a.Env),
 			Volumes:        volumesToProto(a.Volumes),
 			ContainerPort:  a.ContainerPort,
 			Replicas:       a.Replicas,
@@ -144,6 +144,21 @@ func appToProto(a store.App) *kadranv1.App {
 		UpdatedAt:    timestamppb.New(a.UpdatedAt),
 		ReleaseCount: a.ReleaseSeq,
 	}
+}
+
+// envNamesOnly, ortam değişkenlerinin yalnız ADLARINI döndürür (K-123).
+//
+// Depodaki değerler executor'ın anahtarıyla mühürlü; daemon onları açamaz
+// ve istemciye mühürlü metni vermenin de bir yararı yok. `app show --json`
+// bu yüzden değerleri boş gösteriyor. İstemciler değerleri okuyup geri
+// göndermiyor (CLI ve masaüstü okundu); boş değer sessiz silmeye yol
+// açmıyor.
+func envNamesOnly(env map[string]string) map[string]string {
+	out := make(map[string]string, len(env))
+	for k := range env {
+		out[k] = ""
+	}
+	return out
 }
 
 func releaseToProto(r store.Release) *kadranv1.Release {

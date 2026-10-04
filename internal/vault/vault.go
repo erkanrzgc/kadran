@@ -92,3 +92,34 @@ func (s *Sealer) SealEnv(appID string, env map[string]string) (map[string]string
 	}
 	return out, nil
 }
+
+// Ek boyutlar: age'in tek X25519 alıcılı başlığı ile yük nonce'u 184 bayt,
+// her 64 KiB'lık parçaya 16 baytlık etiket ekleniyor (ölçüldü: 1 parçada
+// toplam ek 200, 2 parçada 216).
+const (
+	sealHeaderLen = 184
+	sealChunkLen  = 64 << 10
+	sealTagLen    = 16
+)
+
+// PlainLen, mühürlü değerin düz uzunluğunu AÇMADAN hesaplar. Daemon
+// değerleri açamıyor ama boyut sınırı düz metin üzerinden işliyor; bu
+// yüzden güncellemede var olan değerlerin boyutu buradan okunuyor.
+// Executor açtıktan sonra asıl sınırı ayrıca uyguluyor.
+func PlainLen(appID, key, sealed string) (int, error) {
+	b64, ok := strings.CutPrefix(sealed, Prefix)
+	if !ok {
+		return 0, fmt.Errorf("%s mühürlü değil", key)
+	}
+	raw, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		return 0, fmt.Errorf("%s mühürlü değeri bozuk", key)
+	}
+	body := len(raw) - sealHeaderLen
+	chunks := (body + sealChunkLen + sealTagLen - 1) / (sealChunkLen + sealTagLen)
+	n := body - chunks*sealTagLen - len(appID) - len(key) - 2
+	if chunks < 1 || n < 0 {
+		return 0, fmt.Errorf("%s mühürlü değeri bozuk", key)
+	}
+	return n, nil
+}

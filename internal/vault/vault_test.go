@@ -137,3 +137,32 @@ func TestOpenHelperRejectsWrongIdentity(t *testing.T) {
 		t.Fatal("başka anahtar mühürlü değeri açtı")
 	}
 }
+
+// PlainLen, açmadan doğru boyutu vermeli; 64 KiB parça sınırının iki
+// yanında da. Yanlış olsaydı güncelleme meşru tanımları reddeder ya da
+// sınırı aşanları geçirirdi.
+func TestPlainLenMatchesSealedValue(t *testing.T) {
+	s := vaulttest.Sealer(t, vaulttest.NewIdentity(t))
+	for _, n := range []int{0, 1, 100, 32 << 10, 64<<10 - 20, 64 << 10, 64<<10 + 1, 130 << 10} {
+		sealed, err := s.Seal("blog", "DB_URL", strings.Repeat("x", n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := vault.PlainLen("blog", "DB_URL", sealed)
+		if err != nil {
+			t.Fatalf("n=%d: %v", n, err)
+		}
+		if got != n {
+			t.Errorf("n=%d: PlainLen %d", n, got)
+		}
+	}
+	for ad, v := range map[string]string{
+		"öneksiz":      "düz",
+		"bozuk base64": vault.Prefix + "!!!",
+		"çok kısa":     vault.Prefix + "YWdl",
+	} {
+		if _, err := vault.PlainLen("blog", "K", v); err == nil {
+			t.Errorf("%s kabul edildi", ad)
+		}
+	}
+}

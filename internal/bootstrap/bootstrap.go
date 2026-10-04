@@ -44,7 +44,7 @@ var installScript embed.FS
 // scripts/build-release.sh onu da aynı `bin/linux-<arch>/` dizinine
 // üretiyor, yani burada özel bir muamele gerekmiyor.
 var serverBinaries = []string{
-	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy",
+	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy", "kadran-vault",
 }
 
 // unitFiles, depodan kopyalanan systemd varlıkları.

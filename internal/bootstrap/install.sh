@@ -239,7 +239,7 @@ step "Binary'ler"
 
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
-for binary in kadrand kadran-exec kadran-connect kadran-caddy; do
+for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-vault; do
     [ -f "$STAGE/$binary" ] || die "$binary hazırlık dizininde yok"
 done
 
@@ -252,6 +252,8 @@ install -m 0755 -o root -g root "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect
 # taşıyor (K-050) ve çalıştıran kullanıcının onu değiştirebilmesi sınırı
 # anlamsız kılardı.
 install -m 0755 -o root -g root "$STAGE/kadran-caddy"  "$LIB_DIR/kadran-caddy"
+# Kasa anahtarını üretir (K-123). Yalnız kurulumda, root olarak koşuyor.
+install -m 0755 -o root -g root "$STAGE/kadran-vault"  "$LIB_DIR/kadran-vault"
 
 say "$LIB_DIR içine kuruldu"
 "$LIB_DIR/kadrand" -version || die "kadrand çalıştırılamadı — mimari uyuşmuyor olabilir"
@@ -268,6 +270,42 @@ systemd-tmpfiles --create /etc/tmpfiles.d/kadran.conf
 install -d -m 0750 -o kadran -g kadran "$STATE_DIR"
 
 say "/run/kadran, /run/kadran-exec, $STATE_DIR hazır"
+
+# ── Kasa (K-123) ─────────────────────────────────────────────────────
+#
+# Ortam değişkeni değerleri executor'ın anahtarıyla mühürleniyor. Anahtar
+# yoksa kadran-vault üretiyor (0600, var olanın üstüne asla yazmıyor) ve
+# yalnız AÇIK anahtarı basıyor: özel anahtar bu betiğin çıktısına ve
+# günlüğe hiç girmiyor. Daemon açık anahtarı /etc/kadran/vault.pub'dan
+# okuyor (root 0644; daemon yazamıyor).
+
+step "Kasa"
+
+VAULT_KEY=/var/lib/kadran-exec/vault.key
+VAULT_PUB=/etc/kadran/vault.pub
+vault_yeni=0
+[ -e "$VAULT_KEY" ] || vault_yeni=1
+vault_alici="$("$LIB_DIR/kadran-vault" -key "$VAULT_KEY")"     || die "kasa anahtarı hazırlanamadı (yukarıda). Bozuksa yedeğinden geri koyun: $VAULT_KEY — üstüne yenisi YAZILMADI."
+case "$vault_alici" in
+    age1*) ;;
+    *) die "kadran-vault beklenmeyen çıktı verdi" ;;
+esac
+# Yeni anahtar diske inmeden daemon değerleri ona mühürlerse ve makine o
+# arada çökerse anahtar boş kalabilir: değerler kurtarılamazdı.
+sync
+install -d -m 0755 -o root -g root /etc/kadran
+vault_gecici="$(mktemp)"
+printf '%s
+' "$vault_alici" > "$vault_gecici"
+install -m 0644 -o root -g root "$vault_gecici" "$VAULT_PUB"
+rm -f "$vault_gecici"
+say "kasa alıcısı: $vault_alici"
+if [ "$vault_yeni" -eq 1 ]; then
+    say "⚠ YENİ KASA ANAHTARI üretildi. Ortam değişkenleri bununla şifreleniyor;"
+    say "  anahtar kaybolursa değerler KURTARILAMAZ. Şifre yöneticinize kaydedin:"
+    say "    sudo cat $VAULT_KEY"
+    say "  Uzak yedek anahtarıyla aynı yere koymayın."
+fi
 
 # ── systemd birimleri ────────────────────────────────────────────────
 
@@ -799,6 +837,25 @@ if setpriv --reuid kadran-caddy --regid kadran-caddy --clear-groups \
     check_fail "ters vekil exec.sock'u okuyabiliyor — ayrıcalıklı executor internete bakıyor"
 else
     check_ok "ters vekil exec.sock'a erişemiyor"
+fi
+
+# 12. Kasa anahtarı yalnız root'un (K-123). Daemon okuyabilseydi kasa
+#     hiçbir şeyi korumazdı. Kontrol: root okuyabiliyor, yani "kadran
+#     okuyamıyor" sonucu dosyanın yokluğundan gelmiyor.
+vault_kip="$(stat -c '%a %U:%G' "$VAULT_KEY" 2>/dev/null || echo yok)"
+if [ "$vault_kip" = "600 root:root" ] && test -r "$VAULT_KEY"    && ! setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_KEY" 2>/dev/null; then
+    check_ok "kasa anahtarı yalnız root'un ($vault_kip), kadran okuyamıyor"
+else
+    check_fail "kasa anahtarı $vault_kip — 600 root:root olmalı ve kadran okuyamamalı"
+fi
+
+# 13. Kasanın açık anahtarı root'un; daemon okuyabiliyor ama değiştiremiyor.
+#     Değiştirebilseydi yeni değerleri kendi anahtarına mühürletebilirdi.
+pub_kip="$(stat -c '%a %U:%G' "$VAULT_PUB" 2>/dev/null || echo yok)"
+if [ "$pub_kip" = "644 root:root" ]    && setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_PUB" 2>/dev/null    && ! setpriv --reuid kadran --regid kadran --clear-groups test -w "$VAULT_PUB" 2>/dev/null; then
+    check_ok "kasa açık anahtarı $pub_kip, kadran okuyor ama yazamıyor"
+else
+    check_fail "kasa açık anahtarı $pub_kip — 644 root:root olmalı"
 fi
 
 [ "$fail" -eq 0 ] || die "kurulum sonrası doğrulama başarısız — yukarıya bakın"

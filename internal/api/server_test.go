@@ -20,6 +20,7 @@ func newTestServer(t *testing.T) (*Server, *store.Store) {
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
+	enableTestVault(t, db)
 	t.Cleanup(func() { _ = db.Close() })
 
 	// grpc.NewClient tembeldir: bağlantı ilk RPC'de kurulur, bu yüzden
@@ -58,6 +59,7 @@ func TestNewServerRequiresExecutor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("veritabanı açılamadı: %v", err)
 	}
+	enableTestVault(t, db)
 	defer func() { _ = db.Close() }()
 
 	if _, err := NewServer(ServerOptions{Store: db, Rollout: &fakeRollout{}}); err == nil {

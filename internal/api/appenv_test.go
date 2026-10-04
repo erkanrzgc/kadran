@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/vault/vaulttest"
 )
 
 // TestAppEnvRoundTripsThroughProto, env'in proto ↔ depo çevrimlerinde
@@ -26,10 +27,16 @@ func TestAppEnvRoundTripsThroughProto(t *testing.T) {
 		t.Fatalf("proto → depo çevriminde env kayboldu: %+v", app.Env)
 	}
 
+	// Depo → proto: ADLAR kalıyor, değerler dönmüyor (K-123). Ad da
+	// kaybolsaydı `app show` hangi değişkenlerin tanımlı olduğunu
+	// gösteremezdi.
 	back := appToProto(app)
-	if back.GetSpec().GetEnv()["DATABASE_URL"] != "postgres://db/blog" {
-		t.Errorf("depo → proto çevriminde env kayboldu: %+v",
-			back.GetSpec().GetEnv())
+	v, ok := back.GetSpec().GetEnv()["DATABASE_URL"]
+	if !ok {
+		t.Fatalf("depo → proto çevriminde env adı kayboldu: %+v", back.GetSpec().GetEnv())
+	}
+	if v != "" {
+		t.Errorf("depo → proto çevrimi değer döndürdü: %q", v)
 	}
 }
 
@@ -293,7 +300,7 @@ func TestUpdateAppWarnsEnvNeedsRedeploy(t *testing.T) {
 // yazmayip yalnizca uyari donduren bir uygulama da yukaridaki testi
 // gecerdi.
 func TestUpdateAppEnvActuallyPersists(t *testing.T) {
-	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	srv, db := newUpdateServer(t, &fakeReconciler{})
 	mustCreateApp(t, srv, testSpec())
 
 	update(t, srv, &kadranv1.UpdateAppRequest{
@@ -301,9 +308,18 @@ func TestUpdateAppEnvActuallyPersists(t *testing.T) {
 		Env:   map[string]string{"DATABASE_URL": "postgres://db/blog"},
 	})
 
-	got := mustGetSpec(t, srv, "blog")
-	if got.GetEnv()["DATABASE_URL"] != "postgres://db/blog" {
-		t.Errorf("env yazilmadi: %+v", got.GetEnv())
+	// API değer döndürmüyor (K-123); yazıldığı DEPODAN, mühür açılarak
+	// doğrulanıyor.
+	app, err := db.GetApp(t.Context(), "blog")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotApp, gotKey, val := vaulttest.Open(t, apiTestIdentity, app.Env["DATABASE_URL"])
+	if gotApp != "blog" || gotKey != "DATABASE_URL" || val != "postgres://db/blog" {
+		t.Errorf("env yazilmadi: (%q, %q, %q)", gotApp, gotKey, val)
+	}
+	if mustGetSpec(t, srv, "blog").GetEnv()["DATABASE_URL"] != "" {
+		t.Error("GetApp mühürlü ya da açık bir değer döndürdü")
 	}
 }
 

@@ -209,14 +209,14 @@ func TestShippedTargetsMatchTheBuildScripts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(release), "SERVER_BINARIES=(kadrand kadran-exec kadran-connect)") {
+	if !strings.Contains(string(release), "SERVER_BINARIES=(kadrand kadran-exec kadran-connect kadran-vault)") {
 		t.Fatal("build-release.sh'in sunucu ikili listesi değişti — targets'ı güncelleyin")
 	}
 	names := map[string]bool{}
 	for _, tg := range targets {
 		names[tg.Name] = true
 	}
-	for _, n := range []string{"kadran", "kadrand", "kadran-exec", "kadran-connect", "kadran-caddy"} {
+	for _, n := range []string{"kadran", "kadrand", "kadran-exec", "kadran-connect", "kadran-vault", "kadran-caddy"} {
 		if !names[n] {
 			t.Errorf("%s taranmıyor", n)
 		}

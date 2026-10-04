@@ -269,6 +269,14 @@ func applyVolumes(app *App, set []VolumeMount, remove []string) {
 // özellikle sinsi olurdu: bir sonraki sürüm yine "r1" adını alır ve hostta
 // VAR OLAN konteynerleri adresler — iki farklı commit, aynı ad.
 func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, error) {
+	// Yeni değerler birleştirmeden ÖNCE mühürleniyor: birleşik haritada
+	// hangisinin düz olduğu artık bilinmezdi (K-123).
+	sealed, err := s.sealEnv(id, upd.Env)
+	if err != nil {
+		return App{}, err
+	}
+	upd.Env = sealed
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return App{}, fmt.Errorf("güncelleme transaction'ı açılamadı: %w", err)

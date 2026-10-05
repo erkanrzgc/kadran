@@ -520,7 +520,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KADRAN_VERSION: v0.5.0   # the release your server runs
+      KADRAN_VERSION: v0.5.1   # the release your server runs
     steps:
       - name: Download and verify kadran
         working-directory: ${{ runner.temp }}

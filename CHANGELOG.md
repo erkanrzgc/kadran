@@ -3,7 +3,12 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.5.1 — 2026-10-05
+
+Hardening of the client's SSH files (K-139, K-140). Same protocol and the same reverse
+proxy binary as v0.5.0: upgrading with `bootstrap` does not restart the proxy (measured on
+the test server). If you edited `/var/lib/kadran-client/.ssh` as root, `chown` it back to
+`kadran-client` first (see the behaviour change below).
 
 ### Security
 

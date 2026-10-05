@@ -10392,7 +10392,7 @@ uzak yedek bir kez koşturuldu: 3 çapa yüklendi, başarısız 0.
 ## K-139 — authorized_keys ve .ssh kadran-client olarak yazılıyor
 
 **Tarih:** 5 Ekim 2026
-**Durum:** KOD BİTTİ (PR #7, dal `k139-ak-istemci`). GCP'de ölçüldü (5 Ekim,
+**Durum:** DÜZELTİLDİ, v0.5.1 ile yayınlandı (PR #7, `ca7bc5b`). GCP'de ölçüldü (5 Ekim,
 aşağıda "GCP provası"); Hetzner'da değil, ayrı onay bekliyor.
 
 ### Neden
@@ -10529,7 +10529,7 @@ GCP (v0.5.0 → `d9a48b9` derlemesi, `bootstrap -sudo`, K-139 + K-140 birlikte):
 ## K-140 — `kadran key` authorized_keys'e kadran-client olarak dokunuyor
 
 **Tarih:** 5 Ekim 2026
-**Durum:** KOD BİTTİ (dal `k139-ak-istemci`, K-139 ile aynı PR #7). GCP'de
+**Durum:** DÜZELTİLDİ, v0.5.1 ile yayınlandı (K-139 ile aynı PR #7). GCP'de
 ölçüldü (5 Ekim, K-139'un "GCP provası"); Hetzner'da değil.
 
 ### Neden

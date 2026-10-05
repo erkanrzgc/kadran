@@ -10392,8 +10392,8 @@ uzak yedek bir kez koşturuldu: 3 çapa yüklendi, başarısız 0.
 ## K-139 — authorized_keys ve .ssh kadran-client olarak yazılıyor
 
 **Tarih:** 5 Ekim 2026
-**Durum:** KOD BİTTİ (dal `k139-ak-istemci`). Canlıda değil; GCP provası ve
-iki sunucudaki salt okuma ön kontrolü kullanıcı onayı bekliyor.
+**Durum:** KOD BİTTİ (PR #7, dal `k139-ak-istemci`). GCP'de ölçüldü (5 Ekim,
+aşağıda "GCP provası"); Hetzner'da değil, ayrı onay bekliyor.
 
 ### Neden
 
@@ -10487,6 +10487,30 @@ koşusunu da yapıyor ve sudo yoksa duruyor. `go test ./internal/bootstrap/`
 geçiyor; metin testi artık çağrıların `kadran-client kadran-client` ile
 yapıldığını da arıyor.
 
+### Ön kontrol ve GCP provası (5 Ekim, kullanıcı onayıyla)
+
+Salt okuma, iki sunucu: `/var/lib/kadran-client`, `.ssh` ve authorized_keys
+hepsi `kadran-client:kadran-client`, `.ssh` 700, dosya 600; `setpriv` var
+(Hetzner util-linux 2.39.3, GCP 2.41.5); `fs.protected_hardlinks=1`. Yeni kod
+ikisinde de "root'a ait" diye durmaz.
+
+GCP (v0.5.0 → `d9a48b9` derlemesi, `bootstrap -sudo`, K-139 + K-140 birlikte):
+
+- Kurulum 19/19 ✓, 0 ✗, uyarı yok. Ters vekil `1b77b9f9bffd` (v0.5.0 ile aynı),
+  yeniden başlamadı; kurulum boyunca saniyelik yoklama 31/31 200.
+- authorized_keys yeniden yazıldı (mtime kurulum anı): `kadran-client` 600,
+  `.ssh` 700, sıralı içerik özeti önce/sonra aynı (`87ff4634e71a2f10`).
+- `kadran status kadran-client@…` yeni sürümle bağlandı; sshd günlüğünde
+  "bad ownership" ya da "authentication refused" yok.
+- K-140: geçici bir anahtar `key add -deploy hello -sudo` ile eklendi (dosya
+  `kadran-client` 600 kaldı), `key list` iki satır gösterdi, o anahtarla SSH
+  kimlik doğrulaması geçti; `key remove` sonrası aynı anahtar "Permission denied",
+  dosya özeti yine `87ff4634e71a2f10`, yönetici girişi ve uygulama 200.
+- Geçişin gerçek sunucuda olduğu: aynı uzak betik `sudo` ile, root'a ait 0600
+  geçici bir dosyada koşturuldu. Kullanıcı `kadran-client` iken "okunamıyor",
+  çıkış 7. KONTROL olarak kullanıcı `root` iken (geçiş yok) dosyanın içeriği
+  basıldı, çıkış 0. Geçici dosyalar silindi.
+
 ### Ölçülmeyenler ve kapsam dışı
 
 - `env -i` ve `cd /` hijyen. Kaldırılsalar hiçbir senaryo kızarmaz; mutant
@@ -10505,8 +10529,8 @@ yapıldığını da arıyor.
 ## K-140 — `kadran key` authorized_keys'e kadran-client olarak dokunuyor
 
 **Tarih:** 5 Ekim 2026
-**Durum:** KOD BİTTİ (dal `k139-ak-istemci`, K-139 ile aynı PR). Canlıda değil;
-GCP provası K-139 ile birlikte yapılacak (kullanıcı onayı verildi, 5 Ekim).
+**Durum:** KOD BİTTİ (dal `k139-ak-istemci`, K-139 ile aynı PR #7). GCP'de
+ölçüldü (5 Ekim, K-139'un "GCP provası"); Hetzner'da değil.
 
 ### Neden
 

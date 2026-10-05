@@ -2,9 +2,11 @@ package bootstrap
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,9 +40,13 @@ func keyServer(t *testing.T, sudo bool) (KeyOptions, string, string) {
 	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	oldSSH, oldPath := sshCommand, clientAuthorizedKeys
+	// Betik dosyanın sahibine geçiyor (K-140). Burada sahibi testi koşturan
+	// kullanıcı: root'suz koşuda geçiş hiç olmaz, root'ta kendine geçer.
+	// Sayısal: konteynerde uid'in adı olmayabilir.
+	oldSSH, oldPath, oldUser := sshCommand, clientAuthorizedKeys, keysOwner
 	sshCommand, clientAuthorizedKeys = fake, filepath.Join(dir, "authorized_keys")
-	t.Cleanup(func() { sshCommand, clientAuthorizedKeys = oldSSH, oldPath })
+	keysOwner = strconv.Itoa(os.Getuid())
+	t.Cleanup(func() { sshCommand, clientAuthorizedKeys, keysOwner = oldSSH, oldPath, oldUser })
 
 	adminLine, _, adminFP := testKey(t, 10, "erkan@dizustu")
 	admin := `command="/usr/local/lib/kadran/kadran-connect",restrict ` + adminLine + "\n"
@@ -152,7 +158,7 @@ func TestRemoteRemoveOfAMissingKey(t *testing.T) {
 	_, missing, _ := testKey(t, 15, "")
 
 	code, err := sshRun(context.Background(), opts.options(),
-		privileged(opts.options(), remoteKeys, "remove", clientAuthorizedKeys, missing), nil, nil)
+		privileged(opts.options(), remoteKeys, keysOwner, "remove", clientAuthorizedKeys, missing), nil, nil)
 	if err != nil || code != keysNotFound {
 		t.Fatalf("olmayan anahtarın silinmesi: kod %d (%v), beklenen %d", code, err, keysNotFound)
 	}
@@ -180,12 +186,142 @@ func TestRemoteScriptRevalidatesTheLine(t *testing.T) {
 		`command="/usr/local/lib/kadran/kadran-connect -deploy=site",restrict ` + evilBody,
 	} {
 		code, err := sshRun(context.Background(), opts.options(),
-			privileged(opts.options(), remoteKeys, "add", clientAuthorizedKeys, line, ciBody), nil, nil)
+			privileged(opts.options(), remoteKeys, keysOwner, "add", clientAuthorizedKeys, line, ciBody), nil, nil)
 		if err != nil || code == 0 {
 			t.Errorf("uzak betik %q satırını kabul etti (kod %d, %v)", line, code, err)
 		}
 	}
 	if readKeys(t) != before {
 		t.Fatalf("reddedilen satırlar dosyayı değiştirdi:\n%s", readKeys(t))
+	}
+}
+
+// TestKeyOpsRunAsClientUnderRealSudo (K-140): uzak betik root olarak
+// başlıyor ama authorized_keys'e kadran-client olarak dokunuyor. Dosya o
+// kullanıcının dizininde; o kullanıcı dosyanın yerine bir bağ koyabilir.
+// Root olarak `[ -f ]`, `cat`, `chown --reference` bağı izliyordu: bağın
+// hedefi root'un bir dosyasıysa root onu okuyup listeye ve yeni dosyaya
+// taşıyordu.
+//
+// Gerçek sudo, gerçek bir kullanıcı ve setpriv ister: yalnız CI'da
+// (KADRAN_TEST_REAL_SUDO). Sahte ssh `sudo -n --` önekini DÜŞÜRMÜYOR.
+func TestKeyOpsRunAsClientUnderRealSudo(t *testing.T) {
+	if os.Getenv("KADRAN_TEST_REAL_SUDO") == "" {
+		t.Skip("yalnızca CI'da (KADRAN_TEST_REAL_SUDO): parolasız sudo ister")
+	}
+	sudo := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("sudo", append([]string{"-n", "--"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("sudo %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	const user = "kadran-k140-test"
+	_ = exec.Command("sudo", "-n", "--", "userdel", user).Run()
+	_ = exec.Command("sudo", "-n", "--", "groupdel", user).Run()
+	sudo("useradd", "--system", "--user-group", "--no-create-home", "--shell", "/usr/sbin/nologin", user)
+	t.Cleanup(func() {
+		_ = exec.Command("sudo", "-n", "--", "userdel", user).Run()
+		_ = exec.Command("sudo", "-n", "--", "groupdel", user).Run()
+	})
+	uid, err := strconv.Atoi(strings.TrimSpace(sudo("id", "-u", user)))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Kök dizin 0755: o kullanıcı yalnız kendi ev dizinine yazabilir.
+	dir, err := os.MkdirTemp("", "kadran-k140-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = exec.Command("sudo", "-n", "--", "rm", "-rf", dir).Run() })
+	if err := os.Chmod(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ev := filepath.Join(dir, "ev")
+	sudo("install", "-d", "-o", user, "-g", user, "-m", "0755", ev)
+	sudo("install", "-d", "-o", user, "-g", user, "-m", "0700", filepath.Join(ev, ".ssh"))
+	ak := filepath.Join(ev, ".ssh", "authorized_keys")
+
+	adminLine, _, adminFP := testKey(t, 20, "erkan@dizustu")
+	kaynak := filepath.Join(dir, "kaynak")
+	admin := `command="/usr/local/lib/kadran/kadran-connect",restrict ` + adminLine + "\n"
+	if err := os.WriteFile(kaynak, []byte(admin), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sudo("install", "-o", user, "-g", user, "-m", "0600", kaynak, ak)
+
+	gizli := filepath.Join(dir, "gizli")
+	sudo("sh", "-c", "printf 'GIZLI-K140\n' > '"+gizli+"' && chmod 0600 '"+gizli+"'")
+
+	fake := filepath.Join(dir, "ssh")
+	if err := os.WriteFile(fake, []byte("#!/usr/bin/env bash\nexec bash -c \"${@: -1}\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	oldSSH, oldPath, oldUser := sshCommand, clientAuthorizedKeys, keysOwner
+	sshCommand, clientAuthorizedKeys, keysOwner = fake, ak, user
+	t.Cleanup(func() { sshCommand, clientAuthorizedKeys, keysOwner = oldSSH, oldPath, oldUser })
+	opts := KeyOptions{Host: "root@sunucu", Sudo: true}
+	ctx := context.Background()
+
+	sahibi := func() (int, os.FileMode) {
+		t.Helper()
+		out := strings.Fields(sudo("stat", "-c", "%u %a", ak))
+		u, _ := strconv.Atoi(out[0])
+		m, _ := strconv.ParseUint(out[1], 8, 32)
+		return u, os.FileMode(m)
+	}
+
+	// Yaşam döngüsü: dosya o kullanıcının ve 0600 kalıyor.
+	ciLine, ciBody, ciFP := testKey(t, 21, "ci")
+	if _, err := AddDeployKey(ctx, opts, []byte(ciLine), []string{"site"}, ""); err != nil {
+		t.Fatalf("ekleme: %v", err)
+	}
+	if u, m := sahibi(); u != uid || m != 0o600 {
+		t.Fatalf("ekleme sonrası sahip %d izin %o; beklenen %d 600", u, m, uid)
+	}
+	keys, err := ListKeys(ctx, opts)
+	if err != nil || len(keys) != 2 || keys[0].Fingerprint != adminFP || keys[1].Fingerprint != ciFP {
+		t.Fatalf("liste: %+v, %v", keys, err)
+	}
+	if _, err := RemoveKey(ctx, opts, ciFP); err != nil {
+		t.Fatalf("silme: %v", err)
+	}
+	if strings.Contains(sudo("cat", ak), ciBody) {
+		t.Fatal("satır silinmedi")
+	}
+
+	// Bağ: hedef root'un 0600 dosyası. Kullanıcı olarak okunamaz; ne liste
+	// ne ekleme onu açmamalı, bağ yerinde kalmalı.
+	sudo("ln", "-sfn", gizli, ak)
+	if keys, err := ListKeys(ctx, opts); err == nil {
+		t.Fatalf("bağlı authorized_keys listelendi (root olarak okundu): %+v", keys)
+	} else if strings.Contains(err.Error(), "GIZLI") || !strings.Contains(err.Error(), "okunamıyor") {
+		t.Fatalf("hata iletisi sırrı taşıyor ya da sebebi söylemiyor: %v", err)
+	}
+	evLine, _, _ := testKey(t, 22, "ev")
+	if _, err := AddDeployKey(ctx, opts, []byte(evLine), []string{"site"}, ""); err == nil {
+		t.Fatal("bağlı authorized_keys'e ekleme yapıldı")
+	}
+	if got := sudo("stat", "-c", "%F", ak); !strings.Contains(got, "symbolic link") {
+		t.Fatalf("bağ yerinde değil: %q", got)
+	}
+	if got := sudo("cat", gizli); got != "GIZLI-K140\n" {
+		t.Fatalf("root'un dosyası değişti: %q", got)
+	}
+	// grep -r yinelemede bağları izlemiyor: yalnız gerçek dosyalara bakar.
+	// 1 "eşleşme yok" demek; başka her şey ölçümün kendisini bozar.
+	out, err := exec.Command("sudo", "-n", "--", "grep", "-rl", "GIZLI-K140", ev).CombinedOutput()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
+		t.Fatalf("sır kullanıcının dizinine düştü ya da arama bozuk (%v): %s", err, out)
+	}
+
+	// Hiç kurulmamış sunucu: kullanıcı yok. Geçiş setpriv'in kendi hatasıyla
+	// değil, kurulumu öneren iletiyle durmalı.
+	keysOwner = "kadran-yok-boyle-k140"
+	if _, err := ListKeys(ctx, opts); err == nil || !strings.Contains(err.Error(), "önce kadran bootstrap") {
+		t.Fatalf("olmayan kullanıcı: %v", err)
 	}
 }

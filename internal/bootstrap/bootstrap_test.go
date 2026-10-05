@@ -330,12 +330,16 @@ func TestInstallScriptForcesConnectCommand(t *testing.T) {
 
 	// Satırın kendisi yonetici_satiri_yaz'da ve davranışı
 	// scripts/check-install-sh.sh'ta GERÇEKTEN koşturuluyor; burada yalnızca
-	// kurulumun o fonksiyonu doğru dizinle çağırdığı.
+	// kurulumun o fonksiyonu doğru dizinle ve doğru kimlikle çağırdığı: yazma
+	// kadran-client olarak yapılıyor (K-139).
 	if !strings.Contains(text, `"command=\"$lib_dir/kadran-connect\",restrict $key"`) {
 		t.Error("authorized_keys satırı zorlanmış komut içermiyor")
 	}
-	if !strings.Contains(text, `yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR"`) {
-		t.Error("kurulum yönetici satırını yonetici_satiri_yaz ile yazmıyor")
+	if !strings.Contains(text, `yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR" kadran-client kadran-client`) {
+		t.Error("kurulum yönetici satırını yonetici_satiri_yaz ile kadran-client olarak yazmıyor")
+	}
+	if !strings.Contains(text, `ssh_dizini_hazirla "$CLIENT_HOME/.ssh" kadran-client kadran-client`) {
+		t.Error("kurulum .ssh'yi ssh_dizini_hazirla ile kadran-client olarak kurmuyor")
 	}
 	if !strings.Contains(text, "restrict") {
 		t.Error("authorized_keys satırında `restrict` yok")

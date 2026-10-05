@@ -186,4 +186,9 @@ func TestClientPathsMatchInstallScript(t *testing.T) {
 	if !strings.Contains(text, `auth_file="$CLIENT_HOME/.ssh/authorized_keys"`) {
 		t.Error("install.sh authorized_keys yolunu değiştirmiş")
 	}
+	// Uzak betik dosyaya bu kullanıcı olarak dokunuyor (K-140); kurulumun
+	// oluşturduğu hesapla aynı olmalı.
+	if !strings.Contains(text, `--comment "Kadran istemci erişimi" `+keysOwner+"\n") {
+		t.Errorf("install.sh istemci hesabını %q adıyla kurmuyor", keysOwner)
+	}
 }

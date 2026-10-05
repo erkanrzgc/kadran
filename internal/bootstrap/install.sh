@@ -55,7 +55,64 @@ vekil_parmak_izi() {
         md5sum | cut -d' ' -f1
 }
 
+# istemci_olarak <kullanıcı> <grup> <komut|fonksiyon> [argüman…] — komutu
+# o kullanıcının kimliğiyle koşturur (K-139).
+#
+# Root kadran-client'ın ev dizininde yol üzerinden iş yapınca, o kullanıcı
+# denetim ile kullanım arasında bir adı bağa çevirebilir; root da bağın
+# hedefinde çalışır (K-137'nin kalan penceresi). Aynı iş o kullanıcının
+# kimliğiyle yapılınca bir bağ, onun zaten erişebildiğinden fazlasını açmaz.
+#
+# Fonksiyon verilirse `declare -f` ile yeni bir bash'e taşınır. Yalnız o
+# fonksiyon gider, `die` gitmez: çağrılan fonksiyon çıkış koduyla konuşur.
+# Ortam `env -i` ile boşaltılır ve çalışma dizini `/` olur; root'un
+# dizinleri (`$STAGE` 0700) o kullanıcıya kapalı.
+#
+# Root'suzken yalnız kendi kimliğine "geçer" (sınama düzeneği:
+# scripts/check-install-sh.sh). Başka bir kullanıcı istenirse 1 döner.
+istemci_olarak() {
+    local kullanici="$1" grup="$2" onek=() fonk
+    shift 2
+    if [ "$(id -u)" -eq 0 ]; then
+        onek=(setpriv --reuid "$kullanici" --regid "$grup" --clear-groups --)
+    elif [ "$kullanici" != "$(id -u)" ] && [ "$kullanici" != "$(id -un 2>/dev/null)" ]; then
+        return 1
+    fi
+    if declare -F "$1" >/dev/null; then
+        fonk="$1"
+        shift
+        set -- bash -c "$(declare -f "$fonk"); $fonk \"\$@\"" "$fonk" "$@"
+    fi
+    (cd / && ${onek[@]+"${onek[@]}"} env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin "$@")
+}
+
+# ak_yaz_istemci <authorized_keys> <anahtar gövdesi> <satır> — kadran-client
+# olarak koşar (istemci_olarak). Gövdeyi taşıyan eski satırı atar, satırı
+# ekler ve dosyayı yerine koyar.
+#
+# Bağ denetimini ÇAĞIRAN yapar. Denetimden sonra konan bir bağ burada yalnız
+# o kullanıcının erişebildiği bir dosyaya ulaşır; root'un dosyasında okuma
+# düşer (5). Yeni içerik bütünüyle bir `mktemp` kopyasına (O_EXCL, tahmin
+# edilemez ad, 0600) yazılır ve `mv -T` ile yerine konur: dosya o kullanıcının
+# olarak doğar, sahiplik aktarmaya gerek kalmaz.
+#
+# Çıkış: 0 tamam, 4 geçici dosya açılamadı, 5 okunamadı, 6 yazılamadı,
+# 7 yerine konamadı.
+ak_yaz_istemci() {
+    local f="$1" govde="$2" satir="$3" gecici rc=0
+    gecici="$(mktemp "$f.XXXXXX")" || return 4
+    if [ -e "$f" ]; then
+        # grep'in 1'i "hiç satır kalmadı" (dosyada yalnız bu anahtar
+        # vardı); 2 okuma hatası. Yutulsa dağıtım satırları sessizce düşerdi.
+        grep -vF -- "$govde" "$f" > "$gecici" || rc=$?
+        [ "$rc" -le 1 ] || { rm -f "$gecici"; return 5; }
+    fi
+    printf '%s\n' "$satir" >> "$gecici" || { rm -f "$gecici"; return 6; }
+    mv -fT "$gecici" "$f" || { rm -f "$gecici"; return 7; }
+}
+
 # yonetici_satiri_yaz <authorized_keys> <açık anahtar dosyası> <LIB_DIR>
+#                     <kullanıcı> <grup>
 # — yönetici anahtarının zorlanmış komutlu satırını yazar.
 #
 # Anahtar dosyası TEK satır olmalı, yoksa 1 döner ve dosyaya dokunmaz:
@@ -68,22 +125,17 @@ vekil_parmak_izi() {
 # satırları — `kadran key` ile eklenen dağıtım anahtarları dahil —
 # KORUNUR. Tek-satır denetimi de sınanıyor: scripts/check-install-sh.sh.
 #
-# Root burada kadran-client'ın dizinine yazıyor (K-137). Eskiden sabit adlı
-# `$auth_file.yeni`'ye yazıp `>>` ile ekliyordu: o kullanıcı `.yeni`'nin
-# ya da authorized_keys'in yerine bir bağ koyup root'a istediği dosyaya
-# KENDİ satırlarını yazdırabiliyordu (yeniden üretildi). Şimdi dosya bağsa
-# ya da düzenli dosya değilse DURUR; yeni içerik bütünüyle `mktemp`
-# kopyasına (O_EXCL, tahmin edilemez ad, 0600) yazılır ve `mv -T` ile
-# yerine konur. Yol üzerinden hiçbir yazma yok; sabit bağ da izlenmez.
+# authorized_keys kadran-client'ın dizininde. Root yalnız anahtar dosyasını
+# okur (`$STAGE` ona kapalı) ve bağ denetimini yapar: dosya bağsa ya da
+# düzenli dosya değilse DURUR (K-137). Yazma o kullanıcı olarak yapılır
+# (ak_yaz_istemci, K-139); denetimden sonra konan bir bağ root'a hiçbir şey
+# yaptıramaz. Root'a ait bir authorized_keys'i o kullanıcı okuyamaz: kurulum
+# durur ve dosyaya dokunulmaz.
 #
 # Fonksiyon kurulumda `|| die` bağlamında çağrılıyor; orada `set -e`
 # KAPALI. Bu yüzden her adım kendi hatasını denetliyor.
-#
-# Kalan dar pencere goc_yerinde_sed'inkiyle aynı sınıftan (K-136): denetim
-# ile kullanım arasında dizinin sahibi adları değiştirebilir. Kapatmak
-# yazmayı kadran-client olarak yapmayı ister; ayrı iş (K-137).
 yonetici_satiri_yaz() {
-    local auth_file="$1" key_file="$2" lib_dir="$3" key key_body gecici rc=0
+    local auth_file="$1" key_file="$2" lib_dir="$3" kullanici="$4" grup="$5" key key_body rc=0
     [ "$(grep -c '' "$key_file")" -eq 1 ] || return 1
     key="$(cat "$key_file")"
     # CR denetimi Linux'ta anlamlı (kurulum ve CI orada). Git Bash hem
@@ -94,34 +146,31 @@ yonetici_satiri_yaz() {
     if [ -L "$auth_file" ] || { [ -e "$auth_file" ] && [ ! -f "$auth_file" ]; }; then
         die "$auth_file sembolik bağ ya da düzenli dosya değil; yazılmadı"
     fi
-    gecici="$(mktemp "$auth_file.XXXXXX")" || die "$auth_file için geçici dosya açılamadı"
-    if [ -e "$auth_file" ]; then
-        # grep'in 1'i "hiç satır kalmadı" (dosyada yalnız bu anahtar
-        # vardı); 2 okuma hatası. Yutulsa dağıtım satırları sessizce düşerdi.
-        grep -vF -- "$key_body" "$auth_file" > "$gecici" || rc=$?
-        [ "$rc" -le 1 ] || { rm -f "$gecici"; die "$auth_file okunamadı; dokunulmadı"; }
-    fi
-    printf '%s\n' "command=\"$lib_dir/kadran-connect\",restrict $key" >> "$gecici" \
-        || { rm -f "$gecici"; die "$gecici yazılamadı"; }
-    if [ -e "$auth_file" ]; then
-        { chown --reference="$auth_file" "$gecici" && chmod --reference="$auth_file" "$gecici"; } \
-            || { rm -f "$gecici"; die "$auth_file'ın sahipliği kopyaya aktarılamadı"; }
-    fi
-    mv -fT "$gecici" "$auth_file" || { rm -f "$gecici"; die "$auth_file yerine konamadı"; }
+    istemci_olarak "$kullanici" "$grup" ak_yaz_istemci "$auth_file" "$key_body" \
+        "command=\"$lib_dir/kadran-connect\",restrict $key" || rc=$?
+    case "$rc" in
+    0) ;;
+    5) die "$auth_file $kullanici olarak okunamadı; dokunulmadı (sahibi $kullanici değilse düzeltin: chown $kullanici: $auth_file)" ;;
+    *) die "$auth_file $kullanici olarak yazılamadı (çıkış $rc); dokunulmadı" ;;
+    esac
 }
 
 # ssh_dizini_hazirla <dizin> <kullanıcı> <grup> — `.ssh`'yi kurar ya da
-# sahipliğini ve iznini düzeltir.
+# iznini düzeltir.
 #
 # Dizin kadran-client'ın ev dizininde; o kullanıcı `.ssh`'nin yerine bir
-# bağ koyabilir. `install -d` bağı İZLER ve HEDEF dizini o kullanıcıya
-# 0700 ile devreder (Debian 13'te ölçüldü). Bu yüzden bağsa DURUR (K-137).
+# bağ koyabilir. Root'un `install -d`'si bağı İZLER ve HEDEF dizini o
+# kullanıcıya 0700 ile devreder (Debian 13'te ölçüldü). Bu yüzden bağsa
+# DURUR (K-137) ve dizini o kullanıcı olarak kurar (K-139): denetimden sonra
+# konan bir bağın hedefi onun değilse izin değişikliği düşer. Dizin o
+# kullanıcının olarak doğar; sahibi başkasıysa kurulum durur.
 ssh_dizini_hazirla() {
     local dizin="$1" kullanici="$2" grup="$3"
     if [ -L "$dizin" ]; then
         die "$dizin sembolik bağ; .ssh kurulmadı"
     fi
-    install -d -m 0700 -o "$kullanici" -g "$grup" "$dizin"
+    istemci_olarak "$kullanici" "$grup" install -d -m 0700 "$dizin" \
+        || die "$dizin $kullanici olarak kurulamadı (yukarıdaki hataya bakın; sahibi $kullanici değilse: chown $kullanici: $dizin)"
 }
 
 # kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — kadran-connect'e
@@ -538,12 +587,13 @@ ssh_dizini_hazirla "$CLIENT_HOME/.ssh" kadran-client kadran-client
 # docs/decisions.md K-003'te: unix soketi yönlendirmesini açmak
 # `port-forwarding` iznini gerektirir ve bu, istemciye sunucudaki HER TCP
 # portuna tünel açma yetkisi verirdi.
+#
+# Yazma kadran-client olarak yapılıyor; dosya o kullanıcının ve 0600 doğuyor
+# (K-139). Root burada artık `chown -R` ve `chmod` koşturmuyor: `chmod` bağı
+# izliyordu ve denetimden sonraki pencerede ulaşılabilirdi (K-137).
 auth_file="$CLIENT_HOME/.ssh/authorized_keys"
-yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR" \
+yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR" kadran-client kadran-client \
     || die "istemci açık anahtarı tek satır olmalı — ikinci satır zorlanmış komutsuz bir anahtar olurdu"
-
-chown -R kadran-client:kadran-client "$CLIENT_HOME/.ssh"
-chmod 0600 "$auth_file"
 
 # sshd drop-in.
 #

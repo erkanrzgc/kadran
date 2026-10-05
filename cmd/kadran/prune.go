@@ -27,9 +27,9 @@ import (
 // positional'da durur): `kadran prune -dry-run pfprobe`.
 func (c *cli) runPrune(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("prune")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
-	dry := fs.Bool("dry-run", false, "ne silineceğini yazar, SİLMEZ")
-	all := fs.Bool("all", false, "bütün uygulamaları budar")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	dry := fs.Bool("dry-run", false, "prints what would be removed, REMOVES NOTHING")
+	all := fs.Bool("all", false, "prunes every app")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -39,12 +39,12 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 	var appID, target string
 	switch {
 	case *all && fs.NArg() > 1:
-		return c.usageError("kullanım: kadran prune -all [hedef]")
+		return c.usageError("usage: kadran prune -all [target]")
 	case *all:
 		target = fs.Arg(0)
 	case fs.NArg() < 1 || fs.NArg() > 2:
-		return c.usageError("kullanım: kadran prune <uygulama> [hedef] " +
-			"ya da kadran prune -all [hedef] — seçenekler uygulama adından ÖNCE gelir")
+		return c.usageError("usage: kadran prune <app> [target] " +
+			"or kadran prune -all [target] — options go BEFORE the app name")
 	default:
 		appID, target = fs.Arg(0), fs.Arg(1)
 	}
@@ -69,7 +69,7 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 			ids = append(ids, a.GetSpec().GetAppId())
 		}
 		if len(ids) == 0 {
-			fmt.Fprintln(c.stdout, "budanacak uygulama yok")
+			fmt.Fprintln(c.stdout, "no apps to prune")
 			return exitOK
 		}
 	}
@@ -102,7 +102,7 @@ func (c *cli) pruneEach(
 			if !all {
 				return c.fail(fmt.Errorf("prune: %w", err))
 			}
-			fmt.Fprintf(c.stderr, "%s: atlandı — %v\n", id, err)
+			fmt.Fprintf(c.stderr, "%s: skipped — %v\n", id, err)
 			failed++
 			continue
 		}
@@ -132,32 +132,32 @@ func (c *cli) pruneEach(
 // konteyner silindi" operatöre en çok merak ettiği şeyi söylemiyor:
 // geri alma hâlâ çalışıyor mu, ve disk gerçekten toparlandı mı?
 func (c *cli) printPrune(resp *kadranv1.PruneAppResponse, dry bool) {
-	head := "budandı"
+	head := "pruned"
 	if dry {
-		head = "DENEME (hiçbir şey silinmedi)"
+		head = "DRY RUN (nothing removed)"
 	}
 
 	pruned := resp.GetPrunedReleases()
 	if len(pruned) == 0 {
-		fmt.Fprintf(c.stdout, "%s: budanacak eski sürüm yok · korunan: %s\n",
+		fmt.Fprintf(c.stdout, "%s: no old releases to prune · kept: %s\n",
 			resp.GetAppId(), strings.Join(resp.GetKeptReleases(), ", "))
 		return
 	}
 
-	fmt.Fprintf(c.stdout, "%s %s · %d konteyner · sürümler: %s\n",
+	fmt.Fprintf(c.stdout, "%s %s · %d containers · releases: %s\n",
 		resp.GetAppId(), head, resp.GetContainersRemoved(),
 		strings.Join(pruned, ", "))
 
 	// Korunanlar SEBEBİYLE yazılıyor: "r5 korundu" ile "r5 (geri alma
 	// hedefi)" arasındaki fark, operatörün rollback'in hâlâ hızlı
 	// olduğunu bilmesi.
-	fmt.Fprintf(c.stdout, "  korunan: %s\n",
+	fmt.Fprintf(c.stdout, "  kept: %s\n",
 		strings.Join(resp.GetKeptReleases(), ", "))
 
 	if resp.GetImagesUntouched() {
 		fmt.Fprintf(c.stdout,
-			"  ⚠ İMAJLARA DOKUNULMADI — `kadran/%s:<sha>` imajları yerinde.\n"+
-				"    Silinmiş uygulamaların yetim konteynerleri de kapsam dışı.\n",
+			"  ⚠ IMAGES NOT TOUCHED — the `kadran/%s:<sha>` images are still there.\n"+
+				"    Orphan containers of deleted apps are out of scope too.\n",
 			resp.GetAppId())
 	}
 }

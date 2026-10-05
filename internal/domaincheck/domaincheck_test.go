@@ -60,7 +60,7 @@ func TestCheck(t *testing.T) {
 			name:   "hiç kayıt yok",
 			res:    fakeResolver{},
 			domain: "yok.example.com", server: "203.0.113.10",
-			want: Stop, reason: "kaydı yok",
+			want: Stop, reason: "no A or AAAA record",
 		},
 		{
 			name: "A doğru, AAAA başka yeri gösteriyor ve sunucunun IPv6'sı biliniyor",
@@ -88,32 +88,32 @@ func TestCheck(t *testing.T) {
 			name:   "sunucu Tailscale/CGNAT adresinde: genel adres bilinmiyor",
 			res:    fakeResolver{"ip4 app.example.com": {ips: []string{"198.51.100.7"}}},
 			domain: "app.example.com", server: "100.101.102.103",
-			want: Warn, reason: "genel adres",
+			want: Warn, reason: "public address",
 		},
 		{
 			name:   "sunucu özel ağda",
 			res:    fakeResolver{"ip4 app.example.com": {ips: []string{"198.51.100.7"}}},
 			domain: "app.example.com", server: "10.0.0.5",
-			want: Warn, reason: "genel adres",
+			want: Warn, reason: "public address",
 		},
 		{
 			name:   "yerel hedef: sunucu adresi yok",
 			res:    fakeResolver{"ip4 app.example.com": {ips: []string{"198.51.100.7"}}},
 			domain: "app.example.com", server: "",
-			want: Warn, reason: "genel adres",
+			want: Warn, reason: "public address",
 		},
 		{
 			// Yerel hedefte bile "hiç kayıt yok" kesin bir bilgi.
 			name:   "yerel hedef ve hiç kayıt yok",
 			res:    fakeResolver{},
 			domain: "yok.example.com", server: "",
-			want: Stop, reason: "kaydı yok",
+			want: Stop, reason: "no A or AAAA record",
 		},
 		{
 			name:   "DNS sorgusu bozuk: dağıtımı engellemez",
 			res:    fakeResolver{"ip4 app.example.com": {err: errServfail}, "ip6 app.example.com": {err: errServfail}},
 			domain: "app.example.com", server: "203.0.113.10",
-			want: Warn, reason: "sorgu",
+			want: Warn, reason: "lookup did not complete",
 		},
 		{
 			name:   ".localhost denetlenmez",

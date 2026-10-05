@@ -70,7 +70,7 @@ const (
 const remoteKeys = `set -euo pipefail
 kullanici="$1"; op="$2"; f="$3"
 if [ "$(id -u)" = 0 ]; then
-    hedef="$(id -u "$kullanici" 2>/dev/null)" || { echo "$kullanici kullanıcısı yok — sunucu kurulmamış mı? önce kadran bootstrap" >&2; exit 3; }
+    hedef="$(id -u "$kullanici" 2>/dev/null)" || { echo "user $kullanici does not exist — is the server installed? run kadran bootstrap first" >&2; exit 3; }
     if [ "$hedef" != 0 ]; then
         cd /
         exec setpriv --reuid "$kullanici" --regid "$kullanici" --clear-groups -- \
@@ -78,8 +78,8 @@ if [ "$(id -u)" = 0 ]; then
     fi
 fi
 admin_re='^command="/usr/local/lib/kadran/kadran-connect",restrict '
-[ -f "$f" ] || { echo "authorized_keys yok ($f) — sunucu kurulmamış mı? önce kadran bootstrap" >&2; exit 3; }
-[ -r "$f" ] || { echo "authorized_keys $kullanici olarak okunamıyor ($f) — sahibi $kullanici değilse: chown $kullanici: $f" >&2; exit 7; }
+[ -f "$f" ] || { echo "no authorized_keys ($f) — is the server installed? run kadran bootstrap first" >&2; exit 3; }
+[ -r "$f" ] || { echo "authorized_keys cannot be read as $kullanici ($f) — if it is not owned by $kullanici: chown $kullanici: $f" >&2; exit 7; }
 replace() {
     chmod 600 "$1"
     mv -fT "$1" "$f"
@@ -91,9 +91,9 @@ list)
 add)
     line="$4"; body="$5"
     re='^command="/usr/local/lib/kadran/kadran-connect -deploy=[a-z][a-z0-9-]*(,[a-z][a-z0-9-]*)*",restrict [a-z0-9@.-]+ [A-Za-z0-9+/]+=*( [A-Za-z0-9@._+-]+)?$'
-    [[ "$line" =~ $re ]] || { echo "geçersiz anahtar satırı" >&2; exit 2; }
-    case "$line" in *",restrict $body"|*",restrict $body "*) ;; *) echo "satır anahtar gövdesini taşımıyor" >&2; exit 2 ;; esac
-    if grep -qF -- "$body" "$f"; then echo "bu anahtar zaten kayıtlı" >&2; exit 4; fi
+    [[ "$line" =~ $re ]] || { echo "invalid key line" >&2; exit 2; }
+    case "$line" in *",restrict $body"|*",restrict $body "*) ;; *) echo "the line does not carry the key body" >&2; exit 2 ;; esac
+    if grep -qF -- "$body" "$f"; then echo "this key is already registered" >&2; exit 4; fi
     tmp="$(mktemp "$f.XXXXXX")"
     trap 'rm -f "$tmp"' EXIT
     cat "$f" > "$tmp"
@@ -103,12 +103,12 @@ add)
 remove)
     body="$4"
     body_re='^[a-z0-9@.-]+ [A-Za-z0-9+/]+=*$'
-    [[ "$body" =~ $body_re ]] || { echo "geçersiz anahtar gövdesi" >&2; exit 2; }
-    grep -qF -- "$body" "$f" || { echo "anahtar bulunamadı" >&2; exit 6; }
+    [[ "$body" =~ $body_re ]] || { echo "invalid key body" >&2; exit 2; }
+    grep -qF -- "$body" "$f" || { echo "key not found" >&2; exit 6; }
     tmp="$(mktemp "$f.XXXXXX")"
     trap 'rm -f "$tmp"' EXIT
     grep -vF -- "$body" "$f" > "$tmp" || [ $? -eq 1 ]
-    grep -qE "$admin_re" "$tmp" || { echo "son yönetici anahtarı kaldırılamaz" >&2; exit 5; }
+    grep -qE "$admin_re" "$tmp" || { echo "the last admin key cannot be removed" >&2; exit 5; }
     replace "$tmp"
     ;;
 *)
@@ -186,14 +186,14 @@ func parsePublicKey(content []byte) (publicKey, error) {
 func fingerprintOf(typ, b64 string) (string, error) {
 	blob, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return "", fmt.Errorf("anahtar gövdesi base64 değil: %w", err)
+		return "", fmt.Errorf("key body is not base64: %w", err)
 	}
 	if len(blob) < 4 {
-		return "", errors.New("anahtar gövdesi çok kısa")
+		return "", errors.New("key body too short")
 	}
 	n := binary.BigEndian.Uint32(blob[:4])
 	if uint64(n) > uint64(len(blob)-4) || string(blob[4:4+n]) != typ {
-		return "", fmt.Errorf("anahtar gövdesi %s türünde değil", typ)
+		return "", fmt.Errorf("key body is not of type %s", typ)
 	}
 	// Türden sonrası uzunluk önekli alanlar dizisi (ed25519: anahtar;
 	// rsa: e, n; ecdsa: eğri, nokta). Dizi gövdeyi TAM tüketmeli: kesik ya
@@ -201,16 +201,16 @@ func fingerprintOf(typ, b64 string) (string, error) {
 	rest, parts := blob[4+n:], 0
 	for len(rest) > 0 {
 		if len(rest) < 4 {
-			return "", errors.New("anahtar gövdesi kesik")
+			return "", errors.New("key body is truncated")
 		}
 		m := binary.BigEndian.Uint32(rest[:4])
 		if uint64(m) > uint64(len(rest)-4) {
-			return "", errors.New("anahtar gövdesi kesik")
+			return "", errors.New("key body is truncated")
 		}
 		rest, parts = rest[4+m:], parts+1
 	}
 	if parts == 0 {
-		return "", errors.New("anahtar gövdesinde anahtar yok")
+		return "", errors.New("key body holds no key")
 	}
 	sum := sha256.Sum256(blob)
 	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:]), nil
@@ -233,7 +233,7 @@ func deployLine(k publicKey, apps []string, name string) (string, error) {
 	comment := k.Comment
 	if name != "" {
 		if !commentPattern.MatchString(name) {
-			return "", fmt.Errorf("ad %q geçersiz: harf, rakam ve @._+- olabilir, en fazla %d karakter",
+			return "", fmt.Errorf("invalid name %q: letters, digits and @._+- only, at most %d characters",
 				name, keysMaxComment)
 		}
 		comment = name
@@ -350,7 +350,7 @@ func RemoveKey(ctx context.Context, opts KeyOptions, fingerprint string) (Author
 		}
 		return k, nil
 	}
-	return AuthorizedKey{}, fmt.Errorf("anahtar bulunamadı: %s — `kadran key list` parmak izlerini gösterir", fingerprint)
+	return AuthorizedKey{}, fmt.Errorf("key not found: %s — `kadran key list` shows the fingerprints", fingerprint)
 }
 
 // runKeys, uzak betiği root olarak koşturur ve çıkış kodunu hataya çevirir.
@@ -363,7 +363,7 @@ func runKeys(ctx context.Context, opts KeyOptions, stdout io.Writer, args ...str
 	}
 	code, err := sshRun(ctx, o, privileged(o, remoteKeys, append([]string{keysOwner}, args...)...), nil, stdout)
 	if err != nil {
-		return fmt.Errorf("anahtar işlemi: %w", err)
+		return fmt.Errorf("key operation: %w", err)
 	}
 	msg := strings.TrimSpace(stderr.String())
 	switch code {
@@ -372,11 +372,11 @@ func runKeys(ctx context.Context, opts KeyOptions, stdout io.Writer, args ...str
 	case keysDuplicate, keysLastAdmin, keysNotFound, keysNoFile, keysBadLine, keysUnreadable:
 		return errors.New(msg)
 	case sshTransportFailure:
-		return fmt.Errorf("sunucuya bağlanılamadı: %s", msg)
+		return fmt.Errorf("could not connect to the server: %s", msg)
 	default:
 		if opts.Sudo && msg != "" {
-			return fmt.Errorf("anahtar işlemi başarısız (kod %d; -sudo parola SORMAZ, NOPASSWD gerekir): %s", code, msg)
+			return fmt.Errorf("key operation failed (code %d; -sudo NEVER asks for a password, NOPASSWD is needed): %s", code, msg)
 		}
-		return fmt.Errorf("anahtar işlemi başarısız (kod %d): %s", code, msg)
+		return fmt.Errorf("key operation failed (code %d): %s", code, msg)
 	}
 }

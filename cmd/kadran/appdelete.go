@@ -24,13 +24,13 @@ import (
 // eden bir ön ek, kullanıcıyı ilk üç kelimeden yanlış sonuca götürür.
 func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("app delete")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: kadran app delete <uygulama> [hedef] — " +
-			"seçenekler uygulama adından ÖNCE gelir")
+		return c.usageError("usage: kadran app delete <app> [target] — " +
+			"options go BEFORE the app name")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -57,7 +57,7 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 	// NE yok edildiği yazdırılıyor: "silindi" tek başına hiçbir şey
 	// söylemiyor, çünkü boş bir kayıt da beş sürümlü bir uygulama da
 	// aynı cevabı verirdi.
-	fmt.Fprintf(c.stdout, "%s silindi · %d konteyner · %d sürüm · %d dağıtım kaydı\n",
+	fmt.Fprintf(c.stdout, "%s deleted · %d containers · %d releases · %d deployment records\n",
 		resp.GetAppId(), resp.GetContainersRemoved(),
 		resp.GetReleasesDeleted(), resp.GetDeploymentsDeleted())
 
@@ -74,9 +74,9 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 	// iddia olurdu.
 	if kept := resp.GetVolumesKept(); len(kept) > 0 {
 		fmt.Fprintf(c.stdout,
-			"\n⚠ %d hacmin VERİSİ DİSKTE DURUYOR (silinmedi): %s\n"+
-				"  Kadran kalıcı diski kendiliğinden yok etmez. Yer açmak "+
-				"isterseniz sunucudaki hacim dizinini elle kaldırın.\n",
+			"\n⚠ the DATA of %d volumes IS STILL ON DISK (not deleted): %s\n"+
+				"  Kadran never destroys persistent storage on its own. To free the "+
+				"space, remove the volume directory on the server by hand.\n",
 			len(kept), strings.Join(kept, ", "))
 	}
 	return exitOK

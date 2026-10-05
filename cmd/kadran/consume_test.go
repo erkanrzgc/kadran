@@ -73,7 +73,7 @@ func TestConsumeDeployRequiresSuccessFrame(t *testing.T) {
 	if code == exitOK {
 		t.Fatal("başarı karesi olmadan çıkış kodu 0 döndü")
 	}
-	if !strings.Contains(errBuf.String(), "KANITLANAMADI") {
+	if !strings.Contains(errBuf.String(), "NO PROOF") {
 		t.Errorf("hata sebebi açıklanmıyor: %q", errBuf.String())
 	}
 }

@@ -70,34 +70,34 @@ func Format(seq uint64, hash [audit.HashSize]byte) []byte {
 // yazabildiği girdi: biçimden en küçük sapma hata.
 func Parse(name string, data []byte) (Anchor, error) {
 	if filepath.Base(name) != name || !strings.HasPrefix(name, adOnEki) || !strings.HasSuffix(name, Ext) {
-		return Anchor{}, fmt.Errorf("çapa: beklenmeyen dosya adı %q", name)
+		return Anchor{}, fmt.Errorf("anchor: unexpected file name %q", name)
 	}
 	taken, err := time.Parse(damga, strings.TrimSuffix(strings.TrimPrefix(name, adOnEki), Ext))
 	if err != nil {
-		return Anchor{}, fmt.Errorf("çapa: %q adındaki zaman okunamadı", name)
+		return Anchor{}, fmt.Errorf("anchor: could not read the time in the name %q", name)
 	}
 	if len(data) > maxBoyut {
-		return Anchor{}, fmt.Errorf("çapa: %s çok büyük (%d bayt)", name, len(data))
+		return Anchor{}, fmt.Errorf("anchor: %s is too large (%d bytes)", name, len(data))
 	}
 	satirlar := strings.Split(string(data), "\n")
 	if len(satirlar) != 4 || satirlar[0] != surum || satirlar[3] != "" ||
 		!strings.HasPrefix(satirlar[1], "seq ") || !strings.HasPrefix(satirlar[2], "hash ") {
-		return Anchor{}, fmt.Errorf("çapa: %s biçimi tanınmıyor", name)
+		return Anchor{}, fmt.Errorf("anchor: %s format not recognized", name)
 	}
 	seq, err := strconv.ParseUint(strings.TrimPrefix(satirlar[1], "seq "), 10, 64)
 	if err != nil || seq == 0 {
-		return Anchor{}, fmt.Errorf("çapa: %s sıra numarası geçersiz", name)
+		return Anchor{}, fmt.Errorf("anchor: %s has an invalid sequence number", name)
 	}
 	ham, err := hex.DecodeString(strings.TrimPrefix(satirlar[2], "hash "))
 	if err != nil || len(ham) != audit.HashSize {
-		return Anchor{}, fmt.Errorf("çapa: %s hash'i geçersiz", name)
+		return Anchor{}, fmt.Errorf("anchor: %s has an invalid hash", name)
 	}
 	a := Anchor{Seq: seq, Taken: taken.UTC(), Name: name}
 	copy(a.Hash[:], ham)
 	// Kanonik biçim: başında sıfırlı sayı, büyük harfli hex gibi aynı
 	// değerin başka yazımları reddedilir.
 	if !bytes.Equal(Format(a.Seq, a.Hash), data) {
-		return Anchor{}, fmt.Errorf("çapa: %s kanonik biçimde değil", name)
+		return Anchor{}, fmt.Errorf("anchor: %s is not in canonical form", name)
 	}
 	return a, nil
 }
@@ -111,7 +111,7 @@ func Recompute(records []audit.Record) ([][audit.HashSize]byte, error) {
 	prev := audit.GenesisHash
 	for i, r := range records {
 		if r.Seq != uint64(i)+1 {
-			return nil, fmt.Errorf("çapa: zincir aralıksız değil (beklenen sıra %d, gelen %d)", i+1, r.Seq)
+			return nil, fmt.Errorf("anchor: the chain has a gap (expected sequence %d, got %d)", i+1, r.Seq)
 		}
 		r.PrevHash = prev
 		prev = audit.ComputeHash(r)
@@ -157,10 +157,10 @@ func Check(hashes [][audit.HashSize]byte, anchors []Anchor, since, now time.Time
 		switch {
 		case a.Seq > uint64(len(hashes)):
 			r.Conflicts = append(r.Conflicts, fmt.Sprintf(
-				"%s: zincir çapadan kısa (çapa #%d, zincir %d kayıt) — kayıt silinmiş", a.Name, a.Seq, len(hashes)))
+				"%s: the chain is shorter than the anchor (anchor #%d, chain %d records) — records were deleted", a.Name, a.Seq, len(hashes)))
 		case hashes[a.Seq-1] != a.Hash:
 			r.Conflicts = append(r.Conflicts, fmt.Sprintf(
-				"%s: #%d çapayla çelişiyor — geçmiş sonradan yazılmış", a.Name, a.Seq))
+				"%s: #%d contradicts the anchor — history was rewritten afterwards", a.Name, a.Seq))
 		}
 	}
 	r.MissingDays = eksikGunler(gunler, ilk, since, now)

@@ -109,7 +109,7 @@ func TestAnchorCheckPassesOnUntouchedChain(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("çıkış %d, beklenen %d\n%s%s", code, exitOK, stdout, stderr)
 	}
-	if !strings.Contains(stdout.String(), "1 çapa") {
+	if !strings.Contains(stdout.String(), "1 anchors checked") {
 		t.Errorf("çıktı denetlenen çapayı söylemiyor:\n%s", stdout)
 	}
 }
@@ -129,7 +129,7 @@ func TestAnchorCheckIgnoresTheServersHashFields(t *testing.T) {
 	if code != exitChainInvalid {
 		t.Fatalf("içeriği değişmiş zincir geçti (çıkış %d)\n%s%s", code, stdout, stderr)
 	}
-	if !strings.Contains(stderr.String(), "çelişiyor") {
+	if !strings.Contains(stderr.String(), "contradicts") {
 		t.Errorf("çelişki açıklanmadı:\n%s", stderr)
 	}
 }

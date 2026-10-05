@@ -28,7 +28,7 @@ func TestInstallerTimeoutSaysSo(t *testing.T) {
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("hata süre aşımını taşımıyor: %v", err)
 	}
-	for _, parca := range []string{"süre sınırı", "-timeout", "75.0 MiB"} {
+	for _, parca := range []string{"time limit", "-timeout", "75.0 MiB"} {
 		if !strings.Contains(err.Error(), parca) {
 			t.Errorf("hata %q içermiyor: %v", parca, err)
 		}
@@ -41,10 +41,10 @@ func TestInstallerTimeoutSaysSo(t *testing.T) {
 // arkasına saklanırdı.
 func TestInstallerFailureIsNotMistakenForTimeout(t *testing.T) {
 	err := kurulumHatasi(context.Background(), errors.New("exit status 1"), 75<<20)
-	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "süre sınırı") {
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "time limit") {
 		t.Errorf("süresi dolmamış bir hata zaman aşımı sanıldı: %v", err)
 	}
-	if !strings.Contains(err.Error(), "kurulum başarısız") {
+	if !strings.Contains(err.Error(), "install failed") {
 		t.Errorf("özgün hata kayboldu: %v", err)
 	}
 }

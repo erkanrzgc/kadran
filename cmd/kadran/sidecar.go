@@ -75,12 +75,12 @@ type targetParams struct {
 // runSidecar, stdio üzerinde JSON-RPC sunucusu çalıştırır.
 func (c *cli) runSidecar(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("sidecar")
-	timeout := fs.Duration("timeout", defaultTimeout, "tek bir çağrı için süre sınırı")
+	timeout := fs.Duration("timeout", defaultTimeout, "time limit for a single call")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 0 {
-		return c.usageError("`sidecar` argüman almaz")
+		return c.usageError("`sidecar` takes no arguments")
 	}
 
 	s := &sidecar{
@@ -161,7 +161,7 @@ func (s *sidecar) serve(ctx context.Context) error {
 	// stdin kapandığında Scanner.Err() nil döner; EOF hata sayılmaz.
 	// Buraya bir hata geldiyse gerçekten okuma bozulmuş demektir.
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("sidecar girdisi okunamadı: %w", err)
+		return fmt.Errorf("could not read sidecar input: %w", err)
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func (s *sidecar) handleLine(ctx context.Context, line []byte) {
 	if err := json.Unmarshal(line, &req); err != nil {
 		s.reply(rpcResponse{
 			JSONRPC: jsonrpcVersion,
-			Error:   &rpcError{Code: codeParseError, Message: "JSON çözümlenemedi", Data: err.Error()},
+			Error:   &rpcError{Code: codeParseError, Message: "could not parse JSON", Data: err.Error()},
 		})
 		return
 	}
@@ -182,7 +182,7 @@ func (s *sidecar) handleLine(ctx context.Context, line []byte) {
 			ID:      req.ID,
 			Error: &rpcError{
 				Code:    codeInvalidRequest,
-				Message: `geçersiz istek: "jsonrpc":"2.0" ve "method" zorunlu`,
+				Message: `invalid request: "jsonrpc":"2.0" and "method" are required`,
 			},
 		})
 		return
@@ -262,7 +262,7 @@ func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError)
 	default:
 		return nil, &rpcError{
 			Code:    codeMethodNotFound,
-			Message: fmt.Sprintf("bilinmeyen metot %q", req.Method),
+			Message: fmt.Sprintf("unknown method %q", req.Method),
 		}
 	}
 }
@@ -281,7 +281,7 @@ func (s *sidecar) withConn(
 
 	conn, err := s.connFor(ctx, p.Target)
 	if err != nil {
-		return nil, &rpcError{Code: codeInternalError, Message: "bağlanılamadı", Data: err.Error()}
+		return nil, &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
@@ -292,7 +292,7 @@ func (s *sidecar) withConn(
 		if shouldDropConnection(err) {
 			s.closeTarget(p.Target)
 		}
-		return nil, &rpcError{Code: codeInternalError, Message: "çağrı başarısız", Data: err.Error()}
+		return nil, &rpcError{Code: codeInternalError, Message: "call failed", Data: err.Error()}
 	}
 	return result, nil
 }
@@ -344,7 +344,7 @@ func (s *sidecar) connFor(ctx context.Context, rawTarget string) (*client.Client
 	}
 
 	if !target.IsLocal() && !client.SSHAvailable() {
-		return nil, errors.New("`ssh` komutu bulunamadı")
+		return nil, errors.New("`ssh` not found")
 	}
 
 	conn, err := client.Dial(target)
@@ -402,7 +402,7 @@ func (s *sidecar) reply(resp rpcResponse) {
 		body, _ = json.Marshal(rpcResponse{
 			JSONRPC: jsonrpcVersion,
 			ID:      resp.ID,
-			Error:   &rpcError{Code: codeInternalError, Message: "yanıt kodlanamadı"},
+			Error:   &rpcError{Code: codeInternalError, Message: "could not encode the response"},
 		})
 	}
 
@@ -417,7 +417,7 @@ func decodeParams(raw json.RawMessage, dst any) error {
 		return nil
 	}
 	if err := json.Unmarshal(raw, dst); err != nil {
-		return fmt.Errorf("parametreler çözümlenemedi: %w", err)
+		return fmt.Errorf("could not parse the parameters: %w", err)
 	}
 	return nil
 }

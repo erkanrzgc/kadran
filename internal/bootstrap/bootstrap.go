@@ -124,20 +124,20 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stdout, "==> Sunucu mimarisi: %s\n", arch)
+	fmt.Fprintf(opts.Stdout, "==> Server architecture: %s\n", arch)
 
 	if err := checkPrivilege(ctx, opts); err != nil {
 		return err
 	}
 	if opts.Sudo {
-		fmt.Fprintln(opts.Stdout, "==> Yetki: parolasız sudo ile root (root'a SSH kullanılmıyor)")
+		fmt.Fprintln(opts.Stdout, "==> Privilege: root through passwordless sudo (no SSH as root)")
 	}
 
 	archive, err := buildArchive(opts, arch)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(opts.Stdout, "==> Kurulum paketi hazır (%s)\n", humanSize(len(archive)))
+	fmt.Fprintf(opts.Stdout, "==> Install package ready (%s)\n", humanSize(len(archive)))
 
 	return runInstaller(ctx, opts, archive)
 }
@@ -154,8 +154,8 @@ func validate(opts *Options) error {
 	}
 	if _, err := os.Stat(opts.ClientKeyPath); err != nil {
 		return fmt.Errorf(
-			"bootstrap: istemci açık anahtarı okunamadı (%s): %w\n"+
-				"--client-key ile başka bir anahtar belirtebilirsiniz",
+			"bootstrap: could not read the client public key (%s): %w\n"+
+				"you can pick another key with --client-key",
 			opts.ClientKeyPath, err)
 	}
 	return nil
@@ -165,7 +165,7 @@ func validate(opts *Options) error {
 // bootstrap ve `kadran key` ortak.
 func validateTarget(host string) error {
 	if host == "" {
-		return fmt.Errorf("bootstrap: hedef sunucu belirtilmedi")
+		return fmt.Errorf("bootstrap: no target server given")
 	}
 	// `-` ile başlayan hedef, ssh tarafından konumsal argüman değil
 	// SEÇENEK olarak okunur; `-oProxyCommand=<komut>` iş istasyonunda
@@ -176,16 +176,16 @@ func validateTarget(host string) error {
 	// sürümüne göre değişir. Meşru hiçbir hedef `-` ile başlamaz.
 	if strings.HasPrefix(host, "-") {
 		return fmt.Errorf(
-			"bootstrap: hedef `-` ile başlayamaz (%q) — "+
-				"ssh bunu seçenek olarak yorumlar", host)
+			"bootstrap: the target cannot start with `-` (%q) — "+
+				"ssh would read it as an option", host)
 	}
 	// kadran-client zorlanmış komutlu, yetkisiz istemci hesabı; kurulum
 	// hesabı OLAMAZ. Kullanıcı adı verilmeyen hedef ona düşüyor
 	// (client.DefaultSSHUser) ve kurulum anlaşılmaz biçimde zorlanmış
 	// komuta çarpardı. Sudo kipinde ayrıca: o hesaba sudo verilmemeli.
 	if user, _, ok := strings.Cut(host, "@"); ok && user == clientUser {
-		return fmt.Errorf("bootstrap: %s yetkisiz istemci hesabı, bu işlem onunla yapılamaz — "+
-			"root@sunucu ya da -sudo kullanıcı@sunucu verin", clientUser)
+		return fmt.Errorf("bootstrap: %s is the unprivileged client account and cannot do this — "+
+			"give root@server or -sudo user@server", clientUser)
 	}
 	return nil
 }
@@ -211,17 +211,17 @@ func checkPrivilege(ctx context.Context, opts Options) error {
 	out, err := sshOutput(ctx, opts, remoteCommand(opts, "id -u"))
 	if err != nil {
 		if opts.Sudo {
-			return fmt.Errorf("bootstrap: %s parolasız sudo ile root olamıyor "+
-				"(-sudo kipi parola SORMAZ; sudoers'ta NOPASSWD gerekir): %w", opts.Host, err)
+			return fmt.Errorf("bootstrap: %s cannot become root through passwordless sudo "+
+				"(-sudo NEVER asks for a password; sudoers needs NOPASSWD): %w", opts.Host, err)
 		}
-		return fmt.Errorf("bootstrap: sunucuda yetki sınanamadı: %w", err)
+		return fmt.Errorf("bootstrap: could not test privileges on the server: %w", err)
 	}
 	if uid := strings.TrimSpace(out); uid != "0" {
 		if opts.Sudo {
-			return fmt.Errorf("bootstrap: sudo root'a geçmedi (uid %q)", uid)
+			return fmt.Errorf("bootstrap: sudo did not switch to root (uid %q)", uid)
 		}
-		return fmt.Errorf("bootstrap: %s root değil (uid %s) — root'a SSH kapalıysa "+
-			"`kadran bootstrap -sudo kullanıcı@sunucu` kullanın", opts.Host, uid)
+		return fmt.Errorf("bootstrap: %s is not root (uid %s) — if SSH as root is disabled, "+
+			"use `kadran bootstrap -sudo user@server`", opts.Host, uid)
 	}
 	return nil
 }
@@ -248,7 +248,7 @@ func remoteCommand(opts Options, script string) string {
 func detectArch(ctx context.Context, opts Options) (string, error) {
 	out, err := sshOutput(ctx, opts, "uname -m")
 	if err != nil {
-		return "", fmt.Errorf("bootstrap: sunucuya bağlanılamadı: %w", err)
+		return "", fmt.Errorf("bootstrap: could not connect to the server: %w", err)
 	}
 	return archFromUname(out)
 }
@@ -299,7 +299,7 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 	for _, name := range []string{"install.sh", "goc.sh", "geri.sh", "kasa-coz.sh"} {
 		script, err := installScript.ReadFile(name)
 		if err != nil {
-			return nil, fmt.Errorf("bootstrap: kurulum betiği okunamadı (%s): %w", name, err)
+			return nil, fmt.Errorf("bootstrap: could not read the install script (%s): %w", name, err)
 		}
 		if err := add(name, 0o755, script); err != nil {
 			return nil, err
@@ -314,8 +314,8 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 		content, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"bootstrap: %s bulunamadı (%s): %w\n"+
-					"Derlemek için: scripts/build-release.sh",
+				"bootstrap: %s not found (%s): %w\n"+
+					"To build it: scripts/build-release.sh",
 				name, path, err)
 		}
 		if err := add(name, 0o755, content); err != nil {
@@ -328,7 +328,7 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 			rel := files[name]
 			content, err := os.ReadFile(filepath.Join(opts.RepoRoot, filepath.FromSlash(rel)))
 			if err != nil {
-				return nil, fmt.Errorf("bootstrap: %s okunamadı: %w", rel, err)
+				return nil, fmt.Errorf("bootstrap: could not read %s: %w", rel, err)
 			}
 			// systemd ve kabuk dosyaları LF ister; Windows'ta üretilmiş bir
 			// CRLF sessizce bozulmaya yol açar.
@@ -340,7 +340,7 @@ func buildArchive(opts Options, arch string) ([]byte, error) {
 
 	key, err := os.ReadFile(opts.ClientKeyPath)
 	if err != nil {
-		return nil, fmt.Errorf("bootstrap: istemci anahtarı okunamadı: %w", err)
+		return nil, fmt.Errorf("bootstrap: could not read the client key: %w", err)
 	}
 	if err := validatePublicKey(key); err != nil {
 		return nil, err
@@ -372,7 +372,7 @@ func validatePublicKey(content []byte) error {
 
 	if strings.Contains(text, "PRIVATE KEY") {
 		return fmt.Errorf(
-			"bootstrap: verilen dosya bir ÖZEL anahtar — açık anahtar (.pub) bekleniyordu")
+			"bootstrap: the file is a PRIVATE key — expected a public key (.pub)")
 	}
 
 	// TEK satır (K-131'de bulundu). install.sh satırı `command=...,restrict
@@ -381,20 +381,20 @@ func validatePublicKey(content []byte) error {
 	// `https://github.com/<kullanıcı>.keys` tam olarak böyle bir dosya verir.
 	// Sondaki satır sonu TrimSpace'le gitti; içeride kalan her satır sonu ret.
 	if strings.ContainsAny(text, "\r\n") {
-		return fmt.Errorf("bootstrap: anahtar dosyasında birden fazla satır var — " +
-			"tek bir açık anahtar verin (ikinci satır zorlanmış komutsuz bir anahtar olurdu)")
+		return fmt.Errorf("bootstrap: the key file has more than one line — " +
+			"give a single public key (a second line would become a key without a forced command)")
 	}
 
 	fields := strings.Fields(text)
 	if len(fields) < 2 {
-		return fmt.Errorf("bootstrap: açık anahtar biçimi tanınmadı")
+		return fmt.Errorf("bootstrap: public key format not recognized")
 	}
 	switch fields[0] {
 	case "ssh-ed25519", "ssh-rsa", "ecdsa-sha2-nistp256",
 		"ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521", "sk-ssh-ed25519@openssh.com":
 		return nil
 	default:
-		return fmt.Errorf("bootstrap: tanınmayan anahtar türü: %q", fields[0])
+		return fmt.Errorf("bootstrap: unrecognized key type: %q", fields[0])
 	}
 }
 
@@ -425,11 +425,11 @@ func normalizeLineEndings(content []byte) []byte {
 // sebep söylenmedi. Sebep bağlamda duruyor.
 func kurulumHatasi(ctx context.Context, err error, paketBoyutu int) error {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf("bootstrap: süre sınırı aşıldı — kurulum paketi %s, "+
-			"yavaş bir bağlantıda yüklemesi uzun sürebilir; -timeout ile daha "+
-			"uzun süre verin (ör. -timeout 60m): %w", humanSize(paketBoyutu), ctx.Err())
+		return fmt.Errorf("bootstrap: time limit exceeded — the install package is %s "+
+			"and can take long to upload over a slow link; give more time "+
+			"with -timeout (e.g. -timeout 60m): %w", humanSize(paketBoyutu), ctx.Err())
 	}
-	return fmt.Errorf("bootstrap: kurulum başarısız: %w", err)
+	return fmt.Errorf("bootstrap: install failed: %w", err)
 }
 
 // sshCommand, çalıştırılan ssh programı; testler onu sahte bir ssh ile

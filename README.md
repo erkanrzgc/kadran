@@ -17,8 +17,8 @@
 
 > [!NOTE]
 > **Pre-release.** The core deployment loop is complete and serves a real site on a live
-> server. Kadran is maintained by one person, the CLI's messages are **Turkish only** for
-> now, and the [known gaps](#known-gaps) matter for production use. Read them first.
+> server. Kadran is maintained by one person, some server-side messages are still in
+> Turkish, and the [known gaps](#known-gaps) matter for production use. Read them first.
 >
 > The project was called Panely until October 2026. Since v0.4.0 every name on the server
 > is `kadran` too, and `bootstrap` migrates an existing install in place
@@ -587,8 +587,9 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   mount the same directory. Apps that keep a single-writer database in a volume should run
   one replica and accept that a deploy overlaps two writers for a few seconds.
 - **The desktop app is read-only:** version, status and the audit log. Management is CLI only.
-- **CLI messages are in Turkish.** Commands and flags are English; output and help are not
-  yet.
+- **Some messages are still in Turkish.** The CLI's own output, help and errors are
+  English. The install output, errors the server sends back, the desktop app and alarm
+  texts are being translated.
 - **Dockerfile builds only**, from public repositories. No buildpacks, no private
   repositories.
 - **Single node.** No TOTP on destructive actions, no rate limiting, no Cloudflare

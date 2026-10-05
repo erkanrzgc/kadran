@@ -112,4 +112,4 @@ func (c *pipeConn) SetDeadline(time.Time) error      { return errNoDeadline }
 func (c *pipeConn) SetReadDeadline(time.Time) error  { return errNoDeadline }
 func (c *pipeConn) SetWriteDeadline(time.Time) error { return errNoDeadline }
 
-var errNoDeadline = errors.New("client: boru bağlantısı süre sınırı desteklemiyor")
+var errNoDeadline = errors.New("client: the pipe connection does not support deadlines")

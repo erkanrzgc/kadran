@@ -97,7 +97,7 @@ func ParseTarget(s string) (Target, error) {
 
 	if path, ok := strings.CutPrefix(s, "unix://"); ok {
 		if path == "" {
-			return Target{}, errors.New("client: unix:// hedefinde yol yok")
+			return Target{}, errors.New("client: unix:// target has no path")
 		}
 		return Target{SocketPath: path}, nil
 	}
@@ -111,7 +111,7 @@ func ParseTarget(s string) (Target, error) {
 	host := s
 	if u, h, ok := strings.Cut(s, "@"); ok {
 		if u == "" {
-			return Target{}, errors.New("client: hedefte kullanıcı adı boş")
+			return Target{}, errors.New("client: empty user name in target")
 		}
 		user, host = u, h
 	}
@@ -121,7 +121,7 @@ func ParseTarget(s string) (Target, error) {
 		return Target{}, err
 	}
 	if host == "" {
-		return Target{}, errors.New("client: hedefte sunucu adı boş")
+		return Target{}, errors.New("client: empty host name in target")
 	}
 	if err := rejectOptionLike(user, host); err != nil {
 		return Target{}, err
@@ -130,8 +130,8 @@ func ParseTarget(s string) (Target, error) {
 	// söylemeyen bir "Permission denied" görülürdü (K-136).
 	if user == legacySSHUser {
 		return Target{}, fmt.Errorf(
-			"client: v0.4.0'dan beri istemci kullanıcısı %s: %s@%s yazın "+
-				"(sunucu henüz eski sürümdeyse önce `kadran bootstrap` ile yükseltin)",
+			"client: since v0.4.0 the client user is %s: use %s@%s "+
+				"(if the server still runs an older version, upgrade it first with `kadran bootstrap`)",
 			DefaultSSHUser, DefaultSSHUser, s[strings.Index(s, "@")+1:])
 	}
 	return Target{SSHUser: user, SSHHost: host, SSHPort: port}, nil
@@ -162,13 +162,13 @@ func ParseTarget(s string) (Target, error) {
 func rejectOptionLike(user, host string) error {
 	if strings.HasPrefix(user, "-") {
 		return fmt.Errorf(
-			"client: kullanıcı adı `-` ile başlayamaz (%q) — "+
-				"ssh bunu seçenek olarak yorumlar", user)
+			"client: user name cannot start with `-` (%q) — "+
+				"ssh would read it as an option", user)
 	}
 	if strings.HasPrefix(host, "-") {
 		return fmt.Errorf(
-			"client: sunucu adı `-` ile başlayamaz (%q) — "+
-				"ssh bunu seçenek olarak yorumlar", host)
+			"client: host name cannot start with `-` (%q) — "+
+				"ssh would read it as an option", host)
 	}
 	return nil
 }
@@ -188,7 +188,7 @@ func splitHostPort(s string) (host string, port int, err error) {
 	if strings.HasPrefix(s, "[") {
 		closing := strings.LastIndex(s, "]")
 		if closing < 0 {
-			return "", 0, fmt.Errorf("client: kapanmamış köşeli parantez: %q", s)
+			return "", 0, fmt.Errorf("client: unclosed square bracket: %q", s)
 		}
 		host = s[1:closing]
 		rest := s[closing+1:]
@@ -197,7 +197,7 @@ func splitHostPort(s string) (host string, port int, err error) {
 		}
 		p, ok := strings.CutPrefix(rest, ":")
 		if !ok {
-			return "", 0, fmt.Errorf("client: köşeli parantezden sonra beklenmedik metin: %q", rest)
+			return "", 0, fmt.Errorf("client: unexpected text after the square bracket: %q", rest)
 		}
 		port, err = parsePort(p)
 		return host, port, err
@@ -219,7 +219,7 @@ func splitHostPort(s string) (host string, port int, err error) {
 func parsePort(s string) (int, error) {
 	port, err := strconv.Atoi(s)
 	if err != nil || port <= 0 || port > 65535 {
-		return 0, fmt.Errorf("client: geçersiz port: %q", s)
+		return 0, fmt.Errorf("client: invalid port: %q", s)
 	}
 	return port, nil
 }
@@ -247,7 +247,7 @@ func Dial(target Target) (*Client, error) {
 		grpc.WithContextDialer(dialer),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("client: bağlantı kurulamadı: %w", err)
+		return nil, fmt.Errorf("client: could not connect: %w", err)
 	}
 
 	return &Client{
@@ -282,7 +282,7 @@ func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error
 		}, nil
 	}
 	if t.SSHHost == "" {
-		return nil, errors.New("client: hedef belirtilmedi")
+		return nil, errors.New("client: no target given")
 	}
 	return func(ctx context.Context, _ string) (net.Conn, error) {
 		return dialSSH(ctx, t)
@@ -304,7 +304,7 @@ func dialLocal(ctx context.Context, path string) (net.Conn, error) {
 	var d net.Dialer
 	conn, err := d.DialContext(ctx, "unix", path)
 	if err != nil {
-		return nil, fmt.Errorf("client: yerel sokete bağlanılamadı (%s): %w", path, err)
+		return nil, fmt.Errorf("client: could not connect to the local socket (%s): %w", path, err)
 	}
 
 	// Önsöz yazılamazsa bağlantı KAPATILMALIDIR. gRPC kurucuyu yeniden
@@ -390,7 +390,7 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 	//
 	// Bkz. TestSSHProcessSurvivesDialContextCancel.
 	if err := ctx.Err(); err != nil {
-		return nil, fmt.Errorf("client: bağlanmadan önce iptal edildi: %w", err)
+		return nil, fmt.Errorf("client: cancelled before connecting: %w", err)
 	}
 	cmd := exec.Command(sshCommand, args...) //nolint:noctx // gerekçe yukarıda
 	// ssh ölüp stderr'i açık tutan bir alt süreç bırakırsa (ör.
@@ -402,11 +402,11 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, fmt.Errorf("client: ssh stdout borusu açılamadı: %w", err)
+		return nil, fmt.Errorf("client: could not open the ssh stdout pipe: %w", err)
 	}
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
-		return nil, fmt.Errorf("client: ssh stdin borusu açılamadı: %w", err)
+		return nil, fmt.Errorf("client: could not open the ssh stdin pipe: %w", err)
 	}
 
 	// ssh'ın stderr'i yakalanır: "Permission denied", "Host key
@@ -417,9 +417,9 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 
 	if err := cmd.Start(); err != nil {
 		if errors.Is(err, exec.ErrNotFound) {
-			return nil, errors.New("client: `ssh` komutu bulunamadı — OpenSSH istemcisi kurulu mu?")
+			return nil, errors.New("client: `ssh` not found — is the OpenSSH client installed?")
 		}
-		return nil, fmt.Errorf("client: ssh başlatılamadı: %w", err)
+		return nil, fmt.Errorf("client: could not start ssh: %w", err)
 	}
 
 	// wait, alt süreci TEK KEZ toplar; hem kapanış hem okuyucu kullanıyor.
@@ -453,7 +453,7 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
 			return fmt.Errorf("ssh: %s", strings.TrimPrefix(msg, "ssh: "))
 		}
-		return fmt.Errorf("ssh sonlandı: %w", err)
+		return fmt.Errorf("ssh exited: %w", err)
 	}
 
 	pc := newPipeConn(stdout, stdin, t.String(), sebep)
@@ -498,17 +498,17 @@ func (c *Client) CheckProtocol(ctx context.Context) (*kadranv1.PingResponse, err
 		// v0.4.0'dan önceki sunucular `panely.v1` konuşuyor; `kadran.v1`
 		// servisini tanımıyorlar ve Ping'e bile cevap veremiyorlar (K-136).
 		return nil, fmt.Errorf(
-			"sunucu bu istemcinin servisini tanımıyor: büyük ihtimalle v0.4.0'dan "+
-				"eski (panely adlı) bir kurulum. Önce sunucuyu bu sürümle yükseltin: "+
-				"kadran bootstrap (eski kurulum yerinde taşınır). Ayrıntı: %w", err)
+			"the server does not know this client's service: most likely an install "+
+				"older than v0.4.0 (named panely). Upgrade the server with this version first: "+
+				"kadran bootstrap (the old install is migrated in place). Detail: %w", err)
 	}
 	if err != nil {
 		return nil, err
 	}
 	if resp.GetProtocolVersion() != version.Protocol {
 		return nil, fmt.Errorf(
-			"protokol uyumsuzluğu: istemci %d, sunucu %d — "+
-				"iki tarafın binary'leri aynı sürümden olmalı, sunucudakileri güncelleyin",
+			"protocol mismatch: client %d, server %d — "+
+				"both sides must run binaries from the same version; upgrade the server",
 			version.Protocol, resp.GetProtocolVersion())
 	}
 	return resp, nil

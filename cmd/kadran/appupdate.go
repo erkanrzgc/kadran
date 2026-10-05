@@ -35,29 +35,29 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("app update")
 	var v appUpdateFlags
 	fs.StringVar(&v.domain, "domain", "",
-		"yayınlanacak alan adı; boş verilirse (-domain=\"\") uygulama vekilden ÇIKARILIR")
-	fs.StringVar(&v.branch, "branch", "", "varsayılan dal")
+		"domain to serve the app on; an empty value (-domain=\"\") REMOVES the app from the proxy")
+	fs.StringVar(&v.branch, "branch", "", "default branch")
 	fs.StringVar(&v.health, "health-path", "",
-		"sağlık yoklaması yolu; boş verilirse yoklama YAPILMAZ")
-	fs.UintVar(&v.replicas, "replicas", 0, "replika sayısı")
+		"health check path; an empty value DISABLES the check")
+	fs.UintVar(&v.replicas, "replicas", 0, "number of replicas")
 	env := c.stringMapFlag(fs, "env",
-		"ortam değişkeni ANAHTAR=DEĞER (tekrarlanabilir); adı geçmeyen "+
-			"değişkenlere DOKUNULMAZ")
+		"environment variable KEY=VALUE (repeatable); variables not "+
+			"named are LEFT ALONE")
 	envRemove := c.stringSliceFlag(fs, "env-rm",
-		"silinecek ortam değişkeni adı (tekrarlanabilir)")
+		"name of an environment variable to delete (repeatable)")
 	volumes := c.volumeFlag(fs, "volume",
-		"kalıcı disk AD:/bağlama/noktası[:ro]; adı geçmeyen hacimlere DOKUNULMAZ")
+		"persistent volume NAME:/mount/point[:ro]; volumes not named are LEFT ALONE")
 	volumeRemove := c.stringSliceFlag(fs, "volume-rm",
-		"ayırılacak hacim adı (VERİYİ SİLMEZ, yalnızca bağlamayı kaldırır)")
-	skipDNS := fs.Bool(skipDNSCheckFlag, false, "alan adının DNS'i sunucuyu göstermese de devam et (ör. Cloudflare vekili)")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
-	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
+		"name of a volume to detach (does NOT DELETE the data, only removes the mount)")
+	skipDNS := fs.Bool(skipDNSCheckFlag, false, "continue even if the domain's DNS does not point at the server (e.g. Cloudflare proxy)")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: kadran app update [seçenekler] <ad> [hedef] — " +
-			"seçenekler addan ÖNCE gelir")
+		return c.usageError("usage: kadran app update [options] <name> [target] — " +
+			"options go BEFORE the name")
 	}
 
 	// ⚠ VERİLEN seçenekler, DEĞERLERİ değil.
@@ -83,9 +83,9 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 
 	req := buildUpdateRequest(fs.Arg(0), v, set)
 	if isEmptyUpdate(req) {
-		return c.usageError("değiştirilecek bir alan verilmedi — " +
-			"-domain, -branch, -health-path, -replicas, -env, " +
-			"-env-rm, -volume veya -volume-rm kullanın")
+		return c.usageError("nothing to change — " +
+			"use -domain, -branch, -health-path, -replicas, -env, " +
+			"-env-rm, -volume or -volume-rm")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -119,15 +119,15 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	}
 
 	s := resp.GetApp().GetSpec()
-	fmt.Fprintf(c.stdout, "Uygulama güncellendi: %s\n", s.GetAppId())
+	fmt.Fprintf(c.stdout, "App updated: %s\n", s.GetAppId())
 	if req.Domain != nil {
-		fmt.Fprintf(c.stdout, "  Alan adı: %s\n", orNone(s.GetDomain()))
+		fmt.Fprintf(c.stdout, "  Domain  : %s\n", orNone(s.GetDomain()))
 	}
 	if req.GitBranch != nil {
-		fmt.Fprintf(c.stdout, "  Dal     : %s (bir sonraki dağıtımda kullanılır)\n", s.GetGitBranch())
+		fmt.Fprintf(c.stdout, "  Branch  : %s (used by the next deploy)\n", s.GetGitBranch())
 	}
 	if req.HealthPath != nil {
-		fmt.Fprintf(c.stdout, "  Sağlık  : %s (bir sonraki dağıtımda etkili)\n", orNone(s.GetHealthPath()))
+		fmt.Fprintf(c.stdout, "  Health  : %s (takes effect on the next deploy)\n", orNone(s.GetHealthPath()))
 	}
 	if req.Replicas != nil {
 		// ⚠ Replika değişikliği İKİ AŞAMALI ve mesaj bunu ayırmak
@@ -138,7 +138,7 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		// Tek cümleyle "sonraki dağıtımda etkili" demek, ölçek
 		// küçültmede trafiğin ZATEN daraldığını gizlerdi.
 		fmt.Fprintf(c.stdout,
-			"  Replika : %d (trafik hemen, konteynerler sonraki dağıtımda)\n",
+			"  Replicas: %d (traffic now, containers on the next deploy)\n",
 			s.GetReplicas())
 	}
 
@@ -150,17 +150,17 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		// inspect` ile zaten okuyabilir; onu istemediği bir yere taşıyan
 		// taraf biz olmayalım.
 		for _, k := range sortedKeys(req.GetEnv()) {
-			fmt.Fprintf(c.stdout, "  Env     : %s ayarlandı\n", k)
+			fmt.Fprintf(c.stdout, "  Env     : %s set\n", k)
 		}
 		for _, k := range req.GetEnvRemove() {
-			fmt.Fprintf(c.stdout, "  Env     : %s SİLİNDİ\n", k)
+			fmt.Fprintf(c.stdout, "  Env     : %s DELETED\n", k)
 		}
 	}
 
 	for _, vol := range req.GetVolumes() {
-		mode := "yazilabilir"
+		mode := "read-write"
 		if vol.GetReadOnly() {
-			mode = "salt-okunur"
+			mode = "read-only"
 		}
 		fmt.Fprintf(c.stdout, "  Disk    : %s -> %s (%s)\n",
 			vol.GetName(), vol.GetMountPath(), mode)
@@ -169,7 +169,7 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		// ⚠ "AYRILDI" deniyor, "silindi" DEGIL. Diskteki veri duruyor ve
 		// kullanicinin bunu bilmesi sart: "silindi" okuyan biri veriyi
 		// kaybettigini sanar ve yedekten donmeye kalkar.
-		fmt.Fprintf(c.stdout, "  Disk    : %s AYRILDI (veri diskte duruyor)\n", name)
+		fmt.Fprintf(c.stdout, "  Disk    : %s DETACHED (the data stays on disk)\n", name)
 	}
 
 	// Ters vekilin durumu SUSULAMAZ. Alan adı değişip trafiğin
@@ -287,7 +287,7 @@ func isEmptyUpdate(req *kadranv1.UpdateAppRequest) bool {
 // çıktının bozuk olduğunu düşündürür.
 func orNone(s string) string {
 	if s == "" {
-		return "(yok)"
+		return "(none)"
 	}
 	return s
 }

@@ -28,7 +28,7 @@ type auditPager func(ctx context.Context, after uint64) ([]*kadranv1.AuditRecord
 
 // errBadAnchor, okunamayan ya da kanonik olmayan çapa: kurcalama
 // göstergesi sayılır, sessizce atlanmaz.
-var errBadAnchor = errors.New("bozuk çapa")
+var errBadAnchor = errors.New("malformed anchor")
 
 // maxAnchorFile, bir çapa dosyasından okunacak en çok bayt. Çapa ~90 bayt;
 // fazlasını Parse zaten reddediyor, burada yalnızca belleği koruyoruz.
@@ -37,7 +37,7 @@ const maxAnchorFile = 4096
 func (c *cli) runAnchorCheck(ctx context.Context, page auditPager, dir string, since time.Time) int {
 	anchors, err := loadAnchors(dir)
 	if err != nil {
-		fmt.Fprintf(c.stderr, "\nÇAPA: %v\n", err)
+		fmt.Fprintf(c.stderr, "\nANCHOR: %v\n", err)
 		if errors.Is(err, errBadAnchor) {
 			return exitChainInvalid
 		}
@@ -45,43 +45,43 @@ func (c *cli) runAnchorCheck(ctx context.Context, page auditPager, dir string, s
 	}
 	records, err := fetchAllAudit(ctx, page)
 	if err != nil {
-		fmt.Fprintf(c.stderr, "\nÇAPA: %v\n", err)
+		fmt.Fprintf(c.stderr, "\nANCHOR: %v\n", err)
 		return exitError
 	}
 	hashes, err := anchor.Recompute(records)
 	if err != nil {
-		fmt.Fprintf(c.stderr, "\nÇAPA: %v\n", err)
+		fmt.Fprintf(c.stderr, "\nANCHOR: %v\n", err)
 		return exitChainInvalid
 	}
 	res := anchor.Check(hashes, anchors, since, time.Now())
 
-	fmt.Fprintf(c.stdout, "\nÇapa denetimi (%s)\n", dir)
-	fmt.Fprintf(c.stdout, "  zincir istemcide hesaplandı: %d kayıt\n", len(hashes))
-	fmt.Fprintf(c.stdout, "  %d çapa denetlendi, %d atlandı (-anchors-since)", res.Checked, res.Skipped)
+	fmt.Fprintf(c.stdout, "\nAnchor check (%s)\n", dir)
+	fmt.Fprintf(c.stdout, "  chain recomputed on this machine: %d records\n", len(hashes))
+	fmt.Fprintf(c.stdout, "  %d anchors checked, %d skipped (-anchors-since)", res.Checked, res.Skipped)
 	if !res.Newest.IsZero() {
-		fmt.Fprintf(c.stdout, "; en yenisi %s", res.Newest.Format(time.RFC3339))
+		fmt.Fprintf(c.stdout, "; newest %s", res.Newest.Format(time.RFC3339))
 	}
 	fmt.Fprintln(c.stdout)
 	if len(res.MissingDays) > 0 {
-		fmt.Fprintf(c.stdout, "  ⚠ çapası olmayan günler: %s (uzak yedek o gün koşmamış olabilir)\n",
+		fmt.Fprintf(c.stdout, "  ⚠ days without an anchor: %s (the offsite backup may not have run that day)\n",
 			strings.Join(res.MissingDays, ", "))
 	}
 
 	switch {
 	case len(res.Conflicts) > 0:
-		fmt.Fprintln(c.stderr, "\nÇAPA ÇELİŞİYOR: daemon zincirinin geçmişi çapadan SONRA değişmiş.")
+		fmt.Fprintln(c.stderr, "\nANCHOR MISMATCH: the daemon chain's history changed AFTER the anchor.")
 		for _, k := range res.Conflicts {
 			fmt.Fprintf(c.stderr, "  %s\n", k)
 		}
-		fmt.Fprintln(c.stderr, "Veritabanı eski bir yedekten geri yüklendiyse bu beklenir: geri\n"+
-			"yüklemeden önceki çapaları -anchors-since <zaman> ile ayırın. Yoksa\n"+
-			"bu bir kurcalama göstergesidir ve araştırılmalıdır.")
+		fmt.Fprintln(c.stderr, "This is expected if the database was restored from an old backup:\n"+
+			"exclude the anchors from before the restore with -anchors-since <time>.\n"+
+			"Otherwise it indicates tampering and should be investigated.")
 		return exitChainInvalid
 	case res.Checked == 0:
-		fmt.Fprintln(c.stderr, "\nÇAPA: hiçbir çapa denetlenmedi — bu bir doğrulama değil.")
+		fmt.Fprintln(c.stderr, "\nANCHOR: no anchor was checked — this is not a verification.")
 		return exitError
 	}
-	fmt.Fprintln(c.stdout, "  ✓ bütün çapalar zincirle tutuyor")
+	fmt.Fprintln(c.stdout, "  ✓ all anchors match the chain")
 	return exitOK
 }
 
@@ -91,7 +91,7 @@ func (c *cli) runAnchorCheck(ctx context.Context, page auditPager, dir string, s
 func loadAnchors(dir string) ([]anchor.Anchor, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("çapa dizini okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the anchor directory: %w", err)
 	}
 	var out []anchor.Anchor
 	for _, e := range entries {
@@ -100,7 +100,7 @@ func loadAnchors(dir string) ([]anchor.Anchor, error) {
 		}
 		data, err := readLimited(filepath.Join(dir, e.Name()))
 		if err != nil {
-			return nil, fmt.Errorf("%w: %s okunamadı: %w", errBadAnchor, e.Name(), err)
+			return nil, fmt.Errorf("%w: could not read %s: %w", errBadAnchor, e.Name(), err)
 		}
 		a, err := anchor.Parse(e.Name(), data)
 		if err != nil {
@@ -109,7 +109,7 @@ func loadAnchors(dir string) ([]anchor.Anchor, error) {
 		out = append(out, a)
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("%s içinde %s dosyası yok", dir, anchor.Ext)
+		return nil, fmt.Errorf("no %[2]s files in %[1]s", dir, anchor.Ext)
 	}
 	return out, nil
 }
@@ -133,7 +133,7 @@ func fetchAllAudit(ctx context.Context, page auditPager) ([]audit.Record, error)
 	for {
 		recs, err := page(ctx, after)
 		if err != nil {
-			return nil, fmt.Errorf("denetim kayıtları okunamadı: %w", err)
+			return nil, fmt.Errorf("could not read audit records: %w", err)
 		}
 		if len(recs) == 0 {
 			return out, nil
@@ -141,7 +141,7 @@ func fetchAllAudit(ctx context.Context, page auditPager) ([]audit.Record, error)
 		for _, p := range recs {
 			// Sırayı geri saran bir sunucu döngüyü bitirmezdi.
 			if p.GetSeq() <= after {
-				return nil, fmt.Errorf("sunucu sırayı geri sardı (#%d, öncesi #%d)", p.GetSeq(), after)
+				return nil, fmt.Errorf("the server went backwards in sequence (#%d after #%d)", p.GetSeq(), after)
 			}
 			out = append(out, auditRecordFromProto(p))
 			after = p.GetSeq()
@@ -205,7 +205,7 @@ func parseAnchorsSince(s string) (time.Time, error) {
 	}
 	t, err := time.Parse(time.RFC3339, s)
 	if err != nil {
-		return time.Time{}, fmt.Errorf("-anchors-since: %q tarih (2006-01-02) ya da RFC3339 değil", s)
+		return time.Time{}, fmt.Errorf("-anchors-since: %q is neither a date (2006-01-02) nor RFC3339", s)
 	}
 	return t.UTC(), nil
 }

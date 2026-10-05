@@ -98,20 +98,20 @@ type command struct {
 
 func commands() []command {
 	return []command{
-		{"status", "[hedef]", "sunucu ve daemon durumunu gösterir", (*cli).runStatus},
-		{"app", "<create|update|list|show|delete> …", "uygulama tanımlarını yönetir", (*cli).runApp},
-		{"deploy", "<uygulama> [hedef]", "bir commit'i derler ve trafiği ona çevirir", (*cli).runDeploy},
-		{"rollback", "<uygulama> [hedef]", "trafiği bir önceki sürüme geri çevirir", (*cli).runRollback},
-		{"logs", "[-f] <uygulama> [hedef]", "canlı sürümün çıktısını akıtır", (*cli).runLogs},
-		{"prune", "[-dry-run] <uygulama>|-all [hedef]", "eski sürümlerin konteynerlerini kaldırır", (*cli).runPrune},
-		{"alarms", "[hedef]", "etkin arıza koşullarını listeler", (*cli).runAlarms},
-		{"backup", "<create|list> [hedef]", "veritabanı yedeklerini alır ve listeler", (*cli).runBackup},
-		{"domain", "check <alan-adı> [hedef]", "alan adının DNS, port ve sertifikasını denetler", (*cli).runDomain},
-		{"audit", "<list|verify> [hedef]", "denetim zincirini okur ve doğrular", (*cli).runAudit},
-		{"sidecar", "", "Electron için stdio JSON-RPC sunucusu", (*cli).runSidecar},
-		{"bootstrap", "root@sunucu | -sudo kullanıcı@sunucu", "sunucuyu kurar ya da yükseltir", (*cli).runBootstrap},
-		{"key", "<list|add|remove> … root@sunucu", "yalnızca dağıtım yapabilen anahtarları yönetir", (*cli).runKey},
-		{"version", "", "sürüm bilgisini yazar", (*cli).runVersion},
+		{"status", "[target]", "shows server and daemon status", (*cli).runStatus},
+		{"app", "<create|update|list|show|delete> …", "manages app definitions", (*cli).runApp},
+		{"deploy", "<app> [target]", "builds a commit and switches traffic to it", (*cli).runDeploy},
+		{"rollback", "<app> [target]", "switches traffic back to the previous release", (*cli).runRollback},
+		{"logs", "[-f] <app> [target]", "streams the live release's output", (*cli).runLogs},
+		{"prune", "[-dry-run] <app>|-all [target]", "removes old releases' containers", (*cli).runPrune},
+		{"alarms", "[target]", "lists active fault conditions", (*cli).runAlarms},
+		{"backup", "<create|list> [target]", "takes and lists database backups", (*cli).runBackup},
+		{"domain", "check <domain> [target]", "checks a domain's DNS, ports and certificate", (*cli).runDomain},
+		{"audit", "<list|verify> [target]", "reads and verifies the audit chain", (*cli).runAudit},
+		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
+		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
+		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
+		{"version", "", "prints version information", (*cli).runVersion},
 	}
 }
 
@@ -133,18 +133,18 @@ func (c *cli) run(ctx context.Context, args []string) int {
 		}
 	}
 
-	fmt.Fprintf(c.stderr, progName+": bilinmeyen komut %q\n\n", name)
+	fmt.Fprintf(c.stderr, progName+": unknown command %q\n\n", name)
 	c.usage()
 	return exitUsage
 }
 
 func (c *cli) usage() {
-	fmt.Fprintf(c.stderr, `kadran %s — Kadran iş istasyonu aracı
+	fmt.Fprintf(c.stderr, `kadran %s — Kadran workstation tool
 
-Kullanım:
-  kadran <komut> [seçenekler] [hedef]
+Usage:
+  kadran <command> [options] [target]
 
-Komutlar:
+Commands:
 `, version.Version)
 
 	tw := tabwriter.NewWriter(c.stderr, 0, 0, 2, ' ', 0)
@@ -154,21 +154,21 @@ Komutlar:
 	_ = tw.Flush()
 
 	fmt.Fprintf(c.stderr, `
-Hedef biçimleri:
-  (boş)                     yerel soket — %s
-  /yol/api.sock             yerel soket, açık yol
-  kullanici@sunucu          SSH (varsayılan kullanıcı: %s)
-  kullanici@sunucu:2222     SSH, özel port
-  sunucu                    SSH, varsayılan kullanıcı
+Target forms:
+  (empty)                   local socket — %s
+  /path/api.sock            local socket, explicit path
+  user@server               SSH (default user: %s)
+  user@server:2222          SSH, custom port
+  server                    SSH, default user
 
-Çıkış kodları:
-  %d  başarılı
-  %d  hata (bağlantı kurulamadı, zincir doğrulanamadı)
-  %d  kullanım hatası
-  %d  denetim zinciri KIRIK — kurcalama şüphesi
+Exit codes:
+  %d  success
+  %d  error (could not connect, chain could not be verified)
+  %d  usage error
+  %d  audit chain BROKEN — possible tampering
 
-Seçenekler komuttan sonra, hedeften önce gelir:
-  kadran audit list --limit 20 kullanici@sunucu
+Options go after the command and before the target:
+  kadran audit list --limit 20 user@server
 `, client.DefaultSocketPath, client.DefaultSSHUser,
 		exitOK, exitError, exitUsage, exitChainInvalid)
 }
@@ -198,7 +198,7 @@ func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *k
 
 	if !target.IsLocal() && !client.SSHAvailable() {
 		return nil, nil, errors.New(
-			"`ssh` komutu bulunamadı — uzak sunucuya bağlanmak için OpenSSH istemcisi gerekli")
+			"`ssh` not found — the OpenSSH client is needed to reach a remote server")
 	}
 
 	conn, err := client.Dial(target)
@@ -228,9 +228,9 @@ func (c *cli) usageError(format string, args ...any) int {
 
 func (c *cli) runVersion(_ context.Context, args []string) int {
 	if len(args) > 0 {
-		return c.usageError("`version` argüman almaz")
+		return c.usageError("`version` takes no arguments")
 	}
-	fmt.Fprintf(c.stdout, progName+" %s (%s)\nprotokol %d\n",
+	fmt.Fprintf(c.stdout, progName+" %s (%s)\nprotocol %d\n",
 		version.Version, version.Commit, version.Protocol)
 	return exitOK
 }
@@ -243,21 +243,21 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 // günlük kullanım yetkisiz `kadran-client` üzerinden yürür.
 func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("bootstrap")
-	binaryDir := fs.String("binaries", defaultBinaryDir(), "linux binary'lerinin bulunduğu dizin")
-	repoRoot := fs.String("repo", ".", "systemd birimlerinin okunacağı depo kökü")
-	clientKey := fs.String("client-key", defaultClientKey(), "sunucuya yetkilendirilecek AÇIK anahtar")
+	binaryDir := fs.String("binaries", defaultBinaryDir(), "directory holding the linux binaries")
+	repoRoot := fs.String("repo", ".", "repository root to read the systemd units from")
+	clientKey := fs.String("client-key", defaultClientKey(), "PUBLIC key to authorize on the server")
 	// 30 dakika: kurulum paketi ~75 MiB. Taze sunucu testinde (K-112)
 	// aynı ev hattından bir koşu 5 dakikada yalnızca 28 MB gönderdi ve 10
 	// dakikalık eski sınır kurulumu yükleme bitmeden kesti; aynı gün başka
 	// bir koşu yüklemeyi bir dakikadan kısa sürede bitirdi.
-	timeout := fs.Duration("timeout", 30*time.Minute, "toplam süre sınırı")
+	timeout := fs.Duration("timeout", 30*time.Minute, "overall time limit")
 	sudo := fs.Bool("sudo", false,
-		"root'a SSH açmadan, hedef kullanıcının PAROLASIZ sudo'suyla kur (parola asla sorulmaz)")
+		"install through the target user's PASSWORDLESS sudo instead of SSH as root (never asks for a password)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() != 1 {
-		return c.usageError("kullanım: kadran bootstrap [seçenekler] root@sunucu  |  kadran bootstrap -sudo kullanıcı@sunucu")
+		return c.usageError("usage: kadran bootstrap [options] root@server  |  kadran bootstrap -sudo user@server")
 	}
 
 	target, err := client.ParseTarget(fs.Arg(0))
@@ -265,18 +265,18 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return c.fail(err)
 	}
 	if target.IsLocal() {
-		return c.usageError("`bootstrap` uzak bir hedef ister, yerel soket değil")
+		return c.usageError("`bootstrap` needs a remote target, not a local socket")
 	}
 	if !client.SSHAvailable() {
-		return c.fail(errors.New("`ssh` komutu bulunamadı — OpenSSH istemcisi gerekli"))
+		return c.fail(errors.New("`ssh` not found — the OpenSSH client is required"))
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	fmt.Fprintf(c.stdout, "Kadran kurulumu — %s\n", target.String())
+	fmt.Fprintf(c.stdout, "Kadran install — %s\n", target.String())
 	fmt.Fprintln(c.stdout,
-		"Parola veya özel anahtar istenmez; kimlik doğrulamayı `ssh` yapar.")
+		"No password or private key is asked for; `ssh` does the authentication.")
 
 	err = bootstrap.Run(ctx, bootstrap.Options{
 		Host:          target.SSHUser + "@" + target.SSHHost,
@@ -292,7 +292,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return c.fail(err)
 	}
 
-	fmt.Fprintf(c.stdout, "\nDoğrulamak için:\n  kadran status %s@%s\n",
+	fmt.Fprintf(c.stdout, "\nTo verify:\n  kadran status %s@%s\n",
 		client.DefaultSSHUser, target.SSHHost)
 	return exitOK
 }

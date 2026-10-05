@@ -3,6 +3,18 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Changed
+
+- **The CLI speaks English (K-141).** Help, usage errors, tables, status labels and every
+  message the CLI produces itself are English, including `bootstrap`'s own steps and the
+  `kadran key` messages from the server-side script it ships. Commands and flags did not
+  change. Two labels changed meaning on screen: a broken audit chain now shows `BROKEN`
+  (was `GEÇERSİZ`) and an unverifiable one `UNVERIFIABLE`, so scripts can tell them apart
+  with `grep`. Errors the server sends back and the install output are still Turkish until
+  the server is upgraded with a later release.
+
 ## v0.5.1 — 2026-10-05
 
 Hardening of the client's SSH files (K-139, K-140). Same protocol and the same reverse

@@ -92,13 +92,13 @@ mutate_in "$KEYS" "satırın gövdesi denetlenen gövde mi bakılmıyor" \
 
 # sshd İLK eşleşen satırı kullanır: rol satır sırasına kalırdı.
 mutate_in "$KEYS" "aynı anahtar ikinci kez ekleniyor" \
-    "s=s.replace('if grep -qF -- \"\$body\" \"\$f\"; then echo \"bu anahtar zaten kayıtlı\"','if false; then echo \"bu anahtar zaten kayıtlı\"',1)"
+    "s=s.replace('if grep -qF -- \"\$body\" \"\$f\"; then echo \"this key is already registered\"','if false; then echo \"this key is already registered\"',1)"
 
 mutate_in "$KEYS" "son yönetici satırı silinebiliyor" \
     "s=s.replace('grep -qE \"\$admin_re\" \"\$tmp\" || {','true || {',1)"
 
 mutate_in "$KEYS" "silmede olmayan anahtar sessizce geçiyor" \
-    "s=s.replace('grep -qF -- \"\$body\" \"\$f\" || { echo \"anahtar bulunamadı\"','true || { echo \"anahtar bulunamadı\"',1)"
+    "s=s.replace('grep -qF -- \"\$body\" \"\$f\" || { echo \"key not found\"','true || { echo \"key not found\"',1)"
 
 echo "== Açık anahtar doğrulaması =="
 
@@ -106,7 +106,7 @@ mutate_in "$KEYS" "gövdenin türü denetlenmiyor" \
     "s=s.replace('if uint64(n) > uint64(len(blob)-4) || string(blob[4:4+n]) != typ {','if uint64(n) > uint64(len(blob)-4) {',1)"
 
 mutate_in "$KEYS" "kesik gövde kabul ediliyor" \
-    "s=s.replace('\t\tif uint64(m) > uint64(len(rest)-4) {\n\t\t\treturn \"\", errors.New(\"anahtar gövdesi kesik\")\n\t\t}','\t\tif uint64(m) > uint64(len(rest)-4) {\n\t\t\trest, parts = nil, parts+1\n\t\t\tcontinue\n\t\t}',1)"
+    "s=s.replace('\t\tif uint64(m) > uint64(len(rest)-4) {\n\t\t\treturn \"\", errors.New(\"key body is truncated\")\n\t\t}','\t\tif uint64(m) > uint64(len(rest)-4) {\n\t\t\trest, parts = nil, parts+1\n\t\t\tcontinue\n\t\t}',1)"
 
 echo "== Satır kurma =="
 

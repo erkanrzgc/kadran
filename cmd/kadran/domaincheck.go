@@ -67,7 +67,7 @@ func parseSSHHostname(out []byte) (string, error) {
 			}
 		}
 	}
-	return "", errors.New("ssh -G çıktısında hostname yok")
+	return "", errors.New("no hostname in ssh -G output")
 }
 
 // serverHostFor, hedefin sunucu adını döndürür: SSH hedefinde ssh
@@ -93,7 +93,7 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		return nil
 	}
 	if skip {
-		fmt.Fprintf(c.stderr, progName+": DNS önkontrolü atlandı (-%s)\n", skipDNSCheckFlag)
+		fmt.Fprintf(c.stderr, progName+": DNS precheck skipped (-%s)\n", skipDNSCheckFlag)
 		return nil
 	}
 	server, ok := c.serverHostFor(ctx, rawTarget)
@@ -109,19 +109,19 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		return nil
 	case domaincheck.Skipped, domaincheck.Warn:
 		for _, r := range rep.Reasons {
-			fmt.Fprintf(c.stderr, progName+": uyarı: %s\n", r)
+			fmt.Fprintf(c.stderr, progName+": warning: %s\n", r)
 		}
 		return nil
 	}
-	const later = "  Sertifika alınamaz; Caddy yeniden denemeden önce 1 güne kadar bekleyebilir.\n"
+	const later = "  No certificate can be issued; Caddy may wait up to a day before retrying.\n"
 	if len(rep.A) == 0 && len(rep.AAAA) == 0 {
-		return fmt.Errorf("%s için DNS kaydı yok\n"+later+
-			"  Alan adına sunucunun adresini gösteren bir A kaydı ekleyip yeniden deneyin\n"+
-			"  (kayıt yeni eklendiyse yayılmasını bekleyin ya da -%s ile geçin)",
+		return fmt.Errorf("%s has no DNS record\n"+later+
+			"  Add an A record pointing the domain at the server's address and try again\n"+
+			"  (if you just added it, wait for it to propagate or skip with -%s)",
 			rep.Domain, skipDNSCheckFlag)
 	}
-	return fmt.Errorf("%s bu sunucuyu göstermiyor: %s\n"+later+
-		"  DNS'i düzeltip yeniden deneyin. Alan adı bir vekilin (ör. Cloudflare)\n"+
-		"  arkasındaysa bu beklenir: -%s ile geçin",
+	return fmt.Errorf("%s does not point at this server: %s\n"+later+
+		"  Fix the DNS and try again. If the domain is behind a proxy (e.g. Cloudflare)\n"+
+		"  this is expected: skip with -%s",
 		rep.Domain, strings.Join(rep.Reasons, "; "), skipDNSCheckFlag)
 }

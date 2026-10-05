@@ -34,7 +34,7 @@ func TestSudoRefusesBeforeUploadWhenAPasswordIsRequired(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "a password is required") {
 		t.Fatalf("sudo'nun kendi mesajı taşınmadı: %v", err)
 	}
-	if strings.Contains(err.Error(), "bulunamadı") {
+	if strings.Contains(err.Error(), "not found") {
 		t.Fatalf("paket önkontrolden önce üretildi: %v", err)
 	}
 	if c := cagrilar(t, log); birKurulumCagrisiVarMi(c) {

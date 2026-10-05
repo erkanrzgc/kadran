@@ -47,17 +47,17 @@ func TestPrintAppMarksTheLiveRelease(t *testing.T) {
 	c.printApp(showResp(proto.String("r2"), "r3", "r2", "r1"))
 	s := out.String()
 
-	if !strings.Contains(s, "DERLEME") || !strings.Contains(s, "TRAFİK") {
+	if !strings.Contains(s, "BUILD") || !strings.Contains(s, "TRAFFIC") {
 		t.Errorf("başlık derleme durumunu trafikten ayırmıyor:\n%s", s)
 	}
-	if !strings.Contains(s, "Canlı    : r2") {
+	if !strings.Contains(s, "Live     : r2") {
 		t.Errorf("canlı sürüm satırı yok:\n%s", s)
 	}
-	if !strings.Contains(rowOf(t, s, "r2"), "canlı") {
+	if !strings.Contains(rowOf(t, s, "r2"), "live") {
 		t.Errorf("r2 canlı işaretlenmedi:\n%s", s)
 	}
 	for _, id := range []string{"r3", "r1"} {
-		if strings.Contains(rowOf(t, s, id), "canlı") {
+		if strings.Contains(rowOf(t, s, id), "live") {
 			t.Errorf("%s canlı DEĞİL ama işaretlendi:\n%s", id, s)
 		}
 	}
@@ -70,10 +70,10 @@ func TestPrintAppShowsALiveReleaseOutsideTheList(t *testing.T) {
 	c.printApp(showResp(proto.String("r1"), "r3"))
 	s := out.String()
 
-	if !strings.Contains(s, "Canlı    : r1") || !strings.Contains(s, "listede yok") {
+	if !strings.Contains(s, "Live     : r1") || !strings.Contains(s, "not in the list") {
 		t.Errorf("listenin dışındaki canlı sürüm söylenmedi:\n%s", s)
 	}
-	if strings.Contains(rowOf(t, s, "r3"), "canlı") {
+	if strings.Contains(rowOf(t, s, "r3"), "live") {
 		t.Errorf("r3 canlı DEĞİL ama işaretlendi:\n%s", s)
 	}
 }
@@ -83,10 +83,10 @@ func TestPrintAppSaysWhenNothingIsLive(t *testing.T) {
 	c.printApp(showResp(proto.String(""), "r1"))
 	s := out.String()
 
-	if !strings.Contains(s, "Canlı    : yok") {
+	if !strings.Contains(s, "Live     : none") {
 		t.Errorf("canlı sürüm olmadığı söylenmedi:\n%s", s)
 	}
-	if strings.Contains(rowOf(t, s, "r1"), "canlı") {
+	if strings.Contains(rowOf(t, s, "r1"), "live") {
 		t.Errorf("canlı sürüm yokken r1 işaretlendi:\n%s", s)
 	}
 }
@@ -102,10 +102,10 @@ func TestPrintAppDoesNotClaimNothingIsLiveOnAnOldServer(t *testing.T) {
 	c.printApp(showResp(nil, "r2", "r1"))
 	s := out.String()
 
-	if strings.Contains(s, "Canlı    : yok") {
+	if strings.Contains(s, "Live     : none") {
 		t.Errorf("eski sunucuda 'canlı sürüm yok' dendi — bilinmeyen yok sayıldı:\n%s", s)
 	}
-	if !strings.Contains(s, "Canlı    : bilinmiyor") {
+	if !strings.Contains(s, "Live     : unknown") {
 		t.Errorf("eski sunucu durumu söylenmedi:\n%s", s)
 	}
 	for _, id := range []string{"r2", "r1"} {

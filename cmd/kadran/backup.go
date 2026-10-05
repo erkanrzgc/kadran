@@ -12,7 +12,7 @@ import (
 // runBackup, `backup` alt komutlarını dağıtır.
 func (c *cli) runBackup(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.usageError("`backup` bir alt komut ister: create veya list")
+		return c.usageError("`backup` needs a subcommand: create or list")
 	}
 
 	switch args[0] {
@@ -22,7 +22,7 @@ func (c *cli) runBackup(ctx context.Context, args []string) int {
 		return c.runBackupList(ctx, args[1:])
 	default:
 		return c.usageError(
-			"bilinmeyen backup alt komutu %q — create veya list", args[0])
+			"unknown backup subcommand %q — create or list", args[0])
 	}
 }
 
@@ -32,12 +32,12 @@ func (c *cli) runBackup(ctx context.Context, args []string) int {
 // işlemden hemen ÖNCE taze bir yedek istemek içindir.
 func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("backup create")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("kullanım: kadran backup create [hedef]")
+		return c.usageError("usage: kadran backup create [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -63,7 +63,7 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 	}
 
 	b := resp.GetBackup()
-	fmt.Fprintf(c.stdout, "yedek alındı: %s (%s)\n",
+	fmt.Fprintf(c.stdout, "backup taken: %s (%s)\n",
 		b.GetPath(), humanBytes(uint64(b.GetBytes()))) //nolint:gosec // boyut negatif olamaz
 	printVolumeScopeWarning(c, resp.GetVolumesExcluded())
 	return exitOK
@@ -78,12 +78,12 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 // sınanmaz — ve o gün öğrenmek için en kötü gündür.
 func (c *cli) runBackupList(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("backup list")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("kullanım: kadran backup list [hedef]")
+		return c.usageError("usage: kadran backup list [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -113,12 +113,12 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 		// ⚠ Bu satır bir UYARI, bilgilendirme değil. Yedeği olmayan bir
 		// sunucu, bir disk arızasında her şeyi kaybeder.
 		fmt.Fprintln(c.stdout,
-			"HİÇ YEDEK YOK — daemon --backup-interval ile koşuyor mu?")
+			"NO BACKUPS AT ALL — is the daemon running with --backup-interval?")
 		return exitOK
 	}
 
 	w := tabwriter.NewWriter(c.stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ALINDI\tBOYUT\tYOL")
+	fmt.Fprintln(w, "TAKEN\tSIZE\tPATH")
 	for _, b := range backups {
 		taken := time.Unix(b.GetTakenUnix(), 0).UTC()
 		fmt.Fprintf(w, "%s\t%s\t%s\n",
@@ -130,13 +130,13 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 		return c.fail(err)
 	}
 
-	fmt.Fprintf(c.stdout, "\n%d yedek (en fazla %d saklanır)\n",
+	fmt.Fprintf(c.stdout, "\n%d backups (at most %d are kept)\n",
 		len(backups), resp.GetKeep())
 	printVolumeScopeWarning(c, true)
 	fmt.Fprintln(c.stdout,
-		"geri yükleme sunucuda, daemon KAPALIYKEN:\n"+
+		"restore on the server, with the daemon STOPPED:\n"+
 			"  systemctl stop kadrand\n"+
-			"  sudo -u kadran /usr/local/lib/kadran/kadrand --restore <yol>\n"+
+			"  sudo -u kadran /usr/local/lib/kadran/kadrand --restore <path>\n"+
 			"  systemctl start kadrand")
 	return exitOK
 }
@@ -151,8 +151,8 @@ func printVolumeScopeWarning(c *cli, excluded bool) {
 		return
 	}
 	fmt.Fprintln(c.stderr,
-		"UYARI: yedek yalnızca kontrol düzlemi veritabanını kapsıyor "+
-			"(uygulama tanımları, ortam değişkenleri, denetim zinciri). "+
-			"Uygulamaların kalıcı disk verisi KAPSAM DIŞI; onun için "+
-			"hacim yedeği ayrıca kurulmalı (deploy/offsite/README.md, K-111).")
+		"WARNING: the backup covers only the control plane database "+
+			"(app definitions, environment variables, audit chain). "+
+			"Apps' persistent volume data is NOT INCLUDED; set up the "+
+			"volume backup for that (deploy/offsite/README.md, K-111).")
 }

@@ -34,7 +34,7 @@ func TestRejectsPrivateKey(t *testing.T) {
 		if err == nil {
 			t.Fatalf("özel anahtar kabul edildi:\n%s", key)
 		}
-		if !strings.Contains(err.Error(), "ÖZEL anahtar") {
+		if !strings.Contains(err.Error(), "PRIVATE key") {
 			t.Errorf("hata özel anahtar olduğunu söylemiyor: %v", err)
 		}
 	}

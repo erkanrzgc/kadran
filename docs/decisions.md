@@ -10321,7 +10321,7 @@ ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.
 
 **Güncelleme (K-139):** `install.sh`'taki üç pencere kapandı; `.ssh` ve
 authorized_keys artık kadran-client olarak yazılıyor. `goc_yerinde_sed`'in
-penceresi KABUL kalıyor, `remoteKeys` hâlâ AÇIK.
+penceresi KABUL kalıyor. `remoteKeys` K-140'ta kapandı.
 
 ## K-138 — Yükseltme, kurulu seçimli birimleri güncellemiyordu
 
@@ -10428,7 +10428,8 @@ kimliğiyle yapmak. Bağın hedefi onun erişemediği bir dosyaysa işlem düşe
 - Gövdedeki `chown -R kadran-client:kadran-client .ssh` ve `chmod 0600` kalktı.
   Kurulum adımı o ev dizininde root olarak artık hiçbir şey değiştirmiyor.
   İki yol hâlâ root olarak yazıyor (aşağıda, kapsam dışı): aynı `bootstrap`
-  koşusunda v0.3.x ve öncesinden göçte `goc_ak`, ve `kadran key add/remove`.
+  koşusunda v0.3.x ve öncesinden göçte `goc_ak`, ve `kadran key add/remove`
+  (sonra K-140'ta kapandı).
 
 ### Davranış farkı
 
@@ -10498,4 +10499,69 @@ yapıldığını da arıyor.
   bir kez koşuyor. Göç sınaması sahte kökte ve root'suz; kullanıcı değiştirmeyi
   taşımıyor.
 - `kadran key`'in uzak betiği (`keys.go`, `remoteKeys`) aynı dizinde hâlâ root
-  olarak yol üzerinden çalışıyor (K-137'nin son paragrafı). Ayrı iş, AÇIK.
+  olarak yol üzerinden çalışıyor (K-137'nin son paragrafı). Ayrı iş: K-140'ta
+  kapandı.
+
+## K-140 — `kadran key` authorized_keys'e kadran-client olarak dokunuyor
+
+**Tarih:** 5 Ekim 2026
+**Durum:** KOD BİTTİ (dal `k139-ak-istemci`, K-139 ile aynı PR). Canlıda değil;
+GCP provası K-139 ile birlikte yapılacak (kullanıcı onayı verildi, 5 Ekim).
+
+### Neden
+
+K-137'nin son paragrafı ve K-139'un kapsam dışı notu: `kadran key`'in uzak betiği
+(`keys.go`, `remoteKeys`) kadran-client'ın `.ssh`'ında root olarak, yol üzerinden
+çalışıyordu. Burada bağ denetimi HİÇ yoktu; pencere bile gerekmiyordu. `[ -f ]`,
+`cat` ve `chown --reference` bağı izliyordu: authorized_keys root'un bir dosyasına
+bağ olursa `list` o dosyayı yöneticiye basıyor, `add` onu yeni authorized_keys'e
+kopyalıyordu. `kadran key` her dağıtım anahtarı işleminde koşuyor; `bootstrap`'tan
+sık.
+
+### Düzeltme (`internal/bootstrap/keys.go`)
+
+- Betik root olarak başlıyor (SSH ya da `-sudo`) ve kendini dosyanın sahibi olarak
+  yeniden koşturuyor: `setpriv --reuid/--regid --clear-groups`, `env -i`, `cd /`,
+  `bash -c "$BASH_EXECUTION_STRING"`. Geçiş yalnız root'ken ve hedef root değilken
+  yapılıyor; çocuk süreçte koşul yanlış, döngü yok.
+- Kullanıcı ilk argüman. Go tarafında `keysOwner` (üretimde `clientUser`); testler
+  kendi uid'ini veriyor. `TestClientPathsMatchInstallScript` install.sh'ın hesabı
+  bu adla kurduğunu da arıyor.
+- Okunamayan dosyada yeni çıkış kodu 7 ve `chown` öneren ileti. Root'a ait bir
+  authorized_keys'i `kadran key` artık reddediyor (K-139'un davranış farkıyla aynı).
+- `replace()`: `chown --reference` kalktı (dosya o kullanıcının doğuyor), `mv -fT`.
+- `remove`: `grep -vF … || true` okuma hatasını da yutuyordu; artık yalnız 1
+  ("satır kalmadı") kabul. Mutant yok: `-r` denetiminden sonra okuma hatası
+  deterministik kurulamıyor.
+
+### Kanıt
+
+`TestKeyOpsRunAsClientUnderRealSudo` (`keys_linux_test.go`): gerçek sudo, gerçek bir
+kullanıcı (`useradd`), sahte ssh `sudo -n --` önekini DÜŞÜRMÜYOR. Yalnız
+`KADRAN_TEST_REAL_SUDO` ile koşuyor; CI'ın Linux test işi ve mutasyon adımı bunu
+veriyor.
+
+KIRMIZI: önce yalnız kullanıcı argümanı ve `-r` denetimi eklendi, geçiş YOK (Debian 13
+konteyneri, uid 1001 + parolasız sudo):
+
+```
+--- PASS: TestKeyLifecycleWithRealBash
+…
+keys_linux_test.go:299: bağlı authorized_keys listelendi (root olarak okundu): [{Role: … body:}]
+--- FAIL: TestKeyOpsRunAsClientUnderRealSudo
+```
+
+YEŞİL (geçiş eklendikten sonra): yaşam döngüsü (ekle, listele, sil), dosya o
+kullanıcının ve 0600. Bağda: `list` "okunamıyor" diyerek reddediliyor ve sırrı
+taşımıyor, `add` reddediliyor, bağ yerinde, root'un dosyası aynı, sır kullanıcının
+dizinine düşmüyor. Öteki anahtar testleri root'suz ve root'ta (geçişsiz yol) yeşil.
+
+Mutasyon (`scripts/mutate-keys.sh`, 16 mutant; ikisi yeni: geçiş yok, `-r` yok):
+CI taklidinde (uid 1001 + parolasız sudo + `KADRAN_TEST_REAL_SUDO=1`) 16/16
+yakalandı. Değişken yokken iki yeni mutant "ölçülmedi" diye basılıyor.
+`golangci-lint` v2.12.2 değişen paketlerde 0 sorun.
+
+### Kapsam dışı
+
+- `goc_yerinde_sed` (göç) K-136'nın gerekçesiyle KABUL kalıyor (K-139).
+- `env -i` ve `cd /` burada da hijyen; mutant yok.

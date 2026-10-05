@@ -12,12 +12,18 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   target, but the write itself now runs under `setpriv` as that user. Before, a link
   swapped in between the check and the write made root read the link's target or change
   the mode of the directory it pointed to. The file is born owned by the user with mode
-  0600, and the install step no longer runs `chown -R` or `chmod` there as root. Two
-  paths still write that file as root: the one-time panely → kadran migration (K-136,
-  upgrades from v0.3.x and older) and `kadran key add/remove` (open).
+  0600, and the install step no longer runs `chown -R` or `chmod` there as root. One
+  path still writes that file as root: the one-time panely → kadran migration (K-136,
+  upgrades from v0.3.x and older).
+- **`kadran key list/add/remove` touch `authorized_keys` as `kadran-client` (K-140).**
+  The server-side script still starts as root (SSH or `-sudo`) and re-runs itself under
+  `setpriv` as that user. Before, it had no link check at all: if `authorized_keys` was a
+  link to a root-only file, root listed that file and copied it into the new
+  `authorized_keys`. A failed read while removing a key is no longer ignored.
 - Behaviour change: if `authorized_keys` or `.ssh` is owned by root (for example after
   a manual edit as root), `bootstrap` stops without touching it and prints the `chown`
-  command to fix it. Before, it fixed the owner silently.
+  command to fix it; `kadran key` refuses the same file with the same hint. Before, both
+  went ahead as root and kept or fixed the owner silently.
 
 ## v0.5.0 — 2026-10-04
 

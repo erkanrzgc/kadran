@@ -10393,7 +10393,8 @@ uzak yedek bir kez koşturuldu: 3 çapa yüklendi, başarısız 0.
 
 **Tarih:** 5 Ekim 2026
 **Durum:** DÜZELTİLDİ, v0.5.1 ile yayınlandı (PR #7, `ca7bc5b`). GCP'de ölçüldü (5 Ekim,
-aşağıda "GCP provası"); Hetzner'da değil, ayrı onay bekliyor.
+aşağıda "GCP provası") ve Hetzner'da CANLIDA (5 Ekim 14:23 UTC, aşağıda
+"Canlı (Hetzner)").
 
 ### Neden
 
@@ -10511,6 +10512,24 @@ GCP (v0.5.0 → `d9a48b9` derlemesi, `bootstrap -sudo`, K-139 + K-140 birlikte):
   çıkış 7. KONTROL olarak kullanıcı `root` iken (geçiş yok) dosyanın içeriği
   basıldı, çıkış 0. Geçici dosyalar silindi.
 
+### Canlı (Hetzner, 5 Ekim, kullanıcı onayıyla)
+
+v0.5.0 → v0.5.1 yayın dosyalarından (`indir` + `sha256sum -c`, etiket ağacı),
+`bootstrap root@…`:
+
+- 31 sn, 19/19 ✓, 0 ✗; ters vekil değişmedi, yeniden başlamadı. Üç adreste
+  (`kadran.erkanrzgc.dev`, `hello.localhost`, `pf.localhost`) kurulum boyunca
+  yoklama 111/111 200.
+- authorized_keys kurulum anında yeniden yazıldı: `kadran-client` 600, `.ssh`'de
+  artık dosya yok, sıralı içerik özeti önce/sonra aynı (`e6f6eb5977f0ef8a`);
+  `kadran key list` (v0.5.1 aracı, K-140 yolu) yönetici + `portfolio` dağıtım
+  satırını gösteriyor.
+- Önce/sonra dökümünde (sürüm, servisler, kasa anahtarı, `env_seal`, değer
+  sayıları, veritabanı dosyaları, `--allow-repo` drop-in'i, üç zamanlayıcı)
+  fark yalnız sürüm satırı ve WAL aktarımının değiştirdiği veritabanı boyutları.
+  `kasa açık` aynı alıcıyla, `muhurlenen_deger=0`. sshd günlüğünde sahiplik
+  hatası 0, başarısız birim 0.
+
 ### Ölçülmeyenler ve kapsam dışı
 
 - `env -i` ve `cd /` hijyen. Kaldırılsalar hiçbir senaryo kızarmaz; mutant
@@ -10530,7 +10549,8 @@ GCP (v0.5.0 → `d9a48b9` derlemesi, `bootstrap -sudo`, K-139 + K-140 birlikte):
 
 **Tarih:** 5 Ekim 2026
 **Durum:** DÜZELTİLDİ, v0.5.1 ile yayınlandı (K-139 ile aynı PR #7). GCP'de
-ölçüldü (5 Ekim, K-139'un "GCP provası"); Hetzner'da değil.
+ölçüldü (5 Ekim, K-139'un "GCP provası"); Hetzner'da CANLIDA (K-139'un "Canlı
+(Hetzner)").
 
 ### Neden
 

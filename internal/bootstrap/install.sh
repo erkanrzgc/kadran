@@ -170,7 +170,7 @@ ssh_dizini_hazirla() {
         die "$dizin sembolik bağ; .ssh kurulmadı"
     fi
     istemci_olarak "$kullanici" "$grup" install -d -m 0700 "$dizin" \
-        || die "$dizin $kullanici olarak kurulamadı (sahibi $kullanici değilse düzeltin: chown $kullanici: $dizin)"
+        || die "$dizin $kullanici olarak kurulamadı (yukarıdaki hataya bakın; sahibi $kullanici değilse: chown $kullanici: $dizin)"
 }
 
 # kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — kadran-connect'e

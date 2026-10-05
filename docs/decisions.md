@@ -10426,7 +10426,9 @@ kimliğiyle yapmak. Bağın hedefi onun erişemediği bir dosyaysa işlem düşe
 - `ssh_dizini_hazirla`: bağ denetimi root'ta, `install -d -m 0700` kullanıcı
   olarak.
 - Gövdedeki `chown -R kadran-client:kadran-client .ssh` ve `chmod 0600` kalktı.
-  Root kadran-client'ın ev dizininde artık hiçbir şey değiştirmiyor.
+  Kurulum adımı o ev dizininde root olarak artık hiçbir şey değiştirmiyor.
+  İki yol hâlâ root olarak yazıyor (aşağıda, kapsam dışı): aynı `bootstrap`
+  koşusunda v0.3.x ve öncesinden göçte `goc_ak`, ve `kadran key add/remove`.
 
 ### Davranış farkı
 

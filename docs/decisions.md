@@ -10521,7 +10521,7 @@ v0.5.0 → v0.5.1 yayın dosyalarından (`indir` + `sha256sum -c`, etiket ağac�
   (`kadran.erkanrzgc.dev`, `hello.localhost`, `pf.localhost`) kurulum boyunca
   yoklama 111/111 200.
 - authorized_keys kurulum anında yeniden yazıldı: `kadran-client` 600, `.ssh`'de
-  artık dosya yok, sıralı içerik özeti önce/sonra aynı (`e6f6eb5977f0ef8a`);
+  geçici dosya kalmadı, sıralı içerik özeti önce/sonra aynı (`e6f6eb5977f0ef8a`);
   `kadran key list` (v0.5.1 aracı, K-140 yolu) yönetici + `portfolio` dağıtım
   satırını gösteriyor.
 - Önce/sonra dökümünde (sürüm, servisler, kasa anahtarı, `env_seal`, değer

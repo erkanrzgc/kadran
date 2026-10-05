@@ -118,8 +118,11 @@ goc_onek() {
 # açılan kopyada bir an herkese okunurdu). Güvenlik incelemesi, K-136.
 #
 # Kalan dar pencere: dizinin sahibi mktemp ile sed arasında kopyayı bağla
-# değiştirebilir. Kapatmak kopyayı o kullanıcı olarak yazmayı gerektirir;
-# kadran-client'ın tek yetkisi zorlanmış komut olduğu için kabul edildi.
+# değiştirebilir. Kapatmak kopyayı o kullanıcı olarak yazmayı gerektirir
+# (install.sh bunu K-139'dan beri yapıyor: istemci_olarak). Burada KABUL:
+# kadran-client'ın tek yetkisi zorlanmış komut, göç yalnız v0.3.x ve
+# öncesinden yükseltmede bir kez koşuyor ve göç sınaması sahte kökte,
+# root'suz (kullanıcı değiştiremiyor).
 goc_yerinde_sed() {
     local f="$1" ifade="$2" gecici
     if [ -L "$f" ]; then

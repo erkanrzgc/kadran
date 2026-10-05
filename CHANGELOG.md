@@ -3,6 +3,20 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Security
+
+- **`bootstrap` writes the client's `.ssh` and `authorized_keys` as `kadran-client`
+  (K-139).** Root still reads the staged key and refuses a symlinked or non-regular
+  target, but the write itself now runs under `setpriv` as that user. Before, a link
+  swapped in between the check and the write made root read the link's target or change
+  the mode of the directory it pointed to. The file is born owned by the user with mode
+  0600, and root no longer runs `chown -R` or `chmod` inside that home directory.
+- Behaviour change: if `authorized_keys` or `.ssh` is owned by root (for example after
+  a manual edit as root), `bootstrap` stops without touching it and prints the `chown`
+  command to fix it. Before, it fixed the owner silently.
+
 ## v0.5.0 — 2026-10-04
 
 ### Secret store (K-123)

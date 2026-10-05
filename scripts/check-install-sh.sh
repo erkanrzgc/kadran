@@ -81,7 +81,7 @@ dene "KONTROL: denetimsiz yazım kısıtsız satır üretir" \
     "f='$D/kontrol'; : > \"\$f\"; printf '%s\n' \"command=\\\"x\\\",restrict \$(cat '$D/iki.pub')\" >> \"\$f\"; grep -q '^ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIkinci' \"\$f\""
 
 echo
-echo "== yonetici_satiri_yaz: root, kadran-client'ın dizinine yazıyor (K-137) =="
+echo "== yonetici_satiri_yaz: kadran-client'ın dizininde bağ denetimi (K-137) =="
 # .ssh kadran-client'ın; o kullanıcı oraya bağ koyabilir. Root bir bağı
 # izlerse istemcinin seçtiği dosyanın üstüne yazar. Hata senaryoları
 # `if (…)` içinde: kurulum fonksiyonu `|| die` bağlamında çağırıyor ve

@@ -10319,6 +10319,10 @@ açamaz. `kadran key`'in uzak betiği (`keys.go`, `remoteKeys`) de aynı dizinde
 root olarak yol üzerinden çalışıyor: `mktemp` kullanıyor, ama `[ -f ]`, `cat`
 ve `chown --reference` bağı izler. ÖLÇÜLMEDİ; ayrı iş.
 
+**Güncelleme (K-139):** `install.sh`'taki üç pencere kapandı; `.ssh` ve
+authorized_keys artık kadran-client olarak yazılıyor. `goc_yerinde_sed`'in
+penceresi KABUL kalıyor, `remoteKeys` hâlâ AÇIK.
+
 ## K-138 — Yükseltme, kurulu seçimli birimleri güncellemiyordu
 
 **Tarih:** 4 Ekim 2026
@@ -10384,3 +10388,112 @@ değiştirmedi). 17/17; üç seçimli birim için "güncellendi" satırı; uzak 
 betiği `352b55a4…` → `ec643c46…` (paketteki); üç zamanlayıcı yine `disabled`;
 `kadran-offsite.service.d/olcum.conf` drop-in'i yerinde ve etkin. Ardından
 uzak yedek bir kez koşturuldu: 3 çapa yüklendi, başarısız 0.
+
+## K-139 — authorized_keys ve .ssh kadran-client olarak yazılıyor
+
+**Tarih:** 5 Ekim 2026
+**Durum:** KOD BİTTİ (dal `k139-ak-istemci`). Canlıda değil; GCP provası ve
+iki sunucudaki salt okuma ön kontrolü kullanıcı onayı bekliyor.
+
+### Neden
+
+K-137 kurulumun kadran-client'ın `.ssh`'ında bağ izlemesini durdurdu ama
+yazmayı root yapmaya devam etti. K-137'nin "Kalan pencere" bölümü üç yolu
+kayda geçirdi: denetim ile kullanım arasında dizinin sahibi bir adı bağa
+çevirirse root bağın HEDEFİNDE çalışıyordu. `.ssh` için bu, yükseltmenin geri
+gelmesiydi; authorized_keys için root'un bağın hedefini okuyup içeriği
+o kullanıcının dosyasına koymasıydı. Gövdedeki `chmod 0600 "$auth_file"` de
+bağı izliyordu.
+
+Pencereyi daraltmak yerine kapatan iş K-137'de yazılıydı: işi o kullanıcının
+kimliğiyle yapmak. Bağın hedefi onun erişemediği bir dosyaysa işlem düşer.
+
+### Düzeltme (`internal/bootstrap/install.sh`)
+
+- `istemci_olarak <kullanıcı> <grup> <komut|fonksiyon> …`: root'ta
+  `setpriv --reuid … --regid … --clear-groups` (doğrulama adımlarının
+  kullandığı biçim), `env -i PATH=…` ve `cd /`. Fonksiyon `declare -f` ile
+  yeni bir bash'e taşınıyor; `die` gitmiyor, fonksiyon çıkış koduyla
+  konuşuyor. Root'suzken yalnız kendi kimliğini kabul ediyor: bu sınama
+  düzeneği için. Başka bir kullanıcı istenirse 1 dönüyor.
+- `ak_yaz_istemci`: `mktemp` + `grep -vF` + satır + `mv -fT`. Kullanıcı
+  olarak koşuyor. Dosya o kullanıcının ve 0600 doğuyor; K-137'deki
+  `chown/chmod --reference` kalktı.
+- `yonetici_satiri_yaz`: root yalnız anahtar dosyasını okuyor (`$STAGE` 0700,
+  kullanıcıya kapalı), K-131'in tek satır ve CR denetimlerini ve K-137'nin bağ
+  denetimini yapıyor. Yazma `ak_yaz_istemci` ile. Çıkış kodları ayrı
+  iletilere çevriliyor; 1 yalnız "tek satır" için kalıyor.
+- `ssh_dizini_hazirla`: bağ denetimi root'ta, `install -d -m 0700` kullanıcı
+  olarak.
+- Gövdedeki `chown -R kadran-client:kadran-client .ssh` ve `chmod 0600` kalktı.
+  Root kadran-client'ın ev dizininde artık hiçbir şey değiştirmiyor.
+
+### Davranış farkı
+
+Root'a ait bir authorized_keys'i ya da `.ssh`'yi kullanıcı düzeltemez. Kurulum
+durur, dosyaya dokunmaz ve `chown kadran-client: <yol>` önerir. Eskiden root
+`chown -R` ile sessizce düzeltiyordu. Kadran'ın kurduğu bir sunucuda bu dosyalar
+kullanıcının. Elle root olarak düzenlenmiş bir dosya bu durumu üretir. İki
+canlı sunucudaki sahiplik henüz ÖLÇÜLMEDİ; yükseltmeden önce salt okuma
+bakılacak.
+
+### Kanıt
+
+`scripts/check-install-sh.sh` yeni bölümü (yalnız root: gerçek bir kullanıcı
+ve setpriv). Pencere deterministik kurulamadığı için yazıcı denetimsiz
+çağrılıyor; denetimin kaçırdığı durumun aynısı. Bağın hedefi root'un 0600
+dosyası:
+
+```
+== kadran-client olarak yazma (K-139) ==
+  ✓ ssh_dizini_hazirla: .ssh istemcinin, 0700
+  ✓ yonetici_satiri_yaz: yeni authorized_keys istemcinin, 0600
+  ✓ yükseltme: dağıtım satırı istemci olarak okunup KORUNUYOR
+  ✓ pencerede konan bağ: istemci root'un dosyasını OKUYAMIYOR, sır sızmıyor
+  ✓ KONTROL: aynı yazıcı root olarak koşunca bağın hedefini okuyup istemcinin dizinine yazar
+  ✓ pencerede bağa dönen .ssh: istemci olarak install -d root'un dizinini DEĞİŞTİRMİYOR
+  ✓ root'a ait authorized_keys: kurulum DURUYOR, dosyaya dokunulmuyor
+  ✓ root'a ait .ssh: kurulum DURUYOR, dizine dokunulmuyor
+```
+
+KIRMIZI: eski kodun fonksiyon adları değiştiği için yeni senaryolar ona
+doğrudan bağlanamıyor. Eski davranış "yazan root" olduğu için aynı ağaçta
+`setpriv` öneki kaldırılarak ölçüldü (Debian 13 konteyneri, root): yeni
+senaryoların yedisi ✗, KONTROL ✓. `.ssh` için root'un `install -d`'sinin bağı
+izlediğini K-137'nin kontrol grubu zaten gösteriyor.
+
+`.ssh` senaryosunun da kendi kontrol grubu var: K-137'nin "KONTROL: korumasız
+install -d bağlı .ssh'nin HEDEFİNİ değiştirir".
+
+Mutasyon (`scripts/mutate-install.sh`, 12 mutant): dördü yeni.
+- `istemci_olarak`'ın root'suz kapısı: yalnız root'suz koşuda ölçülüyor.
+- Üç root mutantı: setpriv atlanıyor, yazıcı root olarak çağrılıyor, `.ssh`
+  root olarak kuruluyor. Root'ta ya da `KADRAN_TEST_REAL_SUDO=1` ile
+  ölçülüyor.
+
+| Kip | Sonuç |
+|---|---|
+| root | 10 yakalandı; 2 "ölçülmedi" (okuma hatası, root'suz kapı) |
+| uid 1000, sudo yok | 9 yakalandı; 3 root mutantı "ölçülmedi" |
+| uid 1001 + parolasız sudo + `KADRAN_TEST_REAL_SUDO=1` (CI taklidi) | 12/12 yakalandı |
+
+CI: `check-install-sh.sh` bir kez de `sudo env KADRAN_TEST_REQUIRE_ROOT=1` ile
+koşuyor; root bölümü orada atlanamaz. Mutasyon adımı zaten
+`KADRAN_TEST_REAL_SUDO=1` taşıyor; `mutate-install.sh` her ölçümde root
+koşusunu da yapıyor ve sudo yoksa duruyor. `go test ./internal/bootstrap/`
+geçiyor; metin testi artık çağrıların `kadran-client kadran-client` ile
+yapıldığını da arıyor.
+
+### Ölçülmeyenler ve kapsam dışı
+
+- `env -i` ve `cd /` hijyen. Kaldırılsalar hiçbir senaryo kızarmaz; mutant
+  yok.
+- Pencerede bir FIFO konursa `grep` kullanıcı olarak takılır ve kurulum
+  bekler. Bu yetki değil, kesinti; saldırgan önce zorlanmış komutu aşmış
+  olmalı. KABUL.
+- `goc.sh`'ın `goc_yerinde_sed`'i (ve `geri.sh`'taki tersi) aynı sınıftan,
+  K-136'nın gerekçesiyle KABUL kalıyor. Yalnız v0.3.x ve öncesinden yükseltmede
+  bir kez koşuyor. Göç sınaması sahte kökte ve root'suz; kullanıcı değiştirmeyi
+  taşımıyor.
+- `kadran key`'in uzak betiği (`keys.go`, `remoteKeys`) aynı dizinde hâlâ root
+  olarak yol üzerinden çalışıyor (K-137'nin son paragrafı). Ayrı iş, AÇIK.

@@ -103,7 +103,7 @@ if ! olc; then
     exit 1
 fi
 
-echo "== Güvenlik: root, kadran-client'ın dizinine yazıyor (K-137) =="
+echo "== Güvenlik: kadran-client'ın dizininde bağ denetimi (K-137) =="
 
 mutate_in "$INST" "yonetici_satiri_yaz bağlı authorized_keys'i yeniden yazıyor" \
     "s=s.replace('    if [ -L \"\$auth_file\" ] || { [ -e','    if { [ -e',1)"

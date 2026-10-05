@@ -28,14 +28,17 @@ import (
 //   - Sunucu: SABİT bir betik. Satırı YENİDEN doğrular (istemciye
 //     güvenmez), aynı anahtar gövdesini ikinci kez eklemez, son yönetici
 //     satırının silinmesini reddeder ve dosyayı geçici dosya + mv ile
-//     değiştirir.
+//     değiştirir. Root olarak başlar, dosyaya kadran-client olarak dokunur
+//     (K-140, remoteKeys'in notu).
 
 var (
 	// libDir ve clientAuthorizedKeys install.sh'in LIB_DIR ve CLIENT_HOME'u
-	// (TestClientPathsMatchInstallScript). Değişken: testler geçici bir
-	// dosyaya yönlendiriyor.
+	// (TestClientPathsMatchInstallScript). keysOwner, uzak betiğin dosyaya
+	// dokunurken geçtiği kullanıcı (K-140): üretimde clientUser. Değişken:
+	// testler geçici bir dosyaya ve kendi kullanıcılarına yönlendiriyor.
 	libDir               = "/usr/local/lib/kadran"
 	clientAuthorizedKeys = "/var/lib/kadran-client/.ssh/authorized_keys"
+	keysOwner            = clientUser
 )
 
 // Uzak betiğin çıkış kodları.
@@ -45,29 +48,45 @@ const (
 	keysDuplicate  = 4
 	keysLastAdmin  = 5
 	keysNotFound   = 6
+	keysUnreadable = 7
 	keysMaxComment = 64
 )
 
-// remoteKeys; argümanlar: $1 işlem (list|add|remove), $2 authorized_keys,
-// add için $3 satır $4 anahtar gövdesi, remove için $3 anahtar gövdesi.
+// remoteKeys; argümanlar: $1 dosyanın sahibi olan kullanıcı, $2 işlem
+// (list|add|remove), $3 authorized_keys, add için $4 satır $5 anahtar
+// gövdesi, remove için $4 anahtar gövdesi.
+//
+// Betik root olarak başlıyor ama dosyaya o kullanıcı olarak dokunuyor
+// (K-140): authorized_keys onun dizininde ve o, dosyanın yerine bir bağ
+// koyabilir. Root olarak `[ -f ]`, `cat` ve `chown --reference` bağı
+// izliyordu; bağın hedefi root'un bir dosyasıysa root onu okuyup listeye ve
+// yeni dosyaya taşıyordu. Betik kendini `$BASH_EXECUTION_STRING` ile setpriv
+// altında yeniden koşturuyor; o kullanıcı olarak bir bağ, onun zaten
+// erişebildiğinden fazlasını açmaz. Yeni dosya onun olarak doğar, sahiplik
+// aktarılmaz. Root'a ait ya da okunamayan bir dosyada 7 döner.
 //
 // Desenler Go tarafındakilerle aynı karakter kümesini kullanıyor; satır
 // sonu taşıyan bir satır `=~` ile eşleşmez (desen tek satır).
 const remoteKeys = `set -euo pipefail
-op="$1"; f="$2"
+kullanici="$1"; op="$2"; f="$3"
+if [ "$(id -u)" = 0 ] && [ "$(id -u "$kullanici")" != 0 ]; then
+    cd /
+    exec setpriv --reuid "$kullanici" --regid "$kullanici" --clear-groups -- \
+        env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin bash -c "$BASH_EXECUTION_STRING" _ "$@"
+fi
 admin_re='^command="/usr/local/lib/kadran/kadran-connect",restrict '
 [ -f "$f" ] || { echo "authorized_keys yok ($f) — sunucu kurulmamış mı? önce kadran bootstrap" >&2; exit 3; }
+[ -r "$f" ] || { echo "authorized_keys $kullanici olarak okunamıyor ($f) — sahibi $kullanici değilse: chown $kullanici: $f" >&2; exit 7; }
 replace() {
-    chown --reference="$f" "$1"
     chmod 600 "$1"
-    mv -f "$1" "$f"
+    mv -fT "$1" "$f"
 }
 case "$op" in
 list)
     cat "$f"
     ;;
 add)
-    line="$3"; body="$4"
+    line="$4"; body="$5"
     re='^command="/usr/local/lib/kadran/kadran-connect -deploy=[a-z][a-z0-9-]*(,[a-z][a-z0-9-]*)*",restrict [a-z0-9@.-]+ [A-Za-z0-9+/]+=*( [A-Za-z0-9@._+-]+)?$'
     [[ "$line" =~ $re ]] || { echo "geçersiz anahtar satırı" >&2; exit 2; }
     case "$line" in *",restrict $body"|*",restrict $body "*) ;; *) echo "satır anahtar gövdesini taşımıyor" >&2; exit 2 ;; esac
@@ -79,13 +98,13 @@ add)
     replace "$tmp"
     ;;
 remove)
-    body="$3"
+    body="$4"
     body_re='^[a-z0-9@.-]+ [A-Za-z0-9+/]+=*$'
     [[ "$body" =~ $body_re ]] || { echo "geçersiz anahtar gövdesi" >&2; exit 2; }
     grep -qF -- "$body" "$f" || { echo "anahtar bulunamadı" >&2; exit 6; }
     tmp="$(mktemp "$f.XXXXXX")"
     trap 'rm -f "$tmp"' EXIT
-    grep -vF -- "$body" "$f" > "$tmp" || true
+    grep -vF -- "$body" "$f" > "$tmp" || [ $? -eq 1 ]
     grep -qE "$admin_re" "$tmp" || { echo "son yönetici anahtarı kaldırılamaz" >&2; exit 5; }
     replace "$tmp"
     ;;
@@ -339,7 +358,7 @@ func runKeys(ctx context.Context, opts KeyOptions, stdout io.Writer, args ...str
 	if stdout == nil {
 		stdout = io.Discard
 	}
-	code, err := sshRun(ctx, o, privileged(o, remoteKeys, args...), nil, stdout)
+	code, err := sshRun(ctx, o, privileged(o, remoteKeys, append([]string{keysOwner}, args...)...), nil, stdout)
 	if err != nil {
 		return fmt.Errorf("anahtar işlemi: %w", err)
 	}
@@ -347,7 +366,7 @@ func runKeys(ctx context.Context, opts KeyOptions, stdout io.Writer, args ...str
 	switch code {
 	case 0:
 		return nil
-	case keysDuplicate, keysLastAdmin, keysNotFound, keysNoFile, keysBadLine:
+	case keysDuplicate, keysLastAdmin, keysNotFound, keysNoFile, keysBadLine, keysUnreadable:
 		return errors.New(msg)
 	case sshTransportFailure:
 		return fmt.Errorf("sunucuya bağlanılamadı: %s", msg)

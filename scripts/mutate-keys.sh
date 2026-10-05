@@ -133,6 +133,20 @@ mutate_in "$CLI" "kısıtsız satır sayılmıyor" \
 mutate_in "$CLI" "-deploy zorunlu değil" \
     "s=s.replace('\tif *deploy == \"\" {','\tif false && *deploy == \"\" {',1)"
 
+echo "== Uzak betik dosyaya kadran-client olarak dokunuyor (K-140) =="
+# Yalnız gerçek sudo altında koşan test yakalar
+# (TestKeyOpsRunAsClientUnderRealSudo). CI bu betiği KADRAN_TEST_REAL_SUDO=1
+# ile koşturuyor; değişken yoksa test atlanır ve mutant ÖLÇÜLMEZ.
+if [ "${KADRAN_TEST_REAL_SUDO:-}" = 1 ]; then
+    mutate_in "$KEYS" "uzak betik root olarak kalıyor (kullanıcıya geçmiyor)" \
+        "s=s.replace('if [ \"\$(id -u)\" = 0 ] && [ \"\$(id -u \"\$kullanici\")\" != 0 ]; then','if false; then',1)"
+
+    mutate_in "$KEYS" "okunamayan authorized_keys'te sebep söylenmiyor" \
+        "s=s.replace('[ -r \"\$f\" ] || {','true || {',1)"
+else
+    echo "  ölçülmedi (KADRAN_TEST_REAL_SUDO yok): K-140'ın iki mutantı — CI öyle koşturuyor"
+fi
+
 echo
 if [[ "$fail" -ne 0 ]]; then
     echo "En az bir mutasyon yakalanmadı — testler iddia ettikleri şeyi korumuyor."

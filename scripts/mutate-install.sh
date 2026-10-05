@@ -15,6 +15,11 @@
 #
 # Root'suz koşmalı (CI öyle): okuma hatası senaryosu root'ta kurulamaz,
 # o mutant root'ta ÖLÇÜLMEDİ diye basılır.
+#
+# K-139 mutantları (yazmanın kadran-client olarak yapılması) gerçek bir
+# kullanıcı ve setpriv ister, yalnız root'ta ölçülür. CI bu betiği root'suz
+# koşturuyor; KADRAN_TEST_REAL_SUDO=1 ile her ölçümde check-install-sh.sh'ı
+# bir kez de `sudo -n` ile koşturur ve o mutantlar ZORUNLU olarak ölçülür.
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -29,8 +34,20 @@ trap restore EXIT
 
 fail=0
 
+# Root bölümü ölçülebiliyor mu: root'uz ya da CI'da parolasız sudo var.
+KOK_OLCULUR=0
+if [ "$(id -u)" -eq 0 ]; then
+    KOK_OLCULUR=1
+elif [ "${KADRAN_TEST_REAL_SUDO:-}" = 1 ]; then
+    sudo -n true || { echo "!! KADRAN_TEST_REAL_SUDO=1 ama parolasız sudo yok — ölçüm YAPILMADI"; exit 1; }
+    KOK_OLCULUR=2
+fi
+
 olc() {
-    bash scripts/check-install-sh.sh >/dev/null 2>&1
+    bash scripts/check-install-sh.sh >/dev/null 2>&1 || return 1
+    if [ "$KOK_OLCULUR" = 2 ]; then
+        sudo -n env KADRAN_TEST_REQUIRE_ROOT=1 bash scripts/check-install-sh.sh >/dev/null 2>&1 || return 1
+    fi
 }
 
 # mutate_in <dosya> <ad> <python-ifadesi>
@@ -95,10 +112,10 @@ mutate_in "$INST" "yonetici_satiri_yaz FIFO'da takılıyor (düzenli dosya denet
     "s=s.replace(' || { [ -e \"\$auth_file\" ] && [ ! -f \"\$auth_file\" ]; }; then',' ; then',1)"
 
 mutate_in "$INST" "yonetici_satiri_yaz tahmin edilebilir geçici ad kullanıyor" \
-    "s=s.replace('gecici=\"\$(mktemp \"\$auth_file.XXXXXX\")\"','gecici=\"\$auth_file.yeni\"',1)"
+    "s=s.replace('gecici=\"\$(mktemp \"\$f.XXXXXX\")\"','gecici=\"\$f.yeni\"',1)"
 
 mutate_in "$INST" "yonetici satırı yol üzerinden ekleniyor (kopyaya değil)" \
-    "s=s.replace('restrict \$key\" >> \"\$gecici\"','restrict \$key\" >> \"\$auth_file\"',1)"
+    "s=s.replace('\"\$satir\" >> \"\$gecici\"','\"\$satir\" >> \"\$f\"',1)"
 
 mutate_in "$INST" "ssh_dizini_hazirla bağlı .ssh'yi izliyor" \
     "s=s.replace('    if [ -L \"\$dizin\" ]; then','    if false; then',1)"
@@ -108,6 +125,30 @@ if [ "$(id -u)" -ne 0 ]; then
         "s=s.replace('        [ \"\$rc\" -le 1 ] || {','        true || {',1)"
 else
     echo "  ölçülmedi (root): okuma hatası yutuluyor — root'suz koşturun (CI öyle)"
+fi
+
+echo "== Güvenlik: yazma kadran-client olarak (K-139) =="
+
+# Sınama düzeneğinin kendi kapısı: root'suz koşuda başka bir kullanıcı
+# istenirse reddetmeli. Root'ta o dal hiç koşmaz.
+if [ "$(id -u)" -ne 0 ]; then
+    mutate_in "$INST" "istemci_olarak root'suzken başka kullanıcıya geçiyor" \
+        "s=s.replace(' && [ \"\$kullanici\" != \"\$(id -un 2>/dev/null)\" ]; then',' && false; then',1)"
+else
+    echo "  ölçülmedi (root): istemci_olarak'ın root'suz kapısı — root'suz koşturun (CI öyle)"
+fi
+
+if [ "$KOK_OLCULUR" != 0 ]; then
+    mutate_in "$INST" "istemci_olarak setpriv'i atlıyor (root olarak yazıyor)" \
+        "s=s.replace('onek=(setpriv --reuid \"\$kullanici\" --regid \"\$grup\" --clear-groups --)','onek=()',1)"
+
+    mutate_in "$INST" "yonetici_satiri_yaz yazıcıyı root olarak çağırıyor" \
+        "s=s.replace('istemci_olarak \"\$kullanici\" \"\$grup\" ak_yaz_istemci','ak_yaz_istemci',1)"
+
+    mutate_in "$INST" "ssh_dizini_hazirla .ssh'yi root olarak kuruyor" \
+        "s=s.replace('istemci_olarak \"\$kullanici\" \"\$grup\" install -d -m 0700 \"\$dizin\"','install -d -m 0700 -o \"\$kullanici\" -g \"\$grup\" \"\$dizin\"',1)"
+else
+    echo "  ölçülmedi (root yok): K-139'un üç root mutantı — root'la ya da KADRAN_TEST_REAL_SUDO=1 ile koşturun (CI öyle)"
 fi
 
 echo "== Erişim: tek satır (K-131) =="

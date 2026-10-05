@@ -91,6 +91,12 @@ jobs:
       - name: Kurulum betiği yardımcıları
         run: bash scripts/check-install-sh.sh
 
+      # authorized_keys ve .ssh kadran-client olarak yazılıyor (K-139).
+      # Bunu ölçen bölüm gerçek bir kullanıcı ve setpriv ister; root'suz
+      # koşu onu atlıyor. Burada ZORUNLU: root yoksa adım kırmızı.
+      - name: Kurulum betiği yardımcıları (root)
+        run: sudo env KADRAN_TEST_REQUIRE_ROOT=1 bash scripts/check-install-sh.sh
+
       # panely → kadran göçünün dosya adımları (K-136): taşıma, önek,
       # authorized_keys, rclone hedefi. Sahte kökte, root'suz. Kullanıcı
       # adlandırma ve birimler gerçek sunucuda ölçüldü (GCP provası).

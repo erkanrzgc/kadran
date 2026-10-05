@@ -139,12 +139,15 @@ echo "== Uzak betik dosyaya kadran-client olarak dokunuyor (K-140) =="
 # ile koşturuyor; değişken yoksa test atlanır ve mutant ÖLÇÜLMEZ.
 if [ "${KADRAN_TEST_REAL_SUDO:-}" = 1 ]; then
     mutate_in "$KEYS" "uzak betik root olarak kalıyor (kullanıcıya geçmiyor)" \
-        "s=s.replace('if [ \"\$(id -u)\" = 0 ] && [ \"\$(id -u \"\$kullanici\")\" != 0 ]; then','if false; then',1)"
+        "s=s.replace('    if [ \"\$hedef\" != 0 ]; then','    if false; then',1)"
+
+    mutate_in "$KEYS" "kurulmamış sunucuda (kullanıcı yok) ileti kayboluyor" \
+        "s=s.replace('2>/dev/null)\" || { echo','2>/dev/null)\" || true || { echo',1)"
 
     mutate_in "$KEYS" "okunamayan authorized_keys'te sebep söylenmiyor" \
         "s=s.replace('[ -r \"\$f\" ] || {','true || {',1)"
 else
-    echo "  ölçülmedi (KADRAN_TEST_REAL_SUDO yok): K-140'ın iki mutantı — CI öyle koşturuyor"
+    echo "  ölçülmedi (KADRAN_TEST_REAL_SUDO yok): K-140'ın üç mutantı — CI öyle koşturuyor"
 fi
 
 echo

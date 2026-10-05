@@ -69,10 +69,13 @@ const (
 // sonu taşıyan bir satır `=~` ile eşleşmez (desen tek satır).
 const remoteKeys = `set -euo pipefail
 kullanici="$1"; op="$2"; f="$3"
-if [ "$(id -u)" = 0 ] && [ "$(id -u "$kullanici")" != 0 ]; then
-    cd /
-    exec setpriv --reuid "$kullanici" --regid "$kullanici" --clear-groups -- \
-        env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin bash -c "$BASH_EXECUTION_STRING" _ "$@"
+if [ "$(id -u)" = 0 ]; then
+    hedef="$(id -u "$kullanici" 2>/dev/null)" || { echo "$kullanici kullanıcısı yok — sunucu kurulmamış mı? önce kadran bootstrap" >&2; exit 3; }
+    if [ "$hedef" != 0 ]; then
+        cd /
+        exec setpriv --reuid "$kullanici" --regid "$kullanici" --clear-groups -- \
+            env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin bash -c "$BASH_EXECUTION_STRING" _ "$@"
+    fi
 fi
 admin_re='^command="/usr/local/lib/kadran/kadran-connect",restrict '
 [ -f "$f" ] || { echo "authorized_keys yok ($f) — sunucu kurulmamış mı? önce kadran bootstrap" >&2; exit 3; }

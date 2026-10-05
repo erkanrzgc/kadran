@@ -317,4 +317,11 @@ func TestKeyOpsRunAsClientUnderRealSudo(t *testing.T) {
 	if !errors.As(err, &ee) || ee.ExitCode() != 1 {
 		t.Fatalf("sır kullanıcının dizinine düştü ya da arama bozuk (%v): %s", err, out)
 	}
+
+	// Hiç kurulmamış sunucu: kullanıcı yok. Geçiş setpriv'in kendi hatasıyla
+	// değil, kurulumu öneren iletiyle durmalı.
+	keysOwner = "kadran-yok-boyle-k140"
+	if _, err := ListKeys(ctx, opts); err == nil || !strings.Contains(err.Error(), "önce kadran bootstrap") {
+		t.Fatalf("olmayan kullanıcı: %v", err)
+	}
 }

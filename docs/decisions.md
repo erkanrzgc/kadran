@@ -10551,6 +10551,9 @@ sık.
 - Kullanıcı ilk argüman. Go tarafında `keysOwner` (üretimde `clientUser`); testler
   kendi uid'ini veriyor. `TestClientPathsMatchInstallScript` install.sh'ın hesabı
   bu adla kurduğunu da arıyor.
+- Root'ken kullanıcı yoksa (hiç kurulmamış sunucu) geçişten önce 3 ve "önce kadran
+  bootstrap" iletisi; yoksa `setpriv`'in kendi hatası görünürdü. GCP provasından
+  SONRA eklendi (danışman incelemesi); yalnız gerçek-sudo testinde ölçüldü.
 - Okunamayan dosyada yeni çıkış kodu 7 ve `chown` öneren ileti. Root'a ait bir
   authorized_keys'i `kadran key` artık reddediyor (K-139'un davranış farkıyla aynı).
 - `replace()`: `chown --reference` kalktı (dosya o kullanıcının doğuyor), `mv -fT`.
@@ -10580,9 +10583,10 @@ kullanıcının ve 0600. Bağda: `list` "okunamıyor" diyerek reddediliyor ve s�
 taşımıyor, `add` reddediliyor, bağ yerinde, root'un dosyası aynı, sır kullanıcının
 dizinine düşmüyor. Öteki anahtar testleri root'suz ve root'ta (geçişsiz yol) yeşil.
 
-Mutasyon (`scripts/mutate-keys.sh`, 16 mutant; ikisi yeni: geçiş yok, `-r` yok):
-CI taklidinde (uid 1001 + parolasız sudo + `KADRAN_TEST_REAL_SUDO=1`) 16/16
-yakalandı. Değişken yokken iki yeni mutant "ölçülmedi" diye basılıyor.
+Mutasyon (`scripts/mutate-keys.sh`, 17 mutant; üçü yeni: geçiş yok, kullanıcı
+yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
+`KADRAN_TEST_REAL_SUDO=1`) 17/17 yakalandı. Değişken yokken üç yeni mutant
+"ölçülmedi" diye basılıyor.
 `golangci-lint` v2.12.2 değişen paketlerde 0 sorun.
 
 ### Kapsam dışı

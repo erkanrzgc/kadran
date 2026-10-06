@@ -105,10 +105,10 @@ mutate_in "$AUTHZ" "StreamLogs dağıtım anahtarına açık" \
     "s=s.replace('\tkadranv1.KadranService_Ping_FullMethodName: nil,\n','\tkadranv1.KadranService_Ping_FullMethodName: nil,\n\tkadranv1.KadranService_StreamLogs_FullMethodName: nil,\n',1)"
 
 mutate_in "$AUTHZ" "listede olmayan yöntem dağıtım anahtarına açık" \
-    "s=s.replace('return id, nil, deny(id, method, \"bu anahtar yalnızca dağıtım yapabilir\")','return id, nil, nil',1)"
+    "s=s.replace('return id, nil, deny(id, method, \"this key can only deploy\")','return id, nil, nil',1)"
 
 mutate_in "$AUTHZ" "bilinmeyen rol önleyicide geçiyor" \
-    "s=s.replace('return id, nil, deny(id, method, \"geçersiz rol\")','return id, nil, nil',1)"
+    "s=s.replace('return id, nil, deny(id, method, \"invalid role\")','return id, nil, nil',1)"
 
 echo "== Kapsam =="
 

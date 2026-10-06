@@ -115,7 +115,7 @@ func TestZeroReplicasIsReportedNotSilentlyEmpty(t *testing.T) {
 	if why == "" {
 		t.Fatal("sıfır replika atlanmadı — uygulama rotasız kalıp sessiz geçti")
 	}
-	if !strings.Contains(why, "sıfır") {
+	if !strings.Contains(why, "zero") {
 		t.Errorf("sebep %q — sıfır replika olduğunu SÖYLEMELİ; "+
 			"'ayakta replikası yok' operatörü yanlış yere baktırır", why)
 	}

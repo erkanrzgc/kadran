@@ -110,7 +110,7 @@ mutate "Reconcile cagrisi silindi" "TestHealRestartsStoppedContainerAndReroutes"
 
 mutate "atlanan-uygulama kontrolu silindi" "TestHealFailsWhenProxySkipsApp" \
     "s=s.replace('''	if why, skipped := res.Skipped[app.ID]; skipped {
-		return recreated, fmt.Errorf(\"ters vekile yazılamadı: %s\", why)
+		return recreated, fmt.Errorf(\"could not write to the reverse proxy: %s\", why)
 	}
 	return recreated, nil
 }''','''	_ = res
@@ -122,13 +122,13 @@ mutate "iyilestirme kapisi dagitim kapisina cevrildi" "TestHealUsesShortGateNotD
 
 mutate "kapi tamamen silindi (uzlastirma erken)" "TestHealFailsWhenContainerNeverAnswers" \
     "s=s.replace('''	if err := r.awaitReady(ctx, app, rel.ID, r.healGate); err != nil {
-		return recreated, fmt.Errorf(\"iyileştirme kapısında durdu: %w\", err)
+		return recreated, fmt.Errorf(\"stopped at the heal gate: %w\", err)
 	}
 ''','',1)"
 
 mutate "Heal switchTraffic'e baglandi (bosaltma yapar)" "TestHealDoesNotTouchTrafficOwnership" \
     "s=s.replace('''	if err := r.awaitReady(ctx, app, rel.ID, r.healGate); err != nil {
-		return recreated, fmt.Errorf(\"iyileştirme kapısında durdu: %w\", err)
+		return recreated, fmt.Errorf(\"stopped at the heal gate: %w\", err)
 	}
 ''','''	if err := r.switchTraffic(ctx, app, rel.ID); err != nil {
 		return recreated, err

@@ -71,6 +71,6 @@ func normalize(err error) error {
 	case err == nil, errors.Is(err, grpc.ErrServerStopped), errors.Is(err, net.ErrClosed):
 		return nil
 	default:
-		return fmt.Errorf("gRPC hizmeti durdu: %w", err)
+		return fmt.Errorf("gRPC service stopped: %w", err)
 	}
 }

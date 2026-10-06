@@ -292,7 +292,7 @@ func TestHealFailsWhenContainerNeverAnswers(t *testing.T) {
 
 	if _, err := h.rollout.Heal(context.Background(), h.app, h.rel); err == nil {
 		t.Fatal("konteyner hiç ayağa kalkmadı ama iyileştirme BAŞARILI döndü")
-	} else if !strings.Contains(err.Error(), "kapı") {
+	} else if !strings.Contains(err.Error(), "gate") {
 		t.Errorf("hata %q — kapıda durduğunu söylemeliydi", err)
 	}
 
@@ -330,7 +330,7 @@ func TestHealFailsWhenProxySkipsApp(t *testing.T) {
 	if err == nil {
 		t.Fatal("uygulama ters vekilde ATLANDI ama iyileştirme başarılı döndü")
 	}
-	if !strings.Contains(err.Error(), "ters vekile yazılamadı") {
+	if !strings.Contains(err.Error(), "could not write to the reverse proxy") {
 		t.Errorf("hata %q — atlandığını söylemeliydi", err)
 	}
 }

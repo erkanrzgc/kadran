@@ -16,5 +16,5 @@ import "errors"
 // konteynerin yazamayacağı bir disk hazırlanmış olurdu. Aynı gerekçe
 // internal/peercred'de de yazılı.
 func platformChownDir(string, int) error {
-	return errors.New("dockerdrv: hacim sahipliği yalnızca Linux'ta ayarlanabilir")
+	return errors.New("dockerdrv: volume ownership can only be set on Linux")
 }

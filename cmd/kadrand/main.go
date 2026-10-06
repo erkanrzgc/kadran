@@ -57,27 +57,27 @@ func main() {
 
 func run() error {
 	var (
-		socketPath  = flag.String("socket", defaultSocket, "istemcilere açılan unix soketi")
-		execSocket  = flag.String("exec-socket", defaultExecSocket, "executor soketi")
-		caddySocket = flag.String("caddy-socket", defaultCaddySocket, "ters vekil admin soketi")
-		dbPath      = flag.String("db", defaultDB, "SQLite veritabanı yolu")
-		clientGroup = flag.String("client-group", defaultClientGroup, "api.sock'a erişebilecek grup")
-		vaultPub    = flag.String("vault-recipient", defaultVaultRecipient, "kasanın açık anahtar dosyası (K-123)")
-		showVersion = flag.Bool("version", false, "sürümü yazdır ve çık")
-		debug       = flag.Bool("debug", false, "ayrıntılı günlük (KADRAN_DEBUG=1 ile de açılır)")
+		socketPath  = flag.String("socket", defaultSocket, "unix socket served to clients")
+		execSocket  = flag.String("exec-socket", defaultExecSocket, "executor socket")
+		caddySocket = flag.String("caddy-socket", defaultCaddySocket, "reverse proxy admin socket")
+		dbPath      = flag.String("db", defaultDB, "SQLite database path")
+		clientGroup = flag.String("client-group", defaultClientGroup, "group that may access api.sock")
+		vaultPub    = flag.String("vault-recipient", defaultVaultRecipient, "vault public key file (K-123)")
+		showVersion = flag.Bool("version", false, "print the version and exit")
+		debug       = flag.Bool("debug", false, "verbose logging (also enabled by KADRAN_DEBUG=1)")
 
 		backupEvery = flag.Duration("backup-interval", defaultBackupInterval,
-			"zamanlı yedek aralığı (0 = kapalı)")
+			"scheduled backup interval (0 = off)")
 		restoreFrom = flag.String("restore", "",
-			"verilen yedeği geri yükle ve çık (daemon KAPALI olmalı)")
+			"restore the given backup and exit (the daemon must be STOPPED)")
 
 		diskEvery = flag.Duration("disk-check-interval", defaultDiskInterval,
-			"disk doluluk ölçüm aralığı (0 = kapalı)")
+			"disk usage check interval (0 = off)")
 	)
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("kadrand %s (%s) protokol %d\n", version.Version, version.Commit, version.Protocol)
+		fmt.Printf("kadrand %s (%s) protocol %d\n", version.Version, version.Commit, version.Protocol)
 		return nil
 	}
 
@@ -91,8 +91,8 @@ func run() error {
 	// reddediyoruz. Executor'daki kontrolün tam aynası (o root OLMALI).
 	if os.Geteuid() == 0 {
 		return errors.New(
-			"kadrand root çalışmamalı — executor ayrımının anlamı kalmaz. " +
-				"systemd unit dosyasında User=kadran olduğunu doğrulayın")
+			"kadrand must not run as root — the executor split would be pointless. " +
+				"check that the systemd unit file has User=kadran")
 	}
 
 	// ── Geri yükleme: veritabanı AÇILMADAN önce ─────────────────────
@@ -115,7 +115,7 @@ func run() error {
 
 	db, err := store.Open(context.Background(), *dbPath)
 	if err != nil {
-		return fmt.Errorf("veritabanı açılamadı: %w", err)
+		return fmt.Errorf("could not open the database: %w", err)
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
@@ -131,8 +131,8 @@ func run() error {
 	}
 	sealed, err := db.EnableVault(context.Background(), sealer)
 	if err != nil {
-		return fmt.Errorf("kasa açılamadı: %w — kayıp anahtarı yedeğinden "+
-			"/var/lib/kadran-exec/vault.key'e geri koyup kurulumu yeniden çalıştırın", err)
+		return fmt.Errorf("could not open the vault: %w — restore the lost key from its backup to "+
+			"/var/lib/kadran-exec/vault.key and run the installer again", err)
 	}
 	slog.Info("kasa açık", "alici", sealer.Recipient(), "muhurlenen_deger", sealed)
 
@@ -217,7 +217,7 @@ func run() error {
 	// oluşturmalıdır — `-G` ile değil.
 	creds, err := api.TransportCredentials(uint32(clientGID)) //nolint:gosec // gid daima 32 bite sığar
 	if err != nil {
-		return fmt.Errorf("çağıran doğrulaması kurulamadı: %w", err)
+		return fmt.Errorf("could not set up caller verification: %w", err)
 	}
 
 	if err := sockets.EnsureParentDir(*socketPath); err != nil {
@@ -366,11 +366,11 @@ func lookupGID(name string) (int, error) {
 	g, err := user.LookupGroup(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%q grubu bulunamadı — `kadran bootstrap` çalıştırıldı mı?: %w", name, err)
+			"group %q not found — has `kadran bootstrap` been run?: %w", name, err)
 	}
 	id, err := strconv.Atoi(g.Gid)
 	if err != nil {
-		return 0, fmt.Errorf("%q grubunun gid'i çözümlenemedi: %w", name, err)
+		return 0, fmt.Errorf("could not parse the gid of group %q: %w", name, err)
 	}
 	return id, nil
 }

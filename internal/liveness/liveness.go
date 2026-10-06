@@ -99,7 +99,7 @@ func (r *Registry) Stale() []string {
 	for _, b := range r.beats {
 		age := now.Sub(time.Unix(0, b.last.Load()))
 		if age > b.maxAge {
-			out = append(out, fmt.Sprintf("%s (%s önce, eşik %s)",
+			out = append(out, fmt.Sprintf("%s (%s ago, threshold %s)",
 				b.name, age.Round(time.Second), b.maxAge))
 		}
 	}
@@ -169,13 +169,13 @@ type Watchdog struct {
 func (w *Watchdog) Check(ctx context.Context) error {
 	var sorunlar []string
 	if stale := w.Beats.Stale(); len(stale) > 0 {
-		sorunlar = append(sorunlar, "ilerlemeyen döngü: "+strings.Join(stale, ", "))
+		sorunlar = append(sorunlar, "stalled loop: "+strings.Join(stale, ", "))
 	}
 
 	probe, cancel := context.WithTimeout(ctx, w.ProbeTimeout)
 	defer cancel()
 	if err := w.DB.PingContext(probe); err != nil {
-		sorunlar = append(sorunlar, "veritabanından bağlantı alınamadı: "+err.Error())
+		sorunlar = append(sorunlar, "could not get a database connection: "+err.Error())
 	}
 
 	if len(sorunlar) > 0 {
@@ -234,12 +234,12 @@ func Interval(getenv func(string) string, pid int) (time.Duration, error) {
 	}
 	usec, err := strconv.ParseUint(raw, 10, 63)
 	if err != nil {
-		return 0, fmt.Errorf("liveness: WATCHDOG_USEC çözümlenemedi: %w", err)
+		return 0, fmt.Errorf("liveness: could not parse WATCHDOG_USEC: %w", err)
 	}
 	if p := getenv("WATCHDOG_PID"); p != "" {
 		owner, err := strconv.Atoi(p)
 		if err != nil {
-			return 0, fmt.Errorf("liveness: WATCHDOG_PID çözümlenemedi: %w", err)
+			return 0, fmt.Errorf("liveness: could not parse WATCHDOG_PID: %w", err)
 		}
 		if owner != pid {
 			return 0, nil

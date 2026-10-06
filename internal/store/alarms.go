@@ -48,10 +48,10 @@ const (
 // gösterirdi.
 func (s *Store) RaiseAlarm(ctx context.Context, a Alarm) (bool, error) {
 	if a.ID == "" || a.Kind == "" {
-		return false, errors.New("alarm kimliği ve türü zorunlu")
+		return false, errors.New("alarm id and kind are required")
 	}
 	if a.Severity != SeverityWarning && a.Severity != SeverityCritical {
-		return false, fmt.Errorf("bilinmeyen ciddiyet: %q", a.Severity)
+		return false, fmt.Errorf("unknown severity: %q", a.Severity)
 	}
 	if a.Since.IsZero() {
 		a.Since = time.Now()
@@ -63,11 +63,11 @@ func (s *Store) RaiseAlarm(ctx context.Context, a Alarm) (bool, error) {
 		ON CONFLICT(id) DO NOTHING`,
 		a.ID, a.Kind, a.Target, a.Severity, a.Since.Unix(), a.Detail)
 	if err != nil {
-		return false, fmt.Errorf("alarm yükseltilemedi (%s): %w", a.ID, err)
+		return false, fmt.Errorf("could not raise the alarm (%s): %w", a.ID, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("alarm sonucu okunamadı (%s): %w", a.ID, err)
+		return false, fmt.Errorf("could not read the alarm result (%s): %w", a.ID, err)
 	}
 	return n > 0, nil
 }
@@ -81,11 +81,11 @@ func (s *Store) RaiseAlarm(ctx context.Context, a Alarm) (bool, error) {
 func (s *Store) ClearAlarm(ctx context.Context, id string) (bool, error) {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM alarms WHERE id = ?`, id)
 	if err != nil {
-		return false, fmt.Errorf("alarm kapatılamadı (%s): %w", id, err)
+		return false, fmt.Errorf("could not clear the alarm (%s): %w", id, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("alarm sonucu okunamadı (%s): %w", id, err)
+		return false, fmt.Errorf("could not read the alarm result (%s): %w", id, err)
 	}
 	return n > 0, nil
 }
@@ -102,7 +102,7 @@ func (s *Store) ListAlarms(ctx context.Context) ([]Alarm, error) {
 		FROM alarms
 		ORDER BY CASE severity WHEN 'kritik' THEN 0 ELSE 1 END, since`)
 	if err != nil {
-		return nil, fmt.Errorf("alarmlar okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read alarms: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -112,13 +112,13 @@ func (s *Store) ListAlarms(ctx context.Context) ([]Alarm, error) {
 		var since int64
 		if err := rows.Scan(&a.ID, &a.Kind, &a.Target,
 			&a.Severity, &since, &a.Detail); err != nil {
-			return nil, fmt.Errorf("alarm satırı okunamadı: %w", err)
+			return nil, fmt.Errorf("could not read an alarm row: %w", err)
 		}
 		a.Since = time.Unix(since, 0).UTC()
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("alarm listesi tamamlanamadı: %w", err)
+		return nil, fmt.Errorf("could not finish the alarm list: %w", err)
 	}
 	return out, nil
 }
@@ -135,7 +135,7 @@ func (s *Store) GetAlarm(ctx context.Context, id string) (Alarm, error) {
 		return Alarm{}, err
 	}
 	if err != nil {
-		return Alarm{}, fmt.Errorf("alarm okunamadı (%s): %w", id, err)
+		return Alarm{}, fmt.Errorf("could not read the alarm (%s): %w", id, err)
 	}
 	a.Since = time.Unix(since, 0).UTC()
 	return a, nil
@@ -165,11 +165,11 @@ func (s *Store) EscalateAlarm(ctx context.Context, id string) (bool, error) {
 		WHERE id = ? AND severity = ?`,
 		SeverityCritical, id, SeverityWarning)
 	if err != nil {
-		return false, fmt.Errorf("alarm tırmandırılamadı (%s): %w", id, err)
+		return false, fmt.Errorf("could not escalate the alarm (%s): %w", id, err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("alarm sonucu okunamadı (%s): %w", id, err)
+		return false, fmt.Errorf("could not read the alarm result (%s): %w", id, err)
 	}
 	return n > 0, nil
 }

@@ -104,7 +104,7 @@ check "çıkış kodu" 0 "$code"
 contains "daemon sürümü gösterildi" "Daemon" "$out"
 contains "executor erişilemiyor olarak raporlandı" "UNREACHABLE" "$out"
 # kadrand root ile başlamayı reddediyor; ekranda da root görünmemeli.
-lacks "kadrand yetkisiz kullanıcı olarak çalışıyor" "KURULUM BOZUK" "$out"
+lacks "kadrand yetkisiz kullanıcı olarak çalışıyor" "BROKEN INSTALL" "$out"
 
 echo
 echo "==> kadran status --json"
@@ -129,7 +129,7 @@ out="$("$BIN/kadran" audit verify "unix://$SOCK" 2>&1)"; code=$?
 check "erişilemeyen executor çıkış kodu (1 = doğrulanamadı, 3 = kırık)" 1 "$code"
 contains "daemon zinciri geçerli" "VALID" "$out"
 contains "executor zinciri doğrulanamadı" "UNVERIFIABLE" "$out"
-lacks "erişilemeyen zincir kurcalama olarak raporlanmadı" "GEÇERSİZ" "$out"
+lacks "erişilemeyen zincir kurcalama olarak raporlanmadı" "BROKEN" "$out"
 
 echo
 echo "==> kadran app show — canlı sürüm (K-112)"
@@ -182,7 +182,7 @@ dk() { PATH="$FAKE:$PATH" "$BIN/kadran" "$@"; }
 
 out="$(dk status kadran-client@ci-e2e 2>&1)"; code=$?
 check "status reddedildi (çıkış kodu)" 1 "$code"
-contains "status: yetki reddi" "yalnızca dağıtım yapabilir" "$out"
+contains "status: yetki reddi" "this key can only deploy" "$out"
 
 out="$(dk deploy e2eblog kadran-client@ci-e2e 2>&1)"; code=$?
 check "-commit'siz dağıtım reddedildi" 1 "$code"
@@ -190,14 +190,14 @@ contains "-commit ipucu" "-commit" "$out"
 
 out="$(dk deploy -commit "$SHA" baska kadran-client@ci-e2e 2>&1)"; code=$?
 check "kapsam dışı dağıtım reddedildi" 1 "$code"
-contains "kapsam dışı: yetki reddi" "kapsamında değil" "$out"
+contains "kapsam dışı: yetki reddi" "outside this key's scope" "$out"
 
 # Kapsam içi: yetkiyi geçip GERÇEK işleyiciye ulaşmalı. Executor yok, yani
 # derleme düşer; ölçülen, sürümün açılıp "derleme başlıyor"un gelmesi.
 out="$(dk deploy -commit "$SHA" e2eblog kadran-client@ci-e2e 2>&1)"; code=$?
 contains "kapsam içi dağıtım işleyiciye ulaştı" "build starting" "$out"
-lacks "kapsam içi: yetki reddi yok" "kapsamında değil" "$out"
-lacks "kapsam içi: rol reddi yok" "yalnızca dağıtım yapabilir" "$out"
+lacks "kapsam içi: yetki reddi yok" "outside this key's scope" "$out"
+lacks "kapsam içi: rol reddi yok" "this key can only deploy" "$out"
 
 contains "ret kadrand günlüğünde" "yetki reddedildi" "$(cat "$LOG")"
 contains "günlükte rol" "rol=deploy" "$(cat "$LOG")"

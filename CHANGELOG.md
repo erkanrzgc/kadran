@@ -12,14 +12,22 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   `kadran key` messages from the server-side script it ships. Commands and flags did not
   change. Two labels changed meaning on screen: a broken audit chain now shows `BROKEN`
   (was `GEÇERSİZ`) and an unverifiable one `UNVERIFIABLE`, so scripts can tell them apart
-  with `grep`. Errors the server sends back are still Turkish until the server is
-  upgraded with a later release.
+  with `grep`. Errors the server sends back are English once the server is upgraded
+  too; an older server still answers in Turkish.
 - **The server-side scripts speak English (K-141).** The install, migration and rollback
   output of `bootstrap`, the vault rollback tool and the offsite and volume backup units
   print English, and `deploy/offsite/README.md` is English. The offsite summary line is
   now `summary: uploaded=… skipped=… failed=…` (was `özet: yüklendi=… atlandı=…
   başarısız=…`); adjust anything that greps the journal for it. `OFFSITE_PRUNE` still
   takes `evet`/`hayir`: it is a value in your configuration file, so it did not change.
+- **Errors the server sends back are English (K-141).** Validation errors, permission
+  denials (`this key can only deploy`, `app is outside this key's scope`), deploy, rollback
+  and heal failures, `app update` warnings, the chain status details of `audit verify`, and
+  the `-h` text of `kadrand`, `kadran-exec`, `kadran-connect` and `kadran-vault`. `app prune`
+  labels the releases it keeps `active` and `rollback target`. New audit records carry
+  English details; records written before the upgrade keep theirs, since the chain is
+  append-only. Still Turkish: the server's journal lines (`journalctl -u kadrand`), alarm
+  and Telegram texts, and the database's own trigger messages.
 
 ## v0.5.1 — 2026-10-05
 

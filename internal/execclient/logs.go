@@ -66,7 +66,7 @@ func (c *Client) ContainerLogs(
 
 	stream, err := c.rpc.ContainerLogs(ctx, req)
 	if err != nil {
-		return fmt.Errorf("günlük akışı başlatılamadı (%s/%s#%d): %w",
+		return fmt.Errorf("could not start the log stream (%s/%s#%d): %w",
 			opts.AppID, opts.ReleaseID, opts.Replica, err)
 	}
 
@@ -89,7 +89,7 @@ func (c *Client) ContainerLogs(
 			if errors.Is(ctx.Err(), context.Canceled) {
 				return nil
 			}
-			return fmt.Errorf("günlük akışı koptu: %w", err)
+			return fmt.Errorf("log stream broken: %w", err)
 		}
 		if data := msg.GetData(); len(data) > 0 {
 			if err := sink(data, msg.GetIsStderr()); err != nil {

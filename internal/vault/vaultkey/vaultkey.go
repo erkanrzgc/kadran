@@ -37,19 +37,19 @@ func Init(path string, out io.Writer) error {
 func load(path string) (*age.X25519Identity, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the vault key: %w", err)
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("kasa anahtarı %s başkalarına açık (%v), 0600 olmalı", path, fi.Mode().Perm())
+		return nil, fmt.Errorf("vault key %s is open to others (%v), must be 0600", path, fi.Mode().Perm())
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the vault key: %w", err)
 	}
 	// age'in hatası anahtarın parçalarını taşıyabilir; ekrana gitmesin.
 	id, err := age.ParseX25519Identity(strings.TrimSpace(string(data)))
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı %s geçersiz (X25519 olmalı); üstüne yazılmadı", path)
+		return nil, fmt.Errorf("vault key %s is invalid (must be X25519); not overwritten", path)
 	}
 	return id, nil
 }
@@ -59,18 +59,18 @@ func load(path string) (*age.X25519Identity, error) {
 func create(path string) (*age.X25519Identity, error) {
 	id, err := age.GenerateX25519Identity()
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı üretilemedi: %w", err)
+		return nil, fmt.Errorf("could not generate the vault key: %w", err)
 	}
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı yazılamadı: %w", err)
+		return nil, fmt.Errorf("could not write the vault key: %w", err)
 	}
 	if _, err := fmt.Fprintln(f, id.String()); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("kasa anahtarı yazılamadı: %w", err)
+		return nil, fmt.Errorf("could not write the vault key: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return nil, fmt.Errorf("kasa anahtarı yazılamadı: %w", err)
+		return nil, fmt.Errorf("could not write the vault key: %w", err)
 	}
 	return id, nil
 }

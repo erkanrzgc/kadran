@@ -157,9 +157,9 @@ func runRestore(dbPath, socketPath, snapshotPath string) error {
 	if conn, err := dialer.DialContext(probeCtx, "unix", socketPath); err == nil {
 		_ = conn.Close()
 		return fmt.Errorf(
-			"kadrand ÇALIŞIYOR (%s dinleniyor) — geri yükleme reddedildi. "+
-				"Çalışan daemon veritabanının eski kopyasını açık tutar ve "+
-				"geri yükleme sessizce etkisiz kalır. Önce durdurun: "+
+			"kadrand is RUNNING (listening on %s) — restore refused. "+
+				"A running daemon keeps the old copy of the database open and "+
+				"the restore would silently have no effect. Stop it first: "+
 				"systemctl stop kadrand", socketPath)
 	}
 
@@ -169,11 +169,11 @@ func runRestore(dbPath, socketPath, snapshotPath string) error {
 		return err
 	}
 
-	fmt.Printf("geri yüklendi: %s → %s\n", snapshotPath, dbPath)
+	fmt.Printf("restored: %s → %s\n", snapshotPath, dbPath)
 	if safety != "" {
-		fmt.Printf("önceki hâlin güvenlik kopyası: %s\n", safety)
+		fmt.Printf("safety copy of the previous state: %s\n", safety)
 	}
-	fmt.Println("daemon'ı başlatın: systemctl start kadrand")
+	fmt.Println("start the daemon: systemctl start kadrand")
 
 	// ⚠ HACİM VERİSİ KAPSAM DIŞI. Bu dosya kontrol düzlemi
 	// veritabanıdır: uygulama tanımları, ortam değişkenleri, denetim
@@ -186,9 +186,9 @@ func runRestore(dbPath, socketPath, snapshotPath string) error {
 	// uygulama verisinin de döndüğünü sanması, bu dilimin
 	// üretebileceği EN PAHALI yanlış anlama olurdu.
 	fmt.Fprintln(os.Stderr,
-		"UYARI: yalnızca kontrol düzlemi veritabanı geri yüklendi. "+
-			"Uygulamaların kalıcı disk verisi (/var/lib/kadran/volumes) "+
-			"bu yedeğin KAPSAMINDA DEĞİL; onu hacim yedeğinden ayrıca geri "+
-			"yükleyin (deploy/offsite/README.md, K-111).")
+		"WARNING: only the control plane database was restored. "+
+			"Persistent app data (/var/lib/kadran/volumes) "+
+			"is NOT COVERED by this backup; restore it separately from the "+
+			"volume backup (deploy/offsite/README.md, K-111).")
 	return nil
 }

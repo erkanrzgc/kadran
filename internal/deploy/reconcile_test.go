@@ -313,7 +313,7 @@ func TestReconcilerRefusesToBuildWithoutAdmin(t *testing.T) {
 	if err == nil {
 		t.Fatal("admin bloğu olmadan uzlaştırıcı kuruldu")
 	}
-	if !strings.Contains(err.Error(), "kilitler") {
+	if !strings.Contains(err.Error(), "locks kadrand out") {
 		t.Errorf("hata sonucu açıklamıyor: %v", err)
 	}
 }

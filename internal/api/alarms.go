@@ -24,7 +24,7 @@ func (s *Server) ListAlarms(
 ) (*kadranv1.ListAlarmsResponse, error) {
 	alarms, err := s.store.ListAlarms(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "alarmlar okunamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not read alarms: %v", err)
 	}
 
 	out := make([]*kadranv1.AlarmInfo, 0, len(alarms))

@@ -73,12 +73,12 @@ const (
 // validateAppSpec, uygulama tanımının tamamını doğrular.
 func validateAppSpec(spec *kadranv1.AppSpec) error {
 	if spec == nil {
-		return errors.New("uygulama tanımı zorunludur")
+		return errors.New("app spec is required")
 	}
 	if !appIDPattern.MatchString(spec.GetAppId()) {
 		return fmt.Errorf(
-			"app_id geçersiz (%q) — küçük harfle başlamalı; yalnızca küçük harf, "+
-				"rakam ve tire; en fazla 32 karakter", spec.GetAppId())
+			"invalid app_id (%q) — must start with a lowercase letter; only lowercase letters, "+
+				"digits and hyphens; at most 32 characters", spec.GetAppId())
 	}
 	if err := validateSource(spec); err != nil {
 		return err
@@ -96,11 +96,11 @@ func validateAppSpec(spec *kadranv1.AppSpec) error {
 		return err
 	}
 	if p := spec.GetContainerPort(); p == 0 || p > 65535 {
-		return fmt.Errorf("container_port 1-65535 arasında olmalı (%d)", p)
+		return fmt.Errorf("container_port must be between 1 and 65535 (%d)", p)
 	}
 	if r := spec.GetReplicas(); r == 0 || r > maxReplicas {
-		return fmt.Errorf("replicas 1-%d arasında olmalı (%d) — "+
-			"sıfır replika bir uygulama değil, silinmiş bir uygulamadır", maxReplicas, r)
+		return fmt.Errorf("replicas must be between 1 and %d (%d) — "+
+			"an app with zero replicas is not an app, it is a deleted app", maxReplicas, r)
 	}
 	if err := validateHealthPath(spec.GetHealthPath()); err != nil {
 		return err
@@ -115,11 +115,11 @@ func validateSource(spec *kadranv1.AppSpec) error {
 	host := spec.GetGitHost()
 	switch {
 	case host == "":
-		return errors.New("git_host boş olamaz")
+		return errors.New("git_host must not be empty")
 	case len(host) > maxDomainLen:
-		return fmt.Errorf("git_host çok uzun (%d bayt)", len(host))
+		return fmt.Errorf("git_host too long (%d bytes)", len(host))
 	case !hostPattern.MatchString(host):
-		return fmt.Errorf("git_host geçersiz (%q) — şema, port veya yol içeremez", host)
+		return fmt.Errorf("invalid git_host (%q) — must not contain a scheme, port or path", host)
 	}
 
 	for _, f := range []struct{ name, value string }{
@@ -127,7 +127,7 @@ func validateSource(spec *kadranv1.AppSpec) error {
 		{"git_repo", spec.GetGitRepo()},
 	} {
 		if !pathSegPattern.MatchString(f.value) || f.value == "." || f.value == ".." {
-			return fmt.Errorf("%s geçersiz (%q) — eğik çizgi ve iki nokta temsil edilemez",
+			return fmt.Errorf("invalid %s (%q) — slashes and colons cannot be represented",
 				f.name, f.value)
 		}
 	}
@@ -136,7 +136,7 @@ func validateSource(spec *kadranv1.AppSpec) error {
 	// çözüyor), ama veritabanına yazılıyor: biçimsiz bir değer sonradan
 	// istemcinin çözümünü bozar.
 	if b := spec.GetGitBranch(); !branchPattern.MatchString(b) {
-		return fmt.Errorf("git_branch geçersiz (%q)", b)
+		return fmt.Errorf("invalid git_branch (%q)", b)
 	}
 	return nil
 }
@@ -152,34 +152,34 @@ func validateDockerfilePath(p string) error {
 	}
 	switch {
 	case len(p) > maxDockerfile:
-		return fmt.Errorf("dockerfile_path çok uzun (%d bayt)", len(p))
+		return fmt.Errorf("dockerfile_path too long (%d bytes)", len(p))
 	case path.IsAbs(p):
-		return fmt.Errorf("dockerfile_path göreli olmalı (%q)", p)
+		return fmt.Errorf("dockerfile_path must be relative (%q)", p)
 	case path.Clean(p) != p:
-		return fmt.Errorf("dockerfile_path temiz değil (%q, beklenen %q)", p, path.Clean(p))
+		return fmt.Errorf("dockerfile_path is not clean (%q, expected %q)", p, path.Clean(p))
 	case p == "." || strings.HasPrefix(p, "../"):
-		return fmt.Errorf("dockerfile_path depo kökünün dışına çıkamaz (%q)", p)
+		return fmt.Errorf("dockerfile_path must not leave the repository root (%q)", p)
 	case strings.ContainsRune(p, '\\'):
-		return fmt.Errorf("dockerfile_path ters eğik çizgi içeremez (%q)", p)
+		return fmt.Errorf("dockerfile_path must not contain a backslash (%q)", p)
 	}
 	return nil
 }
 
 func validateBuildArgs(args map[string]string) error {
 	if len(args) > maxBuildArgs {
-		return fmt.Errorf("çok fazla derleme argümanı (%d, sınır %d)", len(args), maxBuildArgs)
+		return fmt.Errorf("too many build args (%d, limit %d)", len(args), maxBuildArgs)
 	}
 	for k, v := range args {
 		if !buildArgPattern.MatchString(k) {
-			return fmt.Errorf("derleme argümanı adı geçersiz (%q)", k)
+			return fmt.Errorf("invalid build arg name (%q)", k)
 		}
 		if len(v) > maxBuildArgLen {
-			return fmt.Errorf("derleme argümanı %q çok uzun (%d bayt)", k, len(v))
+			return fmt.Errorf("build arg %q too long (%d bytes)", k, len(v))
 		}
 		// NUL, execve argüman dizisinde dizeyi keser: kabul edilen değer
 		// ile çalışan değer ayrışırdı.
 		if strings.ContainsRune(k, 0) || strings.ContainsRune(v, 0) {
-			return fmt.Errorf("derleme argümanı %q NUL baytı içeriyor", k)
+			return fmt.Errorf("build arg %q contains a NUL byte", k)
 		}
 	}
 	return nil
@@ -201,29 +201,29 @@ func validateBuildArgs(args map[string]string) error {
 // girmiyor.
 func validateEnv(env map[string]string) error {
 	if len(env) > maxEnvEntries {
-		return fmt.Errorf("çok fazla ortam değişkeni (%d, sınır %d)",
+		return fmt.Errorf("too many environment variables (%d, limit %d)",
 			len(env), maxEnvEntries)
 	}
 	total := 0
 	for k, v := range env {
 		if len(k) > maxEnvKeyBytes {
-			return fmt.Errorf("ortam değişkeni adı çok uzun (%d bayt, sınır %d)",
+			return fmt.Errorf("environment variable name too long (%d bytes, limit %d)",
 				len(k), maxEnvKeyBytes)
 		}
 		if !buildArgPattern.MatchString(k) {
-			return fmt.Errorf("ortam değişkeni adı geçersiz (%q) — "+
-				"^[A-Za-z_][A-Za-z0-9_]*$ olmalı", k)
+			return fmt.Errorf("invalid environment variable name (%q) — "+
+				"must match ^[A-Za-z_][A-Za-z0-9_]*$", k)
 		}
 		// NUL, değişkeni execve dizisinde KESER: kabul edilen değer ile
 		// konteynerde görünen değer ayrışırdı.
 		if strings.ContainsRune(k, 0) || strings.ContainsRune(v, 0) {
-			return fmt.Errorf("ortam değişkeni %q NUL baytı içeriyor", k)
+			return fmt.Errorf("environment variable %q contains a NUL byte", k)
 		}
 		total += len(k) + len(v) + 1 // +1: "KEY=VALUE" içindeki eşittir
 	}
 	if total > maxEnvBytes {
-		return fmt.Errorf("ortam değişkenleri toplamı %d bayt, üst sınır %d "+
-			"— sınır TOPLAM üzerinden işler, değer başına değil", total, maxEnvBytes)
+		return fmt.Errorf("environment variables total %d bytes, limit %d "+
+			"— the limit applies to the TOTAL, not per value", total, maxEnvBytes)
 	}
 	return nil
 }
@@ -238,11 +238,11 @@ func validateEnv(env map[string]string) error {
 func validateEnvRemove(set map[string]string, remove []string) error {
 	for _, k := range remove {
 		if !buildArgPattern.MatchString(k) {
-			return fmt.Errorf("silinecek ortam değişkeni adı geçersiz (%q)", k)
+			return fmt.Errorf("invalid name of environment variable to remove (%q)", k)
 		}
 		if _, both := set[k]; both {
-			return fmt.Errorf("%q hem ayarlanıyor hem siliniyor — "+
-				"hangisini istediğinizi belirtin", k)
+			return fmt.Errorf("%q is both set and removed — "+
+				"say which one you want", k)
 		}
 	}
 	return nil
@@ -253,12 +253,12 @@ func validateHealthPath(p string) error {
 	case p == "":
 		return nil
 	case len(p) > maxHealthPath:
-		return fmt.Errorf("health_path çok uzun (%d bayt)", len(p))
+		return fmt.Errorf("health_path too long (%d bytes)", len(p))
 	case !strings.HasPrefix(p, "/"):
-		return fmt.Errorf("health_path eğik çizgiyle başlamalı (%q)", p)
+		return fmt.Errorf("health_path must start with a slash (%q)", p)
 	case strings.ContainsAny(p, " \t\r\n"):
 		// Boşluk ve satır sonu, kurulacak HTTP istek satırını bölebilir.
-		return fmt.Errorf("health_path boşluk veya satır sonu içeremez (%q)", p)
+		return fmt.Errorf("health_path must not contain whitespace or line breaks (%q)", p)
 	}
 	return nil
 }
@@ -268,9 +268,9 @@ func validateDomain(d string) error {
 	case d == "":
 		return nil // Alan adı olmayan uygulama geçerli: yalnızca iç ağdan erişilir.
 	case len(d) > maxDomainLen:
-		return fmt.Errorf("domain çok uzun (%d bayt)", len(d))
+		return fmt.Errorf("domain too long (%d bytes)", len(d))
 	case !hostPattern.MatchString(d):
-		return fmt.Errorf("domain geçersiz (%q) — şema, port veya yol içeremez", d)
+		return fmt.Errorf("invalid domain (%q) — must not contain a scheme, port or path", d)
 	}
 	return nil
 }
@@ -279,16 +279,16 @@ func validateDomain(d string) error {
 // limitsiz bir konteyner, tek sunucudaki diğer her şeyi aç bırakabilir.
 func validateLimits(l *kadranv1.ResourceLimits) error {
 	if l == nil {
-		return errors.New("limits zorunludur — limitsiz konteyner yoktur")
+		return errors.New("limits are required — there is no container without limits")
 	}
 	if l.GetMemoryBytes() == 0 {
-		return errors.New("limits.memory_bytes sıfır olamaz")
+		return errors.New("limits.memory_bytes must not be zero")
 	}
 	if l.GetCpuMillis() == 0 {
-		return errors.New("limits.cpu_millis sıfır olamaz")
+		return errors.New("limits.cpu_millis must not be zero")
 	}
 	if w := l.GetBlkioWeight(); w < minBlkioWeight || w > maxBlkioWeight {
-		return fmt.Errorf("limits.blkio_weight %d-%d arasında olmalı (%d)",
+		return fmt.Errorf("limits.blkio_weight must be between %d and %d (%d)",
 			minBlkioWeight, maxBlkioWeight, w)
 	}
 	return nil
@@ -303,8 +303,8 @@ func validateLimits(l *kadranv1.ResourceLimits) error {
 func validateCommitSHA(sha string) error {
 	if !fullSHAPattern.MatchString(sha) {
 		return fmt.Errorf(
-			"commit_sha tam 40 haneli küçük harf onaltılık olmalı (%q) — "+
-				"dal veya etiket adı kabul edilmez", sha)
+			"commit_sha must be exactly 40 lowercase hex digits (%q) — "+
+				"branch or tag names are not accepted", sha)
 	}
 	return nil
 }

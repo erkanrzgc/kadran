@@ -140,13 +140,13 @@ func NewUpstream(ip string, port uint32) (Upstream, error) {
 	addr, err := netip.ParseAddr(ip)
 	if err != nil {
 		return Upstream{}, fmt.Errorf(
-			"upstream adresi bir IP olmalı (%q) — ad, şema veya soket yolu kabul edilmez", ip)
+			"upstream address must be an IP (%q) — names, schemes or socket paths are not accepted", ip)
 	}
 	if addr.IsUnspecified() {
-		return Upstream{}, fmt.Errorf("upstream adresi belirsiz olamaz (%q)", ip)
+		return Upstream{}, fmt.Errorf("upstream address must not be unspecified (%q)", ip)
 	}
 	if port == 0 || port > 65535 {
-		return Upstream{}, fmt.Errorf("upstream portu 1-65535 arasında olmalı (%d)", port)
+		return Upstream{}, fmt.Errorf("upstream port must be between 1 and 65535 (%d)", port)
 	}
 	// netip.AddrPort, IPv6'yı köşeli parantezle doğru biçimlendirir.
 	return Upstream{Dial: netip.AddrPortFrom(addr, uint16(port)).String()}, nil
@@ -174,7 +174,7 @@ type BuildOptions struct {
 }
 
 var errNoAdmin = errors.New(
-	"admin bloğu zorunlu — onsuz yüklenen yapılandırma kadrand'yi Caddy'den kalıcı olarak kilitler")
+	"the admin block is required — a config loaded without it locks kadrand out of Caddy for good")
 
 // BuildConfig, uygulama tanımlarından tam Caddy yapılandırmasını üretir.
 //
@@ -209,15 +209,15 @@ func BuildConfig(opts BuildOptions) (*Config, error) {
 		}
 		if prev, dup := seen[r.Domain]; dup {
 			return nil, fmt.Errorf(
-				"alan adı %q iki uygulamaya atanmış (%s ve %s) — "+
-					"hangisinin kazandığı sıraya bağlı olurdu", r.Domain, prev, r.AppID)
+				"domain %q is assigned to two apps (%s and %s) — "+
+					"which one wins would depend on order", r.Domain, prev, r.AppID)
 		}
 		seen[r.Domain] = r.AppID
 
 		if len(r.Upstreams) == 0 {
 			return nil, fmt.Errorf(
-				"%s için upstream yok — trafiği hiçbir yere göndermeyen bir rota, "+
-					"uygulamayı sessizce 502 yapardı", r.AppID)
+				"no upstream for %s — a route that sends traffic nowhere "+
+					"would silently turn the app into a 502", r.AppID)
 		}
 		out = append(out, Route{
 			Match: []Match{{Host: []string{r.Domain}}},

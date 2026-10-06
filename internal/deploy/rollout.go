@@ -127,17 +127,17 @@ func NewRollout(
 	gate GateOptions, drain DrainOptions,
 ) (*Rollout, error) {
 	if l == nil || a == nil || rec == nil {
-		return nil, errors.New("deploy: yaşam döngüsü, aktivasyon ve uzlaştırıcı zorunlu")
+		return nil, errors.New("deploy: lifecycle, activation and reconciler are required")
 	}
 	if p == nil {
 		return nil, errors.New(
-			"deploy: sağlık yoklayıcısı zorunlu — yokluğu kapıyı sessizce zayıflatır")
+			"deploy: a health prober is required — without it the gate silently weakens")
 	}
 	if gate.Successes <= 0 || gate.Interval <= 0 || gate.Timeout <= 0 {
-		return nil, errors.New("deploy: sağlık kapısı ölçütleri sıfır olamaz")
+		return nil, errors.New("deploy: health gate criteria must not be zero")
 	}
 	if drain.Window <= 0 || drain.Grace <= 0 {
-		return nil, errors.New("deploy: boşaltma penceresi ve kapanış süresi sıfır olamaz")
+		return nil, errors.New("deploy: drain window and shutdown grace must not be zero")
 	}
 	return &Rollout{
 		lifecycle: l, store: a, rec: rec, prober: p, clock: realClock{},
@@ -268,7 +268,7 @@ func (r *Rollout) Heal(
 		return recreated, err
 	}
 	if err := r.awaitReady(ctx, app, rel.ID, r.healGate); err != nil {
-		return recreated, fmt.Errorf("iyileştirme kapısında durdu: %w", err)
+		return recreated, fmt.Errorf("stopped at the heal gate: %w", err)
 	}
 
 	res, err := r.rec.Reconcile(ctx)
@@ -280,7 +280,7 @@ func (r *Rollout) Heal(
 	// erişilemez — bunu başarı saymak, iyileşmemiş bir uygulamayı
 	// iyileşti diye kaydettirirdi.
 	if why, skipped := res.Skipped[app.ID]; skipped {
-		return recreated, fmt.Errorf("ters vekile yazılamadı: %s", why)
+		return recreated, fmt.Errorf("could not write to the reverse proxy: %s", why)
 	}
 	return recreated, nil
 }
@@ -296,7 +296,7 @@ func (r *Rollout) ensureReplicas(
 ) (bool, error) {
 	reps, err := r.lifecycle.ListReplicas(ctx, app.ID)
 	if err != nil {
-		return false, fmt.Errorf("konteynerler listelenemedi: %w", err)
+		return false, fmt.Errorf("could not list containers: %w", err)
 	}
 
 	present := map[uint32]struct{}{}
@@ -315,12 +315,12 @@ func (r *Rollout) ensureReplicas(
 			// canlıya çıkmaktır.
 			if err := r.createReplica(ctx, app, rel, i); err != nil {
 				return recreated, fmt.Errorf(
-					"eksik replika #%d kurulamadı: %w", i, err)
+					"could not create missing replica #%d: %w", i, err)
 			}
 			recreated = true
 		}
 		if err := r.lifecycle.StartReplica(ctx, app.ID, rel.ID, i); err != nil {
-			return recreated, fmt.Errorf("replika #%d başlatılamadı: %w", i, err)
+			return recreated, fmt.Errorf("could not start replica #%d: %w", i, err)
 		}
 	}
 
@@ -357,7 +357,7 @@ func (r *Rollout) ensureReplicas(
 		if _, err := r.lifecycle.StopReplica(
 			ctx, app.ID, rep.ReleaseID, rep.Index, r.drain.Grace); err != nil {
 			return recreated, fmt.Errorf(
-				"ölçek fazlası replika #%d durdurulamadı: %w", rep.Index, err)
+				"could not stop replica #%d over the scale: %w", rep.Index, err)
 		}
 	}
 	return recreated, nil
@@ -458,7 +458,7 @@ func (r *Rollout) createReplica(
 func (r *Rollout) switchTraffic(ctx context.Context, app store.App, releaseID string) error {
 	if err := r.awaitReady(ctx, app, releaseID, r.gate); err != nil {
 		// Trafiğe DOKUNULMADI: eski sürüm hâlâ canlı ve öyle kalıyor.
-		return fmt.Errorf("sağlık kapısında durdu, TRAFİK TAŞINMADI: %w", err)
+		return fmt.Errorf("stopped at the health gate, TRAFFIC NOT MOVED: %w", err)
 	}
 
 	if err := r.store.SetActiveRelease(ctx, app.ID, releaseID); err != nil {
@@ -506,7 +506,7 @@ type DrainError struct {
 
 func (e DrainError) Error() string {
 	return fmt.Sprintf(
-		"dağıtım başarılı (trafik taşındı) ama eski sürüm durdurulamadı — %s: %v",
+		"deploy succeeded (traffic moved) but the old release could not be stopped — %s: %v",
 		e.AppID, e.Err)
 }
 
@@ -534,7 +534,7 @@ func (r *Rollout) drainStale(ctx context.Context, appID, activeID string) error 
 	}
 
 	if err := r.clock.Sleep(ctx, r.drain.Window); err != nil {
-		return DrainError{AppID: appID, Err: fmt.Errorf("boşaltma kesildi: %w", err)}
+		return DrainError{AppID: appID, Err: fmt.Errorf("drain interrupted: %w", err)}
 	}
 
 	// Tek bir sürümün durdurulamaması diğerlerini engellemiyor: amaç
@@ -562,7 +562,7 @@ func (r *Rollout) drainStale(ctx context.Context, appID, activeID string) error 
 func (r *Rollout) staleReleases(ctx context.Context, appID, activeID string) ([]string, error) {
 	reps, err := r.lifecycle.ListReplicas(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("konteynerler listelenemedi: %w", err)
+		return nil, fmt.Errorf("could not list containers: %w", err)
 	}
 
 	seen := map[string]struct{}{}
@@ -593,7 +593,7 @@ func (r *Rollout) staleReleases(ctx context.Context, appID, activeID string) ([]
 type SkippedError struct{ Result Result }
 
 func (e SkippedError) Error() string {
-	return "bazı uygulamalar rotalanamadı — " + e.Result.Error()
+	return "some apps could not be routed — " + e.Result.Error()
 }
 
 // awaitReady, replikaların trafiğe HAZIR olmasını bekler.
@@ -642,18 +642,18 @@ func (r *Rollout) awaitReady(
 		} else {
 			// SIFIRLANIYOR: aralıklı bir başarı, sağlıklı sayılmaz.
 			streak = 0
-			last = fmt.Sprintf("%d/%d replika hazır (%s)", ready, app.Replicas, why)
+			last = fmt.Sprintf("%d/%d replicas ready (%s)", ready, app.Replicas, why)
 		}
 
 		if !r.clock.Now().Before(deadline) {
 			if last == "" {
-				last = fmt.Sprintf("yalnızca %d ardışık başarılı ölçüm (%d gerekli)",
+				last = fmt.Sprintf("only %d consecutive successful probes (%d required)",
 					streak, gate.Successes)
 			}
-			return fmt.Errorf("süre doldu: %s", last)
+			return fmt.Errorf("timed out: %s", last)
 		}
 		if err := r.clock.Sleep(ctx, gate.Interval); err != nil {
-			return fmt.Errorf("bekleme kesildi: %w", err)
+			return fmt.Errorf("wait interrupted: %w", err)
 		}
 	}
 }
@@ -669,7 +669,7 @@ func (r *Rollout) awaitReady(
 func (r *Rollout) readyCount(ctx context.Context, app store.App, releaseID string) (uint32, string) {
 	reps, err := r.lifecycle.ListReplicas(ctx, app.ID)
 	if err != nil {
-		return 0, fmt.Sprintf("liste alınamadı: %v", err)
+		return 0, fmt.Sprintf("could not list: %v", err)
 	}
 
 	var (
@@ -713,10 +713,10 @@ func (r *Rollout) readyCount(ctx context.Context, app store.App, releaseID strin
 
 	switch {
 	case len(unwell) > 0:
-		return ready, "cevap vermeyen replika — " + strings.Join(unwell, "; ")
+		return ready, "unresponsive replica — " + strings.Join(unwell, "; ")
 	case len(states) > 0:
-		return ready, fmt.Sprintf("durumlar: %v", states)
+		return ready, fmt.Sprintf("states: %v", states)
 	default:
-		return ready, "bu sürümün konteyneri görünmüyor"
+		return ready, "no container of this release is visible"
 	}
 }

@@ -40,7 +40,7 @@ func (s *Server) ListApps(
 ) (*kadranv1.ListAppsResponse, error) {
 	apps, err := s.store.ListApps(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "uygulamalar okunamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not read apps: %v", err)
 	}
 
 	out := make([]*kadranv1.App, 0, len(apps))
@@ -61,7 +61,7 @@ func (s *Server) GetApp(
 
 	releases, err := s.store.ListReleases(ctx, app.ID, int(req.GetReleaseLimit()))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "sürümler okunamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not read releases: %v", err)
 	}
 
 	out := make([]*kadranv1.Release, 0, len(releases))
@@ -78,7 +78,7 @@ func (s *Server) GetApp(
 	case err == nil:
 		active = d.ReleaseID
 	case !errors.Is(err, store.ErrNoDeployment):
-		return nil, status.Errorf(codes.Internal, "canlı sürüm okunamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not read the live release: %v", err)
 	}
 
 	// Alan HER ZAMAN gönderiliyor, boş olsa da: yokluğu "sunucu bu bilgiyi

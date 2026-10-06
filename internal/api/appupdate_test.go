@@ -123,7 +123,7 @@ func TestUpdateAppCanClearTheDomain(t *testing.T) {
 	if rec.calls != 1 {
 		t.Errorf("uzlaştırma %d kez koştu, 1 olmalıydı", rec.calls)
 	}
-	if !strings.Contains(resp.GetProxyDetail(), "ÇIKARILDI") {
+	if !strings.Contains(resp.GetProxyDetail(), "REMOVED") {
 		t.Errorf("vekil ayrıntısı uygulamanın çıkarıldığını söylemiyor: %q",
 			resp.GetProxyDetail())
 	}
@@ -226,7 +226,7 @@ func TestUpdateAppSaysTheChangeWasSavedWhenTheProxyFails(t *testing.T) {
 	if err == nil {
 		t.Fatal("vekil hatası yutuldu")
 	}
-	if !strings.Contains(err.Error(), "KAYDEDİLDİ") {
+	if !strings.Contains(err.Error(), "SAVED") {
 		t.Errorf("hata, değişikliğin yazıldığını SÖYLEMİYOR: %v", err)
 	}
 	if !strings.Contains(err.Error(), "caddy admin soketi") {
@@ -260,7 +260,7 @@ func TestUpdateAppWarnsWhenTrafficDidNotMove(t *testing.T) {
 	})
 
 	detail := resp.GetProxyDetail()
-	if !strings.Contains(detail, "TAŞINMADI") {
+	if !strings.Contains(detail, "TRAFFIC NOT MOVED") {
 		t.Errorf("trafiğin taşınmadığı söylenmiyor: %q", detail)
 	}
 	if !strings.Contains(detail, "kadran deploy blog") {

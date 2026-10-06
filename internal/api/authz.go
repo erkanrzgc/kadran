@@ -49,7 +49,7 @@ var deployAllowed = map[string]scopeCheck{
 func authorize(ctx context.Context, method string) (connproto.Identity, scopeCheck, error) {
 	info, ok := callerFromContext(ctx)
 	if !ok {
-		return connproto.Identity{}, nil, status.Error(codes.Unauthenticated, "çağıran kimliği yok")
+		return connproto.Identity{}, nil, status.Error(codes.Unauthenticated, "no caller identity")
 	}
 	id := info.Identity
 
@@ -59,12 +59,12 @@ func authorize(ctx context.Context, method string) (connproto.Identity, scopeChe
 	case connproto.RoleDeploy:
 		check, listed := deployAllowed[method]
 		if !listed {
-			return id, nil, deny(id, method, "bu anahtar yalnızca dağıtım yapabilir")
+			return id, nil, deny(id, method, "this key can only deploy")
 		}
 		return id, check, nil
 	default:
 		// El sıkışma bunu zaten reddediyor; burası ikinci kat.
-		return id, nil, deny(id, method, "geçersiz rol")
+		return id, nil, deny(id, method, "invalid role")
 	}
 }
 
@@ -87,7 +87,7 @@ func AuthzUnaryInterceptor() grpc.UnaryServerInterceptor {
 			return nil, err
 		}
 		if check != nil && !check(id, req) {
-			return nil, deny(id, info.FullMethod, "uygulama bu anahtarın kapsamında değil")
+			return nil, deny(id, info.FullMethod, "app is outside this key's scope")
 		}
 		return handler(ctx, req)
 	}
@@ -124,7 +124,7 @@ func (s *scopedStream) RecvMsg(m any) error {
 		return err
 	}
 	if !s.check(s.id, m) {
-		return deny(s.id, s.method, "uygulama bu anahtarın kapsamında değil")
+		return deny(s.id, s.method, "app is outside this key's scope")
 	}
 	return nil
 }

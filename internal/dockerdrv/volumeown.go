@@ -67,7 +67,7 @@ type imageInspect struct {
 func (c *Client) imageUID(ctx context.Context, tag string) (int, error) {
 	var ins imageInspect
 	if err := c.doJSON(ctx, http.MethodGet, "/images/"+tag+"/json", nil, nil, &ins); err != nil {
-		return 0, fmt.Errorf("imaj kullanıcısı okunamadı (%s): %w", tag, err)
+		return 0, fmt.Errorf("could not read the image user (%s): %w", tag, err)
 	}
 
 	// Boş USER "root" demektir ve GEÇERLİDİR: USER yazmayan bir imaj
@@ -82,8 +82,8 @@ func (c *Client) imageUID(ctx context.Context, tag string) (int, error) {
 	n, err := strconv.Atoi(uid)
 	if err != nil || n < 0 {
 		return 0, fmt.Errorf(
-			"imajın USER'ı sayısal değil (%q) — hacim sahibi belirlenemez. "+
-				"Dockerfile'da sayısal kimlik kullanın (ör. USER 101)", user)
+			"the image USER is not numeric (%q) — the volume owner cannot be determined. "+
+				"Use a numeric id in the Dockerfile (e.g. USER 101)", user)
 	}
 	return n, nil
 }
@@ -115,10 +115,10 @@ func (c *Client) prepareVolumes(ctx context.Context, spec CreateSpec) error {
 		// yok; 0777 denendi ve reddedildi — hacim kökü `--x` taşıdığı
 		// için hosttaki herhangi bir kullanıcı bilinen yola yazabilirdi.
 		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return fmt.Errorf("hacim dizini oluşturulamadı (%s): %w", dir, err)
+			return fmt.Errorf("could not create the volume directory (%s): %w", dir, err)
 		}
 		if err := chownDir(dir, uid); err != nil {
-			return fmt.Errorf("hacim sahibi ayarlanamadı (%s → uid %d): %w",
+			return fmt.Errorf("could not set the volume owner (%s → uid %d): %w",
 				dir, uid, err)
 		}
 	}

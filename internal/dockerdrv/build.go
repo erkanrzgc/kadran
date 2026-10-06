@@ -107,7 +107,7 @@ func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (str
 	if len(spec.BuildArgs) > 0 {
 		args, err := json.Marshal(spec.BuildArgs)
 		if err != nil {
-			return "", fmt.Errorf("docker: buildargs kodlanamadı: %w", err)
+			return "", fmt.Errorf("docker: could not encode buildargs: %w", err)
 		}
 		q.Set("buildargs", string(args))
 	}
@@ -136,7 +136,7 @@ func consumeBuild(body io.Reader, sink Sink) (string, error) {
 			// başarılı SAYMIYORUZ: aux görülmediyse aşağıdaki kontrol zaten
 			// hata döndürecek, görüldüyse imaj gerçekten üretilmiştir.
 			if imageID == "" {
-				return "", fmt.Errorf("docker: derleme akışı okunamadı: %w", err)
+				return "", fmt.Errorf("docker: could not read the build stream: %w", err)
 			}
 			break
 		}
@@ -170,13 +170,13 @@ func consumeBuild(body io.Reader, sink Sink) (string, error) {
 	}
 
 	if buildErr != "" {
-		return "", fmt.Errorf("docker: derleme başarısız: %s", buildErr)
+		return "", fmt.Errorf("docker: build failed: %s", buildErr)
 	}
 	if imageID == "" {
 		// Ne hata karesi ne aux karesi. Derlemenin başarılı olduğuna dair
 		// hiçbir POZİTİF kanıt yok; başarısız sayılır.
 		return "", errors.New(
-			"docker: derleme kimlik karesi (aux) üretmedi — başarı kanıtlanamadı")
+			"docker: the build produced no id frame (aux) — success could not be proven")
 	}
 	return imageID, nil
 }

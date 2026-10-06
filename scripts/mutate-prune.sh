@@ -109,7 +109,7 @@ echo "== Budama mutasyonları =="
 # ── Saklama kümesi: geri alma hedefi korunuyor mu ───────────────────
 
 mutate "geri alma hedefi saklama kümesine HİÇ konmuyor" \
-    "s=s.replace('\t\t\tkeep[prev] = \"geri alma hedefi\"','\t\t\t_ = prev',1)"
+    "s=s.replace('\t\t\tkeep[prev] = \"rollback target\"','\t\t\t_ = prev',1)"
 
 mutate "PreviousActiveRelease hatası SESSİZCE yutuluyor" \
     "s=s.replace('\tdefault:\n\t\treturn nil, err\n\t}\n\treturn keep, nil','\tdefault:\n\t\t_ = err\n\t}\n\treturn keep, nil',1)"
@@ -146,7 +146,7 @@ mutate "dry_run yok sayılıyor (deneme GERÇEKTEN siliyor)" \
 # ── Kapanma nezaketi ────────────────────────────────────────────────
 
 mutate "durdurma atlanıyor (force=true ile koparma)" \
-    "s=s.replace('\t\tif _, err := s.exec.StopRelease(ctx, appID, relID, pruneGrace); err != nil {\n\t\t\treturn removed, fmt.Errorf(\"sürüm %s durdurulamadı: %w\", relID, err)\n\t\t}\n','',1)"
+    "s=s.replace('\t\tif _, err := s.exec.StopRelease(ctx, appID, relID, pruneGrace); err != nil {\n\t\t\treturn removed, fmt.Errorf(\"could not stop release %s: %w\", relID, err)\n\t\t}\n','',1)"
 
 mutate "pruneGrace sıfır (SIGTERM ile SIGKILL arasında süre yok)" \
     "s=s.replace('const pruneGrace = 10 * time.Second','const pruneGrace = 0 * time.Second',1)"

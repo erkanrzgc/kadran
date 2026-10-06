@@ -76,7 +76,7 @@ func (s *Server) Deploy(
 		// Bilinmeyen uygulama bir doğrulama reddi DEĞİL, bir arama
 		// başarısızlığıdır: denied() InvalidArgument döndürürdü ve istemci
 		// "yazım hatası yaptım" ile "bu uygulama yok"u ayırt edemezdi.
-		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "uygulama bulunamadı")
+		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "app not found")
 		return appError(err)
 	}
 	params["source"] = app.GitHost + "/" + app.GitOwner + "/" + app.GitRepo
@@ -86,7 +86,7 @@ func (s *Server) Deploy(
 	// imajın karşılığı bulunmalı.
 	rel, err := s.store.StartRelease(ctx, appID, req.GetCommitSha())
 	if err != nil {
-		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "sürüm açılamadı")
+		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "could not open a release")
 		return appError(err)
 	}
 	params["release_id"] = rel.ID
@@ -99,7 +99,7 @@ func (s *Server) Deploy(
 			CommitSha: req.GetCommitSha(),
 		}},
 	}); err != nil {
-		s.sealFailed(ctx, rel, "istemciye sürüm bildirilemedi")
+		s.sealFailed(ctx, rel, "could not send the release to the client")
 		return s.completed(ctx, action, tgt, params, err)
 	}
 
@@ -200,7 +200,7 @@ func (s *Server) sealFailed(ctx context.Context, rel store.Release, detail strin
 	defer cancel()
 
 	if len(detail) > maxReleaseDetail {
-		detail = detail[:maxReleaseDetail] + "… (kısaltıldı)"
+		detail = detail[:maxReleaseDetail] + "… (truncated)"
 	}
 	if err := s.store.FailRelease(ctx, rel.AppID, rel.ID, detail); err != nil {
 		// Yutulmuyor, günlüğe yazılıyor. Çağıran zaten bir hata döndürecek

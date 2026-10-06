@@ -35,7 +35,7 @@ type Sealer struct {
 func NewSealer(recipient string) (*Sealer, error) {
 	r, err := age.ParseX25519Recipient(strings.TrimSpace(recipient))
 	if err != nil {
-		return nil, fmt.Errorf("kasa alıcısı geçersiz: %w", err)
+		return nil, fmt.Errorf("invalid vault recipient: %w", err)
 	}
 	return &Sealer{r: r}, nil
 }
@@ -44,15 +44,15 @@ func NewSealer(recipient string) (*Sealer, error) {
 func LoadSealer(path string) (*Sealer, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("kasa alıcısı okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the vault recipient: %w", err)
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxRecipientFile+1))
 	if err != nil {
-		return nil, fmt.Errorf("kasa alıcısı okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the vault recipient: %w", err)
 	}
 	if len(data) > maxRecipientFile {
-		return nil, fmt.Errorf("kasa alıcısı dosyası çok büyük: %s", path)
+		return nil, fmt.Errorf("vault recipient file too large: %s", path)
 	}
 	return NewSealer(string(data))
 }
@@ -68,13 +68,13 @@ func (s *Sealer) Seal(appID, key, value string) (string, error) {
 	var buf bytes.Buffer
 	w, err := age.Encrypt(&buf, s.r)
 	if err != nil {
-		return "", fmt.Errorf("%s mühürlenemedi: %w", key, err)
+		return "", fmt.Errorf("could not seal %s: %w", key, err)
 	}
 	if _, err := io.WriteString(w, appID+"\x00"+key+"\x00"+value); err != nil {
-		return "", fmt.Errorf("%s mühürlenemedi: %w", key, err)
+		return "", fmt.Errorf("could not seal %s: %w", key, err)
 	}
 	if err := w.Close(); err != nil {
-		return "", fmt.Errorf("%s mühürlenemedi: %w", key, err)
+		return "", fmt.Errorf("could not seal %s: %w", key, err)
 	}
 	return Prefix + base64.StdEncoding.EncodeToString(buf.Bytes()), nil
 }
@@ -109,17 +109,17 @@ const (
 func PlainLen(appID, key, sealed string) (int, error) {
 	b64, ok := strings.CutPrefix(sealed, Prefix)
 	if !ok {
-		return 0, fmt.Errorf("%s mühürlü değil", key)
+		return 0, fmt.Errorf("%s is not sealed", key)
 	}
 	raw, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
-		return 0, fmt.Errorf("%s mühürlü değeri bozuk", key)
+		return 0, fmt.Errorf("sealed value of %s is corrupt", key)
 	}
 	body := len(raw) - sealHeaderLen
 	chunks := (body + sealChunkLen + sealTagLen - 1) / (sealChunkLen + sealTagLen)
 	n := body - chunks*sealTagLen - len(appID) - len(key) - 2
 	if chunks < 1 || n < 0 {
-		return 0, fmt.Errorf("%s mühürlü değeri bozuk", key)
+		return 0, fmt.Errorf("sealed value of %s is corrupt", key)
 	}
 	return n, nil
 }

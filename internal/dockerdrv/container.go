@@ -315,7 +315,7 @@ func (c *Client) ContainerList(ctx context.Context, appID string) ([]Container, 
 	}
 	filters, err := json.Marshal(f)
 	if err != nil {
-		return nil, fmt.Errorf("docker: filtre kodlanamadı: %w", err)
+		return nil, fmt.Errorf("docker: could not encode the filter: %w", err)
 	}
 
 	q := url.Values{"all": {"true"}, "filters": {string(filters)}}

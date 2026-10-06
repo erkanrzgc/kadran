@@ -73,7 +73,7 @@ func New(socketPath string) *Client {
 func (c *Client) Load(ctx context.Context, cfg *Config) error {
 	body, err := json.Marshal(cfg)
 	if err != nil {
-		return fmt.Errorf("caddy: yapılandırma kodlanamadı: %w", err)
+		return fmt.Errorf("caddy: could not encode the config: %w", err)
 	}
 
 	if _, err := c.do(ctx, http.MethodPost, "/load", body); err != nil {
@@ -82,10 +82,10 @@ func (c *Client) Load(ctx context.Context, cfg *Config) error {
 
 	live, err := c.Current(ctx)
 	if err != nil {
-		return fmt.Errorf("caddy: yükleme sonrası doğrulama yapılamadı: %w", err)
+		return fmt.Errorf("caddy: could not verify after loading: %w", err)
 	}
 	if err := verifyApplied(cfg, live); err != nil {
-		return fmt.Errorf("caddy: yüklenen yapılandırma canlıda BULUNAMADI: %w", err)
+		return fmt.Errorf("caddy: the loaded config was NOT FOUND live: %w", err)
 	}
 	return nil
 }
@@ -103,7 +103,7 @@ func (c *Client) Current(ctx context.Context) (*Config, error) {
 
 	var cfg Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return nil, fmt.Errorf("caddy: canlı yapılandırma çözümlenemedi: %w", err)
+		return nil, fmt.Errorf("caddy: could not decode the live config: %w", err)
 	}
 	return &cfg, nil
 }
@@ -118,7 +118,7 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 	}
 	req, err := http.NewRequestWithContext(ctx, method, "http://"+adminHost+path, rdr)
 	if err != nil {
-		return nil, fmt.Errorf("caddy: istek kurulamadı: %w", err)
+		return nil, fmt.Errorf("caddy: could not build the request: %w", err)
 	}
 	req.Host = adminHost
 	if body != nil {
@@ -127,13 +127,13 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]by
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("caddy: admin soketine ulaşılamadı: %w", err)
+		return nil, fmt.Errorf("caddy: could not reach the admin socket: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	out, err := io.ReadAll(io.LimitReader(resp.Body, maxAdminResponse))
 	if err != nil {
-		return nil, fmt.Errorf("caddy: yanıt okunamadı: %w", err)
+		return nil, fmt.Errorf("caddy: could not read the response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("caddy: %s %s → %s: %s",
@@ -188,10 +188,10 @@ func verifyApplied(want, live *Config) error {
 	for host, wantDials := range wantRoutes {
 		liveDials, ok := liveRoutes[host]
 		if !ok {
-			return fmt.Errorf("%q için rota yok", host)
+			return fmt.Errorf("no route for %q", host)
 		}
 		if !sameStrings(wantDials, liveDials) {
-			return fmt.Errorf("%q upstream'leri farklı: gönderilen %v, canlı %v",
+			return fmt.Errorf("upstreams of %q differ: sent %v, live %v",
 				host, wantDials, liveDials)
 		}
 	}
@@ -207,8 +207,8 @@ func verifyApplied(want, live *Config) error {
 	if len(extra) > 0 {
 		sort.Strings(extra)
 		return fmt.Errorf(
-			"canlıda GÖNDERİLMEYEN rota(lar) var: %v — admin soketine başka bir "+
-				"süreç yazmış ya da yapılandırma eksik üretilmiş", extra)
+			"live has route(s) that were NOT SENT: %v — another process wrote to "+
+				"the admin socket or the config was built incompletely", extra)
 	}
 	return nil
 }

@@ -153,7 +153,7 @@ func TestOpenEnvRejectsScryptRecipient(t *testing.T) {
 func TestOpenEnvRejectsOversizedBeforeDecoding(t *testing.T) {
 	env := map[string]string{"A": sealPrefix + strings.Repeat("!", maxSealedValue+1)}
 	_, err := openEnv(vaulttest.NewIdentity(t), "blog", env)
-	if err == nil || !strings.Contains(err.Error(), "büyük") {
+	if err == nil || !strings.Contains(err.Error(), "too large") {
 		t.Fatalf("aşırı büyük değer boyutundan reddedilmedi: %v", err)
 	}
 }

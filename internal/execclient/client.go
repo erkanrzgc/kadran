@@ -50,7 +50,7 @@ func Dial(socketPath string) (*Client, error) {
 		}),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("executor'a bağlanılamadı: %w", err)
+		return nil, fmt.Errorf("could not connect to the executor: %w", err)
 	}
 	return &Client{conn: conn, rpc: kadranv1.NewExecutorServiceClient(conn)}, nil
 }
@@ -69,12 +69,12 @@ type PingResult struct {
 func (c *Client) Ping(ctx context.Context) (PingResult, error) {
 	resp, err := c.rpc.Ping(ctx, &kadranv1.ExecutorServicePingRequest{})
 	if err != nil {
-		return PingResult{}, fmt.Errorf("executor yanıt vermiyor: %w", err)
+		return PingResult{}, fmt.Errorf("the executor does not respond: %w", err)
 	}
 
 	if resp.GetProtocolVersion() != version.Protocol {
 		return PingResult{}, fmt.Errorf(
-			"protokol uyumsuzluğu: daemon %d, executor %d — ikisi birlikte güncellenmeli",
+			"protocol mismatch: daemon %d, executor %d — both must be upgraded together",
 			version.Protocol, resp.GetProtocolVersion())
 	}
 
@@ -83,7 +83,7 @@ func (c *Client) Ping(ctx context.Context) (PingResult, error) {
 	// teşhis etmekten çok daha ucuz.
 	if resp.GetEffectiveUid() != 0 {
 		return PingResult{}, fmt.Errorf(
-			"executor root çalışmıyor (uid %d) — systemd unit dosyası bozulmuş olabilir",
+			"the executor is not running as root (uid %d) — the systemd unit file may be broken",
 			resp.GetEffectiveUid())
 	}
 
@@ -98,7 +98,7 @@ func (c *Client) Ping(ctx context.Context) (PingResult, error) {
 func (c *Client) HostInfo(ctx context.Context) (*kadranv1.HostInfo, error) {
 	resp, err := c.rpc.GetHostInfo(ctx, &kadranv1.GetHostInfoRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("host bilgisi alınamadı: %w", err)
+		return nil, fmt.Errorf("could not get host info: %w", err)
 	}
 	return resp.GetHost(), nil
 }
@@ -119,7 +119,7 @@ func (c *Client) ReadJournal(ctx context.Context, afterSeq uint64, limit uint32)
 		Limit:    limit,
 	})
 	if err != nil {
-		return JournalPage{}, fmt.Errorf("executor denetim günlüğü okunamadı: %w", err)
+		return JournalPage{}, fmt.Errorf("could not read the executor audit log: %w", err)
 	}
 	return JournalPage{
 		Records:   auditRecordsFromProto(resp.GetRecords()),

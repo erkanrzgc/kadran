@@ -78,13 +78,13 @@ type JournalOptions struct {
 // denetim bütünlüğü doğrulanamıyorsa ayrıcalıklı işlem yapılmamalıdır.
 func OpenJournal(opts JournalOptions) (*Journal, error) {
 	if opts.Path == "" {
-		return nil, errors.New("journal: yol boş olamaz")
+		return nil, errors.New("journal: path must not be empty")
 	}
 
 	// 0640: sahibi (root) yazar, grubu (kadran) okur, diğerleri hiçbir şey.
 	f, err := os.OpenFile(opts.Path, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o640)
 	if err != nil {
-		return nil, fmt.Errorf("journal: dosya açılamadı: %w", err)
+		return nil, fmt.Errorf("journal: could not open the file: %w", err)
 	}
 
 	// Sahiplik ve mod HER AÇILIŞTA zorlanır, yalnızca dosya yeni
@@ -109,7 +109,7 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 	if opts.GroupGID > 0 {
 		if err := f.Chown(0, opts.GroupGID); err != nil {
 			_ = f.Close()
-			return nil, fmt.Errorf("journal: sahiplik zorlanamadı: %w", err)
+			return nil, fmt.Errorf("journal: could not enforce ownership: %w", err)
 		}
 	}
 	// umask, O_CREATE'in modunu kısabilir. kadran-exec.service `UMask=0027`
@@ -117,7 +117,7 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 	// yerine oturtmak bu bağımlılığı kaldırır.
 	if err := f.Chmod(0o640); err != nil {
 		_ = f.Close()
-		return nil, fmt.Errorf("journal: mod zorlanamadı: %w", err)
+		return nil, fmt.Errorf("journal: could not enforce the mode: %w", err)
 	}
 
 	j := &Journal{path: opts.Path, f: f}
@@ -131,7 +131,7 @@ func OpenJournal(opts JournalOptions) (*Journal, error) {
 // loadAndVerify, mevcut zinciri baştan sona okuyup doğrular ve başı belirler.
 func (j *Journal) loadAndVerify() error {
 	if _, err := j.f.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("journal: başa sarılamadı: %w", err)
+		return fmt.Errorf("journal: could not rewind: %w", err)
 	}
 
 	v := audit.NewVerifier()
@@ -147,14 +147,14 @@ func (j *Journal) loadAndVerify() error {
 		}
 		rec, err := decodeLine(line)
 		if err != nil {
-			return fmt.Errorf("journal: kayıt %d çözümlenemedi: %w", v.NextSeq(), err)
+			return fmt.Errorf("journal: could not decode record %d: %w", v.NextSeq(), err)
 		}
 		if err := v.Next(rec); err != nil {
-			return fmt.Errorf("journal: zincir doğrulanamadı: %w", err)
+			return fmt.Errorf("journal: could not verify the chain: %w", err)
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return fmt.Errorf("journal: okuma hatası: %w", err)
+		return fmt.Errorf("journal: read error: %w", err)
 	}
 
 	j.head = v.Head()
@@ -168,10 +168,10 @@ func (j *Journal) loadAndVerify() error {
 // başından türetilir.
 func (j *Journal) Append(rec audit.Record) (audit.Record, error) {
 	if rec.Action == "" {
-		return audit.Record{}, errors.New("journal: action alanı boş olamaz")
+		return audit.Record{}, errors.New("journal: the action field must not be empty")
 	}
 	if !rec.Outcome.Valid() {
-		return audit.Record{}, fmt.Errorf("journal: geçersiz outcome: %d", uint8(rec.Outcome))
+		return audit.Record{}, fmt.Errorf("journal: invalid outcome: %d", uint8(rec.Outcome))
 	}
 	// Executor'ın yazdığı her kayıt executor kaynaklıdır; çağıran bunu
 	// değiştiremez.
@@ -190,12 +190,12 @@ func (j *Journal) Append(rec audit.Record) (audit.Record, error) {
 		return audit.Record{}, err
 	}
 	if _, err := j.f.Write(line); err != nil {
-		return audit.Record{}, fmt.Errorf("journal: yazılamadı: %w", err)
+		return audit.Record{}, fmt.Errorf("journal: could not write: %w", err)
 	}
 	// Denetim kaydı çökme sonrası kaybolmamalı: ayrıcalıklı bir işlemin
 	// yapılıp kaydının kaybolması, hiç yapılmamasından daha kötüdür.
 	if err := j.f.Sync(); err != nil {
-		return audit.Record{}, fmt.Errorf("journal: diske yazılamadı: %w", err)
+		return audit.Record{}, fmt.Errorf("journal: could not sync to disk: %w", err)
 	}
 
 	j.head = sealed.Hash
@@ -230,7 +230,7 @@ func (j *Journal) Read(afterSeq uint64, limit int) ([]audit.Record, error) {
 	// j.mu'yu tutmadığı için uzun bir okuma eklemeleri bloklamaz.
 	f, err := os.Open(j.path)
 	if err != nil {
-		return nil, fmt.Errorf("journal: okuma için açılamadı: %w", err)
+		return nil, fmt.Errorf("journal: could not open for reading: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -248,10 +248,10 @@ func (j *Journal) Read(afterSeq uint64, limit int) ([]audit.Record, error) {
 
 		rec, err := decodeLine(line)
 		if err != nil {
-			return nil, fmt.Errorf("journal: kayıt %d çözümlenemedi: %w", v.NextSeq(), err)
+			return nil, fmt.Errorf("journal: could not decode record %d: %w", v.NextSeq(), err)
 		}
 		if err := v.Next(rec); err != nil {
-			return nil, fmt.Errorf("journal: okuma sırasında zincir doğrulanamadı: %w", err)
+			return nil, fmt.Errorf("journal: could not verify the chain while reading: %w", err)
 		}
 
 		if rec.Seq > afterSeq {
@@ -262,7 +262,7 @@ func (j *Journal) Read(afterSeq uint64, limit int) ([]audit.Record, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("journal: okuma hatası: %w", err)
+		return nil, fmt.Errorf("journal: read error: %w", err)
 	}
 	return out, nil
 }
@@ -325,7 +325,7 @@ func encodeLine(r audit.Record) ([]byte, error) {
 	}
 	b, err := json.Marshal(l)
 	if err != nil {
-		return nil, fmt.Errorf("journal: kayıt kodlanamadı: %w", err)
+		return nil, fmt.Errorf("journal: could not encode the record: %w", err)
 	}
 	return append(b, '\n'), nil
 }
@@ -372,7 +372,7 @@ func decodeHash(s string) ([audit.HashSize]byte, error) {
 		return out, err
 	}
 	if len(b) != audit.HashSize {
-		return out, fmt.Errorf("uzunluk %d, beklenen %d", len(b), audit.HashSize)
+		return out, fmt.Errorf("length %d, expected %d", len(b), audit.HashSize)
 	}
 	copy(out[:], b)
 	return out, nil

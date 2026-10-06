@@ -195,16 +195,16 @@ func New(
 ) (*Supervisor, error) {
 	if h == nil || d == nil || a == nil || al == nil || c == nil {
 		return nil, errors.New(
-			"health: iyileştirici, depo, denetçi, alarm ve saat zorunlu")
+			"health: healer, store, auditor, alarm and clock are required")
 	}
 	if o.Interval <= 0 || o.FailuresBeforeHeal <= 0 {
-		return nil, errors.New("health: aralık ve başarısızlık eşiği sıfır olamaz")
+		return nil, errors.New("health: interval and failure threshold must not be zero")
 	}
 	if o.BackoffBase <= 0 || o.BackoffMax < o.BackoffBase {
-		return nil, errors.New("health: geri çekilme tabanı sıfır olamaz ve tavanı aşamaz")
+		return nil, errors.New("health: backoff base must not be zero or exceed the cap")
 	}
 	if o.HealsBeforeAlarm <= 0 {
-		return nil, errors.New("health: alarm eşiği sıfır olamaz")
+		return nil, errors.New("health: alarm threshold must not be zero")
 	}
 	return &Supervisor{
 		healer: h, store: d, audit: a, alarms: al, clock: c, opts: o,

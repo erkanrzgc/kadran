@@ -45,7 +45,7 @@ var (
 // istekten DEĞİL.
 func validateGitSource(src *kadranv1.GitSource, allowedHosts, allowedRepos []string) error {
 	if src == nil {
-		return errors.New("source zorunludur")
+		return errors.New("source is required")
 	}
 	if err := validateGitHost(src.GetHost(), allowedHosts); err != nil {
 		return err
@@ -61,15 +61,15 @@ func validateGitSource(src *kadranv1.GitSource, allowedHosts, allowedRepos []str
 	// (repoallow.go'daki saldırı anlatımı).
 	if !repoAllowed(src.GetOwner(), src.GetRepo(), allowedRepos) {
 		return fmt.Errorf(
-			"depo beyaz listede değil: %s/%s — executor yalnızca izin verilen "+
-				"depoları derler", src.GetOwner(), src.GetRepo())
+			"repository not on the allowlist: %s/%s — the executor only builds "+
+				"allowed repositories", src.GetOwner(), src.GetRepo())
 	}
 	if sha := src.GetCommitSha(); !fullSHAPattern.MatchString(sha) {
 		return fmt.Errorf(
-			"commit_sha tam 40 haneli küçük harf onaltılık olmalı (%q) — "+
-				"dal/etiket adı kabul edilmez: derleme tekrarlanabilir olmalı ve "+
-				"iki nokta üst üste içeren bir referans git fragment'inde subdir "+
-				"bileşeni açar", sha)
+			"commit_sha must be exactly 40 lowercase hex digits (%q) — "+
+				"branch/tag names are not accepted: the build must be repeatable and "+
+				"a ref containing a colon opens a subdir component in the git "+
+				"fragment", sha)
 	}
 	return nil
 }
@@ -77,12 +77,12 @@ func validateGitSource(src *kadranv1.GitSource, allowedHosts, allowedRepos []str
 func validateGitHost(host string, allowed []string) error {
 	switch {
 	case host == "":
-		return errors.New("host boş olamaz")
+		return errors.New("host must not be empty")
 	case len(host) > maxHostLen:
-		return fmt.Errorf("host çok uzun (%d bayt)", len(host))
+		return fmt.Errorf("host too long (%d bytes)", len(host))
 	case !hostPattern.MatchString(host):
 		return fmt.Errorf(
-			"host geçersiz (%q) — şema, port, kullanıcı bilgisi veya yol içeremez", host)
+			"invalid host (%q) — must not contain a scheme, port, user info or path", host)
 	}
 
 	// Beyaz liste ele geçirilmiş bir kadrand tarafından genişletilemez:
@@ -93,18 +93,18 @@ func validateGitHost(host string, allowed []string) error {
 		}
 	}
 	return fmt.Errorf(
-		"host izin verilenler arasında değil (%q); izinli: %s — "+
-			"liste executor'ın -allow-git-host bayrağındadır, istekle değiştirilemez",
+		"host not allowed (%q); allowed: %s — "+
+			"the list is the executor's -allow-git-host flag and cannot be changed by a request",
 		host, strings.Join(allowed, ", "))
 }
 
 func validatePathSegment(field, v string) error {
 	switch {
 	case v == "":
-		return fmt.Errorf("%s boş olamaz", field)
+		return fmt.Errorf("%s must not be empty", field)
 	case !pathSegPattern.MatchString(v):
 		return fmt.Errorf(
-			"%s geçersiz (%q) — eğik çizgi, iki nokta ve boşluk temsil edilemez", field, v)
+			"invalid %s (%q) — slashes, colons and spaces cannot be represented", field, v)
 	case v == "." || v == "..":
 		return fmt.Errorf("%s %q olamaz", field, v)
 	}
@@ -122,15 +122,15 @@ func validateDockerfilePath(p string) error {
 	}
 	switch {
 	case len(p) > maxDockerfileLen:
-		return fmt.Errorf("dockerfile_path çok uzun (%d bayt)", len(p))
+		return fmt.Errorf("dockerfile_path too long (%d bytes)", len(p))
 	case path.IsAbs(p):
-		return fmt.Errorf("dockerfile_path göreli olmalı (%q)", p)
+		return fmt.Errorf("dockerfile_path must be relative (%q)", p)
 	case path.Clean(p) != p:
-		return fmt.Errorf("dockerfile_path temiz değil (%q, beklenen %q)", p, path.Clean(p))
+		return fmt.Errorf("dockerfile_path is not clean (%q, expected %q)", p, path.Clean(p))
 	case p == "." || strings.HasPrefix(p, "../"):
-		return fmt.Errorf("dockerfile_path depo kökünün dışına çıkamaz (%q)", p)
+		return fmt.Errorf("dockerfile_path must not leave the repository root (%q)", p)
 	case strings.ContainsRune(p, '\\'):
-		return fmt.Errorf("dockerfile_path ters eğik çizgi içeremez (%q)", p)
+		return fmt.Errorf("dockerfile_path must not contain a backslash (%q)", p)
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func validateDockerfilePath(p string) error {
 // validateImageBuild, ImageBuild isteğinin tamamını doğrular.
 func validateImageBuild(req *kadranv1.ImageBuildRequest, allowedHosts, allowedRepos []string) error {
 	if req == nil {
-		return errors.New("istek boş olamaz")
+		return errors.New("request must not be empty")
 	}
 	if err := validateReleaseRef(req.GetRelease()); err != nil {
 		return err
@@ -152,7 +152,7 @@ func validateImageBuild(req *kadranv1.ImageBuildRequest, allowedHosts, allowedRe
 	// Derleme argümanları ortam değişkenleriyle aynı kısıtlara tabi:
 	// aynı execve argüman dizisine ve aynı NUL sorununa dokunuyorlar.
 	if len(req.GetBuildArgs()) > maxBuildArgs {
-		return fmt.Errorf("çok fazla derleme argümanı (%d, sınır %d)",
+		return fmt.Errorf("too many build args (%d, limit %d)",
 			len(req.GetBuildArgs()), maxBuildArgs)
 	}
 	return validateEnv(req.GetBuildArgs(), maxEnvBytes)

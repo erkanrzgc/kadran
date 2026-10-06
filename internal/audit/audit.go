@@ -196,7 +196,7 @@ func writeStr(h hashWriter, s string) {
 // ── Doğrulama ────────────────────────────────────────────────────────
 
 // ErrChainBroken, zincirin bir noktada geçersiz olduğunu belirtir.
-var ErrChainBroken = errors.New("denetim zinciri geçersiz")
+var ErrChainBroken = errors.New("audit chain broken")
 
 // Verifier, zinciri akış hâlinde doğrular; tüm kayıtları belleğe almaz.
 //
@@ -221,23 +221,23 @@ func NewVerifier() *Verifier {
 // doğrulayıcı artık kullanılmamalıdır.
 func (v *Verifier) Next(r Record) error {
 	if r.Seq != v.nextSeq {
-		return fmt.Errorf("%w: sıra numarası atlanmış, beklenen %d, gelen %d",
+		return fmt.Errorf("%w: sequence number skipped, expected %d, got %d",
 			ErrChainBroken, v.nextSeq, r.Seq)
 	}
 	if r.PrevHash != v.prev {
-		return fmt.Errorf("%w: kayıt %d'in prev_hash değeri zincirle uyuşmuyor",
+		return fmt.Errorf("%w: prev_hash of record %d does not match the chain",
 			ErrChainBroken, r.Seq)
 	}
 	if !r.Outcome.Valid() {
-		return fmt.Errorf("%w: kayıt %d geçersiz outcome değeri taşıyor: %d",
+		return fmt.Errorf("%w: record %d has an invalid outcome value: %d",
 			ErrChainBroken, r.Seq, uint8(r.Outcome))
 	}
 	if !r.Source.Valid() {
-		return fmt.Errorf("%w: kayıt %d geçersiz source değeri taşıyor: %d",
+		return fmt.Errorf("%w: record %d has an invalid source value: %d",
 			ErrChainBroken, r.Seq, uint8(r.Source))
 	}
 	if want := ComputeHash(r); want != r.Hash {
-		return fmt.Errorf("%w: kayıt %d kurcalanmış (hash uyuşmuyor)",
+		return fmt.Errorf("%w: record %d tampered with (hash mismatch)",
 			ErrChainBroken, r.Seq)
 	}
 

@@ -15,7 +15,7 @@ import (
 // (SQLITE_CONSTRAINT_UNIQUE) üretiyor ve tek bir hataya indirgemek,
 // "yeni-uygulama zaten var" gibi hem yanlış hem de yanlış alanı gösteren
 // bir mesaj demekti — kullanıcı var olmayan bir kimliği aramaya çıkardı.
-var ErrDomainTaken = errors.New("alan adı başka bir uygulamada")
+var ErrDomainTaken = errors.New("domain belongs to another app")
 
 // AppUpdate, bir uygulama tanımında DEĞİŞTİRİLEBİLİR alanlardır.
 //
@@ -279,7 +279,7 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return App{}, fmt.Errorf("güncelleme transaction'ı açılamadı: %w", err)
+		return App{}, fmt.Errorf("could not begin the update transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -288,7 +288,7 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 	case errors.Is(err, sql.ErrNoRows):
 		return App{}, fmt.Errorf("%w: %s", ErrAppNotFound, id)
 	case err != nil:
-		return App{}, fmt.Errorf("uygulama okunamadı: %w", err)
+		return App{}, fmt.Errorf("could not read the app: %w", err)
 	}
 
 	upd.applyTo(&app)
@@ -300,12 +300,12 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 	// değişmez. Bu, ölçek küçültmedeki hatanın (K-080) birebir şekli.
 	env, err := json.Marshal(sortedArgs(app.Env))
 	if err != nil {
-		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
+		return App{}, fmt.Errorf("could not serialize environment variables: %w", err)
 	}
 
 	vols, err := json.Marshal(sortedVolumes(app.Volumes))
 	if err != nil {
-		return App{}, fmt.Errorf("hacimler serileştirilemedi: %w", err)
+		return App{}, fmt.Errorf("could not serialize volumes: %w", err)
 	}
 
 	const q = `
@@ -323,11 +323,11 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 			// alan adı indeksidir.
 			return App{}, domainConflict(ctx, tx, app.Domain, app.ID, err)
 		}
-		return App{}, fmt.Errorf("uygulama güncellenemedi (%s): %w", id, err)
+		return App{}, fmt.Errorf("could not update the app (%s): %w", id, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return App{}, fmt.Errorf("güncelleme yazılamadı (%s): %w", id, err)
+		return App{}, fmt.Errorf("could not commit the update (%s): %w", id, err)
 	}
 	return app, nil
 }
@@ -360,7 +360,7 @@ func domainConflict(ctx context.Context, q rowQuerier, domain, selfID string, ca
 		// açıklama olmamasından kötüdür — kullanıcıyı var olmayan bir
 		// çakışmayı aramaya gönderir.
 		return fmt.Errorf(
-			"uygulama yazılamadı (benzersizlik ihlali, sebebi belirlenemedi): %w", cause)
+			"could not write the app (uniqueness violation, cause unknown): %w", cause)
 	}
-	return fmt.Errorf("%w: %q zaten %q uygulamasında", ErrDomainTaken, domain, owner)
+	return fmt.Errorf("%w: %q is already on app %q", ErrDomainTaken, domain, owner)
 }

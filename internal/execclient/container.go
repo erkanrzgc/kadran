@@ -64,12 +64,12 @@ func (c *Client) EnsureNetwork(ctx context.Context, appID string) (string, error
 
 	resp, err := c.rpc.NetworkEnsure(ctx, &kadranv1.NetworkEnsureRequest{AppId: appID})
 	if err != nil {
-		return "", fmt.Errorf("uygulama ağı kurulamadı (%s): %w", appID, err)
+		return "", fmt.Errorf("could not set up the app network (%s): %w", appID, err)
 	}
 	if resp.GetNetworkName() == "" {
 		// Adsız bir ağ, sonraki ContainerCreate'in sessizce varsayılan
 		// köprüye düşmesi demekti — yani izolasyonun kaybı.
-		return "", fmt.Errorf("executor ağ adı döndürmedi (%s) — izolasyon kanıtlanamadı", appID)
+		return "", fmt.Errorf("the executor returned no network name (%s) — isolation could not be proven", appID)
 	}
 	return resp.GetNetworkName(), nil
 }
@@ -138,7 +138,7 @@ func (c *Client) CreateReplica(ctx context.Context, opts CreateReplicaOptions) e
 		ContainerPort: opts.ContainerPort,
 	})
 	if err != nil {
-		return fmt.Errorf("konteyner oluşturulamadı (%s/%s #%d): %w",
+		return fmt.Errorf("could not create the container (%s/%s #%d): %w",
 			opts.AppID, opts.ReleaseID, opts.Index, err)
 	}
 	return nil
@@ -153,11 +153,11 @@ func (c *Client) CreateReplica(ctx context.Context, opts CreateReplicaOptions) e
 func (l Limits) validate() error {
 	switch {
 	case l.MemoryBytes == 0:
-		return fmt.Errorf("bellek limiti sıfır olamaz — limitsiz konteyner yok")
+		return fmt.Errorf("memory limit must not be zero — no container runs without limits")
 	case l.CPUMillis == 0:
-		return fmt.Errorf("CPU limiti sıfır olamaz — limitsiz konteyner yok")
+		return fmt.Errorf("CPU limit must not be zero — no container runs without limits")
 	case l.BlkioWeight == 0:
-		return fmt.Errorf("blkio ağırlığı sıfır olamaz — limitsiz konteyner yok")
+		return fmt.Errorf("blkio weight must not be zero — no container runs without limits")
 	}
 	return nil
 }
@@ -171,7 +171,7 @@ func (c *Client) StartReplica(ctx context.Context, appID, releaseID string, inde
 		Selector: replicaSelector(appID, releaseID, index),
 	})
 	if err != nil {
-		return fmt.Errorf("konteyner başlatılamadı (%s/%s #%d): %w",
+		return fmt.Errorf("could not start the container (%s/%s #%d): %w",
 			appID, releaseID, index, err)
 	}
 	// POZİTİF ÖLÇÜT. "Hata almadım" bir başarı kanıtı değil: seçici
@@ -180,7 +180,7 @@ func (c *Client) StartReplica(ctx context.Context, appID, releaseID string, inde
 	// "başlattık" sayıp trafiği oraya çevirirdik.
 	if resp.GetAffected() == 0 {
 		return fmt.Errorf(
-			"başlatma hiçbir konteyneri etkilemedi (%s/%s #%d) — konteyner yok",
+			"start affected no container (%s/%s #%d) — the container does not exist",
 			appID, releaseID, index)
 	}
 	return nil
@@ -202,7 +202,7 @@ func (c *Client) StopRelease(ctx context.Context, appID, releaseID string, grace
 		TimeoutSeconds: uint32(grace.Seconds()),
 	})
 	if err != nil {
-		return 0, fmt.Errorf("sürüm durdurulamadı (%s/%s): %w", appID, releaseID, err)
+		return 0, fmt.Errorf("could not stop the release (%s/%s): %w", appID, releaseID, err)
 	}
 	// Sıfır burada HATA DEĞİL: zaten durmuş bir sürümü durdurmak geçerli
 	// ve boşaltma yolunun tekrar çalıştırılabilir olması gerekiyor.
@@ -231,7 +231,7 @@ func (c *Client) StopReplica(
 		TimeoutSeconds: uint32(grace.Seconds()),
 	})
 	if err != nil {
-		return 0, fmt.Errorf("replika durdurulamadı (%s/%s#%d): %w",
+		return 0, fmt.Errorf("could not stop the replica (%s/%s#%d): %w",
 			appID, releaseID, index, err)
 	}
 	// Sıfır HATA DEĞİL: zaten durmuş bir replikayı durdurmak geçerli ve
@@ -248,7 +248,7 @@ func (c *Client) RemoveRelease(ctx context.Context, appID, releaseID string) (ui
 		Selector: releaseSelector(appID, releaseID),
 	})
 	if err != nil {
-		return 0, fmt.Errorf("sürüm konteynerleri silinemedi (%s/%s): %w", appID, releaseID, err)
+		return 0, fmt.Errorf("could not remove the release containers (%s/%s): %w", appID, releaseID, err)
 	}
 	return resp.GetAffected(), nil
 }
@@ -266,7 +266,7 @@ func (c *Client) ListReplicas(ctx context.Context, appID string) ([]Replica, err
 
 	resp, err := c.rpc.ContainerList(ctx, &kadranv1.ContainerListRequest{AppId: appID})
 	if err != nil {
-		return nil, fmt.Errorf("konteynerler listelenemedi (%s): %w", appID, err)
+		return nil, fmt.Errorf("could not list containers (%s): %w", appID, err)
 	}
 
 	out := make([]Replica, 0, len(resp.GetContainers()))

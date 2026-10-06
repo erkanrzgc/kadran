@@ -44,10 +44,10 @@ type ListenOptions struct {
 // SO_PEERCRED reddeder.
 func Listen(opts ListenOptions) (net.Listener, error) {
 	if opts.Path == "" {
-		return nil, fmt.Errorf("sockets: yol boş olamaz")
+		return nil, fmt.Errorf("sockets: path must not be empty")
 	}
 	if opts.Mode == 0 {
-		return nil, fmt.Errorf("sockets: mod belirtilmeli")
+		return nil, fmt.Errorf("sockets: a mode must be given")
 	}
 
 	// Temiz kapanmayan bir önceki süreçten kalan soket dosyası
@@ -64,19 +64,19 @@ func Listen(opts ListenOptions) (net.Listener, error) {
 	// edilecek bir bekleme yok. İmza değişikliği bedelinin karşılığı yok.
 	ln, err := net.Listen("unix", opts.Path) //nolint:noctx
 	if err != nil {
-		return nil, fmt.Errorf("sockets: %s dinlenemedi: %w", opts.Path, err)
+		return nil, fmt.Errorf("sockets: could not listen on %s: %w", opts.Path, err)
 	}
 
 	if err := os.Chmod(opts.Path, opts.Mode); err != nil {
 		_ = ln.Close()
-		return nil, fmt.Errorf("sockets: izinler ayarlanamadı: %w", err)
+		return nil, fmt.Errorf("sockets: could not set permissions: %w", err)
 	}
 
 	if opts.GID > 0 {
 		// -1 = kullanıcıyı değiştirme.
 		if err := os.Chown(opts.Path, -1, opts.GID); err != nil {
 			_ = ln.Close()
-			return nil, fmt.Errorf("sockets: grup ayarlanamadı: %w", err)
+			return nil, fmt.Errorf("sockets: could not set the group: %w", err)
 		}
 	}
 
@@ -94,17 +94,17 @@ func removeStaleSocket(path string) error {
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("sockets: %s incelenemedi: %w", path, err)
+		return fmt.Errorf("sockets: could not inspect %s: %w", path, err)
 	}
 
 	if info.Mode()&os.ModeSocket == 0 {
 		return fmt.Errorf(
-			"sockets: %s bir soket değil (%s) — silmeyi reddediyorum",
+			"sockets: %s is not a socket (%s) — refusing to remove it",
 			path, info.Mode().Type())
 	}
 
 	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("sockets: eski soket silinemedi: %w", err)
+		return fmt.Errorf("sockets: could not remove the old socket: %w", err)
 	}
 	return nil
 }
@@ -119,10 +119,10 @@ func EnsureParentDir(socketPath string) error {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return fmt.Errorf(
-			"sockets: %s dizini yok (systemd-tmpfiles kurulumu eksik olabilir): %w", dir, err)
+			"sockets: directory %s does not exist (systemd-tmpfiles setup may be missing): %w", dir, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("sockets: %s bir dizin değil", dir)
+		return fmt.Errorf("sockets: %s is not a directory", dir)
 	}
 	return nil
 }

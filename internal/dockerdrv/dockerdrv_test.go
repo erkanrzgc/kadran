@@ -498,7 +498,7 @@ func TestVolumeRootMustBeItsOwnMount(t *testing.T) {
 	if err == nil {
 		t.Fatal("hacim kökü ayrı mount olmadığı hâlde kontrol geçti")
 	}
-	if !strings.Contains(err.Error(), "ayrı bir mount") {
+	if !strings.Contains(err.Error(), "separate mount") {
 		t.Errorf("hata sebebi belirsiz: %v", err)
 	}
 }

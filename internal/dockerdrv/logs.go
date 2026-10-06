@@ -48,7 +48,7 @@ func (c *Client) ContainerLogs(
 		return err
 	}
 	if len(matches) != 1 {
-		return fmt.Errorf("docker: günlük için tam olarak bir konteyner gerekli, %d bulundu", len(matches))
+		return fmt.Errorf("docker: logs need exactly one container, found %d", len(matches))
 	}
 
 	q := url.Values{"stdout": {"true"}, "stderr": {"true"}}
@@ -88,7 +88,7 @@ func demux(r io.Reader, sink Sink) error {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-			return fmt.Errorf("docker: günlük başlığı okunamadı: %w", err)
+			return fmt.Errorf("docker: could not read the log header: %w", err)
 		}
 
 		isStderr := hdr[0] == streamStderr
@@ -102,7 +102,7 @@ func demux(r io.Reader, sink Sink) error {
 			if _, err := io.ReadFull(r, buf[:n]); err != nil {
 				// Kare yarıda kesildi. EOF burada temiz DEĞİL: başlık bir
 				// uzunluk bildirdi ve o kadar bayt gelmedi.
-				return fmt.Errorf("docker: günlük karesi eksik: %w", err)
+				return fmt.Errorf("docker: log frame truncated: %w", err)
 			}
 			if err := sink(buf[:n], isStderr); err != nil {
 				return err

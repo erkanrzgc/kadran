@@ -39,7 +39,7 @@ func TestRemoveStaleSocketRefusesRegularFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("normal dosya soket sanılıp silinmeye çalışıldı")
 	}
-	if !strings.Contains(err.Error(), "soket değil") {
+	if !strings.Contains(err.Error(), "is not a socket") {
 		t.Errorf("beklenen hata mesajı değil: %v", err)
 	}
 

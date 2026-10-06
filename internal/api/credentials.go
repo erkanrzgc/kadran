@@ -91,20 +91,20 @@ func (c *callerCreds) handshake(raw net.Conn) (net.Conn, credentials.AuthInfo, e
 	unixCred, ok := peerInfo.(peercred.AuthInfo)
 	if !ok {
 		_ = conn.Close()
-		return nil, nil, fmt.Errorf("api: beklenmedik peercred bilgisi: %T", peerInfo)
+		return nil, nil, fmt.Errorf("api: unexpected peercred info: %T", peerInfo)
 	}
 
 	// Önsöz okuması bir zaman aşımıyla sınırlanır, sonra kaldırılır:
 	// gRPC akışının kendi zamanlaması bizim koyduğumuz süreye takılmamalı.
 	if err := conn.SetReadDeadline(time.Now().Add(PreambleTimeout)); err != nil {
 		_ = conn.Close()
-		return nil, nil, fmt.Errorf("api: okuma süresi ayarlanamadı: %w", err)
+		return nil, nil, fmt.Errorf("api: could not set the read deadline: %w", err)
 	}
 
 	identity, err := connproto.Read(conn)
 	if err != nil {
 		_ = conn.Close()
-		return nil, nil, fmt.Errorf("api: kimlik önsözü alınamadı: %w", err)
+		return nil, nil, fmt.Errorf("api: could not read the identity preamble: %w", err)
 	}
 
 	// Rol el sıkışmada doğrulanıyor: geçersiz ya da BOŞ rolle hiçbir RPC
@@ -118,14 +118,14 @@ func (c *callerCreds) handshake(raw net.Conn) (net.Conn, credentials.AuthInfo, e
 
 	if err := conn.SetReadDeadline(time.Time{}); err != nil {
 		_ = conn.Close()
-		return nil, nil, fmt.Errorf("api: okuma süresi sıfırlanamadı: %w", err)
+		return nil, nil, fmt.Errorf("api: could not reset the read deadline: %w", err)
 	}
 
 	return conn, CallerInfo{Unix: unixCred.Cred, Identity: identity}, nil
 }
 
 func (c *callerCreds) ClientHandshake(context.Context, string, net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return nil, nil, errors.New("api: istemci tarafında kullanılamaz")
+	return nil, nil, errors.New("api: cannot be used on the client side")
 }
 
 func (c *callerCreds) Info() credentials.ProtocolInfo {
@@ -137,5 +137,5 @@ func (c *callerCreds) Clone() credentials.TransportCredentials {
 }
 
 func (c *callerCreds) OverrideServerName(string) error {
-	return errors.New("api: sunucu adı geçersiz kılınamaz")
+	return errors.New("api: server name cannot be overridden")
 }

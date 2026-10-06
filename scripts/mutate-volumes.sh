@@ -154,7 +154,7 @@ mutate "MkdirAll kaldirildi (Docker'a birakildi)" "$DRV_OWN" \
     "./internal/dockerdrv/" "Volume|Create"
 
 mutate "sayisal olmayan USER sessizce 0 oluyor" "$DRV_OWN" \
-    "s=s.replace('\t\treturn 0, fmt.Errorf(\n\t\t\t\"imaj','\t\treturn 0, error(nil); _ = fmt.Errorf(\n\t\t\t\"imaj',1)" \
+    "s=s.replace('\t\treturn 0, fmt.Errorf(\n\t\t\t\"the image','\t\treturn 0, error(nil); _ = fmt.Errorf(\n\t\t\t\"the image',1)" \
     "./internal/dockerdrv/" "Volume|Image|NonNumeric|Create"
 
 mutate "prepareVolumes ContainerCreate'ten cikarildi" "$DRV_CNT" \

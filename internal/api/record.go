@@ -42,7 +42,7 @@ func (s *Server) recordAction(
 ) error {
 	paramsJSON, err := audit.MarshalParams(redactSensitive(params))
 	if err != nil {
-		return status.Errorf(codes.Internal, "denetim parametreleri kodlanamadı: %v", err)
+		return status.Errorf(codes.Internal, "could not encode audit parameters: %v", err)
 	}
 
 	rec := audit.Record{
@@ -65,7 +65,7 @@ func (s *Server) recordAction(
 	if _, err := s.store.AppendAudit(context.WithoutCancel(ctx), rec); err != nil {
 		slog.Error("denetim kaydı yazılamadı",
 			"eylem", action, "hedef", target, "hata", err)
-		return status.Errorf(codes.Internal, "denetim kaydı yazılamadı: %v", err)
+		return status.Errorf(codes.Internal, "could not write the audit record: %v", err)
 	}
 	return nil
 }
@@ -96,7 +96,7 @@ func (s *Server) completed(
 		// deposundan gelen metni taşıyabilir (Dockerfile satırları,
 		// derleyici çıktısı) ve zincir ekle-sadece'dir: bir kez yazılan
 		// sır geri alınamaz. Ayrıntı çağırana döner.
-		detail = "işlem başarısız (ayrıntı çağırana döndü, kayda yazılmadı)"
+		detail = "operation failed (detail returned to the caller, not recorded)"
 	}
 	if err := s.recordAction(ctx, action, target, params, outcome, detail); err != nil {
 		return err

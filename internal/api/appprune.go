@@ -71,8 +71,8 @@ func (s *Server) PruneApp(
 	// "Hepsini buda" isteği CLI'da ListApps üzerinden bir döngü.
 	if !appIDPattern.MatchString(appID) {
 		return nil, s.denied(ctx, action, tgt, params, fmt.Errorf(
-			"uygulama kimliği geçersiz (%q) — boş kimlik 'bütün uygulamalar' "+
-				"ANLAMINA GELMEZ, her uygulama tek tek budanır", appID))
+			"invalid app id (%q) — an empty id does NOT MEAN "+
+				"'all apps', each app is pruned on its own", appID))
 	}
 
 	keep, err := keepSet(ctx, s.store, appID)
@@ -85,7 +85,7 @@ func (s *Server) PruneApp(
 		// dağıtılmış ama kaydı okunamayan bir uygulamada ise silmek tam
 		// olarak yapılmaması gereken şey.
 		_ = s.recordAction(ctx, action, tgt, params, audit.OutcomeDenied,
-			"korunacak sürümler belirlenemedi — hiçbir şeye dokunulmadı")
+			"could not determine the releases to keep — nothing was touched")
 		return nil, appError(err)
 	}
 	params["kept"] = strconv.Itoa(len(keep))
@@ -152,7 +152,7 @@ func keepSet(ctx context.Context, d deploymentReader, appID string) (map[string]
 	if err != nil {
 		return nil, err
 	}
-	keep := map[string]string{active.ReleaseID: "aktif"}
+	keep := map[string]string{active.ReleaseID: "active"}
 
 	prev, err := d.PreviousActiveRelease(ctx, appID)
 	switch {
@@ -160,7 +160,7 @@ func keepSet(ctx context.Context, d deploymentReader, appID string) (map[string]
 		// ⚠ Üzerine YAZILMIYOR. Geri alma sonrası aktif sürüm geçmişte
 		// de görünebilir; "aktif" etiketi daha güçlü olanı.
 		if _, ok := keep[prev]; !ok {
-			keep[prev] = "geri alma hedefi"
+			keep[prev] = "rollback target"
 		}
 	case errors.Is(err, store.ErrNoPreviousDeployment):
 		// İlk dağıtım: geri alınacak bir şey yok. Bu bir HATA DEĞİL,
@@ -186,7 +186,7 @@ func (s *Server) staleReleases(
 ) ([]string, error) {
 	reps, err := s.exec.ListReplicas(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("konteynerler listelenemedi: %w", err)
+		return nil, fmt.Errorf("could not list containers: %w", err)
 	}
 
 	seen := map[string]struct{}{}
@@ -226,11 +226,11 @@ func (s *Server) removeReleases(
 	var removed uint32
 	for _, relID := range releases {
 		if _, err := s.exec.StopRelease(ctx, appID, relID, pruneGrace); err != nil {
-			return removed, fmt.Errorf("sürüm %s durdurulamadı: %w", relID, err)
+			return removed, fmt.Errorf("could not stop release %s: %w", relID, err)
 		}
 		n, err := s.exec.RemoveRelease(ctx, appID, relID)
 		if err != nil {
-			return removed, fmt.Errorf("sürüm %s kaldırılamadı: %w", relID, err)
+			return removed, fmt.Errorf("could not remove release %s: %w", relID, err)
 		}
 		removed += n
 	}

@@ -146,7 +146,7 @@ mutate_in "$OFF" "uzak yedek çapayı yüklemiyor" \
     "s=s.replace('    yukle_dogrula \"\$capa\" \"\$(basename \"\$capa\")\"','    :',1)"
 
 mutate_in "$OFF" "budama deseni çapaları da seçiyor" \
-    "s=s.replace(\"uzak_buda \\\"veritabanı yedeği\\\" '^kadran-.*\\\\.db\\\\.age\$'\",\"uzak_buda \\\"veritabanı yedeği\\\" '^kadran-[0-9]'\",1)"
+    "s=s.replace(\"uzak_buda \\\"database backups\\\" '^kadran-.*\\\\.db\\\\.age\$'\",\"uzak_buda \\\"database backups\\\" '^kadran-[0-9]'\",1)"
 
 echo
 if [[ "$fail" -ne 0 ]]; then

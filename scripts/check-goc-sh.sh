@@ -243,7 +243,7 @@ dene "maskelenmiş birim (/dev/null'a bağ) olduğu gibi kalıyor, kurulmuyor" \
     "$(sgon y3) secimli_guncelle; [ \"\$(readlink \$KOK/etc/systemd/system/kadran-notify.timer)\" = /dev/null ] && [ ! -e \$KOK/lib/notify ]"
 IS=internal/bootstrap/install.sh
 dene "install.sh göç OLMAYAN yolda çağırıyor: tek yerde, goc_bitir'in else'inde, doğrulamadan önce" \
-    "b=\$(grep -n '^    goc_bitir\$' $IS | cut -d: -f1); s=\$(grep -n '^    secimli_guncelle\$' $IS | cut -d: -f1); v=\$(grep -n '^step \"Kurulum sonrası doğrulama\"\$' $IS | cut -d: -f1); [ -n \"\$b\" ] && [ -n \"\$s\" ] && [ -n \"\$v\" ] && [ \"\$(printf '%s\n' \"\$s\" | wc -l)\" = 1 ] && [ \"\$b\" -lt \"\$s\" ] && [ \"\$s\" -lt \"\$v\" ] && [ \"\$(sed -n \"\$((s - 1))p\" $IS)\" = else ]"
+    "b=\$(grep -n '^    goc_bitir\$' $IS | cut -d: -f1); s=\$(grep -n '^    secimli_guncelle\$' $IS | cut -d: -f1); v=\$(grep -n '^step \"Post-install verification\"\$' $IS | cut -d: -f1); [ -n \"\$b\" ] && [ -n \"\$s\" ] && [ -n \"\$v\" ] && [ \"\$(printf '%s\n' \"\$s\" | wc -l)\" = 1 ] && [ \"\$b\" -lt \"\$s\" ] && [ \"\$s\" -lt \"\$v\" ] && [ \"\$(sed -n \"\$((s - 1))p\" $IS)\" = else ]"
 
 echo
 echo "== goc_temizle: bir kalıntı silinemese de kurulum DÜŞMÜYOR =="
@@ -264,7 +264,7 @@ exit 0
 EOF
 chmod +x "$k/bin/docker"
 dene "ağ ve imaj silinemezse uyarı verip sürüyor" \
-    "$(on c1) PATH=\$KOK/bin:\$PATH; goc_vekil_yapisi(){ echo '{\"apps\":{}}'; }; goc_ipler(){ :; }; say(){ echo \"\$*\"; }; goc_temizle > \$KOK/cikti 2>&1; echo sonrasi >> \$KOK/cikti; grep -q 'ağlar kaldırılamadı' \$KOK/cikti && grep -q 'imaj etiketleri kaldırılamadı' \$KOK/cikti && grep -q sonrasi \$KOK/cikti && ! grep -q 'kalıntılar kaldırıldı' \$KOK/cikti"
+    "$(on c1) PATH=\$KOK/bin:\$PATH; goc_vekil_yapisi(){ echo '{\"apps\":{}}'; }; goc_ipler(){ :; }; say(){ echo \"\$*\"; }; goc_temizle > \$KOK/cikti 2>&1; echo sonrasi >> \$KOK/cikti; grep -q 'networks could not be removed' \$KOK/cikti && grep -q 'image tags could not be removed' \$KOK/cikti && grep -q sonrasi \$KOK/cikti && ! grep -q 'leftovers removed' \$KOK/cikti"
 
 echo
 echo "== install.sh: eski kalıntılar ancak doğrulama GEÇİNCE temizleniyor =="
@@ -272,7 +272,7 @@ echo "== install.sh: eski kalıntılar ancak doğrulama GEÇİNCE temizleniyor =
 # doğrulama düşse de eski konteynerler (son çalışan sürüm) silinirdi.
 IS=internal/bootstrap/install.sh
 dene "goc_temizle çağrısı 'doğrulama başarısız' çıkışından SONRA, tek yerde" \
-    "d=\$(grep -n 'kurulum sonrası doğrulama başarısız' $IS | cut -d: -f1); t=\$(grep -n '^    goc_temizle\$' $IS | cut -d: -f1); [ -n \"\$d\" ] && [ -n \"\$t\" ] && [ \"\$(printf '%s\n' \"\$t\" | wc -l)\" = 1 ] && [ \"\$t\" -gt \"\$d\" ]"
+    "d=\$(grep -n 'post-install verification failed' $IS | cut -d: -f1); t=\$(grep -n '^    goc_temizle\$' $IS | cut -d: -f1); [ -n \"\$d\" ] && [ -n \"\$t\" ] && [ \"\$(printf '%s\n' \"\$t\" | wc -l)\" = 1 ] && [ \"\$t\" -gt \"\$d\" ]"
 
 echo
 echo "== goc_gerekli =="
@@ -295,7 +295,7 @@ echo "== KONTROL: düzenek kırmızıyı görebiliyor =="
 # goc_tasi'yi "iki taraf doluysa üstüne yaz" diye bozan bir sürüm yukarıdaki
 # ölçümü kızartmalı; kızartmazsa ölçüm bir şey kanıtlamıyordu.
 BOZUK="$(mktemp)"; trap 'rm -rf "$KOK" "$BOZUK"' EXIT
-sed 's/            die "göç: hem \$eski hem \$yeni var ve \$yeni boş değil./            rm -rf "$yeni"; mv "$eski" "$yeni"; return 0; die "x/' "$GOC" > "$BOZUK"
+sed 's/            die "migration: both \$eski and \$yeni exist and \$yeni is not empty./            rm -rf "$yeni"; mv "$eski" "$yeni"; return 0; die "x/' "$GOC" > "$BOZUK"
 grep -q 'rm -rf "$yeni"; mv' "$BOZUK" || { echo "  ✗ KONTROL: mutant uygulanamadı — ölçüm geçersiz"; fail=1; }
 k="$(kok m1)"; mkdir -p "$k/a" "$k/b"; echo eski > "$k/a/x"; echo yeni > "$k/b/y"
 dene "KONTROL: bozuk goc_tasi dolu hedefi SİLİYOR (yani ölçüm bunu görür)" \

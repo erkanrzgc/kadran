@@ -1,48 +1,50 @@
-# Uzak yedek kurulumu
+# Offsite backup setup
 
-Yerel yedekler (`/var/lib/kadran/backups`) diskin kendisi giderse
-kaybolur. Bu birim onları **şifreleyip** bir uzak hedefe kopyalar.
+The local backups (`/var/lib/kadran/backups`) are lost if the disk itself goes. This unit
+**encrypts** them and copies them to a remote target.
 
-## Tehdit modeli — ne koruyor, ne korumuyor
+## Threat model — what it protects, what it does not
 
-| durum | sonuç |
+| situation | result |
 |---|---|
-| Disk ölür / sunucu silinir | ✅ uzak kopyadan geri yüklenir |
-| Sunucu ele geçirilir, saldırgan **geçmiş yedekleri okumak** ister | ✅ çözemez — özel anahtar burada yok |
-| Sunucu ele geçirilir, saldırgan **uzak yedekleri silmek** ister | ⚠ sağlayıcı tarafında kısıtlanmazsa SİLEBİLİR |
-| Özel anahtar kaybolur | ❌ yedekler KURTARILAMAZ |
+| The disk dies / the server is deleted | ✅ restored from the remote copy |
+| The server is compromised and the attacker wants to **read past backups** | ✅ cannot decrypt them — the private key is not here |
+| The server is compromised and the attacker wants to **delete the remote backups** | ⚠ CAN delete them unless the provider restricts it |
+| The private key is lost | ❌ the backups CANNOT BE RECOVERED |
 
-Son iki satır gerçek ve hafifletilebilir; aşağıda nasıl olduğu yazıyor.
+The last two rows are real and can be mitigated; how is described below.
 
-## Neden şifreleme zorunlu
+## Why encryption is mandatory
 
-Yedekler sır taşıyor. Varsayılmadı, ölçüldü:
+Backups carry secrets. This was measured, not assumed:
 
 ```
-sqlite3 yedek.db "SELECT env_json FROM apps"
-→ {"DATABASE_URL":"postgres://kadran:<parola>@db:5432/..."}
+sqlite3 backup.db "SELECT env_json FROM apps"
+→ {"DATABASE_URL":"postgres://kadran:<password>@db:5432/..."}
 ```
 
-Şifresiz yükleme, uygulama sırlarını üçüncü tarafa vermek olurdu.
+(Since v0.5.0 the values are sealed with the executor's key (K-123); backups taken before
+that hold them in plain text.) Uploading unencrypted would hand the apps' secrets to a third
+party.
 
-## Kurulum
+## Setup
 
-### 1. Anahtar çiftini KENDİ makinende üret
+### 1. Generate the key pair on YOUR OWN machine
 
-Özel anahtar **sunucuya asla girmez.**
+The private key **never goes to the server.**
 
 ```bash
-age-keygen -o kadran-yedek-anahtari.txt
+age-keygen -o kadran-backup-key.txt
 ```
 
-Çıktının içinde bir `# public key: age1...` satırı var. **Açık
-anahtar** sunucuya gider, dosyanın tamamı sende kalır.
+The output contains a `# public key: age1...` line. The **public key** goes to the server;
+you keep the whole file.
 
-> ⚠ `kadran-yedek-anahtari.txt` dosyasını en az iki ayrı yerde sakla
-> (parola yöneticisi + çevrimdışı kopya). Kaybolursa yedekler
-> çözülemez. Sunucuda saklama — orada durması bütün amacı bozar.
+> ⚠ Keep `kadran-backup-key.txt` in at least two separate places (password manager +
+> an offline copy). If it is lost, the backups cannot be decrypted. Do not keep it on the
+> server — keeping it there defeats the whole purpose.
 
-### 2. Uzak hedefi tanımla (sunucuda, root olarak)
+### 2. Define the remote target (on the server, as root)
 
 ```bash
 sudo install -d -m 0755 -o root -g root /etc/kadran
@@ -51,66 +53,63 @@ sudo chown root:kadran /etc/kadran/rclone.conf
 sudo chmod 0640 /etc/kadran/rclone.conf
 ```
 
-Yol SABİT: birim `RCLONE_CONFIG=/etc/kadran/rclone.conf` ile başlıyor.
+The path is FIXED: the unit starts with `RCLONE_CONFIG=/etc/kadran/rclone.conf`.
 
-> ⚠ **Yapılandırmayı `/var/lib/kadran` altına KOYMA** (rclone'un
-> `kadran` kullanıcısı için varsayılan yeri orası). O dizin daemon'un;
-> ele geçirilen bir kadrand oradaki dosyayı silip yerine kendisininkini
-> koyabilir — dosyanın sahibi root olsa bile. rclone yapılandırması
-> komut çalıştırabildiği için (ör. webdav `bearer_token_command`), bu
-> ağı olmayan daemon'a ağ gören bir süreçte komut çalıştırma yolu açardı.
-> `/etc/kadran` root'un dizini; `kadran` orada dosya silemez. Bkz. K-100.
+> ⚠ **Do NOT put the configuration under `/var/lib/kadran`** (that is rclone's default
+> location for the `kadran` user). That directory belongs to the daemon; a compromised
+> kadrand could delete the file there and put its own in its place — even if the file is
+> owned by root. Since an rclone configuration can run commands (e.g. webdav's
+> `bearer_token_command`), that would give the network-less daemon a way to run commands
+> in a process that has network access. `/etc/kadran` is root's directory; `kadran`
+> cannot delete files there. See K-100.
 
-Hedefi `kadran-offsite` diye adlandır. Backblaze B2 ve S3 uyumlu her
-sağlayıcı çalışır.
+Name the target `kadran-offsite`. Backblaze B2 and every S3-compatible provider work.
 
-**Sağlayıcıda silme yetkisi VERME.** Bu, "ele geçirilen sunucu uzak
-yedekleri silebilir" satırını kapatan tek şey:
+**Do NOT grant delete permission at the provider.** It is the only thing that closes the
+"a compromised server can delete the remote backups" row:
 
-- **Backblaze B2:** uygulama anahtarını `listBuckets, listFiles,
-  readFiles, writeFiles` ile oluştur — `deleteFiles` VERME. Kovada
-  Object Lock / sürümleme aç.
-- **S3:** IAM politikasında `s3:DeleteObject` reddedilsin, kovada
-  versioning + MFA delete açık olsun.
-- **Cloudflare R2:** aşağıdaki ayrı bölüme bak — R2'de "yaz ama silme"
-  izni YOK, koruma başka yoldan kuruluyor.
+- **Backblaze B2:** create the application key with `listBuckets, listFiles, readFiles,
+  writeFiles` — do NOT grant `deleteFiles`. Turn on Object Lock / versioning on the bucket.
+- **S3:** deny `s3:DeleteObject` in the IAM policy, and enable versioning + MFA delete on the
+  bucket.
+- **Cloudflare R2:** see the separate section below — R2 has NO "write but not delete"
+  permission, so the protection is built another way.
 
-Silme yetkisi vermezsen betiğin uzak budaması çalışmaz; bu bir
-kusur değil, tercih. `offsite.conf`'a `OFFSITE_PRUNE=hayir` yaz ve
-eskiyenleri sağlayıcının yaşam döngüsü kuralına bırak.
+Without delete permission the script's remote pruning does not work; that is a choice, not
+a defect. Put `OFFSITE_PRUNE=hayir` in `offsite.conf` (the values are Turkish: `evet` = yes,
+`hayir` = no) and leave old copies to the provider's lifecycle rule.
 
-#### Cloudflare R2 (ücretsiz katman: 10 GB, çıkış ücreti yok)
+#### Cloudflare R2 (free tier: 10 GB, no egress fees)
 
-Ölçülen boyut (21 Eyl): şifreli bir yedek 143.592 bayt. Günde 24
-yedek × 90 gün ≈ 310 MB — ücretsiz katmanın çok altında. Uygulama
-eklendikçe veritabanı büyür; oran değişirse yeniden ölç.
+Measured size (21 Sep): one encrypted backup is 143,592 bytes. 24 backups a day × 90 days
+≈ 310 MB — far below the free tier. The database grows as apps are added; measure again if
+that ratio changes.
 
-> **v0.4.0'dan önce kurduysan (panely adları, K-136):** göç kovana ve
-> yoluna DOKUNMAZ; `offsite.conf` aynı kovayı göstermeye devam eder (yalnız
-> rclone hedefinin adı `panely-offsite` → `kadran-offsite` olur). Ama yeni
-> nesneler `kadran-…` adıyla yüklenir ve kilit kuralı önekle eşleşir:
-> **göçten ÖNCE** kovaya `kadran-` öneki için de aynı iki kuralı ekle
-> (aşağıda 2. ve 3. adım: kilit 30 gün, yaşam döngüsü 90 gün). `panely-`
-> kurallarını eski nesneler süresini doldurana kadar silme. Ardından kilidi
-> aşağıdaki "Kilit ölçülmeden güvenilmez" yöntemiyle `kadran-` önekinde ölç.
-> Göç yerel yedekleri yeni adla bir kez daha yükler (canlıda ~3,4 MB).
+> **If you installed before v0.4.0 (panely names, K-136):** the migration does NOT TOUCH
+> your bucket or path; `offsite.conf` keeps pointing at the same bucket (only the rclone
+> target's name changes from `panely-offsite` to `kadran-offsite`). But new objects are
+> uploaded as `kadran-…`, and lock rules match by prefix: **BEFORE the migration** add the
+> same two rules for the `kadran-` prefix too (steps 2 and 3 below: lock 30 days,
+> lifecycle 90 days). Do not delete the `panely-` rules until the old objects have expired.
+> Then measure the lock on the `kadran-` prefix with the "Do not trust the lock until it is
+> measured" method below. The migration uploads the local backups once more under the new
+> names (~3.4 MB on the live server).
 
-⚠ **R2 token'larında silmesiz yazma izni YOK.** Seçenekler Admin
-Read & Write, Admin Read, Object Read & Write, Object Read. Yazabilen
-her token SİLEBİLİR. Silmeyi durduran şey kovadaki **bucket lock**:
+⚠ **R2 tokens have NO write-without-delete permission.** The options are Admin Read & Write,
+Admin Read, Object Read & Write and Object Read. Every token that can write CAN DELETE. What
+stops deletion is the bucket's **bucket lock**:
 
-1. Kova oluştur: `kadran-yedek` (Standard sınıf — ücretsiz katman
-   Infrequent Access'e UYGULANMIYOR).
-2. **Bucket lock** kuralı ekle: önek `kadran-`, saklama **30 gün**.
-   Kilitli bir nesne o süre dolmadan silinemez ve üzerine yazılamaz.
-3. **Yaşam döngüsü** kuralı ekle: önek `kadran-`, **90 gün** sonra sil.
-   Kilitten uzun olmalı; kilit her zaman önceliklidir.
-4. API token: **Object Read & Write**, YALNIZCA `kadran-yedek` kovasına.
-   Admin token KULLANMA: kova yönetimi yetkisi taşır ve kilit bir kova
-   ayarıdır — sunucudaki bir anahtarın kilidi değiştirebilmesi,
-   kilidin amacını boşa çıkarırdı.
-5. Sunucuda `rclone config --config /etc/kadran/rclone.conf` ile
-   `kadran-offsite` adında bir `s3` hedefi kur. Sonuç şöyle görünmeli:
+1. Create a bucket: `kadran-backup` (Standard class — the free tier does NOT APPLY to
+   Infrequent Access).
+2. Add a **bucket lock** rule: prefix `kadran-`, retention **30 days**. A locked object
+   cannot be deleted or overwritten before that time is up.
+3. Add a **lifecycle** rule: prefix `kadran-`, delete after **90 days**. It must be longer
+   than the lock; the lock always wins.
+4. API token: **Object Read & Write**, for the `kadran-backup` bucket ONLY. Do NOT use an
+   Admin token: it carries bucket management rights, and the lock is a bucket setting — a
+   key on the server able to change the lock would defeat the lock's purpose.
+5. On the server, set up an `s3` target named `kadran-offsite` with
+   `rclone config --config /etc/kadran/rclone.conf`. The result should look like this:
 
    ```ini
    [kadran-offsite]
@@ -118,169 +117,162 @@ her token SİLEBİLİR. Silmeyi durduran şey kovadaki **bucket lock**:
    provider = Cloudflare
    access_key_id = …
    secret_access_key = …
-   endpoint = https://<hesap-kimliği>.r2.cloudflarestorage.com
+   endpoint = https://<account-id>.r2.cloudflarestorage.com
    acl = private
    no_check_bucket = true
    no_head = true
    ```
 
-   `no_check_bucket = true` ŞART: nesne düzeyindeki token kova
-   oluşturamaz ve rclone aksi hâlde "Access Denied" ile düşer
-   (Cloudflare'in kendi belgesi).
+   `no_check_bucket = true` is REQUIRED: an object-level token cannot create buckets, and
+   rclone otherwise fails with "Access Denied" (Cloudflare's own documentation).
 
-   `no_head = true` de ŞART (24 Eyl'de ölçüldü, K-106): bucket lock
-   açık kovada R2 her yüklemeye bir sürüm kimliği döndürüyor; rclone
-   1.60 yüklemeden sonra `HEAD ?versionId=…` atıyor ve R2 buna
-   `501 Not Implemented` veriyor. Dosya YAZILIYOR ama rclone çıkış 1
-   dönüyor ve betik her yüklemeyi başarısız sayardı. Yükleme sonrası
-   boyut doğrulamasını betik zaten kendisi yapıyor.
-6. `offsite.conf`'a `OFFSITE_PRUNE=hayir` yaz. Budama kilitli
-   dosyaları silmeye çalışıp her koşuda hata basardı.
+   `no_head = true` is REQUIRED too (measured on 24 Sep, K-106): on a bucket with bucket lock
+   R2 returns a version ID for every upload; rclone 1.60 sends `HEAD ?versionId=…` after the
+   upload and R2 answers `501 Not Implemented`. The file IS WRITTEN, but rclone exits 1 and
+   the script would count every upload as failed. The script already checks the size after
+   each upload itself.
+6. Put `OFFSITE_PRUNE=hayir` in `offsite.conf`. Pruning would try to delete locked files and
+   print an error on every run.
 
-**Kilit ölçülmeden güvenilmez.** Cloudflare belgesi kilidin token
-iznine ağır bastığını açıkça YAZMIYOR. Kurulumdan sonra aynı token'la
-iki silme denenmeli:
+**Do not trust the lock until it is measured.** Cloudflare's documentation does NOT say
+explicitly that the lock overrides token permissions. After setup, try two deletions with
+the same token:
 
-- kilitli önekte (`kadran-…`) bir dosya → **reddedilmeli**
-- kilitsiz önekte bir sınama dosyası → **silinmeli** (kontrol grubu:
-  token'ın silme yetkisi olduğunu, reddin kilitten geldiğini kanıtlar)
+- a file under the locked prefix (`kadran-…`) → it must be **refused**
+- a test file under an unlocked prefix → it must be **deleted** (the control group: it proves
+  the token has delete permission and that the refusal comes from the lock)
 
-⚠ **Kilidin bedeli — maliyet.** Sunucu ele geçirilirse yazabilen
-anahtar kovaya `kadran-` önekli BÜYÜK dosyalar yükleyebilir. Ücretsiz
-katman 10 GB; üstü ücretli, ve kilit bu dosyaların da 30 gün
-silinmesini engeller. Kilit süresini gereğinden uzun tutma; 30 gün,
-"fark et ve müdahale et" için yeterli bir pencere. Cloudflare
-hesabındaki kullanım/fatura bildirimlerini kontrol et.
+⚠ **The price of the lock — cost.** If the server is compromised, the key that can write
+can upload LARGE files with the `kadran-` prefix to the bucket. The free tier is 10 GB;
+beyond that you pay, and the lock prevents deleting those files for 30 days too. Do not
+make the lock longer than needed; 30 days is a sufficient window to notice and react. Watch
+the usage/billing notifications of your Cloudflare account.
 
-### 3. Yapılandırmayı yaz (sunucuda)
+### 3. Write the configuration (on the server)
 
 ```bash
 sudo tee /etc/kadran/offsite.conf >/dev/null <<'CONF'
-OFFSITE_REMOTE=kadran-offsite:kadran-yedek
-OFFSITE_RECIPIENT=age1...            # 1. adımdaki AÇIK anahtar
+OFFSITE_REMOTE=kadran-offsite:kadran-backup
+OFFSITE_RECIPIENT=age1...            # the PUBLIC key from step 1
 OFFSITE_KEEP=30
-# OFFSITE_PRUNE=hayir                # R2 / silmesiz token: budamayı kapat
+# OFFSITE_PRUNE=hayir                # R2 / a token without delete: turn pruning off
 CONF
 sudo chmod 0640 /etc/kadran/offsite.conf
 sudo chgrp kadran /etc/kadran/offsite.conf
 ```
 
-⚠ `rclone.conf` sağlayıcı anahtarını taşır ve yükleyici ile daemon aynı
-kullanıcıyla (`kadran`) koştuğu için daemon onu OKUYABİLİR — ama
-DEĞİŞTİREMEZ. Bu yüzden 2. adımdaki silme yetkisi kısıtı zorunlu:
-okunan anahtar yedekleri silemesin. OAuth tabanlı sağlayıcılar
-(Google Drive, OneDrive) jetonu yenileyip dosyaya YAZMAK ister; salt
-okunur dosyada bu başarısız olur. Anahtar tabanlı B2/S3 kullan.
+⚠ `rclone.conf` holds the provider key, and since the uploader and the daemon run as the
+same user (`kadran`), the daemon CAN READ it — but CANNOT CHANGE it. That is why the
+delete-permission restriction in step 2 is mandatory: a key that is read must not be able to
+delete the backups. OAuth-based providers (Google Drive, OneDrive) want to refresh the token
+and WRITE it to the file; that fails on a read-only file. Use key-based B2/S3.
 
-### 4. Zamanlayıcıyı aç
+### 4. Enable the timer
 
 ```bash
 sudo systemctl enable --now kadran-offsite.timer
-sudo systemctl start kadran-offsite.service   # ilk koşuyu hemen yap
+sudo systemctl start kadran-offsite.service   # do the first run right away
 journalctl -u kadran-offsite -n 30 --no-pager
 ```
 
-### Yükseltme
+### Upgrading
 
-v0.5.0'dan itibaren `kadran bootstrap`, kurulu bulduğu betiği ve birimleri
-her yükseltmede pakettekiyle değiştirir; zamanlayıcı açıksa açık, kapalıysa
-kapalı kalır (K-138). Kendi ayarlarınızı birim dosyasına değil
-`systemctl edit` ile drop-in'e yazın; drop-in'ler korunur.
+Since v0.5.0, `kadran bootstrap` replaces the installed script and units with the ones in
+the package on every upgrade; the timer stays on if it was on and off if it was off
+(K-138). Put your own settings in a drop-in with `systemctl edit`, not in the unit file;
+drop-ins are kept.
 
-v0.4.1'e yükseltirken betik eski kalır ve çapalar yüklenmez. Betiği elle
-kopyalayın (v0.4.1 etiketinden):
+When upgrading to v0.4.1 the script stays old and anchors are not uploaded. Copy the
+script by hand (from the v0.4.1 tag):
 
 ```bash
-scp deploy/offsite/kadran-offsite.sh root@sunucu:/tmp/
-ssh root@sunucu install -m 0755 /tmp/kadran-offsite.sh /usr/local/lib/kadran/offsite/
+scp deploy/offsite/kadran-offsite.sh root@server:/tmp/
+ssh root@server install -m 0755 /tmp/kadran-offsite.sh /usr/local/lib/kadran/offsite/
 ```
 
-## Geri yükleme
+## Restore
 
 ```bash
-# 1. Uzaktan indir
-rclone copy kadran-offsite:kadran-yedek/kadran-20260918T083505Z.db.age .
+# 1. Download from the remote
+rclone copy kadran-offsite:kadran-backup/kadran-20260918T083505Z.db.age .
 
-# 2. KENDİ makinende çöz (özel anahtar burada)
-age -d -i kadran-yedek-anahtari.txt \
+# 2. Decrypt on YOUR OWN machine (the private key is here)
+age -d -i kadran-backup-key.txt \
     -o kadran.db kadran-20260918T083505Z.db.age
 
-# 3. Sunucuya taşı ve geri yükle
-scp kadran.db root@sunucu:/tmp/
-ssh root@sunucu 'systemctl stop kadrand && \
+# 3. Move it to the server and restore
+scp kadran.db root@server:/tmp/
+ssh root@server 'systemctl stop kadrand && \
   /usr/local/lib/kadran/kadrand --restore /tmp/kadran.db'
 ```
 
-`--restore` çalışmadan önce mevcut veritabanının güvenlik kopyasını
-alır ve geri yüklenen dosyanın bütünlüğünü doğrular (K-091).
+Before running, `--restore` takes a safety copy of the current database and verifies the
+integrity of the restored file (K-091).
 
-> ⚠ **Bu yedekler hacim verisini taşımıyor.** Yalnızca kontrol
-> düzlemi veritabanı: uygulama tanımları, sürümler, denetim zinciri.
-> Konteynerlerin kalıcı diskleri (`/var/lib/kadran/volumes`) için
-> aşağıdaki **hacim yedeği** ayrıca kurulmalı.
+> ⚠ **These backups do not carry volume data.** Only the control plane database: app
+> definitions, releases, the audit chain. For the containers' persistent volumes
+> (`/var/lib/kadran/volumes`) set up the **volume backup** below as well.
 
-> Geri yüklemeden sonra denetim zinciri o yedeğin anından itibaren
-> çatallanır: daha yeni çapalar artık çelişir (aşağıda). Geri yükleme
-> anını not et ve çapa denetiminde `-anchors-since` ile ver.
+> After a restore the audit chain forks from the moment of that backup: newer anchors now
+> contradict it (below). Note the time of the restore and pass it to the anchor check with
+> `-anchors-since`.
 
-## Zincir çapaları (K-126)
+## Chain anchors (K-126)
 
-kadrand her yedeğin yanına denetim zincirinin ucunu yazar
-(`kadran-<damga>.capa`: sıra no + hash) ve bu birim onu **şifrelemeden**
-yükler. İçinde sır yok; `kadran-` öneki kova kilidinin kapsamında,
-yani yüklenmiş bir çapa 30 gün değiştirilemez ve silinemez. Budama
-çapalara dokunmaz, eskiyenleri yaşam döngüsü kuralı siler.
+kadrand writes the tip of the audit chain next to every backup
+(`kadran-<stamp>.capa`: sequence number + hash), and this unit uploads it **without
+encryption**. It contains no secrets; the `kadran-` prefix is covered by the bucket lock, so
+an uploaded anchor cannot be changed or deleted for 30 days. Pruning does not touch anchors;
+the lifecycle rule deletes the old ones.
 
-Ele geçirilmiş bir kadrand kendi zincirini baştan yazabilir ve
-`audit verify` yine "geçerli" der. Çapalar bunu yakalar; KENDİ
-makinende:
+A compromised kadrand can rewrite its own chain from scratch, and `audit verify` still says
+"valid". Anchors catch that; on YOUR OWN machine:
 
 ```bash
-rclone copy kadran-offsite:kadran-yedek ./capalar --include 'kadran-*.capa'
-kadran audit verify -anchors ./capalar kadran-client@sunucu
+rclone copy kadran-offsite:kadran-backup ./anchors --include 'kadran-*.capa'
+kadran audit verify -anchors ./anchors kadran-client@server
 ```
 
-CLI zinciri kendisi hesaplar, sunucunun gönderdiği hash'lere güvenmez.
-Tek bir çapa çelişirse ya da zincir bir çapadan kısaysa çıkış `3`.
-Çapası olmayan günler uyarı olarak listelenir (o gün yükleme olmamış).
+The CLI recomputes the chain itself and does not trust the hashes the server sends. If a
+single anchor contradicts it, or the chain is shorter than an anchor, the exit code is `3`.
+Days without an anchor are listed as a warning (no upload happened that day).
 
-Sınırlar: yalnızca daemon zinciri (executor'ınki çapalanmıyor), kilit
-süresi kadar geriye (30 gün) ve en yeni çapaya kadar. Daemon kullanıcısı
-`rclone.conf`'u okuyabildiği için SAHTE çapa ekleyebilir; kilitli
-gerçekleri değiştiremez, ve çelişen tek çapa sonucu kırmızı yapar.
+Limits: only the daemon chain (the executor's is not anchored), back as far as the lock
+(30 days) and up to the newest anchor. Since the daemon user can read `rclone.conf`, it can
+add FAKE anchors; it cannot change the locked real ones, and a single contradicting anchor
+turns the result red.
 
-## Hacim yedeği — uygulama verisi (K-111)
+## Volume backup — app data (K-111)
 
-kadrand uygulamaların kalıcı disklerini okuyamıyor ve bu bir güvence
-(K-091). Hacim verisini ayrı bir birim arşivliyor:
+kadrand cannot read the apps' persistent volumes, and that is a safeguard (K-091). A
+separate unit archives the volume data:
 
 | | |
 |---|---|
-| okur | bütün hacimleri — tek yetki: `CAP_DAC_READ_SEARCH` |
-| ulaşır | hiçbir yere — ağ yok, soket yok (Docker soketi dahil) |
-| yazar | yalnızca `/var/lib/kadran-volume-backup` |
-| verir | `age` ile şifreli arşiv, uzak yedekle aynı açık anahtar |
+| reads | every volume — its only privilege: `CAP_DAC_READ_SEARCH` |
+| reaches | nothing — no network, no sockets (the Docker socket included) |
+| writes | only `/var/lib/kadran-volume-backup` |
+| produces | an archive encrypted with `age`, to the same public key as the offsite backup |
 
-kadrand arşivleri okuyabilir ama içlerini çözemez; silemez, üzerine
-yazamaz. Yükleyici arşivleri olduğu gibi (yeniden şifrelemeden) uzağa
-taşır. Hepsi sunucuda kontrol gruplu ölçüldü.
+kadrand can read the archives but cannot decrypt them; it cannot delete or overwrite them.
+The uploader moves the archives offsite as they are (without re-encrypting them). All of
+this was measured on the server with control groups.
 
-### ⚠ Anlık görüntü DEĞİL
+### ⚠ NOT a snapshot
 
-Uygulama durdurulmuyor; dosyalar uygulama çalışırken tek tek okunur.
-Veritabanı taşıyan bir uygulamada dosyalar farklı anlardan gelebilir ve
-geri yüklenen kopya **bozuk** olabilir. Veritabanını hacme bir
-**döküm** olarak da al — döküm dosyası tutarlıdır:
+The app is not stopped; files are read one by one while it runs. In an app that holds a
+database the files may come from different moments, and the restored copy may be
+**corrupt**. Also take the database into the volume as a **dump** — a dump file is
+consistent:
 
 ```bash
-pg_dump -U app app > /data/dump.sql            # PostgreSQL
-sqlite3 /data/app.db ".backup /data/yedek.db"  # SQLite
+pg_dump -U app app > /data/dump.sql              # PostgreSQL
+sqlite3 /data/app.db ".backup /data/backup.db"   # SQLite
 ```
 
-### Kurulum
+### Setup
 
-Uzak yedek (yukarısı) kurulu olmalı: alıcı anahtar `offsite.conf`'tan
-okunur.
+The offsite backup (above) must be set up: the recipient key is read from `offsite.conf`.
 
 ```bash
 sudo install -m 0755 deploy/offsite/kadran-volume-backup.sh /usr/local/lib/kadran/offsite/
@@ -288,65 +280,62 @@ sudo install -m 0644 deploy/systemd/kadran-volume-backup.service \
                      deploy/systemd/kadran-volume-backup.timer /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now kadran-volume-backup.timer
-sudo systemctl start kadran-volume-backup.service   # ilk koşuyu hemen yap
+sudo systemctl start kadran-volume-backup.service   # do the first run right away
 journalctl -u kadran-volume-backup -n 20 --no-pager
 ```
 
-`offsite.conf` ve üst dizinleri root'a ait olmalı, grup ve diğerleri
-yazamamalı; değilse birim çalışmayı reddeder. Alıcıyı değiştirebilen
-biri, bütün uygulama verisini kendi anahtarına şifreletirdi.
+`offsite.conf` and its parent directories must be owned by root and not writable by group
+or others; otherwise the unit refuses to run. Someone able to change the recipient would get
+all app data encrypted to their own key.
 
-Birim her gece 23:30'da koşar, yükleyici gece yarısı alır. Yerelde
-uygulama başına `OFFSITE_VOLUME_KEEP` (varsayılan 3) arşiv tutulur.
-Uzak budama (`OFFSITE_PRUNE=evet`) hacim arşivlerini **uygulama başına**
-`OFFSITE_KEEP` kadar tutar.
+The unit runs every night at 23:30 and the uploader picks it up at midnight. Locally,
+`OFFSITE_VOLUME_KEEP` (default 3) archives are kept per app. Remote pruning
+(`OFFSITE_PRUNE=evet`) keeps `OFFSITE_KEEP` volume archives **per app**.
 
-### Geri yükleme
+### Restore
 
 ```bash
-# 1. İndir ve KENDİ makinende çöz (özel anahtar burada)
-rclone copy kadran-offsite:kadran-yedek/kadran-hacim-web-20260926T233000Z.tar.zst.age .
-age -d -i kadran-yedek-anahtari.txt -o web.tar.zst kadran-hacim-web-20260926T233000Z.tar.zst.age
+# 1. Download and decrypt on YOUR OWN machine (the private key is here)
+rclone copy kadran-offsite:kadran-backup/kadran-hacim-web-20260926T233000Z.tar.zst.age .
+age -d -i kadran-backup-key.txt -o web.tar.zst kadran-hacim-web-20260926T233000Z.tar.zst.age
 
-# 2. Sunucuya taşı, mevcut hacmi kenara al, arşivi aç
-scp web.tar.zst root@sunucu:/root/
-ssh root@sunucu
+# 2. Move it to the server, set the current volume aside, unpack the archive
+scp web.tar.zst root@server:/root/
+ssh root@server
 cd /var/lib/kadran/volumes
-mv web .web-eski        # noktalı ad: arşivleyici onu atlar
+mv web .web-old         # dotted name: the archiver skips it
 zstd -dq < /root/web.tar.zst | tar -x --numeric-owner -f - -C /var/lib/kadran/volumes
-# Doğruladıktan sonra: rm -rf .web-eski /root/web.tar.zst
+# After checking: rm -rf .web-old /root/web.tar.zst
 ```
 
-`--numeric-owner` ŞART: konteynerin kullanıcısı (ör. uid 101) bu
-makinede başka birinin adına denk gelebilir; sayı korunmalı.
+`--numeric-owner` is REQUIRED: the container's user (e.g. uid 101) may map to someone
+else's name on this machine; the number must be kept.
 
-Bu yol canlıda uçtan uca ölçüldü (K-111): arşiv R2'den indi, bilgisayarda
-çözüldü, sunucuda açıldı; tür, kip, sahip, boyut ve sha256 özgünle aynı.
-⚠ Tatbikattaki hacim çalışan bir konteynere bağlı DEĞİLDİ. Hacmi
-kullanan bir konteyner varsa önce onu durdur; bu adım ölçülmedi.
+This path was measured end to end on the live server (K-111): the archive came down from R2,
+was decrypted on a workstation and unpacked on the server; type, mode, owner, size and
+sha256 matched the original. ⚠ The volume in that drill was NOT attached to a running
+container. If a container uses the volume, stop it first; that step was not measured.
 
-### Maliyet
+### Cost
 
-Her gece her uygulamanın TAM arşivi alınır, artımlı değil. R2 kilidi
-(30 gün) ve yaşam döngüsü (90 gün) ile her arşiv uzakta ~90 gün durur:
-günde X MB → uzakta ~90 × X MB. R2'nin ücretsiz katmanı 10 GB; bütün
-uygulamaların arşivi toplam günde ~110 MB'ı geçerse ücretli katmana
-girersin.
+Every night a FULL archive of every app is taken, not an incremental one. With the R2 lock
+(30 days) and lifecycle (90 days), each archive stays offsite for ~90 days: X MB a day →
+~90 × X MB offsite. R2's free tier is 10 GB; if all apps' archives together exceed ~110 MB a
+day, you move into the paid tier.
 
-## Doğrulama
+## Verification
 
-Betik yüklemeyi **ölçüyor**, varsaymıyor: her dosyadan sonra uzaktaki
-boyutu okuyup yereldekiyle karşılaştırıyor. Uyuşmazsa birim başarısız
-oluyor.
+The script **measures** the upload instead of assuming it: after every file it reads the
+remote size and compares it with the local one. If they differ, the unit fails.
 
-Kısmi başarı başarı sayılmıyor — tek bir dosya bile yüklenemezse
-`kadran-offsite.service` `failed` durumuna geçer:
+Partial success does not count as success — if even one file cannot be uploaded,
+`kadran-offsite.service` goes into the `failed` state:
 
 ```bash
 systemctl status kadran-offsite.service
 systemctl list-timers kadran-offsite.timer
 ```
 
-Arıza Telegram'a bildirilir: birim `OnFailure=` ile alarm göndericisini
-çağırıyor (K-108, [`deploy/notify`](../notify/README.md)). Gönderici
-kurulu değilse birim yine `failed` kalır ama kimse haber almaz.
+The failure is reported to Telegram: the unit calls the alarm sender through `OnFailure=`
+(K-108, [`deploy/notify`](../notify/README.md)). If the sender is not installed the unit
+still stays `failed`, but nobody is told.

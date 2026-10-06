@@ -89,7 +89,7 @@ fi
 echo "== Veri =="
 
 mutate_in "$GOC" "goc_tasi dolu hedefin üstüne yazıyor" \
-    "s=s.replace('            die \"göç: hem \$eski hem \$yeni var ve \$yeni boş değil.','            rm -rf \"\$yeni\"; die \"x',1)"
+    "s=s.replace('            die \"migration: both \$eski and \$yeni exist and \$yeni is not empty.','            rm -rf \"\$yeni\"; die \"x',1)"
 
 mutate_in "$GOC" "goc_onek var olan hedefin üstüne taşıyor" \
     "s=s.replace('        [ -e \"\$hedef\" ] && die','        false && die',1)"
@@ -117,7 +117,7 @@ mutate_in "$GOC" "goc_uzak_yedek offsite.conf'u çevirmiyor" \
     "s=s.replace('    goc_yerinde_sed \"\$oc\"','    : goc_yerinde_sed \"\$oc\"',1)"
 
 mutate_in "$GOC" "goc_uzak_yedek iki hedef birden varken sürüyor" \
-    "s=s.replace('        die \"göç: rclone.conf\\'ta hem','        : \"x',1)"
+    "s=s.replace('        die \"migration: rclone.conf has both','        : \"x',1)"
 
 mutate_in "$GOC" "goc_uzak_yedek yarıda kalan koşuyu tamamlayamıyor" \
     "s=s.replace('    elif ! grep -qx','    elif true || grep -qx',1)"
@@ -125,7 +125,7 @@ mutate_in "$GOC" "goc_uzak_yedek yarıda kalan koşuyu tamamlayamıyor" \
 echo "== Güvenlik: root dosya yazarken (güvenlik incelemesi) =="
 
 mutate_in "$GOC" "goc_yerinde_sed sembolik bağı yeniden yazıyor" \
-    "s=s.replace('    if [ -L \"\$f\" ]; then\n        die \"göç: \$f sembolik','    if false; then\n        die \"göç: \$f sembolik',1)"
+    "s=s.replace('    if [ -L \"\$f\" ]; then\n        die \"migration: \$f is a symlink','    if false; then\n        die \"migration: \$f is a symlink',1)"
 
 mutate_in "$GOC" "goc_yerinde_sed tahmin edilebilir geçici ad kullanıyor" \
     "s=s.replace('gecici=\"\$(mktemp \"\$f.goc.XXXXXX\")\"','gecici=\"\$f.goc\"',1)"
@@ -159,7 +159,7 @@ mutate_in "$GOC" "güncellemeden sonra systemd yeniden yüklenmiyor" \
     "s=s.replace('    [ \"\$guncel\" -eq 0 ] || systemctl daemon-reload\n','    :\n',1)"
 
 mutate_in "$GOC" "güncelleme kapalı zamanlayıcıyı açıyor" \
-    "s=s.replace('        secimli_dosyalari_kur \"\$s\"\n        say \"seçimli birim güncellendi','        secimli_dosyalari_kur \"\$s\"\n        systemctl enable --now \"kadran-\$s.timer\"\n        say \"seçimli birim güncellendi',1)"
+    "s=s.replace('        secimli_dosyalari_kur \"\$s\"\n        say \"optional unit updated','        secimli_dosyalari_kur \"\$s\"\n        systemctl enable --now \"kadran-\$s.timer\"\n        say \"optional unit updated',1)"
 
 mutate_in "$GOC" "uzak yedek betiği yenilenmiyor" \
     "s=s.replace('            install -m 0755 -o root -g root \"\$STAGE/kadran-offsite.sh\"','            : \"\$STAGE/kadran-offsite.sh\"',1)"
@@ -181,7 +181,7 @@ mutate_in "$GOC" "drop-in içindeki eski adlar çevrilmiyor" \
     "s=s.replace('        sed \\'s/panely/kadran/g\\' \"\$f\" > \"\$hedef\"','        cat \"\$f\" > \"\$hedef\"',1)"
 
 mutate_in "$GOC" "okunamayan komut satırı 'beyaz liste yok' sayılıyor" \
-    "s=s.replace('        die \"göç: executor\\'ın komut satırı okunamadı','        : \"x',1)"
+    "s=s.replace('        die \"migration: could not read the executor\\'s command line','        : \"x',1)"
 
 mutate_in "$GOC" "beyaz liste değerinin yalnız ilki okunuyor" \
     "s=s.replace('{ grep -oE -- \\'--allow-repo[ =][^ ;]*\\' || true; }','{ grep -oE -- \\'--allow-repo[ =][^ ;]*\\' || true; } | head -1',1)"

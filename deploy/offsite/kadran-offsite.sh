@@ -47,7 +47,7 @@ BACKUP_DIR="${KADRAN_BACKUP_DIR:-/var/lib/kadran/backups}"
 VOLUME_BACKUP_DIR="${KADRAN_VOLUME_BACKUP_DIR:-/var/lib/kadran-volume-backup}"
 
 log()  { echo "kadran-offsite: $*"; }
-die()  { echo "kadran-offsite: HATA: $*" >&2; exit 1; }
+die()  { echo "kadran-offsite: ERROR: $*" >&2; exit 1; }
 
 # ── Yapılandırma YOKSA sessizce başarılı olma ────────────────────────
 #
@@ -55,13 +55,13 @@ die()  { echo "kadran-offsite: HATA: $*" >&2; exit 1; }
 # hiç alınmadığı bir sistemi SAĞLIKLI gösterirdi. Bu sınıf hata bu
 # projede daha önce görüldü (K-073): hiçbir şey yapmayan bir adımın
 # yeşil geçmesi.
-[[ -r "$CONF" ]] || die "yapılandırma okunamadı: $CONF (kurulum: deploy/offsite/README.md)"
+[[ -r "$CONF" ]] || die "could not read the configuration: $CONF (setup: deploy/offsite/README.md)"
 
 # shellcheck source=/dev/null
 source "$CONF"
 
-: "${OFFSITE_REMOTE:?offsite.conf içinde OFFSITE_REMOTE tanımlı değil}"
-: "${OFFSITE_RECIPIENT:?offsite.conf içinde OFFSITE_RECIPIENT (age açık anahtarı) tanımlı değil}"
+: "${OFFSITE_REMOTE:?OFFSITE_REMOTE is not set in offsite.conf}"
+: "${OFFSITE_RECIPIENT:?OFFSITE_RECIPIENT (age public key) is not set in offsite.conf}"
 OFFSITE_KEEP="${OFFSITE_KEEP:-30}"
 
 # OFFSITE_PRUNE=hayir: uzak budama TAMAMEN kapalı; eskiyenleri
@@ -75,11 +75,11 @@ OFFSITE_KEEP="${OFFSITE_KEEP:-30}"
 OFFSITE_PRUNE="${OFFSITE_PRUNE:-evet}"
 case "$OFFSITE_PRUNE" in
     evet|hayir) ;;
-    *) die "OFFSITE_PRUNE yalnızca 'evet' ya da 'hayir' olabilir: $OFFSITE_PRUNE" ;;
+    *) die "OFFSITE_PRUNE must be 'evet' (yes) or 'hayir' (no): $OFFSITE_PRUNE" ;;
 esac
 
-command -v age    >/dev/null || die "age kurulu değil"
-command -v rclone >/dev/null || die "rclone kurulu değil"
+command -v age    >/dev/null || die "age is not installed"
+command -v rclone >/dev/null || die "rclone is not installed"
 
 # ── rclone yapılandırması daemon'un DEĞİŞTİREMEYECEĞİ yerde olmalı ─────
 #
@@ -100,27 +100,27 @@ command -v rclone >/dev/null || die "rclone kurulu değil"
 # (`${VAR:?…}` burada KULLANILMIYOR: iletideki kesme işareti o sözdizimi
 # içinde tırnak açar ve betiğin tamamını bozar — ilk sürümde oldu.)
 [[ -n "${RCLONE_CONFIG:-}" ]] \
-    || die "RCLONE_CONFIG tanımlı değil — rclone daemon'un dizinine bakardı (bkz. K-100)"
-[[ -r "$RCLONE_CONFIG" ]] || die "rclone yapılandırması okunamadı: $RCLONE_CONFIG"
+    || die "RCLONE_CONFIG is not set — rclone would look in the daemon's directory (see K-100)"
+[[ -r "$RCLONE_CONFIG" ]] || die "could not read the rclone configuration: $RCLONE_CONFIG"
 yol="$RCLONE_CONFIG"
 while :; do
     read -r sahip kip < <(stat -c '%u %a' "$yol") \
-        || die "sahiplik okunamadı: $yol"
+        || die "could not read ownership: $yol"
     if [[ "$sahip" != 0 ]] || (( 8#$kip & 8#022 )); then
-        die "$yol root'a ait değil ya da başkası yazabiliyor (sahip=$sahip kip=$kip) — rclone yapılandırması daemon'un değiştirebileceği bir yerde (bkz. K-100)"
+        die "$yol is not owned by root or someone else can write to it (owner=$sahip mode=$kip) — the rclone configuration is somewhere the daemon could change it (see K-100)"
     fi
     [[ "$yol" == / ]] && break
     yol="$(dirname "$yol")"
 done
 
-[[ -d "$BACKUP_DIR" ]] || die "yedek dizini yok: $BACKUP_DIR"
+[[ -d "$BACKUP_DIR" ]] || die "backup directory missing: $BACKUP_DIR"
 
 # ── Alıcı anahtarı BİÇİM olarak doğrula ──────────────────────────────
 #
 # Bozuk bir alıcı dizgisiyle `age` zaten hata verir, ama hata mesajı
 # "yükleme başarısız" gibi okunur. Burada erken ve AÇIK ölüyoruz.
 [[ "$OFFSITE_RECIPIENT" == age1* ]] ||
-    die "OFFSITE_RECIPIENT bir age açık anahtarı değil (age1... olmalı): $OFFSITE_RECIPIENT"
+    die "OFFSITE_RECIPIENT is not an age public key (it must look like age1...): $OFFSITE_RECIPIENT"
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
@@ -135,13 +135,13 @@ snapshots=0
 remote_list="$tmp/remote.txt"
 if ! rclone lsf --format ps --separator '|' "$OFFSITE_REMOTE" \
         > "$remote_list" 2>"$tmp/lsf.err"; then
-    die "uzak hedef listelenemedi ($OFFSITE_REMOTE): $(head -2 "$tmp/lsf.err")"
+    die "could not list the remote ($OFFSITE_REMOTE): $(head -2 "$tmp/lsf.err")"
 fi
 declare -A uzak_boyut=()
 while IFS='|' read -r ad boyut; do
     [[ -n "$ad" ]] && uzak_boyut["$ad"]="$boyut"
 done < "$remote_list"
-log "uzak hedefte ${#uzak_boyut[@]} dosya var"
+log "the remote holds ${#uzak_boyut[@]} files"
 
 # yukle_dogrula <yerel şifreli dosya> <uzak ad>
 #
@@ -167,11 +167,11 @@ yukle_dogrula() {
             skipped=$((skipped + 1))
             return 0
         fi
-        echo "kadran-offsite: UZAK KOPYA BOZUK $enc (uzak=${uzak_boyut[$enc]} beklenen=$want) — yeniden yükleniyor" >&2
+        echo "kadran-offsite: REMOTE COPY CORRUPT $enc (remote=${uzak_boyut[$enc]} expected=$want) — uploading again" >&2
     fi
 
     if ! rclone copyto "$yerel" "$OFFSITE_REMOTE/$enc" 2>"$tmp/cp.err"; then
-        echo "kadran-offsite: yüklenemedi $enc: $(head -1 "$tmp/cp.err")" >&2
+        echo "kadran-offsite: upload failed $enc: $(head -1 "$tmp/cp.err")" >&2
         failed=$((failed + 1))
         return 1
     fi
@@ -184,13 +184,13 @@ yukle_dogrula() {
     got="$(rclone size --json "$OFFSITE_REMOTE/$enc" 2>/dev/null |
            grep -oE '"bytes":[0-9]+' | cut -d: -f2)"
     if [[ "$got" != "$want" ]]; then
-        echo "kadran-offsite: BOYUT UYUŞMUYOR $enc (yerel=$want uzak=${got:-yok})" >&2
+        echo "kadran-offsite: SIZE MISMATCH $enc (local=$want remote=${got:-missing})" >&2
         failed=$((failed + 1))
         return 1
     fi
 
     uploaded=$((uploaded + 1))
-    log "yüklendi $enc ($want bayt, doğrulandı)"
+    log "uploaded $enc ($want bytes, verified)"
 }
 
 shopt -s nullglob
@@ -208,7 +208,7 @@ for snap in "$BACKUP_DIR"/kadran-*.db; do
     # bayt); içerik her seferinde farklı olduğu için yalnızca boyut
     # karşılaştırılabilir.
     if ! age -r "$OFFSITE_RECIPIENT" -o "$tmp/$enc" "$snap" 2>"$tmp/age.err"; then
-        echo "kadran-offsite: şifrelenemedi $base: $(head -1 "$tmp/age.err")" >&2
+        echo "kadran-offsite: encryption failed $base: $(head -1 "$tmp/age.err")" >&2
         failed=$((failed + 1))
         continue
     fi
@@ -245,7 +245,7 @@ if [[ -d "$VOLUME_BACKUP_DIR" ]]; then
         yukle_dogrula "$arsiv" "$(basename "$arsiv")"
     done
 else
-    log "hacim arşivi dizini yok ($VOLUME_BACKUP_DIR) — hacim yedeği kurulu değil"
+    log "no volume archive directory ($VOLUME_BACKUP_DIR) — the volume backup is not set up"
 fi
 
 # ── Uzak budama ──────────────────────────────────────────────────────
@@ -301,8 +301,8 @@ uzak_buda() {
 
     keep_floor=$(( ${#remote_all[@]} - ${#prunable[@]} ))
     if (( OFFSITE_KEEP < keep_floor )); then
-        log "UYARI: OFFSITE_KEEP=$OFFSITE_KEEP ama yerelde $keep_floor $sinif duruyor;" \
-            "onlar silinmiyor (silinseler bir sonraki koşu yeniden yüklerdi)."
+        log "WARNING: OFFSITE_KEEP=$OFFSITE_KEEP but $keep_floor $sinif are still kept locally;" \
+            "they are not deleted (the next run would upload them again)."
     fi
 
     target_extra=$(( OFFSITE_KEEP - keep_floor ))
@@ -310,10 +310,10 @@ uzak_buda() {
 
     if (( ${#prunable[@]} > target_extra )); then
         drop=$(( ${#prunable[@]} - target_extra ))
-        log "uzakta ${#remote_all[@]} $sinif var — yerelde olmayan $drop tanesi siliniyor"
+        log "the remote holds ${#remote_all[@]} $sinif — deleting $drop that are no longer local"
         for ((i = 0; i < drop; i++)); do
             rclone deletefile "$OFFSITE_REMOTE/${prunable[i]}" 2>/dev/null ||
-                echo "kadran-offsite: silinemedi ${prunable[i]}" >&2
+                echo "kadran-offsite: could not delete ${prunable[i]}" >&2
         done
     fi
 }
@@ -329,16 +329,16 @@ hacim_uygulamalari() {
 }
 
 if [[ "$OFFSITE_PRUNE" == evet ]]; then
-    uzak_buda "veritabanı yedeği" '^kadran-.*\.db\.age$' db_yerel
+    uzak_buda "database backups" '^kadran-.*\.db\.age$' db_yerel
     while read -r uyg; do
-        uzak_buda "hacim arşivi ($uyg)" \
+        uzak_buda "volume archives ($uyg)" \
             "^kadran-hacim-$uyg-[0-9]{8}T[0-9]{6}Z\\.tar\\.zst\\.age\$" hacim_yerel
     done < <(hacim_uygulamalari)
 else
-    log "uzak budama KAPALI (OFFSITE_PRUNE=hayir) — eskiyenleri sağlayıcının yaşam döngüsü kuralı siler"
+    log "remote pruning OFF (OFFSITE_PRUNE=hayir) — the provider's lifecycle rule deletes old copies"
 fi
 
-log "özet: yüklendi=$uploaded atlandı=$skipped başarısız=$failed"
+log "summary: uploaded=$uploaded skipped=$skipped failed=$failed"
 
 # ── Kısmi başarı BAŞARI DEĞİLDİR ─────────────────────────────────────
 #
@@ -350,5 +350,5 @@ log "özet: yüklendi=$uploaded atlandı=$skipped başarısız=$failed"
 # Hiç veritabanı yedeği yoksa bu da bir arızadır: yerel yedekleme
 # çalışmıyor demektir. Hacim arşivleri bunu örtmemeli.
 if (( snapshots == 0 )); then
-    die "yüklenecek yedek BULUNAMADI — yerel yedekleme çalışıyor mu?"
+    die "NO BACKUP FOUND to upload — is the local backup running?"
 fi

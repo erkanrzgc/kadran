@@ -132,7 +132,7 @@ func TestKasaCozRoundTrip(t *testing.T) {
 	// GCP'de ölçüldü: PRAGMA busy_timeout'un sonucu ("5000") operatörün
 	// gördüğü çıktıya karışıyordu. Çıktı yalnız betiğin kendi satırları.
 	if lines := strings.Split(strings.TrimSpace(out), "\n"); len(lines) != 3 ||
-		!strings.HasPrefix(lines[0], "yedek: ") {
+		!strings.HasPrefix(lines[0], "backup: ") {
 		t.Errorf("beklenmeyen çıktı:\n%s", out)
 	}
 
@@ -210,7 +210,7 @@ func TestKasaCozRejectsHostileNamesFromDatabase(t *testing.T) {
 	if err == nil {
 		t.Fatalf("düşmanca ad kabul edildi:\n%s", out)
 	}
-	if !strings.Contains(out, "geçersiz değişken adı") {
+	if !strings.Contains(out, "invalid variable name") {
 		t.Errorf("başka bir sebeple durdu: %s", out)
 	}
 	if rawEnv(t, o.db, "blog") != once {
@@ -232,7 +232,7 @@ func TestKasaCozRejectsMovedValue(t *testing.T) {
 	}
 	db.Close()
 	out, err := kasaCoz(t, o, o.key)
-	if err == nil || !strings.Contains(out, "başka bir uygulamaya ya da ada") {
+	if err == nil || !strings.Contains(out, "sealed to another app or name") {
 		t.Fatalf("taşınmış değer reddedilmedi: %v\n%s", err, out)
 	}
 }

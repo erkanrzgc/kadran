@@ -81,8 +81,8 @@ goc_tasi() {
         if [ -d "$yeni" ] && [ ! -L "$yeni" ] && [ -z "$(ls -A "$yeni")" ]; then
             rmdir "$yeni"
         else
-            die "göç: hem $eski hem $yeni var ve $yeni boş değil.
-Hangisinin gerçek olduğuna elle karar verilmeli; hiçbiri silinmedi."
+            die "migration: both $eski and $yeni exist and $yeni is not empty.
+Decide by hand which one is real; neither was deleted."
         fi
     fi
     mv "$eski" "$yeni"
@@ -96,14 +96,14 @@ Hangisinin gerçek olduğuna elle karar verilmeli; hiçbiri silinmedi."
 goc_onek() {
     local dizin="$1" eski="$2" yeni="$3" f ad hedef
     if [ -L "$dizin" ]; then
-        die "göç: $dizin sembolik bağ; içindeki dosyalar yeniden adlandırılmadı"
+        die "migration: $dizin is a symlink; the files in it were not renamed"
     fi
     [ -d "$dizin" ] || return 0
     for f in "$dizin/$eski"*; do
         [ -e "$f" ] || continue
         ad="${f##*/}"
         hedef="$dizin/$yeni${ad#"$eski"}"
-        [ -e "$hedef" ] && die "göç: $hedef zaten var ($f taşınamadı)"
+        [ -e "$hedef" ] && die "migration: $hedef already exists ($f could not be moved)"
         mv "$f" "$hedef"
     done
 }
@@ -126,7 +126,7 @@ goc_onek() {
 goc_yerinde_sed() {
     local f="$1" ifade="$2" gecici
     if [ -L "$f" ]; then
-        die "göç: $f sembolik bağ; yerinde yeniden yazılmadı"
+        die "migration: $f is a symlink; not rewritten in place"
     fi
     gecici="$(mktemp "$f.goc.XXXXXX")"
     sed "$ifade" "$f" > "$gecici"
@@ -160,11 +160,11 @@ goc_uzak_yedek() {
     grep -q '^OFFSITE_REMOTE=panely-offsite:' "$oc" || return 0
     if grep -qx '\[panely-offsite\]' "$rc"; then
         if grep -qx '\[kadran-offsite\]' "$rc"; then
-            die "göç: rclone.conf'ta hem [panely-offsite] hem [kadran-offsite] var"
+            die "migration: rclone.conf has both [panely-offsite] and [kadran-offsite]"
         fi
         goc_yerinde_sed "$rc" 's/^\[panely-offsite\]$/[kadran-offsite]/'
     elif ! grep -qx '\[kadran-offsite\]' "$rc"; then
-        die "göç: offsite.conf panely-offsite hedefini gösteriyor ama rclone.conf'ta ne [panely-offsite] ne [kadran-offsite] var"
+        die "migration: offsite.conf points at panely-offsite but rclone.conf has neither [panely-offsite] nor [kadran-offsite]"
     fi
     goc_yerinde_sed "$oc" 's/^OFFSITE_REMOTE=panely-offsite:/OFFSITE_REMOTE=kadran-offsite:/'
 }
@@ -175,15 +175,15 @@ goc_uzak_yedek() {
 goc_kullanici() {
     local eski="$1" yeni="$2" ev="$3" aciklama="$4"
     if getent group "$eski" >/dev/null; then
-        getent group "$yeni" >/dev/null && die "göç: hem $eski hem $yeni grubu var"
+        getent group "$yeni" >/dev/null && die "migration: both groups $eski and $yeni exist"
         groupmod -n "$yeni" "$eski"
     fi
     if getent passwd "$eski" >/dev/null; then
-        getent passwd "$yeni" >/dev/null && die "göç: hem $eski hem $yeni kullanıcısı var"
+        getent passwd "$yeni" >/dev/null && die "migration: both users $eski and $yeni exist"
         # usermod, kullanıcının süreci varken reddeder; o sürecin birimi
         # buraya gelmeden durdurulmuş olmalı.
         usermod -l "$yeni" -d "$ev" -c "$aciklama" "$eski" \
-            || die "göç: $eski yeniden adlandırılamadı (açık süreci var mı? ps -u $eski)"
+            || die "migration: could not rename $eski (does it have a running process? ps -u $eski)"
     fi
 }
 
@@ -220,7 +220,7 @@ goc_dropin_tasi() {
         [ -e "$hedef" ] && continue
         sed 's/panely/kadran/g' "$f" > "$hedef"
         chmod --reference="$f" "$hedef"
-        say "drop-in taşındı, eski adlar çevrildi (gözden geçirin): $yeni.d/${f##*/}"
+        say "drop-in moved, old names rewritten (review it): $yeni.d/${f##*/}"
     done
 }
 
@@ -234,7 +234,7 @@ goc_dropin_tasi() {
 # geçerdi (güvenlik incelemesi, K-136).
 goc_izinli_depo() {
     if [[ "$1" != *'argv[]='* ]]; then
-        die "göç: executor'ın komut satırı okunamadı (systemctl show); depo beyaz listesi doğrulanamıyor"
+        die "migration: could not read the executor's command line (systemctl show); cannot verify the repository allow-list"
     fi
     printf '%s\n' "$1" | { grep -oE -- '--allow-repo[ =][^ ;]*' || true; }
 }
@@ -248,32 +248,32 @@ goc_izinli_depo_dogrula() {
     once="$(cat "$GOC_DIR/izinli-depo")"
     simdi="$(goc_izinli_depo "$(systemctl show -p ExecStart kadran-exec.service)")"
     if [ "$once" != "$simdi" ]; then
-        die "göç: executor'ın depo beyaz listesi değişti.
-  önce : ${once:-<yok>}
-  sonra: ${simdi:-<yok>}
-Bu bir güvenlik gerilemesi olurdu; kadran-exec BAŞLATILMADI.
-Drop-in'e bakın: systemctl cat kadran-exec.service"
+        die "migration: the executor's repository allow-list changed.
+  before: ${once:-<none>}
+  after : ${simdi:-<none>}
+That would be a security regression; kadran-exec was NOT STARTED.
+Check the drop-in: systemctl cat kadran-exec.service"
     fi
-    say "depo beyaz listesi korundu: ${simdi:-<yok>}"
+    say "repository allow-list kept: ${simdi:-<none>}"
 }
 
 # goc_1 — kontrol düzlemini durdurur ve ters vekil DIŞINDAKİ her şeyi yeni
 # ada taşır. Eski ters vekil ve eski konteynerler bu sırada siteyi sunmaya
 # devam eder.
 goc_1() {
-    step "Göç: panely → kadran (K-136)"
+    step "Migration: panely → kadran (K-136)"
     install -d -m 0700 -o root -g root "$GOC_DIR"
 
     # Geri dönüş betiği İLK iş kurulur: göç yarıda kalsa da sunucuda hazır.
     install -d -m 0755 -o root -g root "$LIB_DIR"
     install -m 0644 -o root -g root "$STAGE/goc.sh" "$LIB_DIR/goc.sh"
     install -m 0755 -o root -g root "$STAGE/geri.sh" "$LIB_DIR/kadran-geri-donus.sh"
-    say "geri dönüş betiği: $LIB_DIR/kadran-geri-donus.sh"
+    say "rollback script: $LIB_DIR/kadran-geri-donus.sh"
 
     # Süren bir istemci oturumu (ör. bir CI dağıtımı) yarıda kesilmesin.
     if getent passwd panely-client >/dev/null && pgrep -u panely-client >/dev/null; then
-        die "panely-client'ın açık oturumu var (süren bir dağıtım olabilir).
-Bitmesini bekleyip kurulumu yeniden çalıştır."
+        die "panely-client has an open session (a deploy may be running).
+Wait for it to finish and run the install again."
     fi
 
     # İlk koşunun gözlemleri saklanır; yeniden koşuda üzerine yazılmaz.
@@ -296,7 +296,7 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
             > "$GOC_DIR/beklenen.yeni"
         mv "$GOC_DIR/beklenen.yeni" "$GOC_DIR/beklenen"
     fi
-    say "çalışan eski replika: $(grep -c '' "$GOC_DIR/beklenen"), etkin zamanlayıcı: $(tr '\n' ' ' < "$GOC_DIR/zamanlayicilar")"
+    say "running old replicas: $(grep -c '' "$GOC_DIR/beklenen"), enabled timers: $(tr '\n' ' ' < "$GOC_DIR/zamanlayicilar")"
 
     # İmajlar yeni adla etiketlenir: yeni konteynerler yeniden derlemeden
     # kurulur. Eski etiketler göç bitene kadar kalır (geri dönüş yolu).
@@ -306,7 +306,7 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
         docker tag "$imaj" "kadran/${imaj#panely/}"
         n=$((n + 1))
     done < <(docker images --filter reference='panely/*' --format '{{.Repository}}:{{.Tag}}')
-    say "$n imaj kadran/ adıyla etiketlendi"
+    say "$n images tagged under kadran/"
 
     # Eski executor'ın ETKİN depo beyaz listesi (drop-in dahil); yenisi
     # başlamadan aynısı istenir (goc_izinli_depo_dogrula).
@@ -324,7 +324,7 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
         systemctl disable --now "$b" >/dev/null 2>&1 || systemctl stop "$b" 2>/dev/null || true
     done
     if findmnt -n "$KOK/var/lib/panely/volumes" >/dev/null 2>&1; then
-        umount "$KOK/var/lib/panely/volumes" || die "göç: eski hacim kökü ayrılamadı"
+        umount "$KOK/var/lib/panely/volumes" || die "migration: could not unmount the old volume root"
     fi
 
     # Veritabanının daemon DURMUŞKEN alınmış kopyası (-wal ve -shm dahil).
@@ -332,11 +332,11 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
         install -d -m 0700 "$GOC_DIR/veritabani.yeni"
         cp -a "$KOK/var/lib/panely/panely.db"* "$GOC_DIR/veritabani.yeni/"
         mv "$GOC_DIR/veritabani.yeni" "$GOC_DIR/veritabani"
-        say "veritabanının kopyası: $GOC_DIR/veritabani"
+        say "database copy: $GOC_DIR/veritabani"
     fi
 
-    goc_kullanici panely kadran /var/lib/kadran "Kadran kontrol düzlemi"
-    goc_kullanici panely-client kadran-client /var/lib/kadran-client "Kadran istemci erişimi"
+    goc_kullanici panely kadran /var/lib/kadran "Kadran control plane"
+    goc_kullanici panely-client kadran-client /var/lib/kadran-client "Kadran client access"
 
     goc_tasi "$KOK/var/lib/panely" "$KOK/var/lib/kadran"
     goc_onek "$KOK/var/lib/kadran" panely.db kadran.db
@@ -367,7 +367,7 @@ Bitmesini bekleyip kurulumu yeniden çalıştır."
 # kadar bekler. Gelmezse DURUR: site eski vekil ve eski konteynerlerle açık.
 goc_bekle() {
     local sure="${GOC_BEKLE_SN:-300}" bas uyg sur rep eksik
-    [ -s "$GOC_DIR/beklenen" ] || { say "beklenen eski replika yok"; return 0; }
+    [ -s "$GOC_DIR/beklenen" ] || { say "no old replicas expected"; return 0; }
     bas=$SECONDS
     while :; do
         eksik=0
@@ -379,13 +379,13 @@ goc_bekle() {
                 || eksik=$((eksik + 1))
         done < "$GOC_DIR/beklenen"
         [ "$eksik" -eq 0 ] && break
-        [ $((SECONDS - bas)) -ge "$sure" ] && die "göç: $eksik replika ${sure} sn içinde yeni adla ayağa kalkmadı.
-Site ESKİ ters vekil ve ESKİ konteynerlerle açık. Sebep için:
+        [ $((SECONDS - bas)) -ge "$sure" ] && die "migration: $eksik replicas did not come up under the new name within ${sure}s.
+The site is up on the OLD reverse proxy and OLD containers. For the reason:
   journalctl -u kadrand -n 50
-Düzeltip kurulumu yeniden çalıştır; göç kaldığı yerden sürer."
+Fix it and run the install again; the migration resumes where it stopped."
         sleep 2
     done
-    say "yeni replikalar çalışıyor ($((SECONDS - bas)) sn)"
+    say "new replicas running ($((SECONDS - bas))s)"
 }
 
 # goc_vekil — eski ters vekili durdurur ve yeni ada taşır. KESİNTİ BURADA
@@ -409,7 +409,7 @@ goc_vekil() {
     else
         date +%s > "$GOC_DIR/vekil-durdu"
     fi
-    goc_kullanici panely-caddy kadran-caddy /var/lib/kadran-caddy "Kadran ters vekili"
+    goc_kullanici panely-caddy kadran-caddy /var/lib/kadran-caddy "Kadran reverse proxy"
     goc_tasi "$KOK/var/lib/panely-caddy" "$KOK/var/lib/kadran-caddy"
     rm -f "$KOK/etc/tmpfiles.d/panely-caddy.conf"
     # Birim dosyaları kenara alınır; systemd'yi yeniden yüklemek goc_bitir'de
@@ -429,9 +429,9 @@ goc_secimli() {
         [ -n "$s" ] || continue
         secimli_dosyalari_kur "$s"
         if grep -qx "$s" "$GOC_DIR/zamanlayicilar"; then
-            say "seçimli birim kuruldu: kadran-$s"
+            say "optional unit installed: kadran-$s"
         else
-            say "seçimli birim kuruldu, zamanlayıcısı eskisi gibi KAPALI: kadran-$s"
+            say "optional unit installed, its timer stays DISABLED as before: kadran-$s"
         fi
     done <<< "$liste"
     systemctl daemon-reload
@@ -468,7 +468,7 @@ secimli_dosyalari_kur() {
                 "$LIB_DIR/offsite/kadran-volume-backup.sh"
             goc_birim_kur kadran-volume-backup.service
             goc_birim_kur kadran-volume-backup.timer ;;
-        *) die "tanınmayan seçimli birim: $1" ;;
+        *) die "unknown optional unit: $1" ;;
     esac
 }
 
@@ -488,11 +488,11 @@ secimli_guncelle() {
         z="$KOK/etc/systemd/system/kadran-$s.timer"
         [ -e "$z" ] || continue
         if [ "$(readlink "$z")" = /dev/null ]; then
-            say "seçimli birim maskelenmiş, güncellenmedi: kadran-$s"
+            say "optional unit is masked, not updated: kadran-$s"
             continue
         fi
         secimli_dosyalari_kur "$s"
-        say "seçimli birim güncellendi (zamanlayıcıya dokunulmadı): kadran-$s"
+        say "optional unit updated (timer left alone): kadran-$s"
         guncel=1
     done
     [ "$guncel" -eq 0 ] || systemctl daemon-reload
@@ -519,7 +519,7 @@ goc_secimli_listesi() {
 
 # goc_birim_kur <ad> — hazırlık dizinindeki birimi systemd dizinine kurar.
 goc_birim_kur() {
-    [ -f "$STAGE/$1" ] || die "göç: $1 kurulum paketinde yok"
+    [ -f "$STAGE/$1" ] || die "migration: $1 is missing from the install package"
     install -m 0644 -o root -g root "$STAGE/$1" "$KOK/etc/systemd/system/$1"
 }
 
@@ -576,7 +576,7 @@ goc_rotali_kaydet() {
     done < <(docker ps --filter label=panely.app_id --filter status=running \
                  --format '{{.Label "panely.app_id"}}' | sort -u) > "$GOC_DIR/rotali.yeni"
     mv "$GOC_DIR/rotali.yeni" "$GOC_DIR/rotali"
-    say "eski vekilin rotaladığı uygulama: $(grep -c '' "$GOC_DIR/rotali")"
+    say "apps routed by the old proxy: $(grep -c '' "$GOC_DIR/rotali")"
 }
 
 # goc_rota_bekle — rotalı her uygulamanın yeni konteynerlerinden biri yeni
@@ -584,7 +584,7 @@ goc_rotali_kaydet() {
 # (durmaz): yeni vekil çalışıyor, sebep kadrand'ın günlüğünde.
 goc_rota_bekle() {
     local sure="${GOC_ROTA_SN:-60}" bas yapi uyg eksik
-    [ -s "$GOC_DIR/rotali" ] || { say "rotalı uygulama yok; bekleme yapılmadı"; return 0; }
+    [ -s "$GOC_DIR/rotali" ] || { say "no routed apps; not waiting"; return 0; }
     bas=$SECONDS
     while :; do
         yapi="$(goc_vekil_yapisi /run/kadran-caddy/admin.sock)"
@@ -596,12 +596,12 @@ goc_rota_bekle() {
         done < "$GOC_DIR/rotali"
         [ "$eksik" -eq 0 ] && break
         if [ $((SECONDS - bas)) -ge "$sure" ]; then
-            say "⚠ $eksik uygulamanın rotası $sure sn içinde yeni vekilde görünmedi: journalctl -u kadrand -n 50"
+            say "⚠ the routes of $eksik apps did not appear on the new proxy within ${sure}s: journalctl -u kadrand -n 50"
             return 0
         fi
         sleep 1
     done
-    say "ters vekil kesintisi (eski vekil durdu → yeni rotalar): ~$(( $(date +%s) - $(cat "$GOC_DIR/vekil-durdu") )) sn"
+    say "reverse proxy gap (old proxy stopped → new routes): ~$(( $(date +%s) - $(cat "$GOC_DIR/vekil-durdu") ))s"
 }
 
 # goc_bitir — göç tamam. Eski ikililer kenara alınır (eski vekil artık
@@ -610,7 +610,7 @@ goc_bitir() {
     systemctl daemon-reload
     goc_tasi "$ESKI_LIB" "$GOC_DIR/eski-lib"
     touch "$GOC_DIR/tamam"
-    say "göç tamamlandı; eski ikililer ve veritabanı kopyası: $GOC_DIR"
+    say "migration complete; old binaries and database copy: $GOC_DIR"
 }
 
 # goc_artik_var — eski adlı Docker kalıntısı var mı (konteyner, ağ, imaj).
@@ -637,30 +637,30 @@ goc_temizle() {
     yapi="$(goc_vekil_yapisi /run/kadran-caddy/admin.sock)"
     # shellcheck disable=SC2046
     if ! goc_temizlenebilir "$yapi" $(goc_ipler label=panely.app_id); then
-        say "⚠ eski konteynerler kaldırılmadı: ters vekilin yapılandırması okunamadı ya da onlar hâlâ trafik alıyor."
-        say "  Bir sonraki kurulum yeniden dener. Elle:"
+        say "⚠ old containers not removed: the reverse proxy's configuration could not be read or they still get traffic."
+        say "  The next install tries again. By hand:"
         goc_temizle_yazdir
         return 0
     fi
     docker ps -aq --filter label=panely.app_id | xargs -r docker rm -f >/dev/null ||
-        { say "⚠ bazı eski konteynerler kaldırılamadı"; eksik=1; }
+        { say "⚠ some old containers could not be removed"; eksik=1; }
     docker network ls --format '{{.Name}}' | { grep '^panely-' || true; } |
         xargs -r docker network rm >/dev/null ||
-        { say "⚠ bazı eski ağlar kaldırılamadı"; eksik=1; }
+        { say "⚠ some old networks could not be removed"; eksik=1; }
     docker images --filter reference='panely/*' --format '{{.Repository}}:{{.Tag}}' |
         xargs -r docker rmi >/dev/null ||
-        { say "⚠ bazı eski imaj etiketleri kaldırılamadı"; eksik=1; }
+        { say "⚠ some old image tags could not be removed"; eksik=1; }
     if [ "$eksik" -eq 0 ]; then
-        say "eski kalıntılar kaldırıldı (konteyner, ağ, imaj etiketi)"
+        say "old leftovers removed (containers, networks, image tags)"
     else
-        say "  Kalanları bir sonraki kurulum yeniden dener. Elle:"
+        say "  The next install retries the rest. By hand:"
         goc_temizle_yazdir
     fi
 }
 
 goc_temizle_yazdir() {
     cat <<EOF
-  Eski konteynerler ÇALIŞIYOR olabilir. Site yeni adlarla açıksa elle:
+  The old containers may still be RUNNING. If the site is up under the new names, by hand:
     docker ps -aq --filter label=panely.app_id | xargs -r docker rm -f
     docker network ls --format '{{.Name}}' | grep '^panely-' | xargs -r docker network rm
     docker images --filter reference='panely/*' --format '{{.Repository}}:{{.Tag}}' | xargs -r docker rmi

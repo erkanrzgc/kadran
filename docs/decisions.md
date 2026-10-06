@@ -10617,7 +10617,8 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 ## K-141 — CLI İngilizce
 
 **Tarih:** 5 Ekim 2026
-**Durum:** 1. AŞAMA KOD BİTTİ (dal `cli-ingilizce`). 2–5. aşamalar sırada.
+**Durum:** 1. AŞAMA PR #8 (CI 10/10, mutasyon 27/27). 2. AŞAMA KOD BİTTİ (dal
+`cli-ingilizce-2`). 3–5. aşamalar sırada.
 
 ### Neden
 
@@ -10688,3 +10689,39 @@ konteyneri, `zstd`/`age`/`sqlite3` kurulu): 1. aşama dosyalarına dokunan dokuz
 (`anchor`, `appshow`, `authz`, `bootstrapssh`, `client`, `domaincheck`, `goc`, `keys`,
 `install`) hepsinde "Bütün mutasyonlar yakalandı". `go test ./...` 26/26 paket yeşil;
 `GOOS=windows go vet` CLI paketlerinde temiz.
+
+### 2. aşama: sunucu betikleri
+
+`install.sh`, `goc.sh`, `geri.sh`, `kasa-coz.sh`, `deploy/offsite/kadran-offsite.sh`,
+`kadran-volume-backup.sh` çıktısı ve `deploy/offsite/README.md` İngilizce (~230 satır).
+`kadran-notify.sh` 5. aşamada: Telegram metni ve günlük sözleşmesi.
+
+Sözleşme taraması: alarm göndericisi yalnız `msg=ALARM` anahtarına bakıyor; bu betiklerin
+çıktısını hiçbir kod okumuyor. Bilinçli kararlar:
+
+- `OFFSITE_PRUNE=evet|hayir` DEĞİŞMEDİ: kullanıcının `offsite.conf` dosyasındaki değer.
+  Belge ve hata iletisi anlamını söylüyor.
+- sshd drop-in'inin içindeki yorumlar Türkçe kaldı: sunucudaki dosyanın içeriği, ekran
+  çıktısı değil. (Kurulum drop-in'i her koşuda yeniden yazıp sshd'yi koşulsuz yeniden
+  yüklüyor; çevirmek bir şey bozmazdı, yalnız kapsam dışı.)
+- Uzak yedek özet satırı `summary: uploaded=… skipped=… failed=…` oldu. Günlüğü bununla
+  arayan bir şey varsa güncellenmeli (CHANGELOG).
+- Kullanıcı hesaplarının açıklama alanı (`--comment`, `usermod -c`) İngilizce. Yalnız yeni
+  kurulumda ve göçte yazılıyor; kurulu sunucularda eski açıklama kalır, işlevi yok.
+
+Metne bağlı yapılar metinle birlikte güncellendi: `freshserver_test.go` `install.sh`'ın
+bölüm başlıklarını (`step "Services"`) yapı işareti olarak arıyordu; `check-goc-sh.sh` hem
+bölüm başlığını hem kendi kontrol mutantının `sed` iğnesini; `mutate-goc.sh`'ın beş iğnesi
+ve `mutate-anchor.sh`'ın uzak yedek etiketine bakan iğnesi. `check-goc-sh`'ın "kalıntılar
+kaldırıldı GEÇMESİN" denetimi metin değişince sessizce boşa düşecekti; İngilizce metne
+çevrildi.
+
+Koruma genişledi: `TestServerScriptsAreEnglish` bu altı betiğin yorum olmayan satırlarında
+Türkçe harf arıyor. KIRMIZI ölçüldü (`geri.sh`'a Türkçe bir `say` eklenince düşüyor);
+kontrol grubu: 500'den az kod satırı denetlenirse düşüyor. Özel harfsiz Türkçe için
+sözcük ve ek listesiyle ayrıca tarandı; üç kalıntı (`listelenemedi`, `okuyabiliyor`,
+`sistem uygun`) bu taramayla bulundu.
+
+Kanıt (Debian 13 konteyneri, CI taklidi): `check-offsite` (root), `check-install-sh`
+(root + uid 1001), `check-goc-sh`, `go test ./...` yeşil; `mutate-install`, `mutate-goc`,
+`mutate-kasa`, `mutate-anchor` "Bütün mutasyonlar yakalandı".

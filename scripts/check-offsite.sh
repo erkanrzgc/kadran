@@ -122,12 +122,12 @@ dene "başka uygulamanın verisi bu arşivde YOK" '! grep -q "web-2" "$KOK/liste
 
 echo "== Arşivleyici: reddetmesi gerekenler =="
 chmod 664 "$ETC/offsite.conf"; arsivle; kod=$?
-dene "grup yazabiliyorsa REDDEDER" '[[ $kod != 0 ]] && grep -q "başkası yazabiliyor" "$KOK/cikti"'
+dene "grup yazabiliyorsa REDDEDER" '[[ $kod != 0 ]] && grep -q "someone else can write" "$KOK/cikti"'
 conf_yaz; chmod 775 "$ETC"; arsivle; kod=$?
-dene "ÜST DİZİN grup yazabiliyorsa REDDEDER" '[[ $kod != 0 ]] && grep -q "başkası yazabiliyor" "$KOK/cikti"'
+dene "ÜST DİZİN grup yazabiliyorsa REDDEDER" '[[ $kod != 0 ]] && grep -q "someone else can write" "$KOK/cikti"'
 chmod 755 "$ETC"
 sed -i "s/^OFFSITE_RECIPIENT=.*/OFFSITE_RECIPIENT=age1kisa/" "$ETC/offsite.conf"; arsivle; kod=$?
-dene "bozuk alıcı REDDEDİLİR" '[[ $kod != 0 ]] && grep -q "age açık anahtarı değil" "$KOK/cikti"'
+dene "bozuk alıcı REDDEDİLİR" '[[ $kod != 0 ]] && grep -q "not an age public key" "$KOK/cikti"'
 conf_yaz "OFFSITE_VOLUME_KEEP=2; touch $KOK/calisti
 \$(touch $KOK/calisti2)
 "
@@ -139,11 +139,11 @@ SAHTE_AGE_BOZ=1 arsivle; kod=$?
 dene "şifreleme düşerse: çıkış≠0, yeni arşiv yok" '[[ $kod != 0 && $(say "$CIKTI"/kadran-hacim-*) == $once ]]'
 dene "şifreleme düşerse: yarım dosya kalmaz" '[[ $(say "$CIKTI"/.yaziliyor-*) == 0 ]]'
 mkdir "$HACIM/Kotu_Ad"; ln -s "$HACIM/web" "$HACIM/bagli"; arsivle; kod=$?
-dene "beklenmeyen girdi: çıkış≠0" '[[ $kod != 0 ]] && grep -q "beklenmeyen girdi" "$KOK/cikti"'
-dene "beklenmeyen girdi: diğerleri yine arşivlendi" 'grep -q "özet: arşivlendi=2" "$KOK/cikti"'
+dene "beklenmeyen girdi: çıkış≠0" '[[ $kod != 0 ]] && grep -q "unexpected entry" "$KOK/cikti"'
+dene "beklenmeyen girdi: diğerleri yine arşivlendi" 'grep -q "summary: archived=2" "$KOK/cikti"'
 rmdir "$HACIM/Kotu_Ad"; rm -f "$HACIM/bagli"
 mv "$HACIM" "$HACIM.x"; arsivle; kod=$?
-dene "hacim dizini yoksa: çıkış 0 ve açıkça yazar" '[[ $kod == 0 ]] && grep -q "hacim dizini yok" "$KOK/cikti"'
+dene "hacim dizini yoksa: çıkış 0 ve açıkça yazar" '[[ $kod == 0 ]] && grep -q "no volume directory" "$KOK/cikti"'
 mv "$HACIM.x" "$HACIM"
 
 echo "== Uzak yükleyici =="
@@ -156,10 +156,10 @@ dene "hacim arşivleri BAYT BAYT aynı (yeniden şifrelenmedi)" '( for f in "$CI
 dene "veritabanı yedekleri şifrelendi" '[[ $(head -1 "$UZAK/kadran-20260926T100000Z.db.age") == age-encryption.org/v1 ]]'
 dene "yarım arşiv (.yaziliyor-) yüklenmedi" '[[ ! -e $UZAK/.yaziliyor-web-20990101T000000Z ]]'
 yukle
-dene "ikinci koşu: yeniden yükleme yok" 'grep -q "yüklendi=0 atlandı=4 başarısız=0" "$KOK/cikti"'
+dene "ikinci koşu: yeniden yükleme yok" 'grep -q "uploaded=0 skipped=4 failed=0" "$KOK/cikti"'
 bir="$(ls "$CIKTI"/kadran-hacim-web-2026* | head -1)"; truncate -s 10 "$UZAK/$(basename "$bir")"
 yukle
-dene "kesik uzak arşiv yeniden yüklendi" 'grep -q "UZAK KOPYA BOZUK" "$KOK/cikti" && cmp -s "$bir" "$UZAK/$(basename "$bir")"'
+dene "kesik uzak arşiv yeniden yüklendi" 'grep -q "REMOTE COPY CORRUPT" "$KOK/cikti" && cmp -s "$bir" "$UZAK/$(basename "$bir")"'
 
 echo "== Uzak budama =="
 # KEEP=1 ama yerelde 2 hacim arşivi (web, web-2) ve 2 veritabanı yedeği
@@ -206,17 +206,17 @@ conf_yaz
 rm -f "$UZAK/kadran-20260926T110000Z.capa" "$UZAK"/kadran-2026*.db.age
 SAHTE_CAPA_KILITLI=1 yukle; kod=$?
 dene "çapa yüklenemezse: veritabanı yedekleri YİNE yüklendi" '[[ -e $UZAK/kadran-20260926T100000Z.db.age && -e $UZAK/kadran-20260926T110000Z.db.age ]]'
-dene "çapa yüklenemezse: çıkış≠0 (alarm), hata yazılı" '[[ $kod != 0 ]] && grep -q "yüklenemedi kadran-20260926T110000Z.capa" "$KOK/cikti"'
+dene "çapa yüklenemezse: çıkış≠0 (alarm), hata yazılı" '[[ $kod != 0 ]] && grep -q "upload failed kadran-20260926T110000Z.capa" "$KOK/cikti"'
 yukle
 rm -f "$YEDEK"/kadran-*.capa
 
 echo "== Uzak yükleyici: sınırlar =="
 mv "$CIKTI" "$CIKTI.x"; yukle; kod=$?
-dene "hacim dizini yoksa: veritabanı yedekleri yine gider" '[[ $kod == 0 ]] && grep -q "hacim yedeği kurulu değil" "$KOK/cikti"'
+dene "hacim dizini yoksa: veritabanı yedekleri yine gider" '[[ $kod == 0 ]] && grep -q "volume backup is not set up" "$KOK/cikti"'
 mv "$CIKTI.x" "$CIKTI"
 mkdir "$KOK/bosyedek"; KADRAN_BACKUP_DIR="$KOK/bosyedek" yukle; kod=$?
 dene "veritabanı yedeği yoksa: yereldeki hacim arşivi bunu ÖRTMEZ" \
-    '[[ $(say "$CIKTI"/kadran-hacim-*) -gt 0 && $kod != 0 ]] && grep -q "BULUNAMADI" "$KOK/cikti"'
+    '[[ $(say "$CIKTI"/kadran-hacim-*) -gt 0 && $kod != 0 ]] && grep -q "NO BACKUP FOUND" "$KOK/cikti"'
 
 # Birim, arşivleyici ve yükleyici AYNI dizinde buluşmalı. Biri değişip
 # diğeri kalırsa arşivler üretilir ama hiç yüklenmez — sessizce.

@@ -172,7 +172,8 @@ Denemedeki ilk cam görünüm:
 - Eylem ve sonuca göre süzme; bu arayüz tarafında yapılır.
 - Parmak izine tıklayınca kopyalanır.
 
-**Settings.**
+**Settings** (sol menüde; yüzen ayar paneli yok, kullanıcı isteği). Tek sayfa, satır
+düzeni: solda ad ve tek satırlık açıklama, sağda denetim.
 
 - **Appearance:** bütün kaydırıcılar, seçimler ve Reset.
 - **Language:** English / Türkçe.

@@ -35,6 +35,9 @@ her parçanın kendi tasarımı, planı ve PR'ı var:
 - İkon ana seti lucide-animated.
 - Uygulama Türkçe ve İngilizce; varsayılan İngilizce, tek sürüm.
 - Clear modda pencere kenardan boyutlandırılabiliyor; kullanıcı denedi.
+- Settings sol menüde; ayarlar o sayfada. Sol panelin altında `KΛDRΛN v0.5.1` yazar.
+- Coolify'ın düzeninden alınacak. Kullanıcı izin aldığını söyledi; Coolify Apache-2.0.
+  Alınan şey düzen; kod, logo ve marka rengi alınmaz. Ayrıntısı §5'te.
 
 ### Varsayımlar (kullanıcı düzeltebilir)
 
@@ -180,6 +183,41 @@ düzeni: solda ad ve tek satırlık açıklama, sağda denetim.
 - **Servers:** kayıtlı sunucuyu silme.
 - **About:** uygulama, sidecar ve protokol sürümleri.
 
+### Coolify'dan alınanlar
+
+Kullanıcının gösterdiği Coolify sunucu ve analitik ekranından 1. parçaya uyanlar:
+
+- **Üst çubuk.**
+  - Solda kırıntı yolu: `Servers / hetzner ▾`. Ok bir sunucu seçici açar.
+  - Yanında sağlık hapı:
+    - yeşil **Healthy**;
+    - sarı **Attention required**: executor erişilemez ya da bir zincir UNVERIFIABLE;
+    - kırmızı **Tampering suspected**: bir zincir BROKEN;
+    - kırmızı **Broken install**: daemon root çalışıyor.
+  - Sağda gecikme hapı (`41 ms`): `status` çağrısının gidiş-dönüş süresi. Ağdaki ssh
+    süresi değil, etikette de öyle yazar.
+  - En sağda birincil eylem **Verify chains**.
+- **Overview şeridi.** Status'un tepesinde tek cam panelde yan yana karolar: küçük büyük
+  harfli etiket, büyük değer ve altında küçük bir çizgi grafik. Karolar Uptime, Memory,
+  Round-trip, Executor, Chains. Grafikler yalnız **Memory** ve **Round-trip** için ve
+  yalnız ekran açıkken toplanan son 60 örnekten çizilir. Örnekler bellekte durur, diske
+  ya da sunucuya yazılmaz. Daemon, Executor ve Host ayrıntı kartları şeridin altında kalır.
+- **Live refresh.** Yeşil noktalı anahtar. Açıkken Status her 10 saniyede yenilenir;
+  varsayılan kapalı.
+- **Bölüm başlıkları.** Panellerin başlığı altı çizili küçük yazı (Coolify'daki
+  "Overview", "Requests" gibi).
+- **Audit'te sonuç çubuğu.** Yüklü kayıtların sonuç dağılımı tek yatay çubukta: ok, denied,
+  failed; renkli ve sayılı. Yanında aralık seçici: `last 50 / 200 / 1000`.
+- **Settings'te gruplu bölümler.** Appearance, Language, Servers, About; Coolify'ın gruplu
+  ayar listesi gibi başlıklarla.
+
+Sonraki parçalara kalanlar:
+
+- **Trafik analitiği** (istek, ziyaretçi, hata oranı). Kadran'da bu veri yok; yeni bir
+  sunucu özelliği gerekir.
+- **"Top" listeleri** (2. parça, uygulamalar).
+- **İki sütunlu, zorunlu alan işaretli formlar** (3. parça).
+
 **Durumlar.** Yükleniyor, boş, hata ve bağlantı koptu durumlarının her biri görünür.
 Sunucudan gelen metin her zaman düz metindir; React metni kaçırarak yazar.
 
@@ -252,6 +290,9 @@ Apache-2.0, OFL-1.1. CI `npm audit --omit=dev` koşar.
     istisnalar adıyla listelenir).
 - format ve chain: süre, bayt, parmak izi; etiketler CLI ile aynı.
 - fonts: stil adı → kalınlık.
+- health: daemon kullanıcısı, executor ve zincir durumu → sağlık hapı. BROKEN her zaman
+  Attention'ı ezer.
+- Örnek tamponu: en fazla 60 örnek; en eski düşer.
 - permissions: yalnız `local-fonts`.
 - Yasak kalıp taraması (`innerHTML`, `dangerouslySetInnerHTML`).
 

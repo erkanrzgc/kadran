@@ -59,8 +59,8 @@ func TestInstallerFailureIsNotMistakenForTimeout(t *testing.T) {
 func TestInstallScriptRequiresDockerUpFront(t *testing.T) {
 	text := kurulumBetigi(t)
 
-	onKosul := strings.Index(text, `step "Ön koşullar"`)
-	kullanicilar := strings.Index(text, `step "Gruplar ve kullanıcılar"`)
+	onKosul := strings.Index(text, `step "Prerequisites"`)
+	kullanicilar := strings.Index(text, `step "Groups and users"`)
 	if onKosul < 0 || kullanicilar < 0 {
 		t.Fatal("bölüm başlıkları bulunamadı — ölçüm geçersiz")
 	}
@@ -103,8 +103,8 @@ func TestInstallScriptProvesDockerIsolationWasMeasured(t *testing.T) {
 func servislerBolumu(t *testing.T) string {
 	t.Helper()
 	text := kurulumBetigi(t)
-	bas := strings.Index(text, `step "Servisler"`)
-	son := strings.Index(text, `step "Kurulum sonrası doğrulama"`)
+	bas := strings.Index(text, `step "Services"`)
+	son := strings.Index(text, `step "Post-install verification"`)
 	if bas < 0 || son < 0 || son < bas {
 		t.Fatal("Servisler bölümü bulunamadı — ölçüm geçersiz")
 	}
@@ -166,7 +166,7 @@ func TestInstallerLeavesAnUnchangedProxyRunning(t *testing.T) {
 	if onceki < 0 || kurulum < 0 || onceki > kurulum {
 		t.Error("parmak izi dosyalar kurulMADAN önce alınmıyor — önce/sonra karşılaştırması anlamsız")
 	}
-	if !strings.Contains(text, "ters vekil değişmedi") {
+	if !strings.Contains(text, "reverse proxy unchanged") {
 		t.Error("değişmeyen ters vekili yeniden başlatmadan bırakan dal yok")
 	}
 }

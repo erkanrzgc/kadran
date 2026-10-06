@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -65,5 +66,47 @@ func TestCLIMessagesAreEnglish(t *testing.T) {
 	// yeşil geçerdi.
 	if checked < 20 {
 		t.Fatalf("yalnız %d dosya denetlendi — paket yolları kaymış olabilir", checked)
+	}
+}
+
+// serverScripts, sunucuda koşup operatöre metin basan betikler (K-141,
+// 2. aşama). Alarm göndericisi (deploy/notify) 5. aşamada.
+var serverScripts = []string{
+	"../../internal/bootstrap/install.sh",
+	"../../internal/bootstrap/goc.sh",
+	"../../internal/bootstrap/geri.sh",
+	"../../internal/bootstrap/kasa-coz.sh",
+	"../../deploy/offsite/kadran-offsite.sh",
+	"../../deploy/offsite/kadran-volume-backup.sh",
+}
+
+// trailingComment, satır sonu yorumu: boşluk, #, boşluk. `${#dizi[@]}`
+// gibi kabuk sözdizimi önünde boşluk taşımadığı için eşleşmez.
+var trailingComment = regexp.MustCompile(`\s#\s.*$`)
+
+// TestServerScriptsAreEnglish: betiklerin kod satırları (yorum olmayan)
+// Türkçe harf taşımıyor. Yorum satırları Türkçe kalabilir.
+func TestServerScriptsAreEnglish(t *testing.T) {
+	lines := 0
+	for _, path := range serverScripts {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s okunamadı: %v", path, err)
+		}
+		for i, line := range strings.Split(string(b), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				continue
+			}
+			lines++
+			code := trailingComment.ReplaceAllString(line, "")
+			if strings.ContainsAny(code, turkishLetters) {
+				t.Errorf("%s:%d: Türkçe metin: %.80s", path, i+1, strings.TrimSpace(code))
+			}
+		}
+	}
+	// Kontrol: yollar kaymışsa test hiçbir şey ölçmeden yeşil geçerdi.
+	if lines < 500 {
+		t.Fatalf("yalnız %d kod satırı denetlendi — betik yolları kaymış olabilir", lines)
 	}
 }

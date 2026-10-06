@@ -12,8 +12,14 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   `kadran key` messages from the server-side script it ships. Commands and flags did not
   change. Two labels changed meaning on screen: a broken audit chain now shows `BROKEN`
   (was `GEÇERSİZ`) and an unverifiable one `UNVERIFIABLE`, so scripts can tell them apart
-  with `grep`. Errors the server sends back and the install output are still Turkish until
-  the server is upgraded with a later release.
+  with `grep`. Errors the server sends back are still Turkish until the server is
+  upgraded with a later release.
+- **The server-side scripts speak English (K-141).** The install, migration and rollback
+  output of `bootstrap`, the vault rollback tool and the offsite and volume backup units
+  print English, and `deploy/offsite/README.md` is English. The offsite summary line is
+  now `summary: uploaded=… skipped=… failed=…` (was `özet: yüklendi=… atlandı=…
+  başarısız=…`); adjust anything that greps the journal for it. `OFFSITE_PRUNE` still
+  takes `evet`/`hayir`: it is a value in your configuration file, so it did not change.
 
 ## v0.5.1 — 2026-10-05
 

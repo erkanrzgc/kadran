@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-STAGE="${1:?kullanım: install.sh <hazırlık-dizini>}"
+STAGE="${1:?usage: install.sh <staging-directory>}"
 
 LIB_DIR=/usr/local/lib/kadran
 STATE_DIR=/var/lib/kadran
@@ -26,7 +26,7 @@ SSHD_DROPIN=/etc/ssh/sshd_config.d/60-kadran.conf
 
 say()  { printf '  %s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
-die()  { printf '\nHATA: %s\n' "$*" >&2; exit 1; }
+die()  { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 
 # calisan_ayni_mi <birim> <ikili> — birimin ÇALIŞAN imajı kurulan ikiliyle
 # içerikçe aynı mı. Kanıt /proc/<pid>/exe'den: `systemctl is-active` eski
@@ -144,14 +144,14 @@ yonetici_satiri_yaz() {
     case "$key" in *$'\r'*) return 1 ;; esac
     key_body="$(printf '%s' "$key" | awk '{print $1" "$2}')"
     if [ -L "$auth_file" ] || { [ -e "$auth_file" ] && [ ! -f "$auth_file" ]; }; then
-        die "$auth_file sembolik bağ ya da düzenli dosya değil; yazılmadı"
+        die "$auth_file is a symlink or not a regular file; not written"
     fi
     istemci_olarak "$kullanici" "$grup" ak_yaz_istemci "$auth_file" "$key_body" \
         "command=\"$lib_dir/kadran-connect\",restrict $key" || rc=$?
     case "$rc" in
     0) ;;
-    5) die "$auth_file $kullanici olarak okunamadı; dokunulmadı (sahibi $kullanici değilse düzeltin: chown $kullanici: $auth_file)" ;;
-    *) die "$auth_file $kullanici olarak yazılamadı (çıkış $rc); dokunulmadı" ;;
+    5) die "$auth_file could not be read as $kullanici; left untouched (if it is not owned by $kullanici, fix it: chown $kullanici: $auth_file)" ;;
+    *) die "$auth_file could not be written as $kullanici (exit $rc); left untouched" ;;
     esac
 }
 
@@ -167,10 +167,10 @@ yonetici_satiri_yaz() {
 ssh_dizini_hazirla() {
     local dizin="$1" kullanici="$2" grup="$3"
     if [ -L "$dizin" ]; then
-        die "$dizin sembolik bağ; .ssh kurulmadı"
+        die "$dizin is a symlink; .ssh not set up"
     fi
     istemci_olarak "$kullanici" "$grup" install -d -m 0700 "$dizin" \
-        || die "$dizin $kullanici olarak kurulamadı (yukarıdaki hataya bakın; sahibi $kullanici değilse: chown $kullanici: $dizin)"
+        || die "$dizin could not be set up as $kullanici (see the error above; if it is not owned by $kullanici: chown $kullanici: $dizin)"
 }
 
 # kisitsiz_satir_sayisi <authorized_keys> <LIB_DIR> — kadran-connect'e
@@ -186,12 +186,12 @@ kisitsiz_satir_sayisi() {
 
 # ── Ön koşullar ──────────────────────────────────────────────────────
 
-step "Ön koşullar"
+step "Prerequisites"
 
-[ "$(id -u)" -eq 0 ] || die "bu betik root olarak çalışmalı (root'a SSH kapalıysa: kadran bootstrap -sudo kullanıcı@sunucu)"
-command -v systemctl >/dev/null || die "systemd bulunamadı — desteklenmiyor"
+[ "$(id -u)" -eq 0 ] || die "this script must run as root (if SSH as root is disabled: kadran bootstrap -sudo user@server)"
+command -v systemctl >/dev/null || die "systemd not found — not supported"
 command -v sshd >/dev/null || command -v /usr/sbin/sshd >/dev/null \
-    || die "sshd bulunamadı"
+    || die "sshd not found"
 
 SSHD_BIN="$(command -v sshd || echo /usr/sbin/sshd)"
 
@@ -199,14 +199,14 @@ SSHD_BIN="$(command -v sshd || echo /usr/sbin/sshd)"
 # bakmıyordu: Docker'sız bir sunucuda kullanıcılar ve birimler kuruluyor,
 # hata ancak sonda, sebebi belirsiz bir kontrolle görünebilirdi.
 command -v docker >/dev/null \
-    || die "Docker Engine bulunamadı — önce kurun (Ubuntu: apt-get install -y docker.io)"
+    || die "Docker Engine not found — install it first (Ubuntu: apt-get install -y docker.io)"
 docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
-    || die "Docker kurulu ama daemon cevap vermiyor — systemctl status docker"
+    || die "Docker is installed but its daemon does not answer — systemctl status docker"
 
 # nologin yolu dağıtıma göre değişiyor.
 NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
-say "sistem uygun ($(uname -m), $( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo bilinmiyor ))"
+say "system OK ($(uname -m), $( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo unknown ))"
 
 # ── Eski adlı kurulum (panely → kadran, K-136) ───────────────────────
 #
@@ -221,7 +221,7 @@ fi
 
 # ── Gruplar ve kullanıcılar ──────────────────────────────────────────
 
-step "Gruplar ve kullanıcılar"
+step "Groups and users"
 
 getent group kadran >/dev/null || groupadd --system kadran
 getent group kadran-client >/dev/null || groupadd --system kadran-client
@@ -231,7 +231,7 @@ if ! id -u kadran >/dev/null 2>&1; then
     useradd --system --gid kadran \
         --home-dir "$STATE_DIR" --no-create-home \
         --shell "$NOLOGIN" \
-        --comment "Kadran kontrol düzlemi" kadran
+        --comment "Kadran control plane" kadran
 fi
 
 # SSH istemci kullanıcısı.
@@ -248,7 +248,7 @@ if ! id -u kadran-client >/dev/null 2>&1; then
     useradd --system --gid kadran-client \
         --home-dir "$CLIENT_HOME" --create-home \
         --shell /bin/sh \
-        --comment "Kadran istemci erişimi" kadran-client
+        --comment "Kadran client access" kadran-client
 fi
 
 # ── Değişmez doğrulaması ─────────────────────────────────────────────
@@ -256,31 +256,31 @@ fi
 # Kullanıcılar önceden (yanlış) oluşturulmuş olabilir. Sessizce kabul
 # etmek yerine kontrol ediyoruz: bu iki koşul modelin dayandığı yer.
 
-step "Yetki değişmezleri"
+step "Privilege invariants"
 
 primary="$(id -gn kadran-client)"
 [ "$primary" = "kadran-client" ] || die \
-"kadran-client kullanıcısının birincil grubu '$primary', 'kadran-client' olmalı.
-SO_PEERCRED yalnızca birincil grubu bildirir; bu hâliyle her bağlantı
-sessizce reddedilir. Düzeltmek için:  usermod -g kadran-client kadran-client"
+"the primary group of user kadran-client is '$primary', it must be 'kadran-client'.
+SO_PEERCRED reports only the primary group; as it is, every connection
+is silently refused. To fix:  usermod -g kadran-client kadran-client"
 
 if id -nG kadran-client | tr ' ' '\n' | grep -qx kadran; then
     die \
-"kadran-client kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
-doğrudan ulaşır ve kadrand tamamen atlanabilir — ayrıcalık ayrımı çöker.
-Düzeltmek için:  gpasswd -d kadran-client kadran"
+"user kadran-client is in the 'kadran' group. As it is, it reaches exec.sock
+directly and kadrand can be bypassed entirely — privilege separation collapses.
+To fix:  gpasswd -d kadran-client kadran"
 fi
 
 if id -nG kadran | tr ' ' '\n' | grep -qx docker; then
     die \
-"kadran kullanıcısı 'docker' grubunda. Docker soketine erişim pratikte
-root yetkisidir; bu hâliyle executor ayrımı dekoratif kalır.
-Düzeltmek için:  gpasswd -d kadran docker"
+"user kadran is in the 'docker' group. Access to the Docker socket is root
+in practice; as it is, the executor separation is decorative.
+To fix:  gpasswd -d kadran docker"
 fi
 
-say "kadran-client birincil grubu: $primary"
-say "kadran-client ek grupları: $(id -nG kadran-client)"
-say "kadran ek grupları: $(id -nG kadran)"
+say "kadran-client primary group: $primary"
+say "kadran-client groups: $(id -nG kadran-client)"
+say "kadran groups: $(id -nG kadran)"
 
 # ── Binary'ler ───────────────────────────────────────────────────────
 
@@ -289,7 +289,7 @@ step "Binary'ler"
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
 for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-vault; do
-    [ -f "$STAGE/$binary" ] || die "$binary hazırlık dizininde yok"
+    [ -f "$STAGE/$binary" ] || die "$binary is missing from the staging directory"
 done
 
 # kadran-exec root çalışır ve yalnızca root yazabilmeli.
@@ -306,12 +306,12 @@ install -m 0755 -o root -g root "$STAGE/kadran-vault"  "$LIB_DIR/kadran-vault"
 # Kasanın geri dönüşü (v0.4.x'e inmeden önce elle çalıştırılır).
 install -m 0755 -o root -g root "$STAGE/kasa-coz.sh"   "$LIB_DIR/kadran-kasa-coz.sh"
 
-say "$LIB_DIR içine kuruldu"
-"$LIB_DIR/kadrand" -version || die "kadrand çalıştırılamadı — mimari uyuşmuyor olabilir"
+say "installed into $LIB_DIR"
+"$LIB_DIR/kadrand" -version || die "could not run kadrand — the architecture may not match"
 
 # ── Dizinler ─────────────────────────────────────────────────────────
 
-step "Dizinler"
+step "Directories"
 
 install -m 0644 -o root -g root "$STAGE/kadran-tmpfiles.conf" /etc/tmpfiles.d/kadran.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/kadran.conf
@@ -320,7 +320,7 @@ systemd-tmpfiles --create /etc/tmpfiles.d/kadran.conf
 # kalıcı olması gerekiyor; burada da garantiye alıyoruz.
 install -d -m 0750 -o kadran -g kadran "$STATE_DIR"
 
-say "/run/kadran, /run/kadran-exec, $STATE_DIR hazır"
+say "/run/kadran, /run/kadran-exec, $STATE_DIR ready"
 
 # ── Kasa (K-123) ─────────────────────────────────────────────────────
 #
@@ -337,10 +337,10 @@ VAULT_PUB=/etc/kadran/vault.pub
 vault_yeni=0
 [ -e "$VAULT_KEY" ] || vault_yeni=1
 vault_alici="$("$LIB_DIR/kadran-vault" -key "$VAULT_KEY")" \
-    || die "kasa anahtarı hazırlanamadı (yukarıda). Bozuksa yedeğinden geri koyun: $VAULT_KEY — üstüne yenisi YAZILMADI."
+    || die "could not prepare the vault key (see above). If it is corrupt, restore it from your copy: $VAULT_KEY — no new key was written over it."
 case "$vault_alici" in
     age1*) ;;
-    *) die "kadran-vault beklenmeyen çıktı verdi" ;;
+    *) die "kadran-vault printed unexpected output" ;;
 esac
 # Yeni anahtar diske inmeden daemon değerleri ona mühürlerse ve makine o
 # arada çökerse anahtar boş kalabilir: değerler kurtarılamazdı.
@@ -350,17 +350,17 @@ vault_gecici="$(mktemp)"
 printf '%s\n' "$vault_alici" > "$vault_gecici"
 install -m 0644 -o root -g root "$vault_gecici" "$VAULT_PUB"
 rm -f "$vault_gecici"
-say "kasa alıcısı: $vault_alici"
+say "vault recipient: $vault_alici"
 if [ "$vault_yeni" -eq 1 ]; then
-    say "⚠ YENİ KASA ANAHTARI üretildi. Ortam değişkenleri bununla şifreleniyor;"
-    say "  anahtar kaybolursa değerler KURTARILAMAZ. Şifre yöneticinize kaydedin:"
+    say "⚠ NEW VAULT KEY created. Environment variables are encrypted with it;"
+    say "  if the key is lost the values CANNOT BE RECOVERED. Save it in your password manager:"
     say "    sudo cat $VAULT_KEY"
-    say "  Uzak yedek anahtarıyla aynı yere koymayın."
+    say "  Do not keep it in the same place as the offsite backup key."
 fi
 
 # ── systemd birimleri ────────────────────────────────────────────────
 
-step "systemd birimleri"
+step "systemd units"
 
 install -m 0644 -o root -g root "$STAGE/kadran-exec.service" /etc/systemd/system/kadran-exec.service
 install -m 0644 -o root -g root "$STAGE/kadrand.service"     /etc/systemd/system/kadrand.service
@@ -388,15 +388,15 @@ new_journal=/var/lib/kadran-exec/exec-audit.log
 # boru hattı başarısız sayılır. Yani eşleşme "yok" okunabilirdi.
 exec_start="$(systemctl show -p ExecStart kadran-exec.service)"
 if [[ "$exec_start" == *"$old_journal"* ]]; then
-    die "kadran-exec'in etkin ExecStart'ı günlüğü hâlâ $old_journal olarak gösteriyor.
-Büyük ihtimalle bir drop-in (systemctl cat kadran-exec). Düzelt:
+    die "kadran-exec's effective ExecStart still points the log at $old_journal.
+Most likely a drop-in (systemctl cat kadran-exec). Change it to:
   --journal $new_journal
-sonra kurulumu yeniden çalıştır. Günlük TAŞINMADI."
+then run the install again. The log was NOT moved."
 fi
 
 if [ -e "$old_journal" ]; then
-    [ -e "$new_journal" ] && die "iki günlük birden var: $old_journal ve $new_journal
-Hangisinin gerçek zincir olduğuna elle karar verilmeli; hiçbiri silinmedi."
+    [ -e "$new_journal" ] && die "both logs exist: $old_journal and $new_journal
+Decide by hand which one is the real chain; neither was deleted."
 
     # Executor günlüğü açılışta bir kez açıp tanımlayıcıyı tutuyor.
     # Çalışırken taşınırsa eski inode'a yazmaya devam eder; bu yüzden
@@ -405,7 +405,7 @@ Hangisinin gerçek zincir olduğuna elle karar verilmeli; hiçbiri silinmedi."
     mv "$old_journal" "$new_journal"
     chown root:root "$new_journal"
     chmod 0640 "$new_journal"
-    say "executor denetim günlüğü $new_journal konumuna taşındı"
+    say "executor audit log moved to $new_journal"
 fi
 
 # Hacim kökü nodev,nosuid ile bağlanır. Birim ÖNCE etkinleştirilir ki
@@ -413,7 +413,7 @@ fi
 # bağlamaz, bu yüzden `start` da çağrılır (ikisi de idempotent).
 systemctl enable var-lib-kadran-volumes.mount >/dev/null 2>&1 || true
 systemctl restart var-lib-kadran-volumes.mount \
-    || die "hacim kökü sertleştirilemedi — uygulama hacimleri nodev,nosuid olmadan bağlanırdı"
+    || die "could not harden the volume root — app volumes would be mounted without nodev,nosuid"
 
 # Birimin AKTİF olması yetmez: `Options=` sessizce yok sayılsaydı birim
 # yine "active" görünürdü. Etkin bayraklar ÇEKİRDEKTEN okunur.
@@ -424,9 +424,9 @@ systemctl restart var-lib-kadran-volumes.mount \
 vol_opts="$(awk '$5=="/var/lib/kadran/volumes"{print $6}' /proc/self/mountinfo | head -1)"
 for flag in nodev nosuid; do
     printf '%s' "$vol_opts" | tr ',' '\n' | grep -qx "$flag" \
-        || die "hacim kökünde $flag ETKİN DEĞİL (etkin: ${vol_opts:-<bağlı değil>})"
+        || die "$flag is NOT ACTIVE on the volume root (active: ${vol_opts:-<not mounted>})"
 done
-say "hacim kökü sertleştirildi ($vol_opts)"
+say "volume root hardened ($vol_opts)"
 
 # ── Ters vekil (kadran-caddy) ────────────────────────────────────────
 #
@@ -456,23 +456,23 @@ ters_vekil_hazirla() {
     # cevap diye okumak bu projede üç kez yanlış sonuç ürettirdi (K-051).
     # Bu yüzden önce beklenen bir modülün VARLIĞI kanıtlanıyor.
     caddy_modules="$("$LIB_DIR/kadran-caddy" list-modules 2>/dev/null)" \
-        || die "kadran-caddy çalıştırılamadı — mimari uyuşmuyor olabilir"
+        || die "could not run kadran-caddy — the architecture may not match"
 
     printf '%s\n' "$caddy_modules" | grep -qx 'http.handlers.reverse_proxy' || die \
-"kadran-caddy modül listesinde reverse_proxy YOK. Ölçüm geçersiz: bu
-binary ya beklenen ikili değil ya da list-modules bir şey döndürmedi.
-Aşağıdaki dosya-servisi kontrolü bu hâliyle anlamsız olurdu."
+"reverse_proxy is MISSING from kadran-caddy's module list. The check is void: this
+is either not the expected binary or list-modules returned nothing.
+The file-serving check below would mean nothing like this."
 
     serving_modules="$(printf '%s\n' "$caddy_modules" \
         | grep -E 'file_server|templates|caddyfs' || true)"
     [ -z "$serving_modules" ] || die \
-"kadran-caddy DOSYA SERVİS EDEN modüller içeriyor:
+"kadran-caddy contains FILE-SERVING modules:
 $serving_modules
-Bu binary ile ters vekil, TLS özel anahtarlarının durduğu dizini
-servis edebilir. Derleme build/caddy/main.go'daki dışlama listesine
-uymuyor — K-050 sınırı ETKİSİZ."
+With this binary the reverse proxy could serve the directory holding
+the TLS private keys. The build does not follow the exclusion list in
+build/caddy/main.go — the K-050 boundary is VOID."
 
-    say "K-050 sınırı doğrulandı ($(printf '%s\n' "$caddy_modules" | grep -c '^') modül, dosya servisi yok)"
+    say "K-050 boundary verified ($(printf '%s\n' "$caddy_modules" | grep -c '^') modules, no file serving)"
 
     # ── Yapılandırma ve birimler ────────────────────────────────────────
 
@@ -494,8 +494,8 @@ uymuyor — K-050 sınırı ETKİSİZ."
     for other in caddy nginx apache2 httpd lighttpd; do
         if systemctl is-active --quiet "$other.service" 2>/dev/null; then
             die \
-"$other.service çalışıyor ve 80/443 portlarını tutuyor olabilir.
-kadran-caddy bu portlara bağlanamaz. Devam etmek için:
+"$other.service is running and may hold ports 80/443.
+kadran-caddy cannot bind them. To continue:
   systemctl disable --now $other.service"
         fi
     done
@@ -517,7 +517,7 @@ ters_vekil_baslat() {
         useradd --system --gid kadran-caddy \
             --home-dir /var/lib/kadran-caddy --no-create-home \
             --shell "$NOLOGIN" \
-            --comment "Kadran ters vekili" kadran-caddy
+            --comment "Kadran reverse proxy" kadran-caddy
     fi
 
     # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
@@ -528,9 +528,9 @@ ters_vekil_baslat() {
     # sağlanıyor.
     if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
         die \
-"kadran-caddy kullanıcısı 'kadran' grubunda. Bu hâliyle exec.sock'a
-ulaşabilir — internete bakan süreç ayrıcalıklı executor'a konuşabilir.
-Düzeltmek için:  gpasswd -d kadran-caddy kadran"
+"user kadran-caddy is in the 'kadran' group. As it is, it can reach exec.sock
+— the internet-facing process could talk to the privileged executor.
+To fix:  gpasswd -d kadran-caddy kadran"
     fi
 
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
@@ -550,7 +550,7 @@ Düzeltmek için:  gpasswd -d kadran-caddy kadran"
             && systemctl is-active --quiet kadran-caddy-admin.socket \
             && systemctl is-active --quiet kadran-caddy.service \
             && calisan_ayni_mi kadran-caddy.service "$LIB_DIR/kadran-caddy"; then
-        say "ters vekil değişmedi — yeniden başlatılmadı, trafik kesilmedi"
+        say "reverse proxy unchanged — not restarted, traffic not interrupted"
     else
         systemctl stop kadran-caddy.service 2>/dev/null || true
         systemctl restart kadran-caddy-admin.socket
@@ -569,9 +569,9 @@ fi
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
 
-step "SSH yapılandırması"
+step "SSH configuration"
 
-[ -f "$STAGE/client_key.pub" ] || die "istemci açık anahtarı hazırlık dizininde yok"
+[ -f "$STAGE/client_key.pub" ] || die "the client public key is missing from the staging directory"
 
 ssh_dizini_hazirla "$CLIENT_HOME/.ssh" kadran-client kadran-client
 
@@ -593,7 +593,7 @@ ssh_dizini_hazirla "$CLIENT_HOME/.ssh" kadran-client kadran-client
 # izliyordu ve denetimden sonraki pencerede ulaşılabilirdi (K-137).
 auth_file="$CLIENT_HOME/.ssh/authorized_keys"
 yonetici_satiri_yaz "$auth_file" "$STAGE/client_key.pub" "$LIB_DIR" kadran-client kadran-client \
-    || die "istemci açık anahtarı tek satır olmalı — ikinci satır zorlanmış komutsuz bir anahtar olurdu"
+    || die "the client public key must be a single line — a second line would become a key without a forced command"
 
 # sshd drop-in.
 #
@@ -652,20 +652,20 @@ Match User kadran-client
 SSHD
     chmod 0644 "$SSHD_DROPIN"
 else
-    die "sshd_config.d dizini yok veya Include satırı bulunamadı — \
-elle yapılandırma gerekiyor (Match User kadran-client + ExposeAuthInfo yes)"
+    die "no sshd_config.d directory or no Include line — \
+configure it by hand (Match User kadran-client + ExposeAuthInfo yes)"
 fi
 
 # Yapılandırma BOZUKSA sshd'yi yeniden yüklemek bizi dışarıda bırakır.
 # Önce doğrula.
-"$SSHD_BIN" -t || die "sshd yapılandırması geçersiz — değişiklik uygulanmadı"
+"$SSHD_BIN" -t || die "invalid sshd configuration — the change was not applied"
 systemctl reload ssh 2>/dev/null || systemctl reload sshd
 
-say "zorlanmış komut ve ExposeAuthInfo yapılandırıldı"
+say "forced command and ExposeAuthInfo configured"
 
 # ── Servisler ────────────────────────────────────────────────────────
 
-step "Servisler"
+step "Services"
 
 # Göçte executor BAŞLAMADAN: depo beyaz listesi eskisiyle aynı mı (K-136).
 if [ "$GOC" -eq 1 ]; then
@@ -692,14 +692,14 @@ done
 
 systemctl is-active --quiet kadran-exec.service || {
     journalctl -u kadran-exec.service -n 30 --no-pager >&2
-    die "kadran-exec başlamadı"
+    die "kadran-exec did not start"
 }
 systemctl is-active --quiet kadrand.service || {
     journalctl -u kadrand.service -n 30 --no-pager >&2
-    die "kadrand başlamadı"
+    die "kadrand did not start"
 }
 
-say "kadran-exec ve kadrand çalışıyor"
+say "kadran-exec and kadrand are running"
 
 # ── Göçün ikinci yarısı (K-136) ─────────────────────────────────────
 #
@@ -729,7 +729,7 @@ fi
 # Ürünün merkezî iddiası burada sınanıyor. Bu kontroller geçmiyorsa
 # kurulum "başarılı" sayılmamalı.
 
-step "Kurulum sonrası doğrulama"
+step "Post-install verification"
 
 fail=0
 check_fail() { printf '  ✗ %s\n' "$*" >&2; fail=1; }
@@ -738,9 +738,9 @@ check_ok()   { printf '  ✓ %s\n' "$*"; }
 # 1. kadrand root ÇALIŞMAMALI.
 daemon_user="$(ps -o user= -C kadrand | head -1 | tr -d ' ')"
 if [ "$daemon_user" = "kadran" ]; then
-    check_ok "kadrand yetkisiz kullanıcı olarak çalışıyor ($daemon_user)"
+    check_ok "kadrand runs as an unprivileged user ($daemon_user)"
 else
-    check_fail "kadrand '$daemon_user' olarak çalışıyor, 'kadran' bekleniyordu"
+    check_fail "kadrand runs as '$daemon_user', expected 'kadran'"
 fi
 
 # 2. kadrand Docker'a ERİŞEMEMELİ — ama önce ölçümün ölçebildiği
@@ -749,34 +749,34 @@ fi
 #    (taze sunucu testi, K-112). Root ulaşamıyorsa kadran'ın ulaşamaması
 #    hiçbir şey kanıtlamaz.
 if ! docker ps >/dev/null 2>&1; then
-    check_fail "root da Docker'a ulaşamıyor — ayrıcalık ayrımı ÖLÇÜLEMEDİ"
+    check_fail "root cannot reach Docker either — privilege separation COULD NOT BE MEASURED"
 elif setpriv --reuid kadran --regid kadran --clear-groups docker ps >/dev/null 2>&1; then
-    check_fail "kadran kullanıcısı Docker'a erişebiliyor — ayrıcalık ayrımı ÇÖKMÜŞ"
+    check_fail "user kadran can reach Docker — privilege separation has COLLAPSED"
 else
-    check_ok "kadran kullanıcısı Docker'a erişemiyor"
+    check_ok "user kadran cannot reach Docker"
 fi
 
 # 3. Soket izinleri.
-api_mode="$(stat -c '%a %U:%G' /run/kadran/api.sock 2>/dev/null || echo yok)"
+api_mode="$(stat -c '%a %U:%G' /run/kadran/api.sock 2>/dev/null || echo missing)"
 if [ "$api_mode" = "660 kadran:kadran-client" ]; then
     check_ok "api.sock: $api_mode"
 else
-    check_fail "api.sock beklenmedik: $api_mode (660 kadran:kadran-client bekleniyordu)"
+    check_fail "api.sock unexpected: $api_mode (expected 660 kadran:kadran-client)"
 fi
 
-exec_mode="$(stat -c '%a %U:%G' /run/kadran-exec/exec.sock 2>/dev/null || echo yok)"
+exec_mode="$(stat -c '%a %U:%G' /run/kadran-exec/exec.sock 2>/dev/null || echo missing)"
 if [ "$exec_mode" = "660 root:kadran" ]; then
     check_ok "exec.sock: $exec_mode"
 else
-    check_fail "exec.sock beklenmedik: $exec_mode (660 root:kadran bekleniyordu)"
+    check_fail "exec.sock unexpected: $exec_mode (expected 660 root:kadran)"
 fi
 
 # 4. İstemci kullanıcısı exec.sock'a ULAŞAMAMALI.
 if setpriv --reuid kadran-client --regid kadran-client --clear-groups \
         test -r /run/kadran-exec/exec.sock 2>/dev/null; then
-    check_fail "kadran-client exec.sock'u okuyabiliyor — kadrand atlanabilir"
+    check_fail "kadran-client can read exec.sock — kadrand can be bypassed"
 else
-    check_ok "kadran-client exec.sock'a erişemiyor"
+    check_ok "kadran-client cannot reach exec.sock"
 fi
 
 # 4b. Daemon, executor'ın denetim günlüğünün DİZİNİNE yazamamalı.
@@ -786,26 +786,26 @@ fi
 # günlük de sınanıyor — bir drop-in eski yolu geri getirmiş olabilir.
 if setpriv --reuid kadran --regid kadran --clear-groups \
         test -w "$(dirname "$new_journal")" 2>/dev/null; then
-    check_fail "kadran, executor günlüğünün dizinine yazabiliyor — ayrıcalıklı kayıt değiştirilebilir"
+    check_fail "kadran can write to the executor log's directory — the privileged record can be changed"
 else
-    check_ok "kadran executor günlüğünün dizinine yazamıyor"
+    check_ok "kadran cannot write to the executor log's directory"
 fi
 exec_pid="$(systemctl show -p MainPID --value kadran-exec.service)"
 exec_fds="$(ls -l "/proc/$exec_pid/fd" 2>/dev/null || true)"
 if [[ "$exec_fds" == *"-> $new_journal"$'\n'* || "$exec_fds" == *"-> $new_journal" ]]; then
-    check_ok "executor günlüğü $new_journal konumunda tutuyor"
+    check_ok "the executor keeps its log at $new_journal"
 else
-    check_fail "çalışan executor $new_journal dosyasını açık tutmuyor"
+    check_fail "the running executor does not hold $new_journal open"
 fi
 
 # 5. İstemci kullanıcısı kabuk ALMAMALI: HER satır zorlanmış komutlu.
 kisitsiz="$(kisitsiz_satir_sayisi "$auth_file" "$LIB_DIR")"
 if ! grep -q 'command="' "$auth_file"; then
-    check_fail "authorized_keys'te zorlanmış komut yok — istemci kabuk alabilir"
+    check_fail "no forced command in authorized_keys — the client could get a shell"
 elif [ "$kisitsiz" != 0 ]; then
-    check_fail "authorized_keys'te $kisitsiz satır kadran-connect'e zorlanmamış — istemci kabuk alabilir"
+    check_fail "$kisitsiz lines in authorized_keys are not forced to kadran-connect — the client could get a shell"
 else
-    check_ok "authorized_keys'in her satırı zorlanmış komutlu"
+    check_ok "every line in authorized_keys has a forced command"
 fi
 
 # ── Ters vekil ──────────────────────────────────────────────────────
@@ -817,11 +817,11 @@ fi
 # çalışıyor" bir kabul ölçütü değil; ölçüt "yeniden başlatmadan sonra da
 # çalışır".
 for unit in kadran-caddy-admin.socket kadran-caddy.service; do
-    state="$(systemctl is-enabled "$unit" 2>/dev/null || echo yok)"
+    state="$(systemctl is-enabled "$unit" 2>/dev/null || echo missing)"
     if [ "$state" = "enabled" ]; then
-        check_ok "$unit etkin (yeniden başlatmayı geçer)"
+        check_ok "$unit enabled (survives a reboot)"
     else
-        check_fail "$unit ETKİN DEĞİL ($state) — reboot sonrası geri gelmez"
+        check_fail "$unit NOT ENABLED ($state) — it will not come back after a reboot"
     fi
 done
 
@@ -831,9 +831,9 @@ done
 #     ve hiçbir kontrol bunu görmedi.
 calisan_ikili_dogrula() {
     if calisan_ayni_mi "$1.service" "$LIB_DIR/$1"; then
-        check_ok "çalışan $1 kurulan binary ($(md5sum "$LIB_DIR/$1" | cut -c1-12))"
+        check_ok "running $1 is the installed binary ($(md5sum "$LIB_DIR/$1" | cut -c1-12))"
     else
-        check_fail "çalışan $1 kurulan binary DEĞİL — eski süreç ayakta ya da hiç çalışmıyor"
+        check_fail "running $1 is NOT the installed binary — the old process is up or nothing runs"
     fi
 }
 calisan_ikili_dogrula kadrand
@@ -850,73 +850,73 @@ if [ "${caddy_pid:-0}" -gt 0 ] 2>/dev/null \
         && [ -n "$running_sum" ]; then
     installed_sum="$(md5sum "$LIB_DIR/kadran-caddy" | cut -d' ' -f1)"
     if [ "$running_sum" = "$installed_sum" ]; then
-        check_ok "çalışan ters vekil kurulan binary (${running_sum:0:12})"
+        check_ok "running reverse proxy is the installed binary (${running_sum:0:12})"
     else
-        check_fail "çalışan ters vekil BAŞKA bir binary (çalışan $running_sum, kurulan $installed_sum)"
+        check_fail "running reverse proxy is ANOTHER binary (running $running_sum, installed $installed_sum)"
     fi
 else
-    check_fail "ters vekilin çalışan imajı okunamadı (pid=${caddy_pid:-yok})"
+    check_fail "could not read the reverse proxy's running image (pid=${caddy_pid:-none})"
 fi
 
 # 8. Ters vekil root ÇALIŞMAMALI.
 caddy_user="$(ps -o user= -p "${caddy_pid:-0}" 2>/dev/null | tr -d ' ')"
 if [ "$caddy_user" = "kadran-caddy" ]; then
-    check_ok "ters vekil yetkisiz kullanıcı olarak çalışıyor ($caddy_user)"
+    check_ok "reverse proxy runs as an unprivileged user ($caddy_user)"
 else
-    check_fail "ters vekil '$caddy_user' olarak çalışıyor, 'kadran-caddy' bekleniyordu"
+    check_fail "reverse proxy runs as '$caddy_user', expected 'kadran-caddy'"
 fi
 
 # 9. Admin soketinin izinleri.
-admin_mode="$(stat -c '%a %U:%G' /run/kadran-caddy/admin.sock 2>/dev/null || echo yok)"
+admin_mode="$(stat -c '%a %U:%G' /run/kadran-caddy/admin.sock 2>/dev/null || echo missing)"
 if [ "$admin_mode" = "660 kadran-caddy:kadran" ]; then
     check_ok "admin.sock: $admin_mode"
 else
-    check_fail "admin.sock beklenmedik: $admin_mode (660 kadran-caddy:kadran bekleniyordu)"
+    check_fail "admin.sock unexpected: $admin_mode (expected 660 kadran-caddy:kadran)"
 fi
 
 # 10. kadrand admin soketine ULAŞABİLMELİ — K-050'nin dayandığı erişim.
 if setpriv --reuid kadran --regid kadran --clear-groups \
         test -w /run/kadran-caddy/admin.sock 2>/dev/null; then
-    check_ok "kadran kullanıcısı admin soketine yazabiliyor"
+    check_ok "user kadran can write to the admin socket"
 else
-    check_fail "kadran kullanıcısı admin soketine YAZAMIYOR — ters vekil yönetilemez"
+    check_fail "user kadran CANNOT write to the admin socket — the reverse proxy cannot be managed"
 fi
 
 # 11. Ters vekil executor'a ULAŞAMAMALI. Modelin can alıcı noktası:
 #     internete bakan süreç ayrıcalıklı soketi görmemeli.
 if setpriv --reuid kadran-caddy --regid kadran-caddy --clear-groups \
         test -r /run/kadran-exec/exec.sock 2>/dev/null; then
-    check_fail "ters vekil exec.sock'u okuyabiliyor — ayrıcalıklı executor internete bakıyor"
+    check_fail "the reverse proxy can read exec.sock — the privileged executor faces the internet"
 else
-    check_ok "ters vekil exec.sock'a erişemiyor"
+    check_ok "the reverse proxy cannot reach exec.sock"
 fi
 
 # 12. Kasa anahtarı yalnız root'un (K-123). Daemon okuyabilseydi kasa
 #     hiçbir şeyi korumazdı. Kontrol: root okuyabiliyor, yani "kadran
 #     okuyamıyor" sonucu dosyanın yokluğundan gelmiyor.
-vault_kip="$(stat -c '%a %U:%G' "$VAULT_KEY" 2>/dev/null || echo yok)"
+vault_kip="$(stat -c '%a %U:%G' "$VAULT_KEY" 2>/dev/null || echo missing)"
 if [ "$vault_kip" = "600 root:root" ] && test -r "$VAULT_KEY" \
    && ! setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_KEY" 2>/dev/null; then
-    check_ok "kasa anahtarı yalnız root'un ($vault_kip), kadran okuyamıyor"
+    check_ok "the vault key is root's only ($vault_kip), kadran cannot read it"
 else
-    check_fail "kasa anahtarı $vault_kip — 600 root:root olmalı ve kadran okuyamamalı"
+    check_fail "vault key is $vault_kip — it must be 600 root:root and unreadable to kadran"
 fi
 
 # 13. Kasanın açık anahtarı root'un; daemon okuyabiliyor ama değiştiremiyor.
 #     Değiştirebilseydi yeni değerleri kendi anahtarına mühürletebilirdi.
 #     Dosyanın izni yetmez: dizinine yazabilen dosyayı silip yerine
 #     başkasını koyar (K-100), o yüzden /etc/kadran da sınanıyor.
-pub_kip="$(stat -c '%a %U:%G' "$VAULT_PUB" 2>/dev/null || echo yok)"
+pub_kip="$(stat -c '%a %U:%G' "$VAULT_PUB" 2>/dev/null || echo missing)"
 if [ "$pub_kip" = "644 root:root" ] \
    && setpriv --reuid kadran --regid kadran --clear-groups test -r "$VAULT_PUB" 2>/dev/null \
    && ! setpriv --reuid kadran --regid kadran --clear-groups test -w "$VAULT_PUB" 2>/dev/null \
    && ! setpriv --reuid kadran --regid kadran --clear-groups test -w "$(dirname "$VAULT_PUB")" 2>/dev/null; then
-    check_ok "kasa açık anahtarı $pub_kip, kadran okuyor ama ne onu ne dizinini değiştirebiliyor"
+    check_ok "vault public key is $pub_kip, kadran reads it but can change neither it nor its directory"
 else
-    check_fail "kasa açık anahtarı $pub_kip — 644 root:root olmalı, kadran dizinine yazamamalı"
+    check_fail "vault public key is $pub_kip — it must be 644 root:root and kadran must not write to its directory"
 fi
 
-[ "$fail" -eq 0 ] || die "kurulum sonrası doğrulama başarısız — yukarıya bakın"
+[ "$fail" -eq 0 ] || die "post-install verification failed — see above"
 
 # Eski adlı Docker kalıntıları (konteyner, ağ, imaj etiketi; K-136) yalnızca
 # hiçbiri trafik almıyorsa kaldırılır. Göçten AYRI: o kurulumda
@@ -936,20 +936,20 @@ fi
 # kurulumu düşürmek yerine söyleniyor.
 exec_bayraklari="$(systemctl show -p ExecStart kadran-exec.service)"
 if [[ "$exec_bayraklari" != *--allow-repo* ]]; then
-    printf '\n⚠ kadran-exec için --allow-repo tanımlı değil. Kasa, ele geçirilmiş bir\n'
-    printf '  daemon başka bir depodan imaj kurarsa geçmiş değerleri korumaz.\n'
-    printf '  Ekleyin: deploy/systemd/kadran-exec.service başındaki nota bakın.\n'
+    printf '\n⚠ kadran-exec has no --allow-repo list. The vault does not protect past values\n'
+    printf '  if a compromised daemon installs an image from another repository.\n'
+    printf '  Add one: see the note at the top of deploy/systemd/kadran-exec.service.\n'
 fi
 # Kasadan önceki göç kopyaları düz değer taşıyor ve kadran'ın: daemon onları
 # okuyabilir. Kurulum silmiyor (geri alma yolu olabilirler), her kurulumda
 # hatırlatıyor.
 duz_kopyalar="$(find "$STATE_DIR" -maxdepth 1 -name 'kadran.db.pre-*' -type f 2>/dev/null | sort)"
 if [ -n "$duz_kopyalar" ]; then
-    printf '\n⚠ Bu göç kopyaları kasadan önceki DÜZ değerleri taşıyabilir ve daemon\n'
-    printf '  onları okuyabilir. Siteler çalışıyorsa silin:\n'
+    printf '\n⚠ These migration copies may hold PLAIN values from before the vault, and the\n'
+    printf '  daemon can read them. If your sites work, delete them:\n'
     printf '    sudo rm %s\n' $duz_kopyalar
 fi
 
-printf '\nKurulum tamamlandı.\n'
-printf 'Artık root erişimine gerek yok; bağlanmak için:\n'
-printf '  kadran status kadran-client@<sunucu>\n'
+printf '\nInstall complete.\n'
+printf 'Root access is no longer needed; to connect:\n'
+printf '  kadran status kadran-client@<server>\n'

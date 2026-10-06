@@ -188,7 +188,7 @@ func TestClientPathsMatchInstallScript(t *testing.T) {
 	}
 	// Uzak betik dosyaya bu kullanıcı olarak dokunuyor (K-140); kurulumun
 	// oluşturduğu hesapla aynı olmalı.
-	if !strings.Contains(text, `--comment "Kadran istemci erişimi" `+keysOwner+"\n") {
+	if !strings.Contains(text, `--comment "Kadran client access" `+keysOwner+"\n") {
 		t.Errorf("install.sh istemci hesabını %q adıyla kurmuyor", keysOwner)
 	}
 }

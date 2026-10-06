@@ -17,17 +17,17 @@ set -euo pipefail
 
 say()  { printf '  %s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
-die()  { printf '\nHATA: %s\n' "$*" >&2; exit 1; }
+die()  { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
 
-[ "$(id -u)" -eq 0 ] || die "root olarak çalıştırın"
+[ "$(id -u)" -eq 0 ] || die "run as root"
 
 BURASI="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=goc.sh
 . "$BURASI/goc.sh"
 
-[ -d "$GOC_DIR" ] || die "$GOC_DIR yok: bu sunucu göç görmemiş, geri dönülecek bir şey yok"
+[ -d "$GOC_DIR" ] || die "$GOC_DIR does not exist: this server was never migrated, there is nothing to roll back"
 
-step "Geri dönüş: kadran → panely (K-136)"
+step "Rollback: kadran → panely (K-136)"
 
 # İmajlar eski adla yeniden etiketlenir: v0.3.0 panelyd konteynerleri
 # panely/<uyg>:<sha>'dan kurar.
@@ -41,7 +41,7 @@ done < <(docker images --filter reference='kadran/*' --format '{{.Repository}}:{
 # `rmi` yalnızca etiketi siler). GCP provasında kalıntı olarak görüldü.
 docker images --filter reference='kadran/*' --format '{{.Repository}}:{{.Tag}}' |
     xargs -r docker rmi >/dev/null
-say "$n imaj panely/ adıyla etiketlendi, kadran/ etiketleri kaldırıldı"
+say "$n images tagged under panely/, kadran/ tags removed"
 
 # Her şey durur; ters vekil dahil (KESİNTİ burada başlar).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \
@@ -52,9 +52,9 @@ for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-a
     systemctl disable --now "$b" >/dev/null 2>&1 || systemctl stop "$b" 2>/dev/null || true
 done
 if findmnt -n /var/lib/kadran/volumes >/dev/null 2>&1; then
-    umount /var/lib/kadran/volumes || die "hacim kökü ayrılamadı"
+    umount /var/lib/kadran/volumes || die "could not unmount the volume root"
 fi
-say "kadran birimleri durdu"
+say "kadran units stopped"
 
 # Yeni adlı konteynerler ve ağlar kaldırılır; v0.3.0 panelyd eski
 # adlarla yeniden kurar. Hacim verisi konteynerlerde DEĞİL, dizinde.
@@ -62,9 +62,9 @@ docker ps -aq --filter label=kadran.app_id | xargs -r docker rm -f >/dev/null
 docker network ls --format '{{.Name}}' | { grep '^kadran-' || true; } |
     xargs -r docker network rm >/dev/null
 
-goc_kullanici kadran-caddy panely-caddy /var/lib/panely-caddy "Panely ters vekili"
-goc_kullanici kadran-client panely-client /var/lib/panely-client "Panely istemci erişimi"
-goc_kullanici kadran panely /var/lib/panely "Panely kontrol düzlemi"
+goc_kullanici kadran-caddy panely-caddy /var/lib/panely-caddy "Panely reverse proxy"
+goc_kullanici kadran-client panely-client /var/lib/panely-client "Panely client access"
+goc_kullanici kadran panely /var/lib/panely "Panely control plane"
 
 goc_tasi /var/lib/kadran /var/lib/panely
 goc_onek /var/lib/panely kadran.db panely.db
@@ -124,19 +124,19 @@ mv "$GOC_DIR" "$kenar"
 # dosyayı silmeye izin verir; bash betiği okumaya devam eder).
 rm -rf /usr/local/lib/kadran
 
-say "eski adlar geri geldi; göç kaydı ve veritabanı kopyası: $kenar"
+say "old names restored; migration record and database copy: $kenar"
 if [ -d "$kenar/yeni-dropin" ]; then
-    say "⚠ kadran drop-in'leri $kenar/yeni-dropin altında. Göçten sonra"
-    say "  değiştirdiyseniz geri dönen eskileriyle karşılaştırın:"
+    say "⚠ the kadran drop-ins are under $kenar/yeni-dropin. If you changed them"
+    say "  after the migration, compare them with the restored old ones:"
     say "  systemctl cat panely-exec.service | grep -- --allow-repo"
 fi
 if [ -n "$zamanlayicilar" ]; then
-    say "göçten önce etkin zamanlayıcılar (bootstrap'tan SONRA yeniden etkinleştirin):"
+    say "timers enabled before the migration (re-enable them AFTER bootstrap):"
     for s in $zamanlayicilar; do say "  systemctl enable --now panely-$s.timer"; done
 fi
 cat <<'EOF'
 
-Şimdi iş istasyonundan v0.3.0 ile kurun (site o zamana kadar KAPALI):
-  kadran bootstrap -repo <v0.3.0 ağacı> -binaries <v0.3.0 ikilileri> root@sunucu
-  (root'a SSH kapalıysa: -sudo kullanici@sunucu)
+Now install v0.3.0 from your workstation (the site stays DOWN until then):
+  kadran bootstrap -repo <v0.3.0 tree> -binaries <v0.3.0 binaries> root@server
+  (if SSH as root is disabled: -sudo user@server)
 EOF

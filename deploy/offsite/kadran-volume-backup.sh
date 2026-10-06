@@ -35,7 +35,7 @@ VOLUMES_DIR="${KADRAN_VOLUMES_DIR:-/var/lib/kadran/volumes}"
 OUT_DIR="${KADRAN_VOLUME_BACKUP_DIR:-/var/lib/kadran-volume-backup}"
 
 log() { echo "kadran-volume-backup: $*"; }
-die() { echo "kadran-volume-backup: HATA: $*" >&2; exit 1; }
+die() { echo "kadran-volume-backup: ERROR: $*" >&2; exit 1; }
 
 # ── Alıcı anahtarı kadrand'nin DEĞİŞTİREMEYECEĞİ yerde olmalı ────────
 #
@@ -52,9 +52,9 @@ root_disinda_yazilamaz() {
     local yol="$1" sahip kip
     while :; do
         read -r sahip kip < <(stat -c '%u %a' "$yol") ||
-            die "sahiplik okunamadı: $yol"
+            die "could not read ownership: $yol"
         if [[ "$sahip" != 0 ]] || (( 8#$kip & 8#022 )); then
-            die "$yol root'a ait değil ya da başkası yazabiliyor (sahip=$sahip kip=$kip) — alıcı anahtarı değiştirilebilir (bkz. K-111)"
+            die "$yol is not owned by root or someone else can write to it (owner=$sahip mode=$kip) — the recipient key could be swapped (see K-111)"
         fi
         [[ "$yol" == / ]] && return 0
         yol="$(dirname "$yol")"
@@ -71,26 +71,26 @@ ayar() {
         tr -d "\"'[:space:]"
 }
 
-[[ -r "$CONF" ]] || die "yapılandırma okunamadı: $CONF (kurulum: deploy/offsite/README.md)"
+[[ -r "$CONF" ]] || die "could not read the configuration: $CONF (setup: deploy/offsite/README.md)"
 root_disinda_yazilamaz "$CONF"
 
 ALICI="$(ayar OFFSITE_RECIPIENT)"
 [[ "$ALICI" =~ ^age1[a-z0-9]{58}$ ]] ||
-    die "OFFSITE_RECIPIENT bir age açık anahtarı değil (age1 + 58 karakter): '$ALICI'"
+    die "OFFSITE_RECIPIENT is not an age public key (age1 + 58 characters): '$ALICI'"
 
 KEEP="$(ayar OFFSITE_VOLUME_KEEP)"
 KEEP="${KEEP:-3}"
-[[ "$KEEP" =~ ^[1-9][0-9]*$ ]] || die "OFFSITE_VOLUME_KEEP pozitif bir sayı olmalı: '$KEEP'"
+[[ "$KEEP" =~ ^[1-9][0-9]*$ ]] || die "OFFSITE_VOLUME_KEEP must be a positive number: '$KEEP'"
 
 for arac in tar zstd age; do
-    command -v "$arac" >/dev/null || die "$arac kurulu değil"
+    command -v "$arac" >/dev/null || die "$arac is not installed"
 done
-[[ -d "$OUT_DIR" ]] || die "çıktı dizini yok: $OUT_DIR"
+[[ -d "$OUT_DIR" ]] || die "output directory missing: $OUT_DIR"
 
 # Hacim dizini hiç yoksa kadran'da kalıcı disk kullanan uygulama yok:
 # yapacak iş gerçekten yok. Bu sessiz bir başarı değil, açıkça yazılıyor.
 if [[ ! -d "$VOLUMES_DIR" ]]; then
-    log "hacim dizini yok ($VOLUMES_DIR) — arşivlenecek veri yok"
+    log "no volume directory ($VOLUMES_DIR) — nothing to archive"
     exit 0
 fi
 
@@ -126,14 +126,14 @@ arsivle() {
     # tutarsız olabilir. Uyarı; arşiv tutuluyor (hiç yoktan iyi).
     if (( kodlar[0] > 1 || kodlar[1] != 0 || kodlar[2] != 0 )); then
         rm -f "$gecici"
-        echo "kadran-volume-backup: arşivlenemedi $uyg (tar=${kodlar[0]} zstd=${kodlar[1]} age=${kodlar[2]}): $(head -1 "$TMP/tar.err") $(head -1 "$TMP/age.err")" >&2
+        echo "kadran-volume-backup: could not archive $uyg (tar=${kodlar[0]} zstd=${kodlar[1]} age=${kodlar[2]}): $(head -1 "$TMP/tar.err") $(head -1 "$TMP/age.err")" >&2
         return 1
     fi
     mv "$gecici" "$hedef" || { rm -f "$gecici"; return 1; }
     if (( kodlar[0] == 1 )); then
-        log "UYARI: $uyg okunurken değişti — arşiv tutarlı olmayabilir: $(head -1 "$TMP/tar.err")"
+        log "WARNING: $uyg changed while being read — the archive may be inconsistent: $(head -1 "$TMP/tar.err")"
     fi
-    log "arşivlendi $(basename "$hedef") ($(stat -c %s "$hedef") bayt)"
+    log "archived $(basename "$hedef") ($(stat -c %s "$hedef") bytes)"
 }
 
 # budama <uygulama> — o uygulamanın en yeni $KEEP arşivi kalır.
@@ -146,7 +146,7 @@ budama() {
     arsivler=( "$OUT_DIR"/kadran-hacim-"$uyg"-$DAMGA_GLOB.tar.zst.age )
     fazla=$(( ${#arsivler[@]} - KEEP ))
     for (( i = 0; i < fazla; i++ )); do
-        rm -f "${arsivler[i]}" && log "budandı $(basename "${arsivler[i]}")"
+        rm -f "${arsivler[i]}" && log "pruned $(basename "${arsivler[i]}")"
     done
 }
 
@@ -158,7 +158,7 @@ for yol in "$VOLUMES_DIR"/*; do
     # Uygulama adı kuralı internal/api/appvalidate.go'daki ile aynı.
     # Beklenmeyen bir girdi sessizce atlanmıyor: koşu başarısız olur.
     if [[ -L "$yol" || ! -d "$yol" || ! "$uyg" =~ ^[a-z][a-z0-9-]{0,31}$ ]]; then
-        echo "kadran-volume-backup: beklenmeyen girdi, atlandı: $yol" >&2
+        echo "kadran-volume-backup: unexpected entry, skipped: $yol" >&2
         basarisiz=$((basarisiz + 1))
         continue
     fi
@@ -174,6 +174,6 @@ done
 # (`app delete` veriye dokunmuyor). Dizini SİLİNMİŞ bir uygulamanın
 # eski arşivleri ise budanmıyor: o verinin son kopyası onlar.
 
-log "özet: arşivlendi=$arsivlendi başarısız=$basarisiz"
+log "summary: archived=$arsivlendi failed=$basarisiz"
 (( basarisiz == 0 )) || exit 1
-(( arsivlendi > 0 )) || log "hacim dizini boş — arşivlenecek uygulama yok"
+(( arsivlendi > 0 )) || log "the volume directory is empty — no apps to archive"

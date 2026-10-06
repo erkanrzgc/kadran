@@ -59,25 +59,25 @@ func resolveRemoteBranch(ctx context.Context, host, owner, repo, branch string) 
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return "", fmt.Errorf("dal çözümü isteği kurulamadı: %w", err)
+		return "", fmt.Errorf("could not build the branch lookup request: %w", err)
 	}
 	req.Header.Set("User-Agent", "git/2.0 (kadran)")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("depo sorgulanamadı (%s/%s/%s): %w", host, owner, repo, err)
+		return "", fmt.Errorf("could not query the repository (%s/%s/%s): %w", host, owner, repo, err)
 	}
 	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf(
-			"depo sorgusu %s döndü (%s/%s/%s) — depo özel veya adı yanlış olabilir",
+			"repository query returned %s (%s/%s/%s) — the repository may be private or misspelled",
 			resp.Status, host, owner, repo)
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxRefsBytes))
 	if err != nil {
-		return "", fmt.Errorf("dal listesi okunamadı: %w", err)
+		return "", fmt.Errorf("could not read the branch list: %w", err)
 	}
 
 	sha, err := findRef(body, branch)
@@ -106,14 +106,14 @@ func findRef(body []byte, branch string) (string, error) {
 	for rest := body; len(rest) >= pktLenSize; {
 		n, err := strconv.ParseUint(string(rest[:pktLenSize]), 16, 32)
 		if err != nil {
-			return "", errors.New("depo yanıtı pkt-line biçiminde değil")
+			return "", errors.New("repository response is not in pkt-line format")
 		}
 		switch {
 		case n == 0: // akış sonu işareti
 			rest = rest[pktLenSize:]
 			continue
 		case n < pktLenSize || int(n) > len(rest):
-			return "", errors.New("depo yanıtında bozuk pkt-line uzunluğu")
+			return "", errors.New("bad pkt-line length in repository response")
 		}
 
 		line := strings.TrimRight(string(rest[pktLenSize:n]), "\n")
@@ -144,6 +144,6 @@ func findRef(body []byte, branch string) (string, error) {
 	case tag != "":
 		return tag, nil
 	default:
-		return "", fmt.Errorf("dal veya etiket bulunamadı: %q", branch)
+		return "", fmt.Errorf("branch or tag not found: %q", branch)
 	}
 }

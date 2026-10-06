@@ -134,7 +134,7 @@ func TestDNSWarningGoesToStderrOnly(t *testing.T) {
 	if *dials != 1 {
 		t.Fatalf("belirsiz durumda bağlantı denenmedi (%d)\n%s", *dials, stderr)
 	}
-	if !strings.Contains(stderr.String(), "genel adresi bilinmiyor") {
+	if !strings.Contains(stderr.String(), "public address is unknown") {
 		t.Errorf("uyarı stderr'de yok:\n%s", stderr)
 	}
 	if stdout.Len() != 0 {
@@ -168,7 +168,7 @@ func TestSSHAliasIsResolvedThroughSSHConfig(t *testing.T) {
 	_ = c.runAppCreate(t.Context(), []string{
 		"-repo", "github.com/u/r", "-domain", "app.example.com", "web", "kimse@prod"})
 
-	if *dials != 1 || strings.Contains(stderr.String(), "bilinmiyor") {
+	if *dials != 1 || strings.Contains(stderr.String(), "unknown") {
 		t.Fatalf("takma ad çözülmedi (bağlantı %d)\n%s", *dials, stderr)
 	}
 }

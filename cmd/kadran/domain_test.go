@@ -83,7 +83,7 @@ func TestDomainCheckAllGood(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("çıkış %d, beklenen 0\n%s", code, out)
 	}
-	for _, want := range []string{"✓ DNS", "✓ 80/tcp", "✓ 443/tcp", "308", "✓ sertifika", "gün"} {
+	for _, want := range []string{"✓ DNS", "✓ 80/tcp", "✓ 443/tcp", "308", "✓ certificate", "days left"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("çıktıda %q yok:\n%s", want, out)
 		}
@@ -101,7 +101,7 @@ func TestDomainCheckUntrustedCertificate(t *testing.T) {
 	if code != exitError {
 		t.Fatalf("çıkış %d, beklenen %d\n%s", code, exitError, out)
 	}
-	for _, want := range []string{"✗ sertifika", "sunulan", "example.com"} {
+	for _, want := range []string{"✗ certificate", "served", "example.com"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("çıktıda %q yok:\n%s", want, out)
 		}
@@ -123,7 +123,7 @@ func TestDomainCheckClosedPort80(t *testing.T) {
 		t.Errorf("kapalı 80 bildirilmedi:\n%s", out)
 	}
 	// Diğer denetimler yine koşmalı: tanı komutu ilk hatada durmaz.
-	if !strings.Contains(out.String(), "✓ sertifika") {
+	if !strings.Contains(out.String(), "✓ certificate") {
 		t.Errorf("80 kapalıyken sertifika denetimi atlandı:\n%s", out)
 	}
 }
@@ -140,7 +140,7 @@ func TestDomainCheckWrongDNS(t *testing.T) {
 		t.Fatalf("yanlış DNS bildirilmedi (çıkış %d):\n%s", code, out)
 	}
 	// Sonraki ✓ satırları başka bir sunucuyu ölçüyor; okuyan bunu bilmeli.
-	if !strings.Contains(out.String(), "şu an gösterdiği sunucuya") {
+	if !strings.Contains(out.String(), "points at now") {
 		t.Errorf("yanlış DNS'te diğer satırların başka sunucuyu ölçtüğü söylenmedi:\n%s", out)
 	}
 }
@@ -181,7 +181,7 @@ func TestDomainCheckExpiringCertificate(t *testing.T) {
 
 	code := c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
 
-	if code != exitError || !strings.Contains(out.String(), "✗ sertifika") || !strings.Contains(out.String(), "yenileme") {
+	if code != exitError || !strings.Contains(out.String(), "✗ certificate") || !strings.Contains(out.String(), "renewal") {
 		t.Fatalf("bitmek üzere olan sertifika bildirilmedi (çıkış %d):\n%s", code, out)
 	}
 }
@@ -191,7 +191,7 @@ func TestDomainCheckUsage(t *testing.T) {
 	if code := c.runDomain(t.Context(), []string{"check"}); code != exitUsage {
 		t.Fatalf("çıkış %d, beklenen %d", code, exitUsage)
 	}
-	if !strings.Contains(stderr.String(), "kullanım") {
+	if !strings.Contains(stderr.String(), "usage") {
 		t.Errorf("kullanım metni yok: %q", stderr)
 	}
 }

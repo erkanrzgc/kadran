@@ -26,7 +26,7 @@ func TestRunWithoutArgsIsUsageError(t *testing.T) {
 	if code := c.run(context.Background(), nil); code != exitUsage {
 		t.Errorf("çıkış kodu = %d, beklenen %d", code, exitUsage)
 	}
-	if !strings.Contains(errOut.String(), "Kullanım:") {
+	if !strings.Contains(errOut.String(), "Usage:") {
 		t.Error("kullanım metni gösterilmedi")
 	}
 }
@@ -40,7 +40,7 @@ func TestHelpExitsSuccessfully(t *testing.T) {
 			if code := c.run(context.Background(), []string{arg}); code != exitOK {
 				t.Errorf("çıkış kodu = %d, beklenen %d", code, exitOK)
 			}
-			if !strings.Contains(errOut.String(), "Komutlar:") {
+			if !strings.Contains(errOut.String(), "Commands:") {
 				t.Error("komut listesi gösterilmedi")
 			}
 		})
@@ -75,7 +75,7 @@ func TestUnknownCommandIsUsageError(t *testing.T) {
 	if code := c.run(context.Background(), []string{"zart"}); code != exitUsage {
 		t.Errorf("çıkış kodu = %d, beklenen %d", code, exitUsage)
 	}
-	if !strings.Contains(errOut.String(), `bilinmeyen komut "zart"`) {
+	if !strings.Contains(errOut.String(), `unknown command "zart"`) {
 		t.Errorf("komut adı hatada geçmiyor: %s", errOut.String())
 	}
 }
@@ -86,7 +86,7 @@ func TestVersionPrintsProtocol(t *testing.T) {
 	if code := c.run(context.Background(), []string{"version"}); code != exitOK {
 		t.Fatalf("çıkış kodu = %d", code)
 	}
-	if !strings.Contains(out.String(), "protokol") {
+	if !strings.Contains(out.String(), "protocol") {
 		t.Errorf("protokol sürümü yazılmadı: %s", out.String())
 	}
 }
@@ -97,7 +97,7 @@ func TestAuditRequiresSubcommand(t *testing.T) {
 	if code := c.run(context.Background(), []string{"audit"}); code != exitUsage {
 		t.Errorf("çıkış kodu = %d, beklenen %d", code, exitUsage)
 	}
-	if !strings.Contains(errOut.String(), "list veya verify") {
+	if !strings.Contains(errOut.String(), "list or verify") {
 		t.Errorf("alt komutlar önerilmedi: %s", errOut.String())
 	}
 }
@@ -132,7 +132,7 @@ func TestBootstrapRequiresExactlyOneTarget(t *testing.T) {
 				t.Fatal("kullanım hatası için ağa çıkıldı — doğrulama bağlantıdan ÖNCE olmalı")
 			}
 
-			if !strings.Contains(errOut.String(), "root@sunucu") {
+			if !strings.Contains(errOut.String(), "root@server") {
 				t.Errorf("doğru kullanım gösterilmedi: %s", errOut.String())
 			}
 		})
@@ -161,7 +161,7 @@ func TestBootstrapRejectsLocalTarget(t *testing.T) {
 		t.Fatal("yerel hedef için bağlantı denendi")
 	}
 
-	if !strings.Contains(errOut.String(), "uzak bir hedef") {
+	if !strings.Contains(errOut.String(), "remote target") {
 		t.Errorf("gerekçe açıklanmadı: %s", errOut.String())
 	}
 }
@@ -229,13 +229,13 @@ func TestPrintVerifyResultShowsBothChainsSeparately(t *testing.T) {
 	})
 
 	text := out.String()
-	for _, want := range []string{"daemon zinciri", "executor zinciri", "GEÇERLİ", "DOĞRULANAMADI"} {
+	for _, want := range []string{"daemon chain", "executor chain", "VALID", "UNVERIFIABLE"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("çıktıda %q yok:\n%s", want, text)
 		}
 	}
-	// Erişilemeyen zincir "GEÇERSİZ" diye gösterilmemeli.
-	if strings.Contains(text, "GEÇERSİZ") {
+	// Erişilemeyen zincir "BROKEN" diye gösterilmemeli.
+	if strings.Contains(text, "BROKEN") {
 		t.Errorf("erişilemeyen zincir geçersiz olarak gösterildi:\n%s", text)
 	}
 }
@@ -255,7 +255,7 @@ func TestPrintVerifyResultWarnsOnBrokenChain(t *testing.T) {
 	if !strings.Contains(msg, "#42") {
 		t.Errorf("kopma noktası bildirilmedi: %s", msg)
 	}
-	if !strings.Contains(msg, "kurcalama") {
+	if !strings.Contains(msg, "tampering") {
 		t.Errorf("bulgunun anlamı açıklanmadı: %s", msg)
 	}
 }
@@ -268,7 +268,7 @@ func TestPrintVerifyResultWarnsOnBrokenChain(t *testing.T) {
 // çökmüş olur ve durum ekranı bunu göstermek zorunda.
 func TestDaemonUserCellFlagsRoot(t *testing.T) {
 	cell := daemonUserCell("root")
-	if !strings.Contains(cell, "KURULUM BOZUK") {
+	if !strings.Contains(cell, "BROKEN INSTALL") {
 		t.Errorf("root sessizce gösterildi: %q", cell)
 	}
 
@@ -279,7 +279,7 @@ func TestDaemonUserCellFlagsRoot(t *testing.T) {
 
 func TestExecutorCellReportsUnreachable(t *testing.T) {
 	cell := executorCell(&kadranv1.GetSystemInfoResponse{ExecutorReachable: false})
-	if !strings.Contains(cell, "ERİŞİLEMİYOR") {
+	if !strings.Contains(cell, "UNREACHABLE") {
 		t.Errorf("erişilemeyen executor belirtilmedi: %q", cell)
 	}
 
@@ -300,7 +300,7 @@ func TestExecutorCellReportsUnreachable(t *testing.T) {
 // çok bilgiye ihtiyaç duyulan anda en yanıltıcı çıktıyı verirdi.
 func TestDiskCellSeparatesUnknownFromEmpty(t *testing.T) {
 	got := diskCell(&kadranv1.HostInfo{})
-	if !strings.Contains(got, "ölçülemedi") {
+	if !strings.Contains(got, "could not be measured") {
 		t.Errorf("ölçülemeyen disk %q olarak gösterildi — sıfır, "+
 			"'boş disk' diye okunamaz", got)
 	}
@@ -317,17 +317,17 @@ func TestDiskCellWarnsOnlyWhenNearlyFull(t *testing.T) {
 	// Rahat: 32 GB / 40 GB boş → %80.
 	roomy := diskCell(&kadranv1.HostInfo{
 		DiskTotalBytes: 40 * gb, DiskAvailableBytes: 32 * gb})
-	if strings.Contains(roomy, "DOLMAK ÜZERE") {
+	if strings.Contains(roomy, "NEARLY FULL") {
 		t.Errorf("boş diskte uyarı verildi: %q", roomy)
 	}
-	if !strings.Contains(roomy, "%80") {
+	if !strings.Contains(roomy, "80%") {
 		t.Errorf("yüzde yanlış ya da yok: %q", roomy)
 	}
 
 	// Dar: 2 GB / 40 GB boş → %5.
 	tight := diskCell(&kadranv1.HostInfo{
 		DiskTotalBytes: 40 * gb, DiskAvailableBytes: 2 * gb})
-	if !strings.Contains(tight, "DOLMAK ÜZERE") {
+	if !strings.Contains(tight, "NEARLY FULL") {
 		t.Errorf("%%5 boş diskte uyarı YOK: %q — tek sunuculu kurulumda "+
 			"en olası kesinti diskin dolmasıdır", tight)
 	}
@@ -368,7 +368,7 @@ func TestUsageListsEverySubcommand(t *testing.T) {
 				t.Fatalf("hata mesajında kabul edilen liste yok: %q", msg)
 			}
 			accepted := strings.FieldsFunc(
-				strings.ReplaceAll(msg[i+len("—"):], " veya ", ","),
+				strings.ReplaceAll(msg[i+len("—"):], " or ", ","),
 				func(r rune) bool { return r == ',' || r == ' ' || r == '\n' })
 
 			if strings.Join(usage, ",") != strings.Join(accepted, ",") {

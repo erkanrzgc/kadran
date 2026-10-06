@@ -299,7 +299,7 @@ func TestRealScriptsResumeAndSurviveAStaleWriter(t *testing.T) {
 	if _, err := uploadArchive(ctx, opts, archive, sum); err != nil {
 		t.Fatalf("devam: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "kaldığı yerden") {
+	if !strings.Contains(out.String(), "Resuming the upload") {
 		t.Fatalf("devam edilmedi:\n%s", out.String())
 	}
 	// Ölü oturum, başı sonradan yeniden yazıyor: dosya kısalmamalı.
@@ -346,7 +346,7 @@ func TestRealScriptsRejectACorruptPart(t *testing.T) {
 	if err := runInstaller(context.Background(), opts, archive); err != nil {
 		t.Fatalf("bozuk paketten kurtarılamadı: %v\n%s", err, out.String())
 	}
-	for _, parca := range []string{"özeti tutmuyor", "baştan yükleniyor", "tamam\n"} {
+	for _, parca := range []string{"digest does not match", "once more from scratch", "tamam\n"} {
 		if !strings.Contains(out.String(), parca) {
 			t.Fatalf("%q yok:\n%s", parca, out.String())
 		}
@@ -412,7 +412,7 @@ kill -9 "$PPID"
 	defer cancel()
 	err := runInstaller(ctx, opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "bitiş işareti") {
+	if err == nil || !strings.Contains(err.Error(), "completion marker") {
 		t.Fatalf("ölen kurulum bildirilmedi: %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "yarim\n") {

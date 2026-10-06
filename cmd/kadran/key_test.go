@@ -67,7 +67,7 @@ func TestKeyListShowsRolesAndScopes(t *testing.T) {
 		t.Fatalf("çıkış kodu %d", code)
 	}
 	o := out.String()
-	for _, want := range []string{"yönetici", "dağıtım", "site,api", "erkan@dizustu", "SHA256:"} {
+	for _, want := range []string{"admin", "deploy", "site,api", "erkan@dizustu", "SHA256:"} {
 		if !strings.Contains(o, want) {
 			t.Errorf("çıktıda %q yok:\n%s", want, o)
 		}
@@ -89,10 +89,10 @@ func TestKeyListFlagsUnrestrictedLines(t *testing.T) {
 	if code := c.run(context.Background(), []string{"key", "list", "root@sunucu"}); code != exitError {
 		t.Fatalf("kısıtsız satıra rağmen çıkış kodu %d", code)
 	}
-	if !strings.Contains(out.String(), "KISITSIZ") {
+	if !strings.Contains(out.String(), "UNRESTRICTED") {
 		t.Errorf("kısıtsız satır işaretlenmedi:\n%s", out.String())
 	}
-	if !strings.Contains(errOut.String(), "kabuk") {
+	if !strings.Contains(errOut.String(), "shell") {
 		t.Errorf("uyarı nedenini söylemiyor:\n%s", errOut.String())
 	}
 }
@@ -157,7 +157,7 @@ func TestKeyAddRequiresDeployScope(t *testing.T) {
 	if code := c.run(context.Background(), []string{"key", "add", pub, "root@sunucu"}); code != exitUsage {
 		t.Fatalf("çıkış kodu %d", code)
 	}
-	if !strings.Contains(errOut.String(), "-deploy zorunlu") {
+	if !strings.Contains(errOut.String(), "-deploy is required") {
 		t.Fatalf("hata nedeni söylenmiyor: %q", errOut.String())
 	}
 }

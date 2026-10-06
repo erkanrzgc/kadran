@@ -86,12 +86,12 @@ cd "$1"
 exec 9>install.lock
 if ! flock -n 9; then
     if [ -f "$2.log" ] && [ ! -f "$2.done" ]; then exit 4; fi
-    echo "bootstrap: bu sunucuda başka bir kurulum sürüyor" >&2
+    echo "bootstrap: another install is running on this server" >&2
     exit 5
 fi
 truncate -c -s "$3" "$2.part"
 if ! echo "$2  $2.part" | sha256sum -c --status 2>/dev/null; then
-    echo "bootstrap: paketin özeti tutmuyor" >&2
+    echo "bootstrap: the package digest does not match" >&2
     rm -f "$2.part"
     exit 3
 fi
@@ -146,7 +146,7 @@ var uploadDirPattern = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
 
 func validUploadDir(dir string) error {
 	if !uploadDirPattern.MatchString(dir) || strings.Contains(dir, "..") {
-		return fmt.Errorf("bootstrap: sunucunun bildirdiği yükleme dizini beklenmedik: %q", dir)
+		return fmt.Errorf("bootstrap: unexpected upload directory reported by the server: %q", dir)
 	}
 	return nil
 }
@@ -210,10 +210,10 @@ type retrier struct {
 func (r *retrier) cut(ctx context.Context) error {
 	r.failures++
 	if r.failures >= maxTransferAttempts {
-		return fmt.Errorf("bootstrap: %s %d denemede tamamlanamadı — bağlantı sürekli kopuyor",
+		return fmt.Errorf("bootstrap: %s did not finish in %d attempts — the connection keeps dropping",
 			r.what, maxTransferAttempts)
 	}
-	fmt.Fprintf(r.opts.Stdout, "==> Bağlantı koptu (%s, deneme %d/%d); yeniden deneniyor\n",
+	fmt.Fprintf(r.opts.Stdout, "==> Connection dropped (%s, attempt %d/%d); retrying\n",
 		r.what, r.failures, maxTransferAttempts)
 	t := time.NewTimer(time.Duration(r.failures) * transferBackoff)
 	defer t.Stop()
@@ -235,14 +235,14 @@ func prepareUpload(ctx context.Context, opts Options, sum string) (dir string, h
 	}
 	fields := strings.Fields(out.String())
 	if len(fields) != 2 {
-		return "", 0, 0, fmt.Errorf("bootstrap: yükleme dizini yanıtı beklenmedik: %q", out.String())
+		return "", 0, 0, fmt.Errorf("bootstrap: unexpected upload directory reply: %q", out.String())
 	}
 	if err := validUploadDir(fields[0]); err != nil {
 		return "", 0, 0, err
 	}
 	have, err = strconv.Atoi(fields[1])
 	if err != nil || have < 0 {
-		return "", 0, 0, fmt.Errorf("bootstrap: sunucudaki yarım yükleme boyutu okunamadı: %q", fields[1])
+		return "", 0, 0, fmt.Errorf("bootstrap: could not read the partial upload size on the server: %q", fields[1])
 	}
 	return fields[0], have, 0, nil
 }
@@ -255,7 +255,7 @@ func prepareUpload(ctx context.Context, opts Options, sum string) (dir string, h
 // runInstaller bir kez baştan yüklüyor.
 func uploadArchive(ctx context.Context, opts Options, archive []byte, sum string) (string, error) {
 	total := len(archive)
-	r := &retrier{opts: opts, what: "yükleme", size: total}
+	r := &retrier{opts: opts, what: "upload", size: total}
 	wrote := false
 	for {
 		dir, have, code, err := prepareUpload(ctx, opts, sum)
@@ -269,16 +269,16 @@ func uploadArchive(ctx context.Context, opts Options, archive []byte, sum string
 			}
 			continue
 		case code != 0:
-			return "", fmt.Errorf("bootstrap: yükleme dizini hazırlanamadı (çıkış %d)", code)
+			return "", fmt.Errorf("bootstrap: could not prepare the upload directory (exit %d)", code)
 		case have >= total:
 			return dir, nil
 		case wrote:
 			// Yazma başarılı döndü ama dosya eksik: yeniden denemek aynı
 			// şeyi tekrarlar; sonsuz döngü yerine dur.
-			return "", fmt.Errorf("bootstrap: yazma başarılı göründü ama sunucuda %s/%s var",
+			return "", fmt.Errorf("bootstrap: the write looked successful but the server has %s/%s",
 				humanSize(have), humanSize(total))
 		case have > 0:
-			fmt.Fprintf(opts.Stdout, "==> Yükleme kaldığı yerden sürüyor: %s/%s\n", humanSize(have), humanSize(total))
+			fmt.Fprintf(opts.Stdout, "==> Resuming the upload: %s/%s\n", humanSize(have), humanSize(total))
 		}
 
 		code, err = sshRun(ctx, opts, bashArgs(remoteUploadWrite, sum, strconv.Itoa(have)),
@@ -297,7 +297,7 @@ func uploadArchive(ctx context.Context, opts Options, archive []byte, sum string
 		default:
 			// Disk dolması gibi gerçek bir yazma hatası: yeniden denemek
 			// aynı hatayı tekrarlar.
-			return "", fmt.Errorf("bootstrap: paket sunucuya yazılamadı (çıkış %d)", code)
+			return "", fmt.Errorf("bootstrap: could not write the package to the server (exit %d)", code)
 		}
 	}
 }
@@ -325,7 +325,7 @@ func runInstaller(ctx context.Context, opts Options, archive []byte) error {
 		if err != nil {
 			return err
 		}
-		fmt.Fprintln(opts.Stdout, "==> Paket yüklendi; özet sunucuda denetleniyor")
+		fmt.Fprintln(opts.Stdout, "==> Package uploaded; checking its digest on the server")
 
 		code, err := startInstall(ctx, opts, dir, sum, len(archive))
 		if err != nil {
@@ -338,20 +338,20 @@ func runInstaller(ctx context.Context, opts Options, archive []byte) error {
 			return followInstall(ctx, opts, dir, sum)
 		case digestMismatch:
 			if reuploaded {
-				return errors.New("bootstrap: paket iki kez yüklendi ama özeti tutmadı")
+				return errors.New("bootstrap: the package was uploaded twice but its digest did not match")
 			}
-			fmt.Fprintln(opts.Stdout, "==> Sunucudaki paket bozuk; bir kez baştan yükleniyor")
+			fmt.Fprintln(opts.Stdout, "==> The package on the server is corrupt; uploading it once more from scratch")
 		case installBusy:
-			return errors.New("bootstrap: sunucuda başka bir kurulum sürüyor; bitmesini bekleyip yeniden deneyin")
+			return errors.New("bootstrap: another install is running on the server; wait for it to finish and try again")
 		default:
-			return fmt.Errorf("bootstrap: kurulum başlatılamadı (çıkış %d)", code)
+			return fmt.Errorf("bootstrap: could not start the install (exit %d)", code)
 		}
 	}
 }
 
 func startInstall(ctx context.Context, opts Options, dir, sum string, size int) (int, error) {
 	remote := privileged(opts, remoteInstallStart, dir, sum, strconv.Itoa(size), remoteInstallRun)
-	r := &retrier{opts: opts, what: "kurulumu başlatma", size: size}
+	r := &retrier{opts: opts, what: "starting the install", size: size}
 	for {
 		code, err := sshRun(ctx, opts, remote, nil, opts.Stdout)
 		if err != nil {
@@ -369,7 +369,7 @@ func startInstall(ctx context.Context, opts Options, dir, sum string, size int) 
 func followInstall(ctx context.Context, opts Options, dir, sum string) error {
 	logPath := dir + "/" + sum + ".log"
 	out := &countingWriter{w: opts.Stdout}
-	r := &retrier{opts: opts, what: "kurulumu izleme"}
+	r := &retrier{opts: opts, what: "following the install"}
 	for {
 		code, err := sshRun(ctx, opts,
 			bashArgs(remoteInstallFollow, dir, sum, strconv.Itoa(out.n)), nil, out)
@@ -385,15 +385,15 @@ func followInstall(ctx context.Context, opts Options, dir, sum string) error {
 		case err != nil:
 			// Paket yüklendi ve kurulum başladı; süre sınırı ya da kopma
 			// yalnızca İZLEMEYİ bitiriyor.
-			return fmt.Errorf("bootstrap: kurulum izlenemedi, sunucuda sürüyor olabilir; günlüğü: %s: %w",
+			return fmt.Errorf("bootstrap: could not follow the install, it may still be running on the server; its log: %s: %w",
 				logPath, err)
 		case code == 0:
 			return nil
 		case code == installDied:
-			return fmt.Errorf("bootstrap: kurulum süreci sunucuda bitiş işareti bırakmadan sona erdi "+
-				"(bellek yetmemiş ya da süreç öldürülmüş olabilir); günlüğü: %s", logPath)
+			return fmt.Errorf("bootstrap: the install process on the server ended without leaving a completion marker "+
+				"(it may have run out of memory or been killed); its log: %s", logPath)
 		default:
-			return fmt.Errorf("bootstrap: kurulum başarısız (çıkış %d)", code)
+			return fmt.Errorf("bootstrap: install failed (exit %d)", code)
 		}
 	}
 }

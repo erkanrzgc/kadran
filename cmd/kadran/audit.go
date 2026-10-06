@@ -13,7 +13,7 @@ import (
 // runAudit, `audit` alt komutlarını dağıtır.
 func (c *cli) runAudit(ctx context.Context, args []string) int {
 	if len(args) == 0 {
-		return c.usageError("`audit` bir alt komut ister: list veya verify")
+		return c.usageError("`audit` needs a subcommand: list or verify")
 	}
 
 	switch args[0] {
@@ -22,22 +22,22 @@ func (c *cli) runAudit(ctx context.Context, args []string) int {
 	case "verify":
 		return c.runAuditVerify(ctx, args[1:])
 	default:
-		return c.usageError("bilinmeyen audit alt komutu %q — list veya verify", args[0])
+		return c.usageError("unknown audit subcommand %q — list or verify", args[0])
 	}
 }
 
 // runAuditList, denetim zincirini sayfalı olarak listeler.
 func (c *cli) runAuditList(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("audit list")
-	after := fs.Uint64("after", 0, "bu sıra numarasından sonrasını getir")
-	limit := fs.Uint("limit", 50, "en fazla kaç kayıt (üst sınır 1000)")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
-	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
+	after := fs.Uint64("after", 0, "fetch records after this sequence number")
+	limit := fs.Uint("limit", 50, "maximum number of records (at most 1000)")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`audit list` en fazla bir hedef alır, %d verildi", fs.NArg())
+		return c.usageError("`audit list` takes at most one target, got %d", fs.NArg())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -54,7 +54,7 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 		Limit:    uint32(*limit), //nolint:gosec // sunucu üst sınırı zaten uyguluyor
 	})
 	if err != nil {
-		return c.fail(fmt.Errorf("denetim kayıtları alınamadı: %w", err))
+		return c.fail(fmt.Errorf("could not get audit records: %w", err))
 	}
 
 	if *asJSON {
@@ -72,12 +72,12 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 func (c *cli) printAuditRecords(resp *kadranv1.ListAuditRecordsResponse) {
 	records := resp.GetRecords()
 	if len(records) == 0 {
-		fmt.Fprintln(c.stdout, "Denetim zincirinde kayıt yok.")
+		fmt.Fprintln(c.stdout, "The audit chain has no records.")
 		return
 	}
 
 	tw := tabwriter.NewWriter(c.stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "SEQ\tZAMAN\tAKTÖR\tEYLEM\tHEDEF\tSONUÇ")
+	fmt.Fprintln(tw, "SEQ\tTIME\tACTOR\tACTION\tTARGET\tOUTCOME")
 
 	for _, r := range records {
 		ts := "—"
@@ -93,10 +93,10 @@ func (c *cli) printAuditRecords(resp *kadranv1.ListAuditRecordsResponse) {
 	_ = tw.Flush()
 
 	shown := records[len(records)-1].GetSeq()
-	fmt.Fprintf(c.stdout, "\n%d kayıt gösterildi · zincirdeki son sıra: %d\n",
+	fmt.Fprintf(c.stdout, "\n%d records shown · latest sequence in the chain: %d\n",
 		len(records), resp.GetLatestSeq())
 	if shown < resp.GetLatestSeq() {
-		fmt.Fprintf(c.stdout, "Devamı için: kadran audit list --after %d\n", shown)
+		fmt.Fprintf(c.stdout, "For more: kadran audit list --after %d\n", shown)
 	}
 }
 
@@ -119,25 +119,25 @@ func orDash(s string) string {
 // dayandığı ayrımı gizlerdi.
 func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("audit verify")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
-	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
 	anchorsDir := fs.String("anchors", "",
-		"R2'den indirilen kadran-*.capa dosyalarının dizini: zincir istemcide hesaplanıp çapalarla karşılaştırılır (K-126)")
+		"directory of kadran-*.capa files downloaded from R2: the chain is recomputed on this machine and compared with the anchors (K-126)")
 	anchorsSince := fs.String("anchors-since", "",
-		"bu andan eski çapaları atla (veritabanı geri yüklendiyse): 2006-01-02 ya da RFC3339")
+		"skip anchors older than this (after a database restore): 2006-01-02 or RFC3339")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`audit verify` en fazla bir hedef alır, %d verildi", fs.NArg())
+		return c.usageError("`audit verify` takes at most one target, got %d", fs.NArg())
 	}
 	if *anchorsDir != "" && *asJSON {
-		return c.usageError("-anchors ile -json birlikte kullanılamaz")
+		return c.usageError("-anchors and -json cannot be used together")
 	}
 	var since time.Time
 	if *anchorsSince != "" {
 		if *anchorsDir == "" {
-			return c.usageError("-anchors-since yalnız -anchors ile anlamlı")
+			return c.usageError("-anchors-since only makes sense with -anchors")
 		}
 		t, err := parseAnchorsSince(*anchorsSince)
 		if err != nil {
@@ -157,7 +157,7 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 
 	resp, err := conn.RPC().VerifyAuditChain(ctx, &kadranv1.VerifyAuditChainRequest{})
 	if err != nil {
-		return c.fail(fmt.Errorf("zincir doğrulanamadı: %w", err))
+		return c.fail(fmt.Errorf("could not verify the chain: %w", err))
 	}
 
 	if *asJSON {
@@ -193,12 +193,12 @@ func worseExit(a, b int) int {
 }
 
 func (c *cli) printVerifyResult(target string, resp *kadranv1.VerifyAuditChainResponse) {
-	fmt.Fprintf(c.stdout, "Denetim zinciri doğrulaması — %s\n\n", target)
+	fmt.Fprintf(c.stdout, "Audit chain verification — %s\n\n", target)
 
 	tw := tabwriter.NewWriter(c.stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(tw, "  daemon zinciri\t%s\t%d kayıt\n",
+	fmt.Fprintf(tw, "  daemon chain\t%s\t%d records\n",
 		chainStatusLabel(resp.GetDaemonStatus()), resp.GetRecordsChecked())
-	fmt.Fprintf(tw, "  executor zinciri\t%s\t%d kayıt\n",
+	fmt.Fprintf(tw, "  executor chain\t%s\t%d records\n",
 		chainStatusLabel(resp.GetExecutorStatus()), resp.GetExecutorRecordsChecked())
 	_ = tw.Flush()
 
@@ -212,17 +212,17 @@ func (c *cli) printVerifyResult(target string, resp *kadranv1.VerifyAuditChainRe
 
 	if resp.GetDaemonStatus() == kadranv1.ChainStatus_CHAIN_STATUS_INVALID {
 		fmt.Fprintf(c.stderr,
-			"\nZİNCİR KIRIK: ilk bozulan kayıt #%d.\n"+
-				"Denetim günlüğü yalnızca eklemeye açıktır; bir kaydın değişmesi "+
-				"kendisinden sonraki tüm hash'leri geçersiz kılar.\n"+
-				"Bu bir kurcalama göstergesidir ve araştırılmalıdır.\n",
+			"\nCHAIN BROKEN: first bad record #%d.\n"+
+				"The audit log is append-only; changing one record "+
+				"invalidates every hash after it.\n"+
+				"This indicates tampering and should be investigated.\n",
 			resp.GetFirstInvalidSeq())
 	}
 	if resp.GetExecutorStatus() == kadranv1.ChainStatus_CHAIN_STATUS_INVALID {
 		fmt.Fprintln(c.stderr,
-			"\nEXECUTOR ZİNCİRİ KIRIK. kadrand bu günlüğe dokunamaz "+
-				"(root'un 0700 dizininde); bozulmuşsa ya root yetkisi kullanıldı "+
-				"ya da dosya diskte bozuldu.")
+			"\nEXECUTOR CHAIN BROKEN. kadrand cannot touch this log "+
+				"(it lives in a root-only 0700 directory); if it is broken, either root "+
+				"access was used or the file was corrupted on disk.")
 	}
 }
 

@@ -21,10 +21,10 @@ import (
 // için bu komut bootstrap'ın yetki yolunu kullanıyor: root@sunucu ya da
 // -sudo kullanıcı@sunucu. kadran-client ile ÇALIŞMAZ (zorlanmış komut).
 
-const keyUsage = "kullanım:\n" +
-	"  kadran key list   [-sudo] root@sunucu\n" +
-	"  kadran key add    -deploy uyg1,uyg2 [-name ad] [-sudo] <anahtar.pub> root@sunucu\n" +
-	"  kadran key remove [-sudo] <SHA256:parmak-izi> root@sunucu"
+const keyUsage = "usage:\n" +
+	"  kadran key list   [-sudo] root@server\n" +
+	"  kadran key add    -deploy app1,app2 [-name name] [-sudo] <key.pub> root@server\n" +
+	"  kadran key remove [-sudo] <SHA256:fingerprint> root@server"
 
 // keyTimeout, bir anahtar işleminin üst sınırı: üç kısa uzak komut.
 const keyTimeout = 2 * time.Minute
@@ -73,7 +73,7 @@ func (c *cli) runKey(ctx context.Context, args []string) int {
 	case "remove":
 		return c.runKeyRemove(ctx, args[1:])
 	default:
-		return c.usageError("bilinmeyen key alt komutu %q — list, add veya remove", args[0])
+		return c.usageError("unknown key subcommand %q — list, add or remove", args[0])
 	}
 }
 
@@ -84,10 +84,10 @@ func (c *cli) keyTarget(raw string, sudo bool) (bootstrap.KeyOptions, error) {
 		return bootstrap.KeyOptions{}, err
 	}
 	if target.IsLocal() {
-		return bootstrap.KeyOptions{}, errors.New("`key` uzak bir hedef ister (root@sunucu ya da -sudo kullanıcı@sunucu), yerel soket değil")
+		return bootstrap.KeyOptions{}, errors.New("`key` needs a remote target (root@server or -sudo user@server), not a local socket")
 	}
 	if c.keys == nil && !client.SSHAvailable() {
-		return bootstrap.KeyOptions{}, errors.New("`ssh` komutu bulunamadı — OpenSSH istemcisi gerekli")
+		return bootstrap.KeyOptions{}, errors.New("`ssh` not found — the OpenSSH client is required")
 	}
 	return bootstrap.KeyOptions{
 		Host: target.SSHUser + "@" + target.SSHHost, Port: target.SSHPort, Sudo: sudo,
@@ -96,7 +96,7 @@ func (c *cli) keyTarget(raw string, sudo bool) (bootstrap.KeyOptions, error) {
 
 func (c *cli) runKeyList(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("key list")
-	sudo := fs.Bool("sudo", false, "hedef kullanıcının PAROLASIZ sudo'suyla (parola asla sorulmaz)")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -116,8 +116,8 @@ func (c *cli) runKeyList(ctx context.Context, args []string) int {
 	}
 	unrestricted := printKeys(c.stdout, keys)
 	if unrestricted > 0 {
-		return c.fail(fmt.Errorf("%d satır kadran-connect'e zorlanmamış — o anahtarlar kadran-client olarak "+
-			"kabuk alabilir; kaldırın: kadran key remove <parmak-izi> %s", unrestricted, fs.Arg(0)))
+		return c.fail(fmt.Errorf("%d lines are not forced to kadran-connect — those keys can get a shell "+
+			"as kadran-client; remove them: kadran key remove <fingerprint> %s", unrestricted, fs.Arg(0)))
 	}
 	return exitOK
 }
@@ -125,22 +125,22 @@ func (c *cli) runKeyList(ctx context.Context, args []string) int {
 // printKeys, anahtarları tablo olarak yazar ve kısıtsız satır sayısını döner.
 func printKeys(w io.Writer, keys []bootstrap.AuthorizedKey) int {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ROL\tKAPSAM\tPARMAK İZİ\tYORUM")
+	fmt.Fprintln(tw, "ROLE\tSCOPE\tFINGERPRINT\tCOMMENT")
 	unrestricted := 0
 	for _, k := range keys {
 		role, scope := "?", "-"
 		switch {
 		case !k.Restricted():
-			role = "⚠ KISITSIZ"
+			role = "⚠ UNRESTRICTED"
 			unrestricted++
 		case k.Role == connproto.RoleAdmin:
-			role = "yönetici"
+			role = "admin"
 		case k.Role == connproto.RoleDeploy:
-			role, scope = "dağıtım", strings.Join(k.Apps, ",")
+			role, scope = "deploy", strings.Join(k.Apps, ",")
 		}
 		fp := k.Fingerprint
 		if fp == "" {
-			fp = "(okunamadı)"
+			fp = "(unreadable)"
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", role, scope, fp, printable(k.Comment))
 	}
@@ -161,9 +161,9 @@ func printable(s string) string {
 
 func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("key add")
-	deploy := fs.String("deploy", "", "anahtarın dağıtabileceği uygulamalar (virgülle; ZORUNLU)")
-	name := fs.String("name", "", "satırın yorumu (boşsa anahtarın kendi yorumu)")
-	sudo := fs.Bool("sudo", false, "hedef kullanıcının PAROLASIZ sudo'suyla (parola asla sorulmaz)")
+	deploy := fs.String("deploy", "", "apps the key may deploy (comma-separated; REQUIRED)")
+	name := fs.String("name", "", "comment for the line (default: the key's own comment)")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -174,7 +174,7 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 	// bootstrap'ın işi (-client-key). Kapsamsız bir `key add` yazım
 	// hatasıyla tam yetki vermesin diye -deploy zorunlu.
 	if *deploy == "" {
-		return c.usageError("-deploy zorunlu: anahtarın dağıtabileceği uygulamaları yazın (ör. -deploy site,api)")
+		return c.usageError("-deploy is required: list the apps the key may deploy (e.g. -deploy site,api)")
 	}
 	apps, err := connproto.ParseDeployScope(*deploy)
 	if err != nil {
@@ -195,10 +195,10 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 	if err != nil {
 		return c.fail(err)
 	}
-	fmt.Fprintf(c.stdout, "Dağıtım anahtarı eklendi: %s · kapsam: %s\n\n", k.Fingerprint, strings.Join(k.Apps, ", "))
-	fmt.Fprintf(c.stdout, "Bu anahtar yalnızca dağıtım yapabilir; uygulama tanımını okuyamaz, bu yüzden\n"+
-		"commit açıkça verilir. GitHub Actions'ta:\n"+
-		"  kadran deploy -commit \"$GITHUB_SHA\" %s %s@<sunucu>\n", apps[0], client.DefaultSSHUser)
+	fmt.Fprintf(c.stdout, "Deploy key added: %s · scope: %s\n\n", k.Fingerprint, strings.Join(k.Apps, ", "))
+	fmt.Fprintf(c.stdout, "This key can only deploy; it cannot read the app definition, so the\n"+
+		"commit is passed explicitly. In GitHub Actions:\n"+
+		"  kadran deploy -commit \"$GITHUB_SHA\" %s %s@<server>\n", apps[0], client.DefaultSSHUser)
 	return exitOK
 }
 
@@ -207,22 +207,22 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 func readPublicKey(path string) ([]byte, error) {
 	f, err := os.Open(path) //nolint:gosec // kullanıcının kendi verdiği dosya
 	if err != nil {
-		return nil, fmt.Errorf("açık anahtar okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the public key: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 	b, err := io.ReadAll(io.LimitReader(f, maxPublicKeyFile+1))
 	if err != nil {
-		return nil, fmt.Errorf("açık anahtar okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the public key: %w", err)
 	}
 	if len(b) > maxPublicKeyFile {
-		return nil, fmt.Errorf("%s açık anahtar olamayacak kadar büyük", path)
+		return nil, fmt.Errorf("%s is too large to be a public key", path)
 	}
 	return b, nil
 }
 
 func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("key remove")
-	sudo := fs.Bool("sudo", false, "hedef kullanıcının PAROLASIZ sudo'suyla (parola asla sorulmaz)")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -231,7 +231,7 @@ func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
 	}
 	fp := fs.Arg(0)
 	if !strings.HasPrefix(fp, "SHA256:") {
-		return c.usageError("parmak izi SHA256:… biçiminde olmalı (`kadran key list` gösterir), %q değil", fp)
+		return c.usageError("the fingerprint must look like SHA256:… (`kadran key list` shows it), not %q", fp)
 	}
 	opts, err := c.keyTarget(fs.Arg(1), *sudo)
 	if err != nil {
@@ -244,6 +244,6 @@ func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
 	if err != nil {
 		return c.fail(err)
 	}
-	fmt.Fprintf(c.stdout, "Kaldırıldı: %s %s\n", k.Fingerprint, printable(k.Comment))
+	fmt.Fprintf(c.stdout, "Removed: %s %s\n", k.Fingerprint, printable(k.Comment))
 	return exitOK
 }

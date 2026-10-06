@@ -132,7 +132,7 @@ mutate_in "$CLI" "bozuk çapa sessizce atlanıyor" \
     "s=s.replace('\t\t\treturn nil, fmt.Errorf(\"%w: %w\", errBadAnchor, err)','\t\t\tcontinue',1)"
 
 mutate_in "$CLI" "çelişkide çıkış kodu başarı" \
-    "s=s.replace('araştırılmalıdır.\")\n\t\treturn exitChainInvalid','araştırılmalıdır.\")\n\t\treturn exitOK',1)"
+    "s=s.replace('investigated.\")\n\t\treturn exitChainInvalid','investigated.\")\n\t\treturn exitOK',1)"
 
 echo "== Üretim: daemon ve uzak yedek =="
 

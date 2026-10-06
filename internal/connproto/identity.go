@@ -47,7 +47,7 @@ import (
 const MaxPreambleSize = 4096
 
 // ErrPreambleTooLarge, bildirilen uzunluk sınırı aştığında döner.
-var ErrPreambleTooLarge = errors.New("connproto: önsöz çok büyük")
+var ErrPreambleTooLarge = errors.New("connproto: preamble too large")
 
 // Identity, bağlantıyı açan çağıranın doğrulanmış kimliğidir.
 //
@@ -83,7 +83,7 @@ type Identity struct {
 func Write(w io.Writer, id Identity) error {
 	body, err := json.Marshal(id)
 	if err != nil {
-		return fmt.Errorf("connproto: kimlik kodlanamadı: %w", err)
+		return fmt.Errorf("connproto: could not encode the identity: %w", err)
 	}
 	if len(body) > MaxPreambleSize {
 		return ErrPreambleTooLarge
@@ -99,7 +99,7 @@ func Write(w io.Writer, id Identity) error {
 	packet = append(packet, body...)
 
 	if _, err := w.Write(packet); err != nil {
-		return fmt.Errorf("connproto: önsöz yazılamadı: %w", err)
+		return fmt.Errorf("connproto: could not write the preamble: %w", err)
 	}
 	return nil
 }
@@ -110,26 +110,26 @@ func Write(w io.Writer, id Identity) error {
 func Read(r io.Reader) (Identity, error) {
 	var header [4]byte
 	if _, err := io.ReadFull(r, header[:]); err != nil {
-		return Identity{}, fmt.Errorf("connproto: önsöz başlığı okunamadı: %w", err)
+		return Identity{}, fmt.Errorf("connproto: could not read the preamble header: %w", err)
 	}
 
 	size := binary.BigEndian.Uint32(header[:])
 	if size > MaxPreambleSize {
-		return Identity{}, fmt.Errorf("%w: %d bayt bildirildi, sınır %d",
+		return Identity{}, fmt.Errorf("%w: %d bytes announced, limit %d",
 			ErrPreambleTooLarge, size, MaxPreambleSize)
 	}
 	if size == 0 {
-		return Identity{}, errors.New("connproto: boş önsöz")
+		return Identity{}, errors.New("connproto: empty preamble")
 	}
 
 	body := make([]byte, size)
 	if _, err := io.ReadFull(r, body); err != nil {
-		return Identity{}, fmt.Errorf("connproto: önsöz gövdesi okunamadı: %w", err)
+		return Identity{}, fmt.Errorf("connproto: could not read the preamble body: %w", err)
 	}
 
 	var id Identity
 	if err := json.Unmarshal(body, &id); err != nil {
-		return Identity{}, fmt.Errorf("connproto: önsöz çözümlenemedi: %w", err)
+		return Identity{}, fmt.Errorf("connproto: could not parse the preamble: %w", err)
 	}
 	if id.Origin == "" {
 		id.Origin = "unknown"

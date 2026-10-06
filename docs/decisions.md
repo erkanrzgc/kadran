@@ -10613,3 +10613,78 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 
 - `goc_yerinde_sed` (göç) K-136'nın gerekçesiyle KABUL kalıyor (K-139).
 - `env -i` ve `cd /` burada da hijyen; mutant yok.
+
+## K-141 — CLI İngilizce
+
+**Tarih:** 5 Ekim 2026
+**Durum:** 1. AŞAMA KOD BİTTİ (dal `cli-ingilizce`). 2–5. aşamalar sırada.
+
+### Neden
+
+Depo herkese açık, README İngilizce; ama CLI'ın bütün çıktısı Türkçeydi. README'nin "Known
+gaps" listesindeki en görünür eksik buydu. Kullanıcı istedi (5 Ekim).
+
+### Karar
+
+- **Yalnız İngilizce.** Dil seçimi (`KADRAN_LANG`) yok: istenmedi, test matrisini ikiye
+  katlardı.
+- Kullanıcıya görünen metin çevrilir. Kod yorumları, `docs/decisions.md`, testlerin tanı
+  mesajları ve test adları Türkçe kalır: çevredeki kodla aynı dil.
+- Önce **metin-sözleşmesi taraması**: üretim kodunda bir mesajın içeriğine bakıp karar
+  veren yer var mı? `cmd/kadran`, `internal/client`, `internal/bootstrap` (Go), masaüstü:
+  YOK. Metne bakanlar yalnız testler ve `scripts/e2e-cli-runner.sh`; metinle aynı değişiklikte
+  güncellendi. Dosya biçimleri DOKUNULMADI: çapanın `.capa` uzantısı ve `kadran-capa 1`
+  başlığı uzak yedek betiğiyle sözleşme.
+- Aşamalar (her biri ayrı PR, CI yeşil):
+  1. CLI'ın kendi ürettiği metin: `cmd/kadran`, `internal/client`, `bootstrap`'ın Go
+     tarafı, CLI'a gömülü uzak betikler (`remoteKeys`, yükleme), CLI'ın kullandığı
+     `internal/anchor`, `internal/domaincheck`, `internal/connproto`.
+  2. `install.sh`/`goc.sh`/`geri.sh` çıktısı ve `deploy/*` betikleri + README'leri
+     (sunucu paketiyle gider).
+  3. Sunucunun gRPC ile CLI'a dönen hata metinleri (`internal/api`, store, deploy). Eski
+     sunucu Türkçe hata vermeye devam eder; CHANGELOG bunu söylüyor.
+  4. Masaüstü arayüzü.
+  5. Journal, alarm ve Telegram metinleri: K-108/K-114 sözleşmesine bağlı, operatöre
+     yönelik. Çevrilip çevrilmeyeceği kullanıcıya sorulacak.
+
+### 1. aşama
+
+~450 dize (25 dosya ve 3 iç paket). Bilinçli iki değişiklik:
+
+- Zincir durumu etiketleri `VALID` / `BROKEN` / `UNVERIFIABLE` / `UNKNOWN`. Kırık zincir
+  `INVALID` değil `BROKEN`: `VALID`, `INVALID`'in alt dizesi olurdu ve `grep VALID` iki
+  durumu ayırt edemezdi (E2E betiği tam bunu yapıyor).
+- Süre birimleri `d h m s` (eskiden `g sa dk sn`).
+
+Alt komut listesi testi (`TestUsageListsEverySubcommand`) hata mesajındaki listeyi " veya "
+ile bölüyordu; " or " oldu. `mutate-keys.sh`'ın iki iğnesi uzak betiğin mesajına bakıyordu,
+metinle birlikte güncellendi.
+
+### Kanıt
+
+- `go test ./...` yeşil (Debian 13 konteyneri).
+- Koruma: `cmd/kadran/english_test.go` (`TestCLIMessagesAreEnglish`) altı paketin üretim
+  kodundaki dize sabitlerinde Türkçe harf arıyor (`go/parser`). KIRMIZI ölçüldü: kopya
+  ağaçta `internal/client`'a `"anahtar bulunamadı"` eklenince düşüyor. Kontrol grubu:
+  denetlenen dosya sayısı 20'nin altına inerse (yollar kaymışsa) düşüyor. Türkçe harfsiz
+  Türkçe ("kapsam", "uygulama") yakalanmaz; o yüzden ayrıca sözcük listesiyle taranıp
+  okundu.
+
+**Çevirinin sessizce öldürdüğü denetimler.** "Çıktıda X GEÇMESİN" biçimindeki bir test
+(`!Contains` değil `Contains` → hata), X Türkçe kalıp çıktı İngilizce olunca HER ZAMAN
+geçer ve hiçbir şey ölçmez. Bu ancak mutasyonla görüldü: `mutate-domaincheck`'in "ssh
+takma adı çözülmüyor" mutantı yakalanmadı, çünkü test stderr'de `bilinmiyor` olmamasını
+istiyordu. Aynı türden ikinci ölü denetim `sudo_test.go`'da (`bulunamadı`) bulundu. İkisi
+de İngilizce metne çevrildi; 1. aşama paketlerinin testlerinde Türkçe dizeyle yapılan
+bütün `Contains`/`HasPrefix` denetimleri tarandı. Kalanlar sahte sunucu metni, test verisi
+ya da henüz çevrilmeyen kurulum betiği çıktısı (2. aşama).
+
+Mutasyon iğneleri: `mutate-keys` (3), `mutate-bootstrapssh` (1), `mutate-domaincheck` (3),
+`mutate-anchor` (1) eski Türkçe metni arıyordu; ilk koşuda "UYGULANAMADI" diye düştüler
+(tek eşleşme kapısı, K-127, tam bunun için var) ve metinle aynı değişiklikte düzeltildi.
+
+Mutasyon, CI taklidi (uid 1001 + parolasız sudo + `KADRAN_TEST_REAL_SUDO=1`, Debian 13
+konteyneri, `zstd`/`age`/`sqlite3` kurulu): 1. aşama dosyalarına dokunan dokuz betiğin
+(`anchor`, `appshow`, `authz`, `bootstrapssh`, `client`, `domaincheck`, `goc`, `keys`,
+`install`) hepsinde "Bütün mutasyonlar yakalandı". `go test ./...` 26/26 paket yeşil;
+`GOOS=windows go vet` CLI paketlerinde temiz.

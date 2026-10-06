@@ -139,7 +139,7 @@ func TestCheckDetectsTruncation(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := Check(hashes, []Anchor{capa}, time.Time{}, simdi)
-	if s.OK() || len(s.Conflicts) != 1 || !strings.Contains(s.Conflicts[0], "kısa") {
+	if s.OK() || len(s.Conflicts) != 1 || !strings.Contains(s.Conflicts[0], "shorter") {
 		t.Fatalf("kısaltılmış zincir yakalanmadı: %+v", s)
 	}
 }

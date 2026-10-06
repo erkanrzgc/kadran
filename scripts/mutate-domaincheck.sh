@@ -96,11 +96,11 @@ fi
 echo "== Karar kuralları =="
 
 mutate_in "$DC" "yanlış kayıt yalnızca uyarıyor" \
-    "s=s.replace('rep.raise(Stop, \"%s kaydı %s gösteriyor','rep.raise(Warn, \"%s kaydı %s gösteriyor',1)"
+    "s=s.replace('rep.raise(Stop, \"the %s record points at','rep.raise(Warn, \"the %s record points at',1)"
 
 # Sunucunun o ailedeki adresi bilinmeden durmak doğru bir AAAA'yı reddeder.
 mutate_in "$DC" "bilinmeyen aile durduruyor" \
-    "s=s.replace('rep.raise(Warn, \"%s kaydı var (%s) ama sunucunun','rep.raise(Stop, \"%s kaydı var (%s) ama sunucunun',1)"
+    "s=s.replace('rep.raise(Warn, \"there is a %s record (%s) but the server','rep.raise(Stop, \"there is a %s record (%s) but the server',1)"
 
 mutate_in "$DC" "AAAA denetlenmiyor" \
     "s=s.replace('\tcheckFamily(&rep, \"AAAA\", \"IPv6\", aaaa, family(rep.Server, false))\n','',1)"
@@ -134,7 +134,7 @@ mutate_in "$CLI" "ssh takma adı çözülmüyor" \
 
 # Rapor stdout'a giderse -json çıktısı bozulur.
 mutate_in "$CLI" "uyarı stdout'a yazılıyor" \
-    "s=s.replace('fmt.Fprintf(c.stderr, progName+\": uyarı: %s','fmt.Fprintf(c.stdout, progName+\": uyarı: %s',1)"
+    "s=s.replace('fmt.Fprintf(c.stderr, progName+\": warning: %s','fmt.Fprintf(c.stdout, progName+\": warning: %s',1)"
 
 # Boş ad (vekilden çıkarma) denetlenirse kaldırma imkânsızlaşır.
 mutate_in "$CLI" "boş alan adı da denetleniyor" \

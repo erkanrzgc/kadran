@@ -50,7 +50,7 @@ const (
 const MaxDeployApps = 32
 
 // ErrInvalidRole, rol ya da kapsam geçersiz olduğunda döner.
-var ErrInvalidRole = errors.New("connproto: geçersiz rol")
+var ErrInvalidRole = errors.New("connproto: invalid role")
 
 // appIDPattern, uygulama adının karakter kümesidir.
 //
@@ -74,7 +74,7 @@ func AppIDPattern() string { return appIDPattern.String() }
 // verilmemeli.
 func ParseDeployScope(s string) ([]string, error) {
 	if s == "" {
-		return nil, fmt.Errorf("%w: dağıtım kapsamı boş", ErrInvalidRole)
+		return nil, fmt.Errorf("%w: empty deploy scope", ErrInvalidRole)
 	}
 	apps := strings.Split(s, ",")
 	if err := (Identity{Role: RoleDeploy, Apps: apps}).CheckRole(); err != nil {
@@ -92,7 +92,7 @@ func (id Identity) CheckRole() error {
 	switch id.Role {
 	case RoleAdmin:
 		if len(id.Apps) != 0 {
-			return fmt.Errorf("%w: yönetici rolü uygulama kapsamı taşımaz", ErrInvalidRole)
+			return fmt.Errorf("%w: the admin role carries no app scope", ErrInvalidRole)
 		}
 		return nil
 	case RoleDeploy:
@@ -104,19 +104,19 @@ func (id Identity) CheckRole() error {
 
 func checkDeployApps(apps []string) error {
 	if len(apps) == 0 {
-		return fmt.Errorf("%w: dağıtım rolü en az bir uygulama ister", ErrInvalidRole)
+		return fmt.Errorf("%w: the deploy role needs at least one app", ErrInvalidRole)
 	}
 	if len(apps) > MaxDeployApps {
-		return fmt.Errorf("%w: kapsamda %d uygulama var, sınır %d",
+		return fmt.Errorf("%w: the scope has %d apps, limit %d",
 			ErrInvalidRole, len(apps), MaxDeployApps)
 	}
 	seen := make(map[string]bool, len(apps))
 	for _, app := range apps {
 		if !appIDPattern.MatchString(app) {
-			return fmt.Errorf("%w: geçersiz uygulama adı %q", ErrInvalidRole, app)
+			return fmt.Errorf("%w: invalid app name %q", ErrInvalidRole, app)
 		}
 		if seen[app] {
-			return fmt.Errorf("%w: %q kapsamda iki kez", ErrInvalidRole, app)
+			return fmt.Errorf("%w: %q appears twice in the scope", ErrInvalidRole, app)
 		}
 		seen[app] = true
 	}

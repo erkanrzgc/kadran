@@ -146,7 +146,7 @@ mutate "uid denetlenmiyor" \
     "s=s.replace('if uid := strings.TrimSpace(out); uid != \"0\" {','if uid := strings.TrimSpace(out); uid == \"hiç\" {',1)"
 
 mutate "sudo'nun kendi mesajı taşınmıyor" \
-    "s=s.replace('(-sudo kipi parola SORMAZ; sudoers\\'ta NOPASSWD gerekir): %w\", opts.Host, err)','(-sudo kipi parola SORMAZ; sudoers\\'ta NOPASSWD gerekir)\", opts.Host)',1)"
+    "s=s.replace('(-sudo NEVER asks for a password; sudoers needs NOPASSWD): %w\", opts.Host, err)','(-sudo NEVER asks for a password; sudoers needs NOPASSWD)\", opts.Host)',1)"
 
 mutate "sudo kipinde betik sudo'suz koşuyor" \
     "s=s.replace('\tif !opts.Sudo {\n\t\treturn script\n\t}','\tif true {\n\t\treturn script\n\t}',1)"

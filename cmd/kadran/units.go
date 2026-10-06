@@ -33,7 +33,7 @@ var sizeUnits = []struct {
 func parseSize(s string) (uint64, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return 0, fmt.Errorf("boyut boş olamaz")
+		return 0, fmt.Errorf("size cannot be empty")
 	}
 
 	for _, u := range sizeUnits {
@@ -43,15 +43,15 @@ func parseSize(s string) (uint64, error) {
 		}
 		n, err := strconv.ParseUint(strings.TrimSpace(digits), 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("boyut çözümlenemedi (%q)", s)
+			return 0, fmt.Errorf("could not parse size (%q)", s)
 		}
 		if n == 0 {
-			return 0, fmt.Errorf("boyut sıfır olamaz (%q) — limitsiz konteyner yoktur", s)
+			return 0, fmt.Errorf("size cannot be zero (%q) — there are no unlimited containers", s)
 		}
 		// Taşma denetimi: 4Ei üstü değerler sessizce sarmalanırdı ve
 		// "çok büyük limit" bir anda "çok küçük limit" olurdu.
 		if n > ^uint64(0)/u.mult {
-			return 0, fmt.Errorf("boyut çok büyük (%q)", s)
+			return 0, fmt.Errorf("size too large (%q)", s)
 		}
 		return n * u.mult, nil
 	}
@@ -59,10 +59,10 @@ func parseSize(s string) (uint64, error) {
 	// Soneksiz değer ham bayt sayılır.
 	n, err := strconv.ParseUint(s, 10, 64)
 	if err != nil {
-		return 0, fmt.Errorf("boyut çözümlenemedi (%q) — ör. 512Mi, 2Gi, 1073741824", s)
+		return 0, fmt.Errorf("could not parse size (%q) — e.g. 512Mi, 2Gi, 1073741824", s)
 	}
 	if n == 0 {
-		return 0, fmt.Errorf("boyut sıfır olamaz — limitsiz konteyner yoktur")
+		return 0, fmt.Errorf("size cannot be zero — there are no unlimited containers")
 	}
 	return n, nil
 }
@@ -99,12 +99,12 @@ func (m stringMap) String() string {
 func (m stringMap) Set(v string) error {
 	k, val, ok := strings.Cut(v, "=")
 	if !ok || k == "" {
-		return fmt.Errorf("ANAHTAR=DEĞER bekleniyordu (%q)", v)
+		return fmt.Errorf("expected KEY=VALUE (%q)", v)
 	}
 	if _, dup := m[k]; dup {
 		// Sessizce üzerine yazmak, iki kez verilen bir argümanın hangi
 		// değerinin geçerli olduğunu belirsiz bırakırdı.
-		return fmt.Errorf("%q birden çok kez verildi", k)
+		return fmt.Errorf("%q given more than once", k)
 	}
 	m[k] = val
 	return nil
@@ -137,13 +137,13 @@ func (s stringSlice) String() string {
 
 func (s stringSlice) Set(v string) error {
 	if v == "" {
-		return errors.New("boş anahtar")
+		return errors.New("empty key")
 	}
 	for _, existing := range *s.vals {
 		if existing == v {
 			// stringMap ile aynı kural: sessizce yutmak, kullanıcının
 			// yazdığı bir şeyin yok sayıldığını gizler.
-			return fmt.Errorf("%q birden çok kez verildi", v)
+			return fmt.Errorf("%q given more than once", v)
 		}
 	}
 	*s.vals = append(*s.vals, v)

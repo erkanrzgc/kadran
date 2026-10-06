@@ -39,27 +39,27 @@ type volumeSpec struct {
 // kurmadan yan yana sınamayı sağlıyor.
 func parseVolumeFlag(raw string) (volumeSpec, error) {
 	if raw == "" {
-		return volumeSpec{}, errors.New("boş hacim tanımı")
+		return volumeSpec{}, errors.New("empty volume definition")
 	}
 	parts := strings.Split(raw, ":")
 	if len(parts) < 2 || len(parts) > 3 {
 		return volumeSpec{}, fmt.Errorf(
-			"hacim biçimi AD:/bağlama/noktası[:ro] olmalı (%q)", raw)
+			"volume must look like NAME:/mount/point[:ro] (%q)", raw)
 	}
 
 	name, mount := parts[0], parts[1]
 	if name == "" {
-		return volumeSpec{}, fmt.Errorf("hacim adı boş (%q)", raw)
+		return volumeSpec{}, fmt.Errorf("volume name is empty (%q)", raw)
 	}
 	if mount == "" {
-		return volumeSpec{}, fmt.Errorf("bağlama noktası boş (%q)", raw)
+		return volumeSpec{}, fmt.Errorf("mount point is empty (%q)", raw)
 	}
 	// ⚠ Docker alışkanlığını YAKALA ve anlat.
 	if strings.HasPrefix(name, "/") || strings.HasPrefix(name, ".") {
 		return volumeSpec{}, fmt.Errorf(
-			"ilk parça bir HACİM ADI olmalı, host yolu değil (%q). "+
-				"Kadran host yolu kabul etmez; yolu kendisi kurar "+
-				"(/var/lib/kadran/volumes/<uygulama>/<ad>)", name)
+			"the first part must be a VOLUME NAME, not a host path (%q). "+
+				"Kadran does not accept host paths; it creates the path itself "+
+				"(/var/lib/kadran/volumes/<app>/<name>)", name)
 	}
 
 	spec := volumeSpec{name: name, mountPath: mount}
@@ -74,7 +74,7 @@ func parseVolumeFlag(raw string) (volumeSpec, error) {
 			spec.readOnly = false
 		default:
 			return volumeSpec{}, fmt.Errorf(
-				"bilinmeyen hacim seçeneği %q — yalnızca `ro` veya `rw`", parts[2])
+				"unknown volume option %q — only `ro` or `rw`", parts[2])
 		}
 	}
 	return spec, nil
@@ -106,7 +106,7 @@ func (l volumeList) Set(raw string) error {
 	// üzerine yazmak, hangi tanımın geçerli olduğunu belirsiz bırakırdı.
 	for _, v := range *l.vals {
 		if v.GetName() == spec.name {
-			return fmt.Errorf("%q birden çok kez verildi", spec.name)
+			return fmt.Errorf("%q given more than once", spec.name)
 		}
 	}
 	*l.vals = append(*l.vals, &kadranv1.AppVolume{

@@ -13,13 +13,13 @@ import (
 // runStatus, sunucunun ve daemon'ın durumunu gösterir.
 func (c *cli) runStatus(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("status")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
-	timeout := fs.Duration("timeout", defaultTimeout, "toplam süre sınırı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`status` en fazla bir hedef alır, %d verildi", fs.NArg())
+		return c.usageError("`status` takes at most one target, got %d", fs.NArg())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -33,7 +33,7 @@ func (c *cli) runStatus(ctx context.Context, args []string) int {
 
 	info, err := conn.RPC().GetSystemInfo(ctx, &kadranv1.GetSystemInfoRequest{})
 	if err != nil {
-		return c.fail(fmt.Errorf("sistem bilgisi alınamadı: %w", err))
+		return c.fail(fmt.Errorf("could not get system info: %w", err))
 	}
 
 	if *asJSON {
@@ -47,44 +47,44 @@ func (c *cli) printStatus(target string, ping *kadranv1.PingResponse, info *kadr
 	tw := tabwriter.NewWriter(c.stdout, 0, 0, 3, ' ', 0)
 	row := func(key, value string) { fmt.Fprintf(tw, "%s\t%s\n", key, value) }
 
-	row("Hedef", target)
-	row("Daemon", fmt.Sprintf("%s (protokol %d)", info.GetDaemonVersion(), ping.GetProtocolVersion()))
-	row("Çalışma süresi", humanDuration(time.Duration(info.GetDaemonUptimeSeconds())*time.Second))
+	row("Target", target)
+	row("Daemon", fmt.Sprintf("%s (protocol %d)", info.GetDaemonVersion(), ping.GetProtocolVersion()))
+	row("Uptime", humanDuration(time.Duration(info.GetDaemonUptimeSeconds())*time.Second))
 	if h := info.GetHostname(); h != "" {
-		row("Sunucu adı", h)
+		row("Hostname", h)
 	}
-	row("Çalışan kullanıcı", daemonUserCell(info.GetRunningAsUser()))
+	row("Running as", daemonUserCell(info.GetRunningAsUser()))
 	row("Executor", executorCell(info))
 
 	if host := info.GetHost(); host != nil {
 		fmt.Fprintf(tw, "\t\n")
 		if os := host.GetOs(); os != "" {
-			row("İşletim sistemi", os)
+			row("OS", os)
 		}
 		if k := host.GetKernelVersion(); k != "" {
-			row("Çekirdek", k)
+			row("Kernel", k)
 		}
 		if a := host.GetArchitecture(); a != "" {
-			row("Mimari", a)
+			row("Architecture", a)
 		}
 		if n := host.GetCpuCount(); n > 0 {
-			row("CPU", fmt.Sprintf("%d çekirdek", n))
+			row("CPU", fmt.Sprintf("%d cores", n))
 		}
 		if total := host.GetMemoryTotalBytes(); total > 0 {
-			row("Bellek", fmt.Sprintf("%s kullanılabilir / %s toplam",
+			row("Memory", fmt.Sprintf("%s available / %s total",
 				humanBytes(host.GetMemoryAvailableBytes()), humanBytes(total)))
 		}
 		row("Disk", diskCell(host))
 		if d := host.GetDockerVersion(); d != "" {
 			row("Docker", d)
 		} else {
-			row("Docker", "yok — executor Docker'a ulaşamıyor")
+			row("Docker", "none — the executor cannot reach Docker")
 		}
 	}
 	_ = tw.Flush()
 
 	if w := ping.GetCompatibilityWarning(); w != "" {
-		fmt.Fprintf(c.stderr, "\nuyarı: %s\n", w)
+		fmt.Fprintf(c.stderr, "\nwarning: %s\n", w)
 	}
 }
 
@@ -96,22 +96,22 @@ func (c *cli) printStatus(target string, ping *kadranv1.PingResponse, info *kadr
 // zamanda değişmezin ekrandaki belgesi.
 func daemonUserCell(u string) string {
 	if u == "root" {
-		return "root  ⚠ KURULUM BOZUK — kadrand root çalışmamalı"
+		return "root  ⚠ BROKEN INSTALL — kadrand must not run as root"
 	}
 	if u == "" {
-		return "bilinmiyor"
+		return "unknown"
 	}
 	return u
 }
 
 func executorCell(info *kadranv1.GetSystemInfoResponse) string {
 	if !info.GetExecutorReachable() {
-		return "ERİŞİLEMİYOR — ayrıcalıklı işlemler çalışmayacak"
+		return "UNREACHABLE — privileged operations will not work"
 	}
 	if v := info.GetExecutorVersion(); v != "" {
-		return "erişilebilir · " + v
+		return "reachable · " + v
 	}
-	return "erişilebilir"
+	return "reachable"
 }
 
 func (c *cli) printStatusJSON(target string, ping *kadranv1.PingResponse, info *kadranv1.GetSystemInfoResponse) int {
@@ -148,14 +148,14 @@ func (c *cli) printStatusJSON(target string, ping *kadranv1.PingResponse, info *
 func diskCell(host *kadranv1.HostInfo) string {
 	total := host.GetDiskTotalBytes()
 	if total == 0 {
-		return "ölçülemedi"
+		return "could not be measured"
 	}
 	avail := host.GetDiskAvailableBytes()
 	pct := avail * 100 / total
-	line := fmt.Sprintf("%s kullanılabilir / %s toplam (%%%d boş)",
+	line := fmt.Sprintf("%s available / %s total (%d%% free)",
 		humanBytes(avail), humanBytes(total), pct)
 	if pct < diskWarnPercent {
-		line += "  ⚠ DOLMAK ÜZERE"
+		line += "  ⚠ NEARLY FULL"
 	}
 	return line
 }

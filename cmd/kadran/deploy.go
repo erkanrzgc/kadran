@@ -22,8 +22,8 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 // ters vekil → boşaltma. Ayrıntı internal/deploy/rollout.go'da.
 func (c *cli) runDeploy(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("deploy")
-	commit := fs.String("commit", "", "derlenecek commit (tam 40 haneli sha); boşsa dal çözülür")
-	branch := fs.String("branch", "", "çözülecek dal; boşsa uygulamanın varsayılan dalı")
+	commit := fs.String("commit", "", "commit to build (full 40-character sha); if empty the branch is resolved")
+	branch := fs.String("branch", "", "branch to resolve; if empty, the app's default branch")
 	// ── ⚠ Varsayılan sınır YOK ve bu KASITLI ────────────────────────
 	//
 	// Diğer komutlar defaultTimeout (30 sn) kullanıyor. Derleme onlardan
@@ -36,13 +36,13 @@ func (c *cli) runDeploy(ctx context.Context, args []string) int {
 	// Sınırsız bırakmak sorumsuzluk değil: bağlantı kurma aşamasının
 	// kendi sınırı var (ssh ConnectTimeout=10 sn) ve komut SIGINT'e
 	// duyarlı — Ctrl-C akışı iptal eder, sunucu tarafı sürümü mühürler.
-	timeout := fs.Duration("timeout", 0, "toplam süre sınırı (0 = sınırsız; derleme uzun sürebilir)")
+	timeout := fs.Duration("timeout", 0, "overall time limit (0 = none; builds can take long)")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: kadran deploy [-commit sha | -branch dal] " +
-			"<uygulama> [hedef] — seçenekler uygulama adından ÖNCE gelir")
+		return c.usageError("usage: kadran deploy [-commit sha | -branch branch] " +
+			"<app> [target] — options go BEFORE the app name")
 	}
 	appID, target := fs.Arg(0), fs.Arg(1)
 
@@ -68,7 +68,7 @@ func (c *cli) runDeploy(ctx context.Context, args []string) int {
 		CommitSha: sha,
 	})
 	if err != nil {
-		return c.fail(fmt.Errorf("dağıtım başlatılamadı: %w", err))
+		return c.fail(fmt.Errorf("could not start the deploy: %w", err))
 	}
 	return c.consumeDeploy(stream)
 }
@@ -95,16 +95,16 @@ func (c *cli) consumeDeploy(stream kadranv1.KadranService_DeployClient) int {
 		}
 		if err != nil {
 			if releaseID != "" {
-				fmt.Fprintf(c.stderr, "\nSürüm %s başarısız.\n", releaseID)
+				fmt.Fprintf(c.stderr, "\nRelease %s failed.\n", releaseID)
 			}
-			return c.fail(fmt.Errorf("dağıtım başarısız: %w", err))
+			return c.fail(fmt.Errorf("deploy failed: %w", err))
 		}
 
 		switch {
 		case msg.GetAccepted() != nil:
 			acc := msg.GetAccepted()
 			releaseID = acc.GetReleaseId()
-			fmt.Fprintf(c.stderr, "Sürüm %s · commit %s · derleme başlıyor…\n\n",
+			fmt.Fprintf(c.stderr, "Release %s · commit %s · build starting…\n\n",
 				releaseID, shortSHA(acc.GetCommitSha()))
 
 		case msg.GetOutput() != nil:
@@ -124,10 +124,10 @@ func (c *cli) consumeDeploy(stream kadranv1.KadranService_DeployClient) int {
 
 	if succeeded == nil {
 		return c.fail(errors.New(
-			"dağıtım başarı bildirmeden bitti — imaj üretildiği KANITLANAMADI"))
+			"the deploy ended without reporting success — there is NO PROOF an image was built"))
 	}
 
-	fmt.Fprintf(c.stdout, "\nSürüm %s canlıda · imaj %s\n",
+	fmt.Fprintf(c.stdout, "\nRelease %s is live · image %s\n",
 		succeeded.GetReleaseId(), shortImage(succeeded.GetImageId()))
 	return exitOK
 }
@@ -153,8 +153,8 @@ func (c *cli) resolveCommit(
 	if commit != "" {
 		if !fullSHA.MatchString(commit) {
 			return "", fmt.Errorf(
-				"-commit tam 40 haneli küçük harf onaltılık olmalı (%q) — "+
-					"kısa sha ve dal adı kabul edilmez: derleme tekrarlanabilir olmalı", commit)
+				"-commit must be a full 40-character lowercase hex sha (%q) — "+
+					"short shas and branch names are refused: builds must be reproducible", commit)
 		}
 		return commit, nil
 	}
@@ -167,11 +167,11 @@ func (c *cli) resolveCommit(
 	if status.Code(err) == codes.PermissionDenied {
 		// Dağıtım anahtarı uygulama tanımını okuyamaz: ortam
 		// değişkenlerinin değerlerini taşıyor (K-131). Dal çözülemez.
-		return "", fmt.Errorf("bu anahtar uygulama tanımını okuyamıyor, dal çözülemez: "+
-			"commit'i -commit ile verin (GitHub Actions'ta -commit \"$GITHUB_SHA\"): %w", err)
+		return "", fmt.Errorf("this key cannot read the app definition, so the branch cannot be resolved: "+
+			"pass the commit with -commit (in GitHub Actions -commit \"$GITHUB_SHA\"): %w", err)
 	}
 	if err != nil {
-		return "", fmt.Errorf("uygulama tanımı alınamadı: %w", err)
+		return "", fmt.Errorf("could not get the app definition: %w", err)
 	}
 	spec := resp.GetApp().GetSpec()
 
@@ -179,10 +179,10 @@ func (c *cli) resolveCommit(
 		branch = spec.GetGitBranch()
 	}
 	if branch == "" {
-		return "", errors.New("dal belirlenemedi: -branch veya -commit verin")
+		return "", errors.New("could not determine the branch: pass -branch or -commit")
 	}
 
-	fmt.Fprintf(c.stderr, "%s/%s/%s dalı %q çözülüyor…\n",
+	fmt.Fprintf(c.stderr, "resolving branch %[4]q of %[1]s/%[2]s/%[3]s…\n",
 		spec.GetGitHost(), spec.GetGitOwner(), spec.GetGitRepo(), branch)
 
 	sha, err := resolveRemoteBranch(ctx,

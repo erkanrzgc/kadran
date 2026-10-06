@@ -20,7 +20,7 @@ func protoToJSON(m proto.Message) (json.RawMessage, error) {
 	}
 	b, err := opts.Marshal(m)
 	if err != nil {
-		return nil, fmt.Errorf("JSON'a çevrilemedi: %w", err)
+		return nil, fmt.Errorf("could not encode as JSON: %w", err)
 	}
 	return b, nil
 }
@@ -30,7 +30,7 @@ func (c *cli) writeJSON(v any) int {
 	enc := json.NewEncoder(c.stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		return c.fail(fmt.Errorf("JSON yazılamadı: %w", err))
+		return c.fail(fmt.Errorf("could not write JSON: %w", err))
 	}
 	return exitOK
 }

@@ -33,15 +33,15 @@ func TestHumanDuration(t *testing.T) {
 		in   time.Duration
 		want string
 	}{
-		{0, "0sn"},
-		{500 * time.Millisecond, "0sn"},
-		{45 * time.Second, "45sn"},
-		{90 * time.Second, "1dk 30sn"},
-		{2 * time.Hour, "2sa"},
-		{2*time.Hour + 15*time.Minute, "2sa 15dk"},
-		{50 * time.Hour, "2g 2sa"},
-		// En fazla iki birim: "3g 4sa 17dk 3sn" okunmaz.
-		{50*time.Hour + 17*time.Minute + 3*time.Second, "2g 2sa"},
+		{0, "0s"},
+		{500 * time.Millisecond, "0s"},
+		{45 * time.Second, "45s"},
+		{90 * time.Second, "1m 30s"},
+		{2 * time.Hour, "2h"},
+		{2*time.Hour + 15*time.Minute, "2h 15m"},
+		{50 * time.Hour, "2d 2h"},
+		// En fazla iki birim: "3d 4h 17m 3s" okunmaz.
+		{50*time.Hour + 17*time.Minute + 3*time.Second, "2d 2h"},
 	}
 
 	for _, tc := range tests {
@@ -91,8 +91,8 @@ func TestDescribeActorFallsBackHonestly(t *testing.T) {
 		actor *kadranv1.Actor
 		want  string
 	}{
-		{"aktör yok", nil, "bilinmiyor"},
-		{"boş aktör", &kadranv1.Actor{}, "bilinmiyor"},
+		{"aktör yok", nil, "unknown"},
+		{"boş aktör", &kadranv1.Actor{}, "unknown"},
 		{"yalnızca köken", &kadranv1.Actor{Origin: "local"}, "local"},
 		{"etiket kökene tercih edilir",
 			&kadranv1.Actor{Origin: "ssh", Label: "erkan-dizustu"}, "erkan-dizustu"},
@@ -121,7 +121,7 @@ func TestChainStatusLabelsAreDistinct(t *testing.T) {
 		t.Errorf("etiketler ayırt edilemiyor: %q / %q / %q", valid, invalid, unreachable)
 	}
 	// "Doğrulanamadı" kurcalama gibi okunmamalı.
-	if strings.Contains(unreachable, "GEÇERSİZ") {
+	if strings.Contains(unreachable, "BROKEN") {
 		t.Errorf("erişilemez durumu geçersiz gibi okunuyor: %q", unreachable)
 	}
 }
@@ -135,7 +135,7 @@ func TestOutcomeLabelMarksDenied(t *testing.T) {
 	if denied == failure {
 		t.Errorf("reddedilme ile başarısızlık aynı görünüyor: %q", denied)
 	}
-	if !strings.Contains(denied, "RED") {
+	if !strings.Contains(denied, "DENIED") {
 		t.Errorf("reddedilme etiketi beklenmedik: %q", denied)
 	}
 }

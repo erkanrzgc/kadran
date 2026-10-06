@@ -224,7 +224,7 @@ func fakeSSHMain() {
 		got := sha256.Sum256(b)
 		if hex.EncodeToString(got[:]) != sum {
 			_ = os.Remove(part)
-			fmt.Fprintln(os.Stderr, "bootstrap: paketin özeti tutmuyor")
+			fmt.Fprintln(os.Stderr, "bootstrap: the package digest does not match")
 			os.Exit(digestMismatch)
 		}
 		logText := os.Getenv(fakeInstallLogEnv)
@@ -236,7 +236,7 @@ func fakeSSHMain() {
 			rc = "0"
 		}
 		if code := os.Getenv(fakeStartRCEnv); code == strconv.Itoa(installBusy) {
-			fmt.Fprintln(os.Stderr, "bootstrap: bu sunucuda başka bir kurulum sürüyor")
+			fmt.Fprintln(os.Stderr, "bootstrap: another install is running on this server")
 			os.Exit(installBusy)
 		}
 		_ = os.WriteFile(filepath.Join(remoteDir, sum+".log"), []byte(logText), 0o600)

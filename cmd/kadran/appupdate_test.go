@@ -115,7 +115,7 @@ func TestAppUpdateRejectsMissingName(t *testing.T) {
 	if code := c.runAppUpdate(t.Context(), []string{"-domain", "a.example.com"}); code != exitUsage {
 		t.Fatalf("çıkış kodu = %d, beklenen %d", code, exitUsage)
 	}
-	if !strings.Contains(out.String(), "kullanım") {
+	if !strings.Contains(out.String(), "usage") {
 		t.Errorf("kullanım metni basılmadı: %q", out.String())
 	}
 }
@@ -127,7 +127,7 @@ func TestAppUpdateRejectsEmptyChangeSet(t *testing.T) {
 	if code := c.runAppUpdate(t.Context(), []string{"blog"}); code != exitUsage {
 		t.Fatalf("çıkış kodu = %d, beklenen %d", code, exitUsage)
 	}
-	if !strings.Contains(out.String(), "değiştirilecek bir alan verilmedi") {
+	if !strings.Contains(out.String(), "nothing to change") {
 		t.Errorf("sebep açıklanmadı: %q", out.String())
 	}
 }

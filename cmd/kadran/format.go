@@ -28,17 +28,17 @@ func humanBytes(n uint64) string {
 // hızlı okunur ve çalışma süresi için o hassasiyet zaten gereksiz.
 func humanDuration(d time.Duration) string {
 	if d < time.Second {
-		return "0sn"
+		return "0s"
 	}
 
 	units := []struct {
 		size  time.Duration
 		label string
 	}{
-		{24 * time.Hour, "g"},
-		{time.Hour, "sa"},
-		{time.Minute, "dk"},
-		{time.Second, "sn"},
+		{24 * time.Hour, "d"},
+		{time.Hour, "h"},
+		{time.Minute, "m"},
+		{time.Second, "s"},
 	}
 
 	var parts []string
@@ -72,7 +72,7 @@ func shortFingerprint(fp string) string {
 // describeActor, denetim listesi için aktörü tek bir hücreye sığdırır.
 func describeActor(a *kadranv1.Actor) string {
 	if a == nil {
-		return "bilinmiyor"
+		return "unknown"
 	}
 	if fp := a.GetSshKeyFingerprint(); fp != "" {
 		return shortFingerprint(fp)
@@ -83,42 +83,43 @@ func describeActor(a *kadranv1.Actor) string {
 	if origin := a.GetOrigin(); origin != "" {
 		return origin
 	}
-	return "bilinmiyor"
+	return "unknown"
 }
 
 // outcomeLabel, denetim sonucunu Türkçeleştirir.
 func outcomeLabel(o kadranv1.AuditOutcome) string {
 	switch o {
 	case kadranv1.AuditOutcome_AUDIT_OUTCOME_SUCCESS:
-		return "BAŞARILI"
+		return "SUCCESS"
 	case kadranv1.AuditOutcome_AUDIT_OUTCOME_FAILURE:
-		return "BAŞARISIZ"
+		return "FAILED"
 	case kadranv1.AuditOutcome_AUDIT_OUTCOME_DENIED:
 		// Güvenlik modelinin devreye girdiği durum: ayrıca izlenir.
-		return "REDDEDİLDİ"
+		return "DENIED"
 	case kadranv1.AuditOutcome_AUDIT_OUTCOME_UNSPECIFIED:
-		return "belirsiz"
+		return "unspecified"
 	default:
-		return "belirsiz"
+		return "unspecified"
 	}
 }
 
 // chainStatusLabel, zincir durumunu ekrana yazılacak biçime çevirir.
 //
-// UNREACHABLE'ın "GEÇERSİZ" değil "DOĞRULANAMADI" olarak görünmesi
+// UNREACHABLE'ın "BROKEN" değil "UNVERIFIABLE" olarak görünmesi
 // kasıtlıdır: birincisi kurcalama şüphesi, ikincisi işletim sorunudur ve
-// operatörün tepkisi tamamen farklıdır.
+// operatörün tepkisi tamamen farklıdır. Etiketler birbirinin alt dizesi
+// değil ("VALID" ⊂ "INVALID" olurdu): betikler `grep` ile ayırt edebilsin.
 func chainStatusLabel(s kadranv1.ChainStatus) string {
 	switch s {
 	case kadranv1.ChainStatus_CHAIN_STATUS_VALID:
-		return "GEÇERLİ"
+		return "VALID"
 	case kadranv1.ChainStatus_CHAIN_STATUS_INVALID:
-		return "GEÇERSİZ"
+		return "BROKEN"
 	case kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE:
-		return "DOĞRULANAMADI"
+		return "UNVERIFIABLE"
 	case kadranv1.ChainStatus_CHAIN_STATUS_UNSPECIFIED:
-		return "BİLİNMİYOR"
+		return "UNKNOWN"
 	default:
-		return "BİLİNMİYOR"
+		return "UNKNOWN"
 	}
 }

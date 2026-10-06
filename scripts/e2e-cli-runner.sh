@@ -102,7 +102,7 @@ echo "==> kadran status"
 out="$("$BIN/kadran" status "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 contains "daemon sürümü gösterildi" "Daemon" "$out"
-contains "executor erişilemiyor olarak raporlandı" "ERİŞİLEMİYOR" "$out"
+contains "executor erişilemiyor olarak raporlandı" "UNREACHABLE" "$out"
 # kadrand root ile başlamayı reddediyor; ekranda da root görünmemeli.
 lacks "kadrand yetkisiz kullanıcı olarak çalışıyor" "KURULUM BOZUK" "$out"
 
@@ -119,7 +119,7 @@ out="$("$BIN/kadran" audit list "unix://$SOCK" 2>&1)"; code=$?
 check "çıkış kodu" 0 "$code"
 # kadrand açılışta zincire bir daemon.start kaydı yazar.
 contains "başlangıç kaydı zincirde" "daemon.start" "$out"
-contains "sonuç sütunu" "BAŞARILI" "$out"
+contains "sonuç sütunu" "SUCCESS" "$out"
 
 echo
 echo "==> kadran audit verify"
@@ -127,8 +127,8 @@ out="$("$BIN/kadran" audit verify "unix://$SOCK" 2>&1)"; code=$?
 # ASIL SORU: executor erişilemezken çıkış kodu 1 mi (doğrulanamadı), yoksa
 # 3 mü (kurcalama)? 3 dönerse her yeniden başlatma sahte alarm üretirdi.
 check "erişilemeyen executor çıkış kodu (1 = doğrulanamadı, 3 = kırık)" 1 "$code"
-contains "daemon zinciri geçerli" "GEÇERLİ" "$out"
-contains "executor zinciri doğrulanamadı" "DOĞRULANAMADI" "$out"
+contains "daemon zinciri geçerli" "VALID" "$out"
+contains "executor zinciri doğrulanamadı" "UNVERIFIABLE" "$out"
 lacks "erişilemeyen zincir kurcalama olarak raporlanmadı" "GEÇERSİZ" "$out"
 
 echo
@@ -140,7 +140,7 @@ out="$("$BIN/kadran" app create -repo github.com/kadran-e2e/blog e2eblog "unix:/
 check "app create çıkış kodu" 0 "$code"
 out="$("$BIN/kadran" app show e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app show çıkış kodu" 0 "$code"
-contains "canlı sürüm satırı" "Canlı    : yok" "$out"
+contains "canlı sürüm satırı" "Live     : none" "$out"
 out="$("$BIN/kadran" app show --json e2eblog "unix://$SOCK" 2>&1)"; code=$?
 check "app show --json çıkış kodu" 0 "$code"
 contains "JSON'da canlı sürüm alanı" '"active_release_id"' "$out"
@@ -195,7 +195,7 @@ contains "kapsam dışı: yetki reddi" "kapsamında değil" "$out"
 # Kapsam içi: yetkiyi geçip GERÇEK işleyiciye ulaşmalı. Executor yok, yani
 # derleme düşer; ölçülen, sürümün açılıp "derleme başlıyor"un gelmesi.
 out="$(dk deploy -commit "$SHA" e2eblog kadran-client@ci-e2e 2>&1)"; code=$?
-contains "kapsam içi dağıtım işleyiciye ulaştı" "derleme başlıyor" "$out"
+contains "kapsam içi dağıtım işleyiciye ulaştı" "build starting" "$out"
 lacks "kapsam içi: yetki reddi yok" "kapsamında değil" "$out"
 lacks "kapsam içi: rol reddi yok" "yalnızca dağıtım yapabilir" "$out"
 

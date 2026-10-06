@@ -20,12 +20,12 @@ import (
 // kılardı.
 func (c *cli) runAlarms(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("alarms")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("kullanım: kadran alarms [hedef]")
+		return c.usageError("usage: kadran alarms [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -52,12 +52,12 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 
 	alarms := resp.GetAlarms()
 	if len(alarms) == 0 {
-		fmt.Fprintln(c.stdout, "etkin alarm yok")
+		fmt.Fprintln(c.stdout, "no active alarms")
 		return exitOK
 	}
 
 	w := tabwriter.NewWriter(c.stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "CİDDİYET\tSÜREDİR\tTÜR\tHEDEF\tAYRINTI")
+	fmt.Fprintln(w, "SEVERITY\tFOR\tKIND\tTARGET\tDETAIL")
 	for _, a := range alarms {
 		since := time.Unix(a.GetSinceUnix(), 0).UTC()
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
@@ -74,8 +74,8 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 		// edileceğini varsayar. Gönderilmediğini SÖYLEMEYEN bir çıktı,
 		// olmayan bir korumaya güven üretir.
 		fmt.Fprintln(c.stderr,
-			"UYARI: alarmlar DIŞARI GÖNDERİLMİYOR — yalnızca bu liste ve "+
-				"sunucu journal'ı. Telegram/webhook teslimatı henüz yok.")
+			"WARNING: alarms are NOT SENT anywhere — only this list and the "+
+				"server journal. Telegram/webhook delivery is not set up.")
 	}
 
 	// Etkin alarm varken sıfır dönmek, `kadran alarms && echo tamam`
@@ -87,12 +87,12 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 func severityLabel(s kadranv1.AlarmSeverity) string {
 	switch s {
 	case kadranv1.AlarmSeverity_ALARM_SEVERITY_CRITICAL:
-		return "KRİTİK"
+		return "CRITICAL"
 	case kadranv1.AlarmSeverity_ALARM_SEVERITY_WARNING:
-		return "uyarı"
+		return "warning"
 	default:
 		// Tanınmayan ciddiyeti "uyarı" saymak, gerçekten kritik bir
 		// koşulu düşük göstermek olurdu.
-		return "BİLİNMEYEN"
+		return "UNKNOWN"
 	}
 }

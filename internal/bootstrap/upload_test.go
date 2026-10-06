@@ -75,7 +75,7 @@ func TestUploadResumesFromTheServerSize(t *testing.T) {
 	if c := cagrilar(t, log); strings.Join(c, "|") != strings.Join(want, "|") {
 		t.Fatalf("çağrılar:\n%q\nbeklenen:\n%q", c, want)
 	}
-	if !strings.Contains(out.String(), "kaldığı yerden") {
+	if !strings.Contains(out.String(), "Resuming the upload") {
 		t.Fatalf("devam kullanıcıya söylenmedi:\n%s", out)
 	}
 }
@@ -87,7 +87,7 @@ func TestUploadGivesUpWhenTheLineKeepsDropping(t *testing.T) {
 
 	err := runInstaller(context.Background(), opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "denemede") {
+	if err == nil || !strings.Contains(err.Error(), "attempts") {
 		t.Fatalf("sürekli kopan hat hata vermedi: %v", err)
 	}
 	c := cagrilar(t, log)
@@ -138,7 +138,7 @@ func TestACorruptPartIsUploadedAgainOnce(t *testing.T) {
 	if c := cagrilar(t, log); strings.Join(c, "|") != strings.Join(want, "|") {
 		t.Fatalf("çağrılar:\n%q\nbeklenen:\n%q", c, want)
 	}
-	if !strings.Contains(out.String(), "bozuk") {
+	if !strings.Contains(out.String(), "corrupt") {
 		t.Fatalf("yeniden yükleme kullanıcıya söylenmedi:\n%s", out)
 	}
 }
@@ -150,7 +150,7 @@ func TestPersistentCorruptionFailsAfterOneRetry(t *testing.T) {
 
 	err := runInstaller(context.Background(), opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "özeti tutmadı") {
+	if err == nil || !strings.Contains(err.Error(), "digest did not match") {
 		t.Fatalf("hep bozulan paket hata vermedi: %v", err)
 	}
 	if c := cagrilar(t, log); say(c, "başlat") != 2 || say(c, "izle") != 0 {
@@ -186,7 +186,7 @@ func TestInstallFailureCarriesTheExitCode(t *testing.T) {
 
 	err := runInstaller(context.Background(), opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "çıkış 7") {
+	if err == nil || !strings.Contains(err.Error(), "exit 7") {
 		t.Fatalf("kurulumun çıkış kodu taşınmadı: %v", err)
 	}
 }
@@ -213,7 +213,7 @@ func TestAnotherInstallRunningIsReported(t *testing.T) {
 
 	err := runInstaller(context.Background(), opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "başka bir kurulum") {
+	if err == nil || !strings.Contains(err.Error(), "another install") {
 		t.Fatalf("başka kurulum bildirilmedi: %v", err)
 	}
 	if c := cagrilar(t, log); say(c, "izle") != 0 {
@@ -230,7 +230,7 @@ func TestADeadInstallerIsReportedNotAwaited(t *testing.T) {
 
 	err := runInstaller(context.Background(), opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "bitiş işareti") ||
+	if err == nil || !strings.Contains(err.Error(), "completion marker") ||
 		!strings.Contains(err.Error(), fakeReportedDir+"/"+sum+".log") {
 		t.Fatalf("ölen kurulum doğru bildirilmedi: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestAShortSuccessfulWriteStopsInsteadOfLooping(t *testing.T) {
 
 	err := runInstaller(context.Background(), opts, archive)
 
-	if err == nil || !strings.Contains(err.Error(), "başarılı göründü") {
+	if err == nil || !strings.Contains(err.Error(), "looked successful") {
 		t.Fatalf("eksik yazma fark edilmedi: %v", err)
 	}
 	if n := say(cagrilar(t, log), "yaz"); n != 1 {
@@ -264,7 +264,7 @@ func TestAnUnexpectedUploadDirIsRejected(t *testing.T) {
 
 			err := runInstaller(context.Background(), opts, archive)
 
-			if err == nil || !strings.Contains(err.Error(), "beklenmedik") {
+			if err == nil || !strings.Contains(err.Error(), "unexpected") {
 				t.Fatalf("%q kabul edildi: %v", dir, err)
 			}
 			if c := cagrilar(t, log); say(c, "yaz") != 0 {

@@ -50,11 +50,11 @@ func (v Verdict) String() string {
 	case OK:
 		return "ok"
 	case Skipped:
-		return "atlandı"
+		return "skipped"
 	case Warn:
-		return "uyarı"
+		return "warning"
 	case Stop:
-		return "dur"
+		return "stop"
 	}
 	return fmt.Sprintf("Verdict(%d)", int(v))
 }
@@ -178,7 +178,7 @@ func Check(ctx context.Context, r Resolver, domain, serverHost string) Report {
 	rep := Report{Domain: domain, Verdict: OK}
 
 	if domain == "localhost" || strings.HasSuffix(domain, ".localhost") {
-		rep.raise(Skipped, "%s bir .localhost adı: DNS'te yok, Caddy iç sertifikasını kullanır", domain)
+		rep.raise(Skipped, "%s is a .localhost name: it is not in DNS, Caddy uses its internal certificate", domain)
 		return rep
 	}
 
@@ -187,20 +187,20 @@ func Check(ctx context.Context, r Resolver, domain, serverHost string) Report {
 	rep.A, rep.AAAA = a, aaaa
 	for _, e := range []error{aErr, aaaaErr} {
 		if e != nil {
-			rep.raise(Warn, "DNS sorgusu tamamlanamadı (%v); kayıtlar denetlenemedi", e)
+			rep.raise(Warn, "DNS lookup did not complete (%v); records could not be checked", e)
 		}
 	}
 	if aNotFound && aaaaNotFound {
-		rep.raise(Stop, "%s için A ya da AAAA kaydı yok", domain)
+		rep.raise(Stop, "%s has no A or AAAA record", domain)
 		return rep
 	}
 
 	rep.Server = serverAddrs(ctx, r, serverHost)
 	if len(rep.Server) == 0 {
 		if serverHost == "" {
-			rep.raise(Warn, "sunucunun genel adresi bilinmiyor (yerel hedef); kayıtlar: %s", join(append(a, aaaa...)))
+			rep.raise(Warn, "the server's public address is unknown (local target); records: %s", join(append(a, aaaa...)))
 		} else {
-			rep.raise(Warn, "sunucunun genel adresi bilinmiyor (%s özel ağda ya da çözülemedi); kayıtlar: %s",
+			rep.raise(Warn, "the server's public address is unknown (%s is on a private network or did not resolve); records: %s",
 				serverHost, join(append(a, aaaa...)))
 		}
 		return rep
@@ -218,11 +218,11 @@ func checkFamily(rep *Report, record, fam string, records, server []netip.Addr) 
 	case len(records) == 0:
 		return
 	case len(server) == 0:
-		rep.raise(Warn, "%s kaydı var (%s) ama sunucunun %s adresi bilinmiyor; "+
-			"başka bir yeri gösteriyorsa sertifika alınamaz", record, join(records), fam)
+		rep.raise(Warn, "there is a %s record (%s) but the server's %s address is unknown; "+
+			"if it points elsewhere no certificate can be issued", record, join(records), fam)
 	case overlaps(records, server):
 		return
 	default:
-		rep.raise(Stop, "%s kaydı %s gösteriyor, sunucu %s", record, join(records), join(server))
+		rep.raise(Stop, "the %s record points at %s, the server is %s", record, join(records), join(server))
 	}
 }

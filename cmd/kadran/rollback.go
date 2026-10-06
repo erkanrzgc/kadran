@@ -30,14 +30,14 @@ const rollbackTimeout = 3 * time.Minute
 // çoğu zaman durmuş hâlde bekliyor, yani işlem saniyeler sürer.
 func (c *cli) runRollback(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("rollback")
-	asJSON := fs.Bool("json", false, "makine okunabilir JSON çıktısı")
-	timeout := fs.Duration("timeout", rollbackTimeout, "toplam süre sınırı")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", rollbackTimeout, "overall time limit")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: kadran rollback <uygulama> [hedef] — " +
-			"seçenekler uygulama adından ÖNCE gelir")
+		return c.usageError("usage: kadran rollback <app> [target] — " +
+			"options go BEFORE the app name")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -67,7 +67,7 @@ func (c *cli) runRollback(ctx context.Context, args []string) int {
 		return c.writeJSON(json.RawMessage(body))
 	}
 
-	fmt.Fprintf(c.stdout, "Geri alındı: %s\n", resp.GetAppId())
+	fmt.Fprintf(c.stdout, "Rolled back: %s\n", resp.GetAppId())
 	fmt.Fprintf(c.stdout, "  %s → %s\n", resp.GetFromReleaseId(), resp.GetToReleaseId())
 
 	// Konteynerlerin yeniden kurulup kurulmadığı SUSULMUYOR: operatörün

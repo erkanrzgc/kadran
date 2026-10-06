@@ -113,7 +113,7 @@ func TestKeyAddRefusesAKeyAlreadyPresent(t *testing.T) {
 	before := readKeys(t)
 
 	if _, err := AddDeployKey(ctx, opts, []byte(adminLine), []string{"site"}, ""); err == nil ||
-		!strings.Contains(err.Error(), "zaten") {
+		!strings.Contains(err.Error(), "already") {
 		t.Fatalf("yönetici anahtarı dağıtım anahtarı olarak eklendi: %v", err)
 	}
 	if readKeys(t) != before {
@@ -136,7 +136,7 @@ func TestKeyRemoveRefusesTheLastAdmin(t *testing.T) {
 	before := readKeys(t)
 
 	_, err := RemoveKey(context.Background(), opts, adminFP)
-	if err == nil || !strings.Contains(err.Error(), "son yönetici") {
+	if err == nil || !strings.Contains(err.Error(), "last admin") {
 		t.Fatalf("son yönetici anahtarı silindi ya da hata yanlış: %v", err)
 	}
 	if readKeys(t) != before {
@@ -144,7 +144,7 @@ func TestKeyRemoveRefusesTheLastAdmin(t *testing.T) {
 	}
 
 	if _, err := RemoveKey(context.Background(), opts, "SHA256:yok"); err == nil ||
-		!strings.Contains(err.Error(), "bulunamadı") {
+		!strings.Contains(err.Error(), "not found") {
 		t.Fatalf("olmayan anahtar: %v", err)
 	}
 }
@@ -297,7 +297,7 @@ func TestKeyOpsRunAsClientUnderRealSudo(t *testing.T) {
 	sudo("ln", "-sfn", gizli, ak)
 	if keys, err := ListKeys(ctx, opts); err == nil {
 		t.Fatalf("bağlı authorized_keys listelendi (root olarak okundu): %+v", keys)
-	} else if strings.Contains(err.Error(), "GIZLI") || !strings.Contains(err.Error(), "okunamıyor") {
+	} else if strings.Contains(err.Error(), "GIZLI") || !strings.Contains(err.Error(), "cannot be read") {
 		t.Fatalf("hata iletisi sırrı taşıyor ya da sebebi söylemiyor: %v", err)
 	}
 	evLine, _, _ := testKey(t, 22, "ev")
@@ -321,7 +321,7 @@ func TestKeyOpsRunAsClientUnderRealSudo(t *testing.T) {
 	// Hiç kurulmamış sunucu: kullanıcı yok. Geçiş setpriv'in kendi hatasıyla
 	// değil, kurulumu öneren iletiyle durmalı.
 	keysOwner = "kadran-yok-boyle-k140"
-	if _, err := ListKeys(ctx, opts); err == nil || !strings.Contains(err.Error(), "önce kadran bootstrap") {
+	if _, err := ListKeys(ctx, opts); err == nil || !strings.Contains(err.Error(), "run kadran bootstrap first") {
 		t.Fatalf("olmayan kullanıcı: %v", err)
 	}
 }

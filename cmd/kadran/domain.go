@@ -47,34 +47,34 @@ func (r *domainReport) line(mark, label, detail string) {
 
 func (c *cli) runDomain(ctx context.Context, args []string) int {
 	if len(args) == 0 || args[0] != "check" {
-		return c.usageError("kullanım: kadran domain check <alan-adı> [hedef]")
+		return c.usageError("usage: kadran domain check <domain> [target]")
 	}
 	return c.runDomainCheck(ctx, args[1:])
 }
 
 func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("domain check")
-	timeout := fs.Duration("timeout", 30*time.Second, "toplam süre sınırı")
+	timeout := fs.Duration("timeout", 30*time.Second, "overall time limit")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("kullanım: kadran domain check <alan-adı> [hedef]")
+		return c.usageError("usage: kadran domain check <domain> [target]")
 	}
 	domain := strings.TrimSuffix(strings.ToLower(fs.Arg(0)), ".")
 	if strings.ContainsAny(domain, "/: ") || domain == "" {
-		return c.usageError("alan adı geçersiz (%q) — şema, port veya yol içeremez", fs.Arg(0))
+		return c.usageError("invalid domain (%q) — it cannot contain a scheme, port or path", fs.Arg(0))
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
 	defer cancel()
 
-	fmt.Fprintf(c.stdout, "Alan adı: %s\n", domain)
+	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
 	r := &domainReport{out: c.stdout}
 	if c.probeDNS(ctx, r, domain, fs.Arg(1)) == domaincheck.Stop {
 		// Yanlış DNS'te sonraki satırlar BU sunucuyu değil, alan adının
 		// gösterdiği yeri ölçüyor (ör. joker kayıtta Vercel'in sertifikası).
-		fmt.Fprintln(c.stdout, "    aşağıdakiler alan adının şu an gösterdiği sunucuya yapıldı, bu sunucuya değil")
+		fmt.Fprintln(c.stdout, "    the checks below hit the server the domain points at now, not this server")
 	}
 	c.probePorts(ctx, r, domain)
 	c.probeHTTP(ctx, r, domain)
@@ -88,13 +88,13 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget string) domaincheck.Verdict {
 	server, ok := c.serverHostFor(ctx, rawTarget)
 	if !ok {
-		r.warn("DNS", "hedef ayrıştırılamadı; sunucunun adresi bilinmiyor")
+		r.warn("DNS", "could not parse the target; the server's address is unknown")
 	}
 	rep := domaincheck.Check(ctx, c.dnsResolver(), domain, server)
 	records := joinAddrs(append(rep.A, rep.AAAA...))
 	switch rep.Verdict {
 	case domaincheck.OK:
-		r.ok("DNS", records+" (sunucu)")
+		r.ok("DNS", records+" (server)")
 	case domaincheck.Skipped, domaincheck.Warn:
 		r.warn("DNS", strings.Join(rep.Reasons, "; "))
 	default:
@@ -115,16 +115,16 @@ func (c *cli) netDial(ctx context.Context, network, addr string) (net.Conn, erro
 
 func (c *cli) probePorts(ctx context.Context, r *domainReport, domain string) {
 	for _, p := range []struct{ port, why string }{
-		{"80", "Let's Encrypt'in HTTP doğrulaması ve HTTPS yönlendirmesi için gerekli"},
-		{"443", "HTTPS ve TLS-ALPN doğrulaması için gerekli"},
+		{"80", "needed for Let's Encrypt's HTTP validation and the HTTPS redirect"},
+		{"443", "needed for HTTPS and TLS-ALPN validation"},
 	} {
 		conn, err := c.netDial(ctx, "tcp", net.JoinHostPort(domain, p.port))
 		if err != nil {
-			r.fail(p.port+"/tcp", fmt.Sprintf("bağlanılamadı (%v) — %s; güvenlik duvarını denetleyin", err, p.why))
+			r.fail(p.port+"/tcp", fmt.Sprintf("could not connect (%v) — %s; check the firewall", err, p.why))
 			continue
 		}
 		_ = conn.Close()
-		r.ok(p.port+"/tcp", "açık")
+		r.ok(p.port+"/tcp", "open")
 	}
 }
 
@@ -142,7 +142,7 @@ func (c *cli) probeHTTP(ctx context.Context, r *domainReport, domain string) {
 	}
 	resp, err := hc.Do(req)
 	if err != nil {
-		r.fail("HTTP", fmt.Sprintf("yanıt alınamadı (%v)", err))
+		r.fail("HTTP", fmt.Sprintf("no response (%v)", err))
 		return
 	}
 	_ = resp.Body.Close()
@@ -151,7 +151,7 @@ func (c *cli) probeHTTP(ctx context.Context, r *domainReport, domain string) {
 	case resp.StatusCode >= 300 && resp.StatusCode < 400 && strings.HasPrefix(loc, "https://"):
 		r.ok("HTTP", fmt.Sprintf("%d → %s", resp.StatusCode, loc))
 	default:
-		r.warn("HTTP", fmt.Sprintf("%d — HTTPS'e yönlendirmiyor", resp.StatusCode))
+		r.warn("HTTP", fmt.Sprintf("%d — does not redirect to HTTPS", resp.StatusCode))
 	}
 }
 
@@ -159,20 +159,20 @@ func (c *cli) probeTLS(ctx context.Context, r *domainReport, domain string) {
 	leaf, err := c.tlsLeaf(ctx, domain, false)
 	if err == nil {
 		days := int(time.Until(leaf.NotAfter).Hours() / 24)
-		detail := fmt.Sprintf("%s, %d gün kaldı", issuerName(leaf), days)
+		detail := fmt.Sprintf("%s, %d days left", issuerName(leaf), days)
 		if days < certExpiryFailDays {
-			r.fail("sertifika", detail+"; otomatik yenileme işlemiyor olabilir")
+			r.fail("certificate", detail+"; automatic renewal may not be working")
 			return
 		}
-		r.ok("sertifika", detail)
+		r.ok("certificate", detail)
 		return
 	}
 	served, serr := c.tlsLeaf(ctx, domain, true)
 	if serr != nil {
-		r.fail("sertifika", fmt.Sprintf("el sıkışma başarısız (%v)", err))
+		r.fail("certificate", fmt.Sprintf("handshake failed (%v)", err))
 		return
 	}
-	r.fail("sertifika", fmt.Sprintf("güvenilmiyor (%v); sunulan: %s, veren %s, adlar %s",
+	r.fail("certificate", fmt.Sprintf("not trusted (%v); served: %s, issued by %s, names %s",
 		err, served.Subject.CommonName, issuerName(served), strings.Join(served.DNSNames, ", ")))
 }
 
@@ -197,7 +197,7 @@ func (c *cli) tlsLeaf(ctx context.Context, domain string, describe bool) (*x509.
 	}
 	certs := tc.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
-		return nil, fmt.Errorf("sunucu sertifika göndermedi")
+		return nil, fmt.Errorf("the server sent no certificate")
 	}
 	return certs[0], nil
 }

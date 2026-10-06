@@ -80,9 +80,9 @@ Korunanlar:
 | Birim | Görev |
 |---|---|
 | `src/main/window.ts` (yeni) | Pencereyi kurar. İşletim sistemine göre hangi modların sunulacağını belirler. Mod değişimini uygular: Clear ile diğerleri arasında pencere yeniden kurulur, çünkü saydamlık sonradan açılıp kapanamıyor. Acrylic ↔ Mica `setBackgroundMaterial` ile anında değişir. Mod → pencere seçenekleri eşlemesi saf bir fonksiyondur ve test edilir. |
-| `src/main/appearance.ts` (yeni) | `appearance.json`'ı `profiles.json`'ın yanında okur ve yazar. Her alanı doğrular; bozuk ya da eksik alan varsayılana döner. Atomik yazar (geçici dosya + yeniden adlandırma), profillerle aynı desen. |
+| `src/main/appearance.ts` (yeni) | `appearance.json`'ı `profiles.json`'ın yanında okur ve yazar. Her alanı doğrular; bozuk ya da eksik alan varsayılana döner. Atomik yazar: önce geçici dosyaya, sonra yeniden adlandırma. Bu desen yeni; `profiles.ts` bugün düz `writeFile` kullanıyor ve ona dokunulmuyor. Desteklenen modlar ve varsayılanlar `src/shared/appearance.ts`'te durur, çünkü arayüz de onları kullanıyor (Reset). |
 | `src/main/permissions.ts` (yeni) | Yalnız `local-fonts` iznini verir, gerisini reddeder. İstek ve kontrol işleyicilerinin ikisi de buradan kurulur. |
-| `src/preload/index.cjs` | Beyaz liste büyür. Eklenenler: Görünüm okuma/yazma, pencere düğmeleri (küçült/büyüt/kapat) ve mod değiştirme. Her girdi ana süreçte doğrulanır. |
+| `src/preload/index.cjs` | Beyaz liste büyür. Eklenenler: Görünüm okuma/yazma, pencere düğmeleri (küçült/büyüt/kapat), panoya kopyalama (`copyText`, ana süreçte Electron `clipboard`; en fazla 1024 karakter) ve `platform` sabiti. Mod değişimi Görünüm yazımıyla tetiklenir. Pencere yeniden kurulursa konumu, boyutu ve büyütülmüş hâli korunur ve Settings ekranında açılır. Her girdi ana süreçte doğrulanır. |
 | `src/renderer/` | React ile yazılır, Vite ile `out/renderer`'a derlenir. Klasörler: `screens/` (Status, Audit, Settings), `components/` (Titlebar, Rail, ServerList, Nav, Card, ChainCard, AuditTable, Toast, Appearance), `lib/` (format, chain, fonts, i18n), `icons/` (kopyalanan lucide-animated), `i18n/en.json` + `tr.json`, `styles/`. Dosyalar 400 satırın altında tutulur. |
 
 Derleme: `tsc` (ana süreç ve paylaşılan kod) + `vite build` (arayüz) + preload kopyası.
@@ -265,7 +265,7 @@ Apache-2.0, OFL-1.1. CI `npm audit --omit=dev` koşar.
 
 **Sıkılaşanlar:**
 
-- İzinler: yalnız `local-fonts`. Bugün Electron her izni veriyor.
+- İzinler: yalnız `local-fonts`. Bugün Electron her izni veriyor. Ölçüldü: Chromium yazı tipi listesini istek değil KONTROL işleyicisinden `local-fonts` adıyla soruyor; bu ad Electron'un TypeScript tiplerinde yok, karşılaştırma `string` üzerinden yapılır. Reddedilince hata değil BOŞ liste dönüyor; arayüzün yedeği `length === 0`'da da devreye girer. Pano izni açılmaz; kopyalama köprü üzerinden ana süreçte yapılır.
 - `dangerouslySetInnerHTML` ve `innerHTML` kullanımı testle yasak.
 - Köprüye eklenen her kanal ana süreçte doğrulanır: mod izinli değerlerden biri, sayılar
   sınırları içinde, yazı tipi adı 200 karakteri geçmez.
@@ -293,7 +293,7 @@ Apache-2.0, OFL-1.1. CI `npm audit --omit=dev` koşar.
 - health: daemon kullanıcısı, executor ve zincir durumu → sağlık hapı. BROKEN her zaman
   Attention'ı ezer.
 - Örnek tamponu: en fazla 60 örnek; en eski düşer.
-- permissions: yalnız `local-fonts`.
+- permissions: yalnız `local-fonts`; istek işleyicisi her şeyi reddeder.
 - Yasak kalıp taraması (`innerHTML`, `dangerouslySetInnerHTML`).
 
 **Uçtan uca.** Duman testi büyür: gerçek Electron açılır, sahte bir sidecar hazır cevap

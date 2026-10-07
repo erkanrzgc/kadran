@@ -23,20 +23,32 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
   const audit = useAudit(target, PREVIEW_SIZE);
   const { refresh } = server;
   const { loadNewest } = audit;
-  const busy = useRef(false);
+  // Tur belirteci: hedef değişince sıfırlanır, eski turun finally'si yenisini silmez.
+  const busy = useRef<object | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Durum ve son kayıtlar birlikte yenilenir. Önceki tur bitmediyse yenisi
-  // başlamaz: yavaş ssh üstüne istek yığılmasın. Hedef değişimindeki bayat
-  // cevaplar useServer ve useAudit içinde zaten atılır.
+  // Durum ve son kayıtlar birlikte yenilenir; durum başarısızsa tek bildirim
+  // yeter, kayıtlar istenmez. Önceki tur bitmediyse yenisi başlamaz.
   const reload = useCallback(async () => {
     if (busy.current) return;
-    busy.current = true;
+    const round = {};
+    busy.current = round;
+    setRefreshing(true);
     try {
-      await Promise.all([refresh(), loadNewest()]);
+      if (await refresh()) await loadNewest();
     } finally {
-      busy.current = false;
+      if (busy.current === round) {
+        busy.current = null;
+        setRefreshing(false);
+      }
     }
   }, [refresh, loadNewest]);
+
+  // Hedef değişince önceki sunucunun yavaş turu yeni sunucunun yenilemesini engellemesin.
+  useEffect(() => {
+    busy.current = null;
+    setRefreshing(false);
+  }, [target]);
 
   // Aralık; kapatınca, hedef değişince ve ekran kapanınca temizlenir.
   useEffect(() => {
@@ -70,7 +82,7 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
               <i className={live ? "live-dot is-on" : "live-dot"} aria-hidden="true" />
               {t("status.live")}
             </label>
-            <button type="button" className="btn btn-ghost" onClick={() => void reload()}>
+            <button type="button" className="btn btn-ghost" disabled={refreshing} onClick={() => void reload()}>
               {t("status.refresh")}
             </button>
           </div>
@@ -155,7 +167,11 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
             {t("audit.see_all")}
           </button>
         </div>
-        <AuditTable records={audit.records} testId="audit-preview" />
+        <AuditTable
+          records={audit.records}
+          testId="audit-preview"
+          placeholder={audit.records.length > 0 ? undefined : audit.loaded ? t("audit.empty") : t("audit.loading")}
+        />
       </section>
     </div>
   );

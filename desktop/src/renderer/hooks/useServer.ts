@@ -96,9 +96,9 @@ export function useServer() {
     [loadStatus, verifyChains],
   );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (): Promise<boolean> => {
     const target = current.current;
-    if (target) await loadStatus(target);
+    return target ? loadStatus(target) : false;
   }, [loadStatus]);
 
   return useMemo(() => ({ state, connect, refresh, verifyChains }), [state, connect, refresh, verifyChains]);

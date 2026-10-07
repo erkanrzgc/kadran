@@ -11,7 +11,7 @@ import { useToast } from "../toast/ToastProvider.tsx";
 const COPIED_MS = 1_500;
 
 /** Denetim tablosu. Parmak izine tıklayınca tamamı panoya kopyalanır. */
-export function AuditTable({ records, testId }: { records: readonly AuditRecord[]; testId: string }) {
+export function AuditTable({ records, testId, placeholder }: { records: readonly AuditRecord[]; testId: string; placeholder?: string }) {
   const t = useT();
   const language = useLanguage();
   const toast = useToast();
@@ -26,10 +26,10 @@ export function AuditTable({ records, testId }: { records: readonly AuditRecord[
     [],
   );
 
-  const copy = async (fp: string) => {
+  const copy = async (fp: string, seq: string) => {
     try {
       await bridge.copyText(fp);
-      setCopied(fp);
+      setCopied(seq);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(null), COPIED_MS);
     } catch (err) {
@@ -51,6 +51,13 @@ export function AuditTable({ records, testId }: { records: readonly AuditRecord[
           </tr>
         </thead>
         <tbody>
+          {records.length === 0 && placeholder ? (
+            <tr data-testid="audit-placeholder">
+              <td colSpan={6} className="audit-placeholder">
+                {placeholder}
+              </td>
+            </tr>
+          ) : null}
           {records.map((r) => {
             const fp = r.actor?.ssh_key_fingerprint ?? "";
             const actor = describeActor(r.actor) ?? t("audit.unknown_actor");
@@ -61,8 +68,8 @@ export function AuditTable({ records, testId }: { records: readonly AuditRecord[
                 <td className="mono">{formatTime(r.ts, language)}</td>
                 <td className="mono">
                   {fp ? (
-                    <button type="button" className="fp" title={t("audit.copy")} onClick={() => void copy(fp)}>
-                      {copied === fp ? t("audit.copied") : actor}
+                    <button type="button" className="fp" title={t("audit.copy")} onClick={() => void copy(fp, r.seq)}>
+                      {copied === r.seq ? t("audit.copied") : actor}
                     </button>
                   ) : (
                     actor

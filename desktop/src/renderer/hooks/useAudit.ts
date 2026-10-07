@@ -22,11 +22,14 @@ export function useAudit(target: string | null, size: number) {
   const [records, setRecords] = useState<AuditRecord[]>([]);
   const [latest, setLatest] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  // İlk yükleme bitti mi? Boş durum ile "henüz yüklenmedi" ayrılsın.
+  const [loaded, setLoaded] = useState(false);
 
   const targetRef = useRef<string | null>(target);
   const generation = useRef(0);
   const recordsRef = useRef<AuditRecord[]>([]);
   const olderBusy = useRef(false);
+  const newestBusy = useRef(false);
 
   const commit = useCallback((next: AuditRecord[]) => {
     recordsRef.current = next;
@@ -39,11 +42,14 @@ export function useAudit(target: string | null, size: number) {
     const isCurrent = () => targetRef.current === target && generation.current === gen;
     olderBusy.current = false;
     if (!target) {
+      newestBusy.current = false;
       commit([]);
       setLatest(null);
       setLoading(false);
+      setLoaded(false);
       return;
     }
+    newestBusy.current = true;
     setLoading(true);
     try {
       const head = await bridge.auditList(target, 0, 1);
@@ -61,7 +67,11 @@ export function useAudit(target: string | null, size: number) {
     } catch (err) {
       if (isCurrent()) toast("toast.audit_failed", { error: errorText(err) });
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent()) {
+        newestBusy.current = false;
+        setLoading(false);
+        setLoaded(true);
+      }
     }
   }, [target, size, toast, commit]);
 
@@ -69,7 +79,8 @@ export function useAudit(target: string | null, size: number) {
     const shown = recordsRef.current;
     const oldest = shown.length > 0 ? Number(shown[shown.length - 1]!.seq) : 0;
     const w = olderWindow(oldest, AUDIT_PAGE);
-    if (!target || !w || olderBusy.current) return;
+    // En yeni sayfa yüklenirken eski sayfa istenmez: üstüne yazılacak listeye satır eklemesin.
+    if (!target || !w || olderBusy.current || newestBusy.current) return;
     const gen = generation.current;
     const isCurrent = () => targetRef.current === target && generation.current === gen;
     olderBusy.current = true;
@@ -94,9 +105,10 @@ export function useAudit(target: string | null, size: number) {
     targetRef.current = target;
     commit([]);
     setLatest(null);
+    setLoaded(false);
     void loadNewest();
   }, [target, size, loadNewest, commit]);
 
   const last = records.length > 0 ? Number(records[records.length - 1]!.seq) : 0;
-  return { records, latest, loading, hasOlder: last > 1, loadNewest, loadOlder };
+  return { records, latest, loading, loaded, hasOlder: last > 1, loadNewest, loadOlder };
 }

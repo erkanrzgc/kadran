@@ -56,3 +56,4 @@
 .audit-table tr:last-child td { border-bottom: 0; }
 .fp { font: inherit; color: inherit; background: transparent; border: 0; padding: 0; cursor: copy; text-decoration: underline dotted; }
 .outcome { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; }
+.audit-placeholder { text-align: center; color: var(--fg-faint); padding: 16px 8px; }

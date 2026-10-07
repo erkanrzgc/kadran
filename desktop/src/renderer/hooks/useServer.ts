@@ -17,7 +17,7 @@ export interface ServerState {
   target: string | null;
   status: StatusPayload | null;
   verify: VerifyPayload | null;
-  /** Son status çağrısının gidiş-dönüş süresi (ms); ssh süresi değil. */
+  /** Son status çağrısının gidiş-dönüş süresi (ms): IPC + sidecar başlatma + ssh + daemon, köprü çağrısının tamamı. */
   rtt: number | null;
   memorySamples: readonly number[];
   rttSamples: readonly number[];
@@ -72,9 +72,9 @@ export function useServer() {
       const verify = await bridge.auditVerify(target);
       if (current.current === target) setState((s) => ({ ...s, verify }));
     } catch (err) {
-      toast("toast.verify_failed", { error: errorText(err) });
+      if (current.current === target) toast("toast.verify_failed", { error: errorText(err) });
     } finally {
-      setState((s) => ({ ...s, verifying: false }));
+      if (current.current === target) setState((s) => ({ ...s, verifying: false }));
     }
   }, [toast]);
 

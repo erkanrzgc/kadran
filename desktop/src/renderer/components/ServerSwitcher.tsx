@@ -17,6 +17,7 @@ export function ServerSwitcher({ target, profiles, onSwitch }: Props) {
   const [open, setOpen] = useState(false);
   const icon = useRef<AnimatedIconHandle>(null);
   const box = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -24,7 +25,10 @@ export function ServerSwitcher({ target, profiles, onSwitch }: Props) {
       if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
     };
     const esc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") {
+        setOpen(false);
+        trigger.current?.focus();
+      }
     };
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", esc);
@@ -37,9 +41,9 @@ export function ServerSwitcher({ target, profiles, onSwitch }: Props) {
   return (
     <div className="switcher" ref={box}>
       <button
+        ref={trigger}
         type="button"
         className="crumb crumb-current mono"
-        aria-haspopup="listbox"
         aria-expanded={open}
         data-testid="switcher"
         onClick={() => setOpen((o) => !o)}
@@ -50,7 +54,7 @@ export function ServerSwitcher({ target, profiles, onSwitch }: Props) {
         <ChevronDownIcon ref={icon} size={14} />
       </button>
       {open ? (
-        <ul className="switcher-menu glass" role="listbox">
+        <ul className="switcher-menu glass">
           {profiles.length === 0 ? (
             <li className="empty">{t("rail.no_saved")}</li>
           ) : (
@@ -58,8 +62,7 @@ export function ServerSwitcher({ target, profiles, onSwitch }: Props) {
               <li key={p.target}>
                 <button
                   type="button"
-                  role="option"
-                  aria-selected={p.target === target}
+                  aria-current={p.target === target ? "true" : undefined}
                   className="server"
                   onClick={() => {
                     setOpen(false);

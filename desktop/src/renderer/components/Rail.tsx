@@ -64,6 +64,7 @@ export function Rail({ profiles, currentTarget, currentTone, view, connecting, v
                 <button
                   type="button"
                   className={active ? "server is-active" : "server"}
+                  aria-current={active ? "true" : undefined}
                   title={p.target}
                   data-testid={`server-${p.target}`}
                   onClick={() => {

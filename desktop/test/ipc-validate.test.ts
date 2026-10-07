@@ -13,6 +13,13 @@ test("hedef: boş, boşluk ve 500 karakterden uzun reddedilir; kırpılır", () 
   assert.equal(requireTarget("  kadran-client@host  "), "kadran-client@host");
 });
 
+test("hedef: '-' ile başlayan reddedilir (kırpmadan sonra), içinde '-' olan geçer", () => {
+  assert.throws(() => requireTarget("-oProxyCommand=x"), /must not start with/);
+  assert.throws(() => requireTarget("  -x@host"), /must not start with/);
+  assert.equal(requireTarget("user@host-1"), "user@host-1");
+  assert.equal(requireTarget("a-b@c"), "a-b@c");
+});
+
 test("toUint: negatif, sonsuz ve sayı olmayan → varsayılan; kesir aşağı", () => {
   assert.equal(toUint(-1, 7), 7);
   assert.equal(toUint(Number.POSITIVE_INFINITY, 7), 7);

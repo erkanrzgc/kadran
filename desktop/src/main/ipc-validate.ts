@@ -12,7 +12,10 @@ export type WindowAction = (typeof WINDOW_ACTIONS)[number];
 export function requireTarget(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") throw new Error("target is empty");
   if (value.length > MAX_TARGET) throw new Error("target is too long");
-  return value.trim();
+  const trimmed = value.trim();
+  // ssh seçeneği olarak okunur (-oProxyCommand=…): savunma derinliği, Go tarafı da reddeder.
+  if (trimmed.startsWith("-")) throw new Error('target must not start with "-"');
+  return trimmed;
 }
 
 export function toUint(value: unknown, fallback: number): number {

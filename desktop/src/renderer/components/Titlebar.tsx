@@ -11,7 +11,7 @@ export function Titlebar() {
   const mac = bridge.platform === "darwin";
   return (
     <header className={mac ? "titlebar is-mac" : "titlebar"}>
-      <div className="tb-brand" aria-label={t("brand.aria")}>
+      <div className="tb-brand">
         <span className="mark" aria-hidden="true" />
         <span className="wordmark">KΛDRΛN</span>
       </div>

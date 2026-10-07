@@ -1,0 +1,9 @@
+{
+  "daemon_status": "CHAIN_STATUS_VALID",
+  "detail": "",
+  "executor_detail": "executor unreachable: dial unix /run/kadran/exec.sock: connect: no such file or directory",
+  "executor_records_checked": "0",
+  "executor_status": "CHAIN_STATUS_UNREACHABLE",
+  "first_invalid_seq": "0",
+  "records_checked": "1284"
+}

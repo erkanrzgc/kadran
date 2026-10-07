@@ -2,14 +2,18 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 import type { Appearance, WindowMode } from "../../shared/appearance.ts";
 import { bridge, type AppearanceBundle } from "../bridge.ts";
-import { applyAppearance, CODE_FALLBACK, fontStack, UI_FALLBACK, type FontStacks } from "../lib/apply-appearance.ts";
+import { applyAppearance, CODE_FALLBACK, UI_FALLBACK, type FontStacks } from "../lib/apply-appearance.ts";
 import { errorText } from "../lib/errors.ts";
 import { listLocalFonts, registerFamily } from "../lib/font-loader.ts";
+import { resolveStack } from "../lib/font-stack.ts";
 import { groupFaces, strongerWeight, type Face } from "../lib/fonts.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
 
 /** Kaydırıcı sürüklenirken her adımda diske yazılmasın. */
 const SAVE_DELAY_MS = 250;
+
+/** Kararlı boş liste: efekt bağımlılığı her çizimde değişmesin. */
+const NO_FACES: readonly Face[] = [];
 
 export interface AppearanceApi {
   appearance: Appearance;
@@ -28,7 +32,8 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
   const [appearance, setAppearance] = useState(initial.appearance);
   const [families, setFamilies] = useState<ReadonlyMap<string, Face[]>>(new Map());
   const [fontsListed, setFontsListed] = useState(false);
-  const [stacks, setStacks] = useState<FontStacks>({ ui: UI_FALLBACK, code: CODE_FALLBACK, strong: 600 });
+  const [uiStack, setUiStack] = useState(UI_FALLBACK);
+  const [codeStack, setCodeStack] = useState(CODE_FALLBACK);
   const latest = useRef(initial.appearance);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -39,28 +44,37 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
     });
   }, []);
 
-  const uiFamily = appearance.uiFont.family;
+  const uiFaces = families.get(appearance.uiFont.family) ?? NO_FACES;
+  const codeFaces = families.get(appearance.codeFont.family) ?? NO_FACES;
   const uiWeight = appearance.uiFont.weight;
-  const codeFamily = appearance.codeFont.family;
+
+  // Her takma ad kendi etkisinde kaydedilir: bir takma adı yalnız tek etki
+  // çağırır, böylece canlı çağrının 0 dönmesi gerçek başarısızlıktır.
+  // Kalınlık burada YOK: kaydırıcı her adımda yüzleri yeniden yüklemesin.
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
-      const uiFaces = families.get(uiFamily) ?? [];
-      const codeFaces = families.get(codeFamily) ?? [];
-      // Ad yalnız yüz seçer; CSS'e giden tek şey sabit takma ad.
-      const uiOk = uiFaces.length > 0 && (await registerFamily("kadran-ui", uiFaces)) > 0;
-      const codeOk = codeFaces.length > 0 && (await registerFamily("kadran-code", codeFaces)) > 0;
-      if (cancelled) return;
-      setStacks({
-        ui: fontStack(uiOk ? "kadran-ui" : null, UI_FALLBACK),
-        code: fontStack(codeOk ? "kadran-code" : null, CODE_FALLBACK),
-        strong: uiOk ? strongerWeight(uiFaces, uiWeight) : 600,
-      });
-    })();
+    void resolveStack("kadran-ui", uiFaces, UI_FALLBACK, registerFamily, () => cancelled).then((stack) => {
+      if (stack !== null) setUiStack(stack);
+    });
     return () => {
       cancelled = true;
     };
-  }, [families, uiFamily, uiWeight, codeFamily]);
+  }, [uiFaces]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void resolveStack("kadran-code", codeFaces, CODE_FALLBACK, registerFamily, () => cancelled).then((stack) => {
+      if (stack !== null) setCodeStack(stack);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [codeFaces]);
+
+  const stacks = useMemo<FontStacks>(
+    () => ({ ui: uiStack, code: codeStack, strong: uiStack === UI_FALLBACK ? 600 : strongerWeight(uiFaces, uiWeight) }),
+    [uiStack, codeStack, uiFaces, uiWeight],
+  );
 
   useEffect(() => {
     applyAppearance(document.documentElement, appearance, stacks);

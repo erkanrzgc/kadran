@@ -46,5 +46,7 @@
   position: absolute; right: 18px; bottom: 18px; max-width: min(560px, calc(100% - 36px)); padding: 12px 14px;
   display: flex; align-items: flex-start; gap: 12px; z-index: 10; background: rgba(var(--tone), 0.92);
 }
+/* Işık tonunda .glass'ın saydam zemini ezmesin: seçici daha özgül. */
+:root[data-tone] .toast.glass { background: rgba(var(--tone), 0.92); }
 .toast-text { margin: 0; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
 .toast-close { border: 0; background: transparent; color: var(--fg-dim); font-size: 18px; line-height: 1; cursor: pointer; }

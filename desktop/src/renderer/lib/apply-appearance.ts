@@ -20,7 +20,9 @@ export const ACCENT_RGB: Readonly<Record<Accent, string>> = {
 export const UI_FALLBACK = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
 export const CODE_FALLBACK = '"JetBrains Mono Bundled", ui-monospace, Consolas, monospace';
 
-export function fontStack(alias: string | null, fallback: string): string {
+export type FontAlias = "kadran-ui" | "kadran-code";
+
+export function fontStack(alias: FontAlias | null, fallback: string): string {
   return alias ? `"${alias}", ${fallback}` : fallback;
 }
 

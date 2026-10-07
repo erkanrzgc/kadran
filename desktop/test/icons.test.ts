@@ -70,3 +70,67 @@ test("hiçbir ikon Tailwind overflow-visible sınıfını içermiyor", async () 
     assert.doesNotMatch(src, /className="overflow-visible"/, name);
   }
 });
+
+// Bütünlük doğrulama modülü testleri
+import { verifySha256, validateKeySet } from "../scripts/vendor-integrity.mjs";
+
+test("verifySha256: uyuşan özet geçer", () => {
+  const testMap = { "test": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" };
+  // "hello" dizesi için SHA-256
+  assert.doesNotThrow(() => verifySha256("hello", "test", testMap));
+});
+
+test("verifySha256: uyuşmayan özet hatası verir", () => {
+  const testMap = { "test": "0000000000000000000000000000000000000000000000000000000000000000" };
+  assert.throws(
+    () => verifySha256("hello", "test", testMap),
+    /Bütünlük hatası: test/
+  );
+});
+
+test("verifySha256: eksik anahtar hatası verir", () => {
+  const testMap = {};
+  assert.throws(
+    () => verifySha256("hello", "missing", testMap),
+    /Eksik özet anahtarı: missing/
+  );
+});
+
+test("validateKeySet: uyuşan anahtar seti geçer", () => {
+  const names = ["a", "b"];
+  const expectedMap = {
+    a: "hash1",
+    b: "hash2",
+    "LICENSE:pqoqubbw": "hash3",
+    "LICENSE:lucide": "hash4",
+  };
+  assert.doesNotThrow(() => validateKeySet(names, expectedMap));
+});
+
+test("validateKeySet: eksik anahtar hatası verir", () => {
+  const names = ["a", "b"];
+  const expectedMap = {
+    a: "hash1",
+    b: "hash2",
+    // LICENSE:pqoqubbw eksik
+    "LICENSE:lucide": "hash4",
+  };
+  assert.throws(
+    () => validateKeySet(names, expectedMap),
+    /Eksik: LICENSE:pqoqubbw/
+  );
+});
+
+test("validateKeySet: fazla anahtar hatası verir", () => {
+  const names = ["a"];
+  const expectedMap = {
+    a: "hash1",
+    b: "hash2", // fazla
+    "LICENSE:pqoqubbw": "hash3",
+    "LICENSE:lucide": "hash4",
+  };
+  assert.throws(
+    () => validateKeySet(names, expectedMap),
+    /Fazla: b/
+  );
+});

@@ -1,11 +1,14 @@
 /**
  * lucide-animated ikonlarını (pqoqubbw/icons, MIT; çizimler Lucide, ISC)
- * SABİT bir commit'ten kopyalar ve projeye uyarlar:
+ * SABİT commit'lerden kopyalar ve projeye uyarlar:
  *
  *   - "use client" ve shadcn'in `cn` içe aktarması kalkar (`cn` yerine
  *     düz className);
  *   - `React.MouseEvent` → içe aktarılan `MouseEvent` tipi;
  *   - başa kaynak ve lisans başlığı eklenir.
+ *
+ * İki aşamalı: Phase 1 tüm kaynakları doğrular (hiçbir dosya yazılmaz),
+ * Phase 2 tüm dosyaları yazar. Başarısız kapatma: hatada sıfır değişiklik.
  *
  * Yeniden çalıştırmak aynı çıktıyı verir. İkon eklemek için NAMES'e ekle,
  * betiği çalıştır, test/icons.test.ts'teki EXPECTED'i güncelle.
@@ -15,6 +18,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
+import { verifySha256, validateKeySet } from "./vendor-integrity.mjs";
 
 const COMMIT = "072c38b1b04ea738d90a084485ccaad4b890ddca";
 const LUCIDE_COMMIT = "b56741cf30c08fc7248bf41ddd3a261367aa9579";
@@ -43,6 +47,9 @@ const EXPECTED_SHA256 = {
 const here = dirname(fileURLToPath(import.meta.url));
 const outDir = join(here, "..", "src", "renderer", "icons");
 
+// Anahtar seti doğrula (erken hata)
+validateKeySet(NAMES, EXPECTED_SHA256);
+
 async function fetchText(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
@@ -51,15 +58,9 @@ async function fetchText(url) {
 
 async function fetchAndVerify(url, expectedKey) {
   const text = await fetchText(url);
-  const actual = createHash("sha256").update(text, "utf8").digest("hex");
-  const expected = EXPECTED_SHA256[expectedKey];
-  if (actual !== expected) {
-    throw new Error(
-      `Bütünlük hatası: ${expectedKey}\n` +
-      `  Beklenen: ${expected}\n` +
-      `  Gerçek:   ${actual}`
-    );
-  }
+  // Ham baytları ve string'i aynı şekilde doğrula
+  const buf = Buffer.from(text, "utf8");
+  verifySha256(buf, expectedKey, EXPECTED_SHA256);
   return text;
 }
 
@@ -88,24 +89,18 @@ function exportName(src) {
   return m[1];
 }
 
-await mkdir(outDir, { recursive: true });
-const exports = [];
+// ====== PHASE 1: Tüm kaynakları doğrula (dosya yazılmaz) ======
+console.log("Aşama 1: Kaynaklar doğrulanıyor...");
+
+const icons = [];
 for (const name of NAMES) {
   const src = await fetchAndVerify(
     `https://raw.githubusercontent.com/pqoqubbw/icons/${COMMIT}/icons/${name}.tsx`,
     name
   );
   const adapted = adapt(name, src);
-  await writeFile(join(outDir, `${name}.tsx`), adapted, "utf8");
-  const originalName = exportName(adapted);
-  const alias = EXPORT_ALIASES[originalName];
-  if (alias) {
-    exports.push(`export { ${originalName} as ${alias} } from "./${name}.tsx";`);
-  } else {
-    exports.push(`export { ${originalName} } from "./${name}.tsx";`);
-  }
+  icons.push({ name, adapted });
 }
-await writeFile(join(outDir, "index.ts"), exports.join("\n") + "\n", "utf8");
 
 const mit = await fetchAndVerify(
   `https://raw.githubusercontent.com/pqoqubbw/icons/${COMMIT}/LICENSE`,
@@ -115,9 +110,33 @@ const isc = await fetchAndVerify(
   `https://raw.githubusercontent.com/lucide-icons/lucide/${LUCIDE_COMMIT}/LICENSE`,
   "LICENSE:lucide"
 );
-await writeFile(
-  join(outDir, "LICENSE"),
-  `Animasyonlu ikonlar: pqoqubbw/icons (${COMMIT})\n\n${mit.trim()}\n\n---\n\nÇizimler: Lucide (${LUCIDE_COMMIT})\n\n${isc.trim()}\n`,
-  "utf8",
-);
+
+// İçeriği bellekte oluştur
+const exports = [];
+for (const { name, adapted } of icons) {
+  const originalName = exportName(adapted);
+  const alias = EXPORT_ALIASES[originalName];
+  if (alias) {
+    exports.push(`export { ${originalName} as ${alias} } from "./${name}.tsx";`);
+  } else {
+    exports.push(`export { ${originalName} } from "./${name}.tsx";`);
+  }
+}
+const indexContent = exports.join("\n") + "\n";
+const licenseContent =
+  `Animasyonlu ikonlar: pqoqubbw/icons (${COMMIT})\n\n${mit.trim()}\n\n---\n\nÇizimler: Lucide (${LUCIDE_COMMIT})\n\n${isc.trim()}\n`;
+
+console.log("✓ Aşama 1 başarılı: tüm kaynaklar doğrulandı");
+
+// ====== PHASE 2: Tüm dosyaları yaz ======
+console.log("Aşama 2: Dosyalar yazılıyor...");
+
+await mkdir(outDir, { recursive: true });
+
+for (const { name, adapted } of icons) {
+  await writeFile(join(outDir, `${name}.tsx`), adapted, "utf8");
+}
+await writeFile(join(outDir, "index.ts"), indexContent, "utf8");
+await writeFile(join(outDir, "LICENSE"), licenseContent, "utf8");
+
 console.log(`${NAMES.length} ikon kopyalandı → ${outDir}`);

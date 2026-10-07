@@ -21,6 +21,10 @@ export const CHANNELS = {
   auditVerify: "kadran:audit-verify",
   loadProfiles: "kadran:profiles-load",
   saveProfiles: "kadran:profiles-save",
+  loadAppearance: "kadran:appearance-load",
+  saveAppearance: "kadran:appearance-save",
+  windowControl: "kadran:window",
+  copyText: "kadran:copy",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

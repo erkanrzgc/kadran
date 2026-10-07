@@ -8,8 +8,9 @@
  * sınırını istemci tarafından delmek olurdu — kötü bir bağımlılık ya da
  * bir XSS, sidecar'a istediği çağrıyı yaptırabilirdi.
  *
- * Burada yalnızca altı işlem var ve hiçbiri sunucunun durumunu
- * DEĞİŞTİRMİYOR. Faz 1'de durum değiştiren işlemler geldiğinde (dağıtım,
+ * Burada sunucunun durumunu DEĞİŞTİREN hiçbir işlem yok; eklenenler
+ * (görünüm, pencere düğmeleri, panoya kopyalama) yalnız bu bilgisayarı
+ * etkiliyor. Faz 1'de durum değiştiren işlemler geldiğinde (dağıtım,
  * geri alma, silme) ayrı bir onay mekanizması gerekecek; o zaman bu
  * yorumun da güncellenmesi gerekiyor.
  *
@@ -35,6 +36,10 @@ const CHANNELS = {
   auditVerify: "kadran:audit-verify",
   loadProfiles: "kadran:profiles-load",
   saveProfiles: "kadran:profiles-save",
+  loadAppearance: "kadran:appearance-load",
+  saveAppearance: "kadran:appearance-save",
+  windowControl: "kadran:window",
+  copyText: "kadran:copy",
 };
 
 contextBridge.exposeInMainWorld("kadran", {
@@ -62,4 +67,22 @@ contextBridge.exposeInMainWorld("kadran", {
    * hiç girmez — bu yüzden işletim sistemi anahtarlığı kullanılmıyor.
    */
   saveProfiles: (profiles) => ipcRenderer.invoke(CHANNELS.saveProfiles, profiles),
+
+  /** Çalışılan işletim sistemi; başlık çubuğu macOS'ta trafik ışıklarına yer bırakır. */
+  platform: process.platform,
+
+  /** Görünüm ayarları, varsayılanlar ve bu sistemde sunulan modlar. */
+  loadAppearance: () => ipcRenderer.invoke(CHANNELS.loadAppearance),
+
+  /**
+   * Görünümü kaydeder. Ana süreç doğrular; mod değiştiyse pencereyi
+   * yeniden kurabilir (Clear ↔ diğerleri) ya da yerinde değiştirir.
+   */
+  saveAppearance: (appearance) => ipcRenderer.invoke(CHANNELS.saveAppearance, appearance),
+
+  /** Özel başlık çubuğunun düğmeleri: minimize | maximize | close. */
+  windowControl: (action) => ipcRenderer.invoke(CHANNELS.windowControl, action),
+
+  /** Parmak izi gibi kısa bir metni panoya yazar (en fazla 1024 karakter). */
+  copyText: (text) => ipcRenderer.invoke(CHANNELS.copyText, text),
 });

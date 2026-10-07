@@ -1,7 +1,7 @@
 export { ActivityIcon } from "./activity.tsx";
 export { ShieldCheckIcon } from "./shield-check.tsx";
 export { SettingsIcon } from "./settings.tsx";
-export { RefreshCWIcon } from "./refresh-cw.tsx";
+export { RefreshCWIcon as RefreshCwIcon } from "./refresh-cw.tsx";
 export { ServerIcon } from "./server.tsx";
 export { CopyIcon } from "./copy.tsx";
 export { CheckIcon } from "./check.tsx";

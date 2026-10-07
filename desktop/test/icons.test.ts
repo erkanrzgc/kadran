@@ -38,3 +38,35 @@ test("LICENSE MIT ve ISC metinlerini taşıyor", async () => {
   assert.match(lic, /ISC License/);
   assert.match(lic, /Lucide/);
 });
+
+test("index.ts dışa aktarım adları sözleşmeyi karşılıyor", async () => {
+  const indexSrc = await readFile(join(iconsDir, "index.ts"), "utf8");
+  const lines = indexSrc.trim().split("\n");
+  const exported = [];
+  for (const line of lines) {
+    const m = line.match(/export \{ (\w+)(?: as (\w+))? \}/);
+    if (m) {
+      exported.push(m[2] || m[1]);
+    }
+  }
+  const expected = [
+    "ActivityIcon",
+    "BadgeAlertIcon",
+    "CheckIcon",
+    "ChevronDownIcon",
+    "CopyIcon",
+    "HistoryIcon",
+    "RefreshCwIcon",
+    "ServerIcon",
+    "SettingsIcon",
+    "ShieldCheckIcon",
+  ];
+  assert.deepEqual(exported.sort(), expected);
+});
+
+test("hiçbir ikon Tailwind overflow-visible sınıfını içermiyor", async () => {
+  for (const name of EXPECTED) {
+    const src = await readFile(join(iconsDir, `${name}.tsx`), "utf8");
+    assert.doesNotMatch(src, /className="overflow-visible"/, name);
+  }
+});

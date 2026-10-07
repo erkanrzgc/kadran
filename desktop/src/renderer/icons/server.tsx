@@ -83,7 +83,7 @@ const ServerIcon = forwardRef<ServerIconHandle, ServerIconProps>(
         {...props}
       >
         <svg
-          className="overflow-visible"
+          overflow="visible"
           fill="none"
           height={size}
           stroke="currentColor"

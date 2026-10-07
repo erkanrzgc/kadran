@@ -1,0 +1,19 @@
+/* Cam kart: gradyanlı dolgu, ince parlak kenar, üst kenar ışığı. */
+.glass {
+  background: linear-gradient(
+    160deg,
+    rgba(var(--glass), calc(var(--panel) * 1.6)) 0%,
+    rgba(var(--glass), var(--panel)) 45%,
+    rgba(var(--glass), calc(var(--panel) * 0.5)) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, var(--edge));
+  border-radius: var(--radius);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, calc(var(--edge) * 1.4)),
+    inset 0 -1px 0 rgba(255, 255, 255, calc(var(--edge) * 0.25)),
+    0 10px 30px rgba(0, 0, 0, 0.18);
+}
+:root[data-tone="light"] .glass {
+  background: rgba(255, 255, 255, calc(var(--panel) * 4));
+  border-color: rgba(0, 0, 0, calc(var(--edge) * 0.4));
+}

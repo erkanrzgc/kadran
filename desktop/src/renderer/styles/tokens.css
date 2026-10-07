@@ -1,0 +1,39 @@
+/* Tasarım belirteçleri. Kaydırıcıların değerlerini AppearanceProvider yazar. */
+:root {
+  --tint: 0.6;
+  --panel: 0.07;
+  --edge: 0.22;
+  --glow: 0.6;
+  --acc: 125, 211, 252;
+  --ring: var(--acc);
+  --accent: rgb(var(--acc));
+  --tone: 14, 16, 22;
+  --glass: 255, 255, 255;
+  --fg: #f2f4f8;
+  --fg-dim: rgba(242, 244, 248, 0.62);
+  --fg-faint: rgba(242, 244, 248, 0.4);
+  --line: rgba(255, 255, 255, 0.08);
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --muted: rgba(242, 244, 248, 0.45);
+  --radius: 18px;
+  --radius-sm: 10px;
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Bundled", ui-monospace, Consolas, monospace;
+  --w-ui: 400;
+  --w-strong: 600;
+  --w-mono: 400;
+}
+
+:root[data-tone="light"] {
+  --tone: 246, 247, 250;
+  --fg: #11141a;
+  --fg-dim: rgba(17, 20, 26, 0.62);
+  --fg-faint: rgba(17, 20, 26, 0.42);
+  --line: rgba(17, 20, 26, 0.1);
+  --ok: #15803d;
+  --warn: #b45309;
+  --bad: #b91c1c;
+  --muted: rgba(17, 20, 26, 0.45);
+}

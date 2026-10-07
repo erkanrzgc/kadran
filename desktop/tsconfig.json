@@ -27,8 +27,7 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  // renderer/ derlenmiyor: düz JavaScript olarak kopyalanıyor. Tarayıcı
-  // bağlamında modül çözümlemesi ayrı bir sorun kümesi ve tek ekranlık
-  // bir arayüz için o karmaşıklığa değmez.
+  // renderer/ burada derlenmiyor: Vite derliyor, tip denetimi
+  // tsconfig.renderer.json'da (DOM + JSX). İki dünya ayrı tutuluyor.
   "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts"]
 }

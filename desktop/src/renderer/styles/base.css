@@ -1,0 +1,4 @@
+/* Pencerenin kendisi saydam; renk tonu .app'te (Görev 11). */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+#root { height: 100%; }

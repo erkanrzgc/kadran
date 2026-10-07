@@ -162,6 +162,13 @@ async function runSmokeTest(window: BrowserWindow): Promise<void> {
     // Renderer Node'a ERİŞEMEMELİ. Erişebiliyorsa contextIsolation ya da
     // sandbox bir yerde kapanmış demektir ve ürünün ayrıcalık ayrımı
     // istemci tarafından delinmiş olur.
+    // React gerçekten çizdi mi? Vite çıktısı file:// üzerinden yüklenemezse
+    // (modül/CORS ya da CSP) kök boş kalır ve konsola hata düşer.
+    const rendered = (await window.webContents.executeJavaScript(
+      "Boolean(document.querySelector('[data-testid=\"app\"]'))",
+    )) as boolean;
+    if (!rendered) problems.push("React kökü çizilmedi");
+
     const leaked = (await window.webContents.executeJavaScript(
       "[typeof require, typeof process, typeof module].join(',')",
     )) as string;

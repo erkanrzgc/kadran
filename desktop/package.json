@@ -8,14 +8,24 @@
   "main": "out/main/index.js",
   "scripts": {
     "test": "node --test \"test/*.test.ts\"",
-    "typecheck": "tsc --noEmit",
-    "build": "tsc && node scripts/copy-renderer.mjs",
+    "test:built": "node --test \"test/built/*.test.ts\"",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.renderer.json",
+    "build": "tsc && vite build && node scripts/copy-preload.mjs",
     "dev": "npm run build && electron ."
+  },
+  "dependencies": {
+    "motion": "13.5.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
     "electron": "^43.2.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vite": "8.3.3"
   },
   "engines": {
     "node": ">=22.6"

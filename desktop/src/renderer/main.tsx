@@ -14,6 +14,7 @@ import "./styles/glass.css";
 import "./styles/controls.css";
 import "./styles/focus.css";
 import "./styles/layout.css";
+import "./styles/screens.css";
 
 /** Dil görünüm ayarlarından geliyor; sağlayıcı onun içinde. */
 function Localized() {

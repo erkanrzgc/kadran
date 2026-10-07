@@ -10,6 +10,7 @@ import { useT } from "./i18n/I18nProvider.tsx";
 import { errorText } from "./lib/errors.ts";
 import { healthOf, healthTone } from "./lib/health.ts";
 import type { VersionPayload } from "./lib/types.ts";
+import { StatusScreen } from "./screens/StatusScreen.tsx";
 import { useToast } from "./toast/ToastProvider.tsx";
 
 function initialView(): View {
@@ -69,7 +70,11 @@ export function App() {
             onVerify={() => void server.verifyChains()}
             onSwitch={(target) => void connect(target)}
           />
-          <EmptyState title={t("status.empty_title")} body={t("status.empty_body")} />
+          {view === "status" ? (
+            <StatusScreen server={server} onSeeAll={() => setView("audit")} />
+          ) : (
+            <EmptyState title={t("status.empty_title")} body={t("status.empty_body")} />
+          )}
         </main>
       </div>
     </div>

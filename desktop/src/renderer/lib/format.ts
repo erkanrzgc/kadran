@@ -38,7 +38,16 @@ export function humanBytes(value: number | string): string {
     div *= 1024;
     exp++;
   }
-  return `${(n / div).toFixed(1)} ${"KMGTPE"[exp]}iB`;
+  // Go's %.1f yuvarlar tam yarımda çift sayıya (banker's rounding); değer eşleştirmeliyiz.
+  const scaled = (n / div) * 10;
+  let k: number;
+  if (Number.isInteger(scaled * 2) && !Number.isInteger(scaled)) {
+    // Exact .5 tie: round to nearest even
+    k = Math.round(scaled / 2) * 2;
+  } else {
+    k = Math.round(scaled);
+  }
+  return `${(k / 10).toFixed(1)} ${"KMGTPE"[exp]}iB`;
 }
 
 /** shortFingerprint, uzun SSH parmak izini listede okunur kılar. */

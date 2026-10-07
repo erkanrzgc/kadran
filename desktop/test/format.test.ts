@@ -36,6 +36,13 @@ test("humanBytes CLI ile aynı", () => {
   assert.equal(humanBytes("x"), "—");
 });
 
+test("humanBytes tam yarımda CLI gibi çifte yuvarlar", () => {
+  assert.equal(humanBytes(1280), "1.2 KiB");
+  assert.equal(humanBytes(2304), "2.2 KiB");
+  assert.equal(humanBytes(1792), "1.8 KiB");
+  assert.equal(humanBytes(1342177280), "1.2 GiB");
+});
+
 test("shortFingerprint uzun izi kısaltır, kısa izi bırakır", () => {
   assert.equal(
     shortFingerprint("SHA256:4f1c2b7d9e0a11223344556677889900aabbccddeeffa9e2"),

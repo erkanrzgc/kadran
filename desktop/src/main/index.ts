@@ -13,7 +13,7 @@
  * uygulamayı rastgele bir siteye taşıyamaz.
  */
 
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import { spawn } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,6 +22,7 @@ import { SidecarClient } from "../shared/sidecar-client.ts";
 import type { SidecarProcess } from "../shared/sidecar-client.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
 import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
+import { lockDownPermissions } from "./permissions.ts";
 import { CHANNELS } from "../shared/channels.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -255,6 +256,7 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(async () => {
+    lockDownPermissions(session.defaultSession);
     // Eski adlı uygulamanın (panely-desktop) profilleri, pencere onları
     // okumadan ÖNCE taşınır (K-136). Hata uygulamayı durdurmaz: en kötü
     // durumda profiller boş açılır, eski dosya yerinde durur.

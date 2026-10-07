@@ -136,9 +136,15 @@ if (!app.requestSingleInstanceLock()) {
     const win = host.open(appearance.mode);
     if (SMOKE_TEST) void runSmokeTest(win);
 
+    // Pencere kapalıyken Dock'tan dönüldüğünde kayıtlı mod diskten okunur;
+    // başlangıçta okunan mod Ayarlar'da değişmiş olabilir.
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) host?.open(appearance.mode);
+      if (BrowserWindow.getAllWindows().length > 0) return;
+      void loadAppearance(userData(), platformInfo, warn).then((a) => host?.open(a.mode));
     });
+  }).catch((err: unknown) => {
+    console.error("[kadran] başlatılamadı:", err);
+    app.exit(1);
   });
 
   app.on("window-all-closed", () => {

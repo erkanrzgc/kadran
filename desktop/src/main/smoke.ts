@@ -86,11 +86,14 @@ export async function runSmokeTest(win: BrowserWindow): Promise<void> {
   });
 
   await new Promise<void>((done) => {
-    win.webContents.once("did-finish-load", () => done());
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       problems.push("page did not load in 20 s");
       done();
     }, 20_000);
+    win.webContents.once("did-finish-load", () => {
+      clearTimeout(timer);
+      done();
+    });
   });
 
   try {

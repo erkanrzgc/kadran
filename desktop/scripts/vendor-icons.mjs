@@ -7,8 +7,8 @@
  *   - `React.MouseEvent` → içe aktarılan `MouseEvent` tipi;
  *   - başa kaynak ve lisans başlığı eklenir.
  *
- * İki aşamalı: Phase 1 tüm kaynakları doğrular (hiçbir dosya yazılmaz),
- * Phase 2 tüm dosyaları yazar. Başarısız kapatma: hatada sıfır değişiklik.
+ * İki aşamalı: 1. aşama tüm kaynakları doğrular (hiçbir dosya yazılmaz),
+ * 2. aşama tüm dosyaları yazar. Başarısız kapatma: hatada sıfır değişiklik.
  *
  * Yeniden çalıştırmak aynı çıktıyı verir. İkon eklemek için NAMES'e ekle,
  * betiği çalıştır, test/icons.test.ts'teki EXPECTED'i güncelle.
@@ -17,7 +17,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
 import { verifySha256, validateKeySet } from "./vendor-integrity.mjs";
 
 const COMMIT = "072c38b1b04ea738d90a084485ccaad4b890ddca";
@@ -50,18 +49,18 @@ const outDir = join(here, "..", "src", "renderer", "icons");
 // Anahtar seti doğrula (erken hata)
 validateKeySet(NAMES, EXPECTED_SHA256);
 
-async function fetchText(url) {
+async function fetchBytes(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
-  return res.text();
+  return Buffer.from(await res.arrayBuffer());
 }
 
+// Özet, çözülmeden önceki ham baytlardan alınır; metne ancak doğrulamadan
+// sonra çevrilir.
 async function fetchAndVerify(url, expectedKey) {
-  const text = await fetchText(url);
-  // Ham baytları ve string'i aynı şekilde doğrula
-  const buf = Buffer.from(text, "utf8");
+  const buf = await fetchBytes(url);
   verifySha256(buf, expectedKey, EXPECTED_SHA256);
-  return text;
+  return buf.toString("utf8");
 }
 
 function adapt(name, src) {
@@ -89,7 +88,7 @@ function exportName(src) {
   return m[1];
 }
 
-// ====== PHASE 1: Tüm kaynakları doğrula (dosya yazılmaz) ======
+// ====== 1. aşama: tüm kaynakları doğrula (dosya yazılmaz) ======
 console.log("Aşama 1: Kaynaklar doğrulanıyor...");
 
 const icons = [];
@@ -128,7 +127,7 @@ const licenseContent =
 
 console.log("✓ Aşama 1 başarılı: tüm kaynaklar doğrulandı");
 
-// ====== PHASE 2: Tüm dosyaları yaz ======
+// ====== 2. aşama: tüm dosyaları yaz ======
 console.log("Aşama 2: Dosyalar yazılıyor...");
 
 await mkdir(outDir, { recursive: true });

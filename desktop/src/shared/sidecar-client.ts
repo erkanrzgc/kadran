@@ -121,7 +121,7 @@ export class SidecarClient {
    */
   call<T = unknown>(method: string, params?: unknown): Promise<T> {
     if (this.#closed) {
-      return Promise.reject(new SidecarError("sidecar kapatıldı"));
+      return Promise.reject(new SidecarError("the sidecar is closed"));
     }
 
     let proc: SidecarProcess;
@@ -129,7 +129,7 @@ export class SidecarClient {
       proc = this.#ensureProcess();
     } catch (err) {
       return Promise.reject(
-        new SidecarError(`sidecar başlatılamadı: ${(err as Error).message}`),
+        new SidecarError(`the sidecar did not start: ${(err as Error).message}`),
       );
     }
 
@@ -146,7 +146,7 @@ export class SidecarClient {
         this.#pending.delete(id);
         reject(
           new SidecarError(
-            `"${method}" çağrısı ${this.#timeoutMs} ms içinde yanıtlanmadı`,
+            `"${method}" got no answer within ${this.#timeoutMs} ms`,
           ),
         );
       }, this.#timeoutMs);
@@ -163,7 +163,7 @@ export class SidecarClient {
       try {
         proc.stdin.write(request + "\n");
       } catch (err) {
-        this.#settleError(id, new SidecarError(`istek yazılamadı: ${(err as Error).message}`));
+        this.#settleError(id, new SidecarError(`could not send the request: ${(err as Error).message}`));
       }
     });
   }
@@ -174,7 +174,7 @@ export class SidecarClient {
     const proc = this.#proc;
     this.#proc = null;
 
-    this.#rejectAll(new SidecarError("sidecar kapatıldı"));
+    this.#rejectAll(new SidecarError("the sidecar is closed"));
 
     if (proc) {
       try {
@@ -213,13 +213,13 @@ export class SidecarClient {
     proc.on("exit", (code) => {
       this.#proc = null;
       this.#rejectAll(
-        new SidecarError(`sidecar süreci sonlandı (çıkış kodu ${code ?? "bilinmiyor"})`),
+        new SidecarError(`the sidecar exited (code ${code ?? "unknown"})`),
       );
     });
 
     proc.on("error", (err) => {
       this.#proc = null;
-      this.#rejectAll(new SidecarError(`sidecar süreci hata verdi: ${err.message}`));
+      this.#rejectAll(new SidecarError(`the sidecar process failed: ${err.message}`));
     });
 
     return proc;
@@ -231,7 +231,7 @@ export class SidecarClient {
     if (this.#buffer.length > MAX_BUFFER_BYTES) {
       this.#buffer = "";
       this.#rejectAll(
-        new SidecarError("sidecar çıktısı tampon sınırını aştı — süreç kapatılıyor"),
+        new SidecarError("the sidecar's output went over the buffer limit; stopping it"),
       );
       this.close();
       return;

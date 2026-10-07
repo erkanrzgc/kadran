@@ -196,10 +196,10 @@ async function runSmokeTest(window: BrowserWindow): Promise<void> {
 
 function requireTarget(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error("hedef boş olamaz");
+    throw new Error("target is empty");
   }
   if (value.length > 500) {
-    throw new Error("hedef çok uzun");
+    throw new Error("target is too long");
   }
   return value.trim();
 }

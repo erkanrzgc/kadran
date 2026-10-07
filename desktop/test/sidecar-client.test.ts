@@ -236,7 +236,7 @@ test("süre sınırı aşılınca çağrı reddedilir", async () => {
   );
 
   assert.ok(err instanceof SidecarError);
-  assert.match(err.message, /yanıtlanmadı/);
+  assert.match(err.message, /got no answer/);
   // Yanıt geç gelirse çökmemeli: bekleyen kayıt zaten silinmiş olmalı.
   proc.emitStdout(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "geç" }) + "\n");
 
@@ -254,7 +254,7 @@ test("süreç ölünce bekleyen çağrılar reddedilir", async () => {
     (e: unknown) => e as SidecarError,
   );
   assert.ok(err instanceof SidecarError);
-  assert.match(err.message, /sonland/);
+  assert.match(err.message, /exited/);
 
   client.close();
 });

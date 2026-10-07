@@ -72,7 +72,7 @@ export async function saveProfiles(
   profiles: unknown,
 ): Promise<Profile[]> {
   if (!Array.isArray(profiles)) {
-    throw new Error("profiller bir dizi olmalı");
+    throw new Error("profiles must be a list");
   }
   // Renderer'dan gelen veri DOĞRULANIR. Güvenilmez bir kaynaktan gelen
   // yapıyı olduğu gibi diske yazmak, bir sonraki okumada beklenmedik

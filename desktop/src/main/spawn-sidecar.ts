@@ -70,7 +70,7 @@ export function resolveSidecarCommand(options: ResolveOptions): SidecarCommand {
     const parts = override.split(/\s+/).filter(Boolean);
     const [command, ...args] = parts;
     if (!command) {
-      throw new Error(`${COMMAND_OVERRIDE} boş — komut belirtilmedi`);
+      throw new Error(`${COMMAND_OVERRIDE} is empty: no command given`);
     }
     return { command, args: [...args, "sidecar"] };
   }
@@ -80,15 +80,14 @@ export function resolveSidecarCommand(options: ResolveOptions): SidecarCommand {
   if (options.isPackaged) {
     if (!options.resourcesPath) {
       throw new Error(
-        "paketlenmiş uygulamada resourcesPath gerekli — " +
-          "binary electron-builder'da extraResources olarak paketlenmeli",
+        "resourcesPath is required in a packaged app; the binary ships as an extra resource",
       );
     }
     return { command: join(options.resourcesPath, name), args: ["sidecar"] };
   }
 
   if (!options.repoRoot) {
-    throw new Error("geliştirme kipinde repoRoot gerekli");
+    throw new Error("repoRoot is required in development");
   }
   // Geliştirmede binary `go build -o bin/<ad> ./cmd/kadran` ile üretilir.
   return { command: join(options.repoRoot, "bin", name), args: ["sidecar"] };

@@ -94,7 +94,7 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
               <i className={live ? "live-dot is-on" : "live-dot"} aria-hidden="true" />
               {t("status.live")}
             </label>
-            <button type="button" className="btn btn-ghost" disabled={refreshing} onClick={() => void reload()}>
+            <button type="button" className="btn btn-ghost" disabled={refreshing} onClick={() => void reload()} data-testid="refresh">
               {t("status.refresh")}
             </button>
           </div>

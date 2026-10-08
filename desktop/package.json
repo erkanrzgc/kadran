@@ -10,6 +10,7 @@
     "test": "node --test \"test/*.test.ts\"",
     "test:built": "node --test \"test/built/*.test.ts\"",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.renderer.json",
+    "e2e": "node scripts/e2e.mjs",
     "build": "tsc && vite build && node scripts/copy-preload.mjs",
     "dev": "npm run build && electron ."
   },

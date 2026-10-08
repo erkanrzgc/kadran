@@ -170,7 +170,15 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
         <AuditTable
           records={audit.records}
           testId="audit-preview"
-          placeholder={audit.records.length > 0 ? undefined : audit.loaded ? t("audit.empty") : t("audit.loading")}
+          placeholder={
+            audit.records.length > 0
+              ? undefined
+              : audit.failed
+                ? t("audit.load_failed")
+                : audit.loaded
+                  ? t("audit.empty")
+                  : t("audit.loading")
+          }
         />
       </section>
     </div>

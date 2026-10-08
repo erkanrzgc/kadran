@@ -24,6 +24,8 @@ export function useAudit(target: string | null, size: number) {
   const [loading, setLoading] = useState(false);
   // İlk yükleme bitti mi? Boş durum ile "henüz yüklenmedi" ayrılsın.
   const [loaded, setLoaded] = useState(false);
+  // Son yükleme başarısız mı? Hata "kayıt yok" diye gösterilmesin.
+  const [failed, setFailed] = useState(false);
 
   const targetRef = useRef<string | null>(target);
   const generation = useRef(0);
@@ -47,6 +49,7 @@ export function useAudit(target: string | null, size: number) {
       setLatest(null);
       setLoading(false);
       setLoaded(false);
+      setFailed(false);
       return;
     }
     newestBusy.current = true;
@@ -58,14 +61,19 @@ export function useAudit(target: string | null, size: number) {
       setLatest(latestSeq);
       if (!Number.isFinite(latestSeq) || latestSeq <= 0) {
         commit([]);
+        setFailed(false);
         return;
       }
       const w = newestWindow(latestSeq, size);
       const page = await bridge.auditList(target, w.afterSeq, w.limit);
       if (!isCurrent()) return;
       commit(mergeNewestFirst([], page.records));
+      setFailed(false);
     } catch (err) {
-      if (isCurrent()) toast("toast.audit_failed", { error: errorText(err) });
+      if (isCurrent()) {
+        setFailed(true);
+        toast("toast.audit_failed", { error: errorText(err) });
+      }
     } finally {
       if (isCurrent()) {
         newestBusy.current = false;
@@ -106,9 +114,10 @@ export function useAudit(target: string | null, size: number) {
     commit([]);
     setLatest(null);
     setLoaded(false);
+    setFailed(false);
     void loadNewest();
   }, [target, size, loadNewest, commit]);
 
   const last = records.length > 0 ? Number(records[records.length - 1]!.seq) : 0;
-  return { records, latest, loading, loaded, hasOlder: last > 1, loadNewest, loadOlder };
+  return { records, latest, loading, loaded, failed, hasOlder: last > 1, loadNewest, loadOlder };
 }

@@ -73,6 +73,7 @@
   "audit.load_older": "Load older",
   "audit.loading": "Loading…",
   "audit.empty": "The chain has no records.",
+  "audit.load_failed": "Could not load audit records.",
   "audit.range": "Show",
   "audit.last": "last {n}",
   "audit.filter_action": "Action",

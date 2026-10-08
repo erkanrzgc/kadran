@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { clampLimit, mergeNewestFirst, newestWindow, olderWindow, parseLatestSeq } from "../src/renderer/lib/audit-window.ts";
+import { clampLimit, mergeNewestFirst, newestPageIntact, newestWindow, olderWindow, parseLatestSeq } from "../src/renderer/lib/audit-window.ts";
 import type { AuditRecord } from "../src/renderer/lib/types.ts";
 
 function rec(seq: number): AuditRecord {
@@ -57,6 +57,15 @@ test("limit 1…1000 aralığında", () => {
 test("latest_seq yalnız ondalık rakam dizisi; boş zincir tam \"0\"", () => {
   assert.equal(parseLatestSeq("0"), 0);
   assert.equal(parseLatestSeq("1284"), 1284);
+});
+
+test("en yeni sayfa latest_seq kaydını içermeli: boş ya da eksik sayfa \"kayıt yok\" değil hata", () => {
+  assert.equal(newestPageIntact(1284, serverPage(1284, 1274, 10)), true);
+  assert.equal(newestPageIntact(5, serverPage(5, 0, 50)), true);
+  // İki çağrı arasında yeni kayıt geldiyse de pencere latest'i içerir.
+  assert.equal(newestPageIntact(1284, serverPage(1290, 1274, 10)), true);
+  assert.equal(newestPageIntact(1284, []), false);
+  assert.equal(newestPageIntact(1284, serverPage(1283, 1273, 10)), false);
 });
 
 test("latest_seq bozuksa null: \"kayıt yok\" diye okunmaz", () => {

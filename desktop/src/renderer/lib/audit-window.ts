@@ -39,6 +39,17 @@ export function newestWindow(latestSeq: number, n: number): AuditWindow {
   return { afterSeq: Math.max(0, latestSeq - limit), limit };
 }
 
+/**
+ * newestPageIntact: latest_seq zincirin başı (store.AuditHead). Artan
+ * sırada ve limitli olduğu için en yeni pencere, sonradan yeni kayıt
+ * eklense bile, o kaydı her zaman içerir. İçermiyorsa cevap eksiktir;
+ * "zincirde kayıt yok" diye gösterilmemeli.
+ */
+export function newestPageIntact(latestSeq: number, records: readonly AuditRecord[]): boolean {
+  const head = String(latestSeq);
+  return records.some((r) => r.seq === head);
+}
+
 /** olderWindow, ekrandaki en eski kaydın hemen öncesindeki n kaydı ister. */
 export function olderWindow(oldestShown: number, n: number): AuditWindow | null {
   if (!Number.isFinite(oldestShown) || oldestShown <= 1) return null;

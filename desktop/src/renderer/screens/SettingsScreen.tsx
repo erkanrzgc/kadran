@@ -70,6 +70,8 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
             weight={nearestWeight(uiFaces, a.uiFont.weight)}
             weights={weightsOf(uiFaces)}
             defaultLabel={t("font.system")}
+            label={t("settings.ui_font")}
+            weightLabel={t("font.weight_of", { font: t("settings.ui_font") })}
             onFamily={(family) => update({ uiFont: { family, weight: nearestWeight(families.get(family) ?? [], 400) } })}
             onWeight={(weight) => update({ uiFont: { family: a.uiFont.family, weight } })}
             testId="ui-font"
@@ -82,6 +84,8 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
             weight={nearestWeight(codeFaces, a.codeFont.weight)}
             weights={weightsOf(codeFaces)}
             defaultLabel={t("font.bundled")}
+            label={t("settings.code_font")}
+            weightLabel={t("font.weight_of", { font: t("settings.code_font") })}
             onFamily={(family) => update({ codeFont: { family, weight: nearestWeight(families.get(family) ?? [], 400) } })}
             onWeight={(weight) => update({ codeFont: { family: a.codeFont.family, weight } })}
             testId="code-font"
@@ -114,7 +118,10 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
               {profiles.map((p) => (
                 <li key={p.target}>
                   <span className="mono">{p.target}</span>
-                  <button type="button" className="btn btn-ghost" onClick={() => onRemoveProfile(p.target)} data-testid={`remove-${p.target}`}>
+                  <button type="button" className="btn btn-ghost" onClick={() => onRemoveProfile(p.target)}
+                    aria-label={t("settings.remove_server", { target: p.target })}
+                    data-testid={`remove-${p.target}`}
+                  >
                     {t("settings.remove")}
                   </button>
                 </li>

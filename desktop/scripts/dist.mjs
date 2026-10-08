@@ -68,6 +68,6 @@ const paths = await packager({
   asar: true,
   prune: false,
   extraResource: [sidecar, join(desktop, "build", "THIRD_PARTY_NOTICES.txt")],
-  ignore: (path) => path !== "" && path !== "/package.json" && !path.startsWith("/out"),
+  ignore: (path) => path !== "" && path !== "/package.json" && path !== "/out" && !path.startsWith("/out/"),
 });
 console.log(`paket: ${paths.join(", ")}`);

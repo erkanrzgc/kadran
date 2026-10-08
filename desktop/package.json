@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.renderer.json",
     "e2e": "node scripts/e2e.mjs",
     "build": "tsc && vite build && node scripts/copy-preload.mjs",
-    "dev": "npm run build && electron ."
+    "dev": "npm run build && electron .",
+    "dist": "npm run build && node scripts/dist.mjs"
   },
   "dependencies": {
     "motion": "13.5.1",
@@ -20,6 +21,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@electron/packager": "20.3.0",
     "@types/node": "^22.10.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",

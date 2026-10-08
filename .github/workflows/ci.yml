@@ -449,6 +449,81 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+  # Masaüstü uygulaması (K-142). Bu işe kadar CI masaüstünü HİÇ koşmuyordu:
+  # ne birim testleri ne pencerenin gerçekten açıldığı ölçülüyordu.
+  desktop:
+    name: Masaüstü (ubuntu)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:built
+      - name: Çalışma zamanı bağımlılık zafiyetleri
+        run: npm audit --omit=dev --audit-level=high
+      # Electron'un Chromium kum havuzu yardımcısı SUID root olmalı;
+      # --no-sandbox ile çalıştırmak ölçtüğümüz şeyi gevşetirdi.
+      - name: Electron kum havuzu ve sanal ekran
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      - name: Uçtan uca (sahte sidecar)
+        run: xvfb-run -a npm run e2e
+
+  # Çalışma dizini adım başına veriliyor (job düzeyinde `defaults` YOK):
+  # bileşik eylemin adımları depo kökünde koşmak zorunda (buf generate,
+  # find internal/pb), job varsayılanına güvenmek bu belirsizliği taşırdı.
+  desktop-windows:
+    name: Masaüstü (windows)
+    runs-on: windows-latest
+    steps:
+      # Sığ klonda etiket yok: sidecar sürümü `git describe --always`
+      # yüzünden kısa commit özetine düşer (dist.mjs aynı değeri doğrular).
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - run: npm run build
+        working-directory: desktop
+      - name: Uçtan uca (sahte sidecar)
+        working-directory: desktop
+        run: npm run e2e
+      - name: Paket (imzasız)
+        working-directory: desktop
+        run: npm run dist
+      - name: Paketin içeriği
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          d=dist/Kadran-win32-x64
+          for f in Kadran.exe resources/kadran.exe resources/THIRD_PARTY_NOTICES.txt resources/app.asar; do
+            test -f "$d/$f" || { echo "::error::pakette yok: $f"; exit 1; }
+          done
+          if npx asar list "$d/resources/app.asar" | grep -q node_modules; then
+            echo "::error::app.asar node_modules taşıyor"; exit 1
+          fi
+
   # ══════════════════════════════════════════════════════════════════
   #  Mutasyon: testlerin GERÇEKTEN bir şey koruduğunu sına
   # ══════════════════════════════════════════════════════════════════
@@ -476,6 +551,19 @@ jobs:
         with:
           python-version: '3.x'
 
+      # mutate-desktop.sh birim testlerini node ile koşuyor; Electron
+      # ikilisi gerekmiyor (indirme atlanıyor).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Masaüstü bağımlılıkları
+        working-directory: desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: npm ci
+
       # mutate-kasa.sh geri dönüş betiğini gerçek sqlite3 ve age ile ölçüyor.
       - name: Kasa geri dönüş araçları
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
@@ -494,7 +582,7 @@ jobs:
           shopt -s nullglob
           scripts=(scripts/mutate-*.sh)
           echo "bulunan betik: ${#scripts[@]}"
-          if [ "${#scripts[@]}" -lt 12 ]; then
+          if [ "${#scripts[@]}" -lt 28 ]; then
             echo "::error::yalnızca ${#scripts[@]} mutasyon betiği bulundu — glob bozuk ya da betikler silinmiş" >&2
             exit 1
           fi

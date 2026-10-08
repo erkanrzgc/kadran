@@ -5,6 +5,17 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### Added
+
+- **New desktop app (K-142).** A glass window — Clear, Acrylic, Mica or Vibrancy, with
+  the desktop showing through — and Appearance settings you tune yourself: tint, panel
+  glass, edge highlight, hover glow, accent, theme, interface and code fonts (any
+  installed font; JetBrains Mono ships with the app). Status gets an overview strip with
+  live sparklines, a health pill and a server switcher; Audit gets ranges, filters, an
+  outcome bar and "load older". English by default, Turkish in Settings.
+- **The desktop app asks for no permissions** except the installed-font list. Before
+  this release Electron granted every permission request.
+
 ### Changed
 
 - **The CLI speaks English (K-141).** Help, usage errors, tables, status labels and every
@@ -28,6 +39,12 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   English details; records written before the upgrade keep theirs, since the chain is
   append-only. Still Turkish: the server's journal lines (`journalctl -u kadrand`), alarm
   and Telegram texts, and the database's own trigger messages.
+
+### Fixed
+
+- **Desktop "recent audit records" showed the oldest records.** It asked for the first
+  50 records after sequence 0; once a chain had more than 50 records, new ones never
+  appeared. It now reads the latest sequence first.
 
 ## v0.5.1 — 2026-10-05
 

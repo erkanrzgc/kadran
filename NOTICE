@@ -1,2 +1,9 @@
 Kadran
 Copyright 2026 erkanrzgc
+
+The desktop app bundles:
+- Animated icons from pqoqubbw/icons (MIT) drawn from Lucide (ISC); see
+  desktop/src/renderer/icons/LICENSE.
+- JetBrains Mono (SIL Open Font License 1.1); see desktop/src/renderer/fonts/OFL.txt.
+- React, React DOM, scheduler (MIT), Motion (MIT) and tslib (0BSD), listed with their
+  license texts in THIRD_PARTY_NOTICES.txt inside the packaged app.

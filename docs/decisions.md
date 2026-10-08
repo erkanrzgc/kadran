@@ -10617,8 +10617,9 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 ## K-141 — CLI İngilizce
 
 **Tarih:** 5 Ekim 2026
-**Durum:** 1. AŞAMA PR #8 (CI 10/10, mutasyon 27/27), 2. AŞAMA PR #9 (`fa4f77a`)
-birleşti. 3. AŞAMA KOD BİTTİ (dal `cli-ingilizce-3`). 4–5. aşamalar sırada.
+**Durum:** 1. aşama PR #8 (CI 10/10, mutasyon 27/27), 2. aşama PR #9 (`fa4f77a`),
+3. aşama PR #10 (`1f1c028`) birleşti; 4. aşama K-142 ile (masaüstü, dal
+`masaustu-temel`); 5. aşama sırada.
 
 ### Neden
 
@@ -10801,3 +10802,123 @@ Kanıt: Debian 13 konteyneri, CI taklidi (uid 1001, parolasız sudo,
 - `check-exec-surface` 2581/2600.
 - 27 mutasyon betiğinin hepsinde "Bütün mutasyonlar yakalandı"; UYGULANAMADI ya da KIRMIZI
   OLMADI yok.
+
+### 4. aşama: masaüstü
+
+Masaüstü yeniden yazıldı (K-142). Arayüzün metni `src/renderer/i18n/en.json`
+(varsayılan) ve `tr.json`'da. Kullanıcıya ulaşan ana süreç hataları (sidecar
+istemcisi, profiller, IPC doğrulaması) İngilizce; konsol tanılamaları Türkçe kaldı.
+
+Korumalar:
+
+- `test/i18n.test.ts`: iki dosyanın anahtarları ve yer tutucuları aynı, İngilizcede
+  Türkçe harf yok, koddaki her `t("…")` anahtarı var, iki dilde aynı değer yalnız
+  dilden bağımsız anahtarlarda.
+- `test/no-raw-text.test.ts`: JSX'te çeviri dışı görünür metin yok (TypeScript AST).
+- `test/errors-english.test.ts`: `new …Error(…)` iletileri İngilizce.
+
+Hepsi KIRMIZI ölçüldü; mutasyon betiği iki dil mutantını yakalıyor.
+
+Bu aşamanın kararı K-141'in "yalnız İngilizce" kuralını masaüstü için değiştirdi;
+gerekçe K-142'de.
+
+## K-142 — Masaüstü: cam tasarım, React, izinler, dil seçimi
+
+**Tarih:** 7 Ekim 2026
+**Durum:** 1. PARÇA KOD BİTTİ (dal `masaustu-temel`). Tasarım: `docs/specs/2026-10-07-masaustu-temel-design.md`.
+
+### Neden
+
+Kullanıcı masaüstünü baştan istedi: pencere cam gibi (arkadaki masaüstü görünür),
+ayarları kendisi yapabilecek, CLI'ın yaptığı her şeyi yapabilecek. İş dört parçaya
+bölündü; bu kayıt 1. parçayı (temel + cam tasarım) kapsar.
+
+### Karar
+
+- **Electron kalıyor.** Liquid glass'ın kenar kırılması webde yalnız Chromium'da var
+  (SVG yer değiştirme süzgeci + backdrop-filter). Tauri/Wails sistemin web motorunu
+  kullanır; macOS ve Linux'ta kırılma olmaz. Bedel: paket büyük. Ölçüldü:
+  `desktop/dist/Kadran-win32-x64` 376 MB; bu açılmış klasör, kurulum paketi ya da
+  sıkıştırma henüz yok.
+- **React + Vite + Motion,** mevcut kabuğun içinde. Güvenlik duruşu (sandbox,
+  contextIsolation, CSP, dar köprü) ve sidecar istemcisi korundu.
+- **Pencere modları:**
+  - Windows 11: Clear (transparent) / Acrylic / Mica (backgroundMaterial) / Solid.
+  - macOS: Vibrancy.
+  - Linux: Clear ve Solid.
+  - Clear ↔ diğerleri pencereyi yeniden kurar; saydamlık sonradan açılıp kapanamıyor.
+- **İzinler kapandı.** Bugüne kadar Electron her izni veriyordu. Artık yalnız KONTROL
+  işleyicisinde `local-fonts` açık. Ölçüldü: Chromium yazı tipi listesini bu adla ve
+  kontrol kanalından soruyor; reddedilince boş liste dönüyor. Pano izni yok; kopyalama
+  ana süreçte (`copyText`).
+- **Dil seçimi (K-141'in "dil seçimi yok" kararı masaüstü için değişti).** Kullanıcı
+  istedi; varsayılan İngilizce, Türkçe Settings'te. Test matrisi büyümüyor: `en` ve `tr`
+  anahtar eşitliği ve İngilizcede Türkçe harf yokluğu birim testinde. CLI ve sunucu
+  İngilizce kalır; sunucudan gelen hata Türkçe arayüzde de İngilizce görünür.
+- **Coolify'ın düzeninden** üst çubuk, Overview şeridi, Live refresh, altı çizili bölüm
+  başlıkları ve sonuç çubuğu alındı. Kod, logo ve marka rengi alınmadı (Apache-2.0;
+  kullanıcı izin aldığını söyledi).
+
+### Ölçülen bir hata
+
+Eski arayüz "son denetim kayıtları" diye `after_seq = 0, limit = 50` istiyordu. Sunucu
+`after_seq`'i hariç tutup artan sırada döndüğü için ekranda EN ESKİ 50 kayıt vardı;
+zincir 50'yi geçince yeni kayıtlar hiç görünmüyordu. Yeni arayüz önce `latest_seq`'i
+okuyor. Hem birim testi hem uçtan uca yolculuk `latest_seq = 1284` → 1284…1275 ölçüyor.
+Mutant `afterSeq: 0` iki yerde de yakalanıyor.
+
+### Uygulama sırasında ölçülen hatalar
+
+İncelemelerin bulduğu ve denetleyicinin düzelttiği hatalar. Her biri birim testiyle
+düzeltildi ve `scripts/mutate-desktop.sh`'te bir mutantı var.
+
+- Bozuk `latest_seq` (null, "abc", "-1"…) ve zincir başını içermeyen en yeni sayfa
+  "zincirde kayıt yok" gösteriyordu. `parseLatestSeq` (yalnız tam ondalık dize, güvenli
+  tamsayı) ve `newestPageIntact` eklendi; ikisi de hata olarak gösterilir.
+- Yükleme hatası "kayıt yok" diye görünüyordu. `failed` durumu ve `auditPlaceholderKey`
+  (Status önizlemesi ile Audit ekranı ortak) eklendi.
+- Bağlantı kopunca üst çubuk "Healthy", ekran "Connected" kalıyordu. `stale` bayrağı
+  eklendi. İlke: bayat veri iyi haber taşımaz (healthy/unknown → attention); kötü haber
+  (tampering, broken install, executor unreachable) kalır (`healthOf`, `statusMetaKeys`).
+- Aynı sunucuya üst üste binen status/verify isteklerinde geç gelen eski cevap yenisini
+  eziyordu; eski VALID yeni INVALID'i gizleyebilirdi. Hedef başına single-flight eklendi
+  (`lib/single-flight.ts`). Takılan istek kilitlemez: sidecar istemcisi her isteği 35 sn
+  ile sınırlar.
+- Profil listesi okunmadan bağlanınca kayıtlı sunucular silinebiliyordu; eşzamanlı
+  yazmalar birbirini eziyordu. `lib/profile-store.ts` (diskten okumadan yazmaz, okuma
+  hatasında yazmaz, sıralı) ve `lib/serial.ts` eklendi.
+- Paketteki sidecar sürümsüz ("dev") derleniyordu ve arayüz CI etiketinin başına bir "v"
+  daha ekleyip "vv0.5.1" yazacaktı. `dist.mjs` artık `build-linux.sh` ile aynı `-X`
+  damgasını veriyor, derlemeden sonra sidecar'a sürüm soruyor ve "dev"de duruyor;
+  `versionLabel` eklendi.
+- Türkçe harf denetimi "Ayarlar" gibi harfsiz Türkçeyi kaçırıyordu (mutasyon betiği
+  yakaladı). İki dilde aynı değer artık yalnız 9 dilden bağımsız anahtarda
+  (`SAME_IN_BOTH`) kabul ediliyor.
+
+### Kanıt
+
+Hepsi bu kayıt yazılırken koşuldu (Windows 11, Node 24, Electron 43.7.8):
+
+- `npm run typecheck` temiz. `npm test`: 147 test, 147 geçti, 0 kalan.
+- `npm run test:built`: 4 test, 4 geçti.
+- `npm run e2e`: `duman testi GEÇTİ: yolculuk tamam (sahte sidecar)`. Yolculuk Electron'u
+  duman kipinde sahte sidecar'a karşı açar: yazı tipi listesi boş değil; zincir
+  rozetleri; önizleme 1284…1275; denetim sayfası 1284…1235, "Load older" sonrası 1185;
+  sonuç çubuğu dolu; bozuk `latest_seq` hata gösteriyor; bağlantı kopunca ekran bayat
+  ve üst çubuk "Attention required"; ikon animasyonları CSP ihlali üretmiyor; Türkçe
+  arayüzde İngilizce sunucu hatası tam metinle görünüyor.
+- `bash scripts/mutate-desktop.sh`: 26 mutantın 26'sı "yakalandı", sonda "Bütün
+  mutasyonlar yakalandı".
+- `go test ./cmd/kadran -run TestSidecarFixtures -count=1`: ok.
+- Paket (`desktop/dist/Kadran-win32-x64`, 376 MB, açılmış klasör): `Kadran.exe`,
+  `resources/kadran.exe` (sidecar), `resources/THIRD_PARTY_NOTICES.txt` ve
+  `resources/app.asar`. `app.asar` yalnız `package.json` ve `out/` taşıyor;
+  `node_modules` girdisi 0.
+- CI'ya eklenenler: "Masaüstü (ubuntu)" ve "Masaüstü (windows)" işleri; mutasyon işine
+  Node kuruldu ve betik tabanı 28'e çıktı. CI sonuçları ilk push'u bekliyor, henüz
+  ölçülmedi.
+
+### Kapsam dışı
+
+2–4. parçalar; logo (grafik tasarımcı); kurulum sihirbazı, imza, otomatik güncelleme;
+macOS ve Linux'ta görsel doğrulama.

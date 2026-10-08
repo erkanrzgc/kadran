@@ -588,8 +588,8 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   one replica and accept that a deploy overlaps two writers for a few seconds.
 - **The desktop app is read-only:** version, status and the audit log. Management is CLI only.
 - **Some messages are still in Turkish.** The CLI, the install output and the errors the
-  server sends back are English. The desktop app, the server's journal lines and alarm
-  texts are being translated.
+  server sends back are English. The desktop app is English by default and can switch to
+  Turkish. The server's journal lines and alarm texts are being translated.
 - **Dockerfile builds only**, from public repositories. No buildpacks, no private
   repositories.
 - **Single node.** No TOTP on destructive actions, no rate limiting, no Cloudflare
@@ -622,7 +622,7 @@ cmd/kadran-connect/  Forced-command stdio proxy
 cmd/kadran/          Workstation CLI + `kadran sidecar`
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
-desktop/             Electron + React
+desktop/             Electron + React + Vite, glass window modes
 deploy/              systemd units, offsite backup, alarm delivery, heartbeat
 docs/                Architecture decision records
 scripts/             Surface checks, mutation tests — and the tests for those checks

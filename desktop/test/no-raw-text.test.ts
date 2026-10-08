@@ -58,6 +58,6 @@ export async function rawTexts(): Promise<{ files: number; problems: string[] }>
 
 test("JSX'te çeviri dışı görünür metin yok", async () => {
   const { files, problems } = await rawTexts();
-  assert.ok(files >= 1, "hiç .tsx dosyası taranmadı — yol kaymış olabilir");
+  assert.ok(files >= 15, "hiç .tsx dosyası taranmadı — yol kaymış olabilir");
   assert.deepEqual(problems, []);
 });

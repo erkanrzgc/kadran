@@ -74,3 +74,25 @@
 /* Süzgeçler */
 .filters { justify-content: flex-start; }
 .filter { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-dim); }
+
+/* Settings */
+.settings { padding: 2px 22px; }
+.set-row {
+  display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 28px; align-items: center;
+  padding: 14px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.settings > .set-row:last-of-type { border-bottom: 0; }
+.set-label strong { display: block; font-size: 13px; font-weight: var(--w-strong); }
+.set-label span { display: block; margin-top: 3px; font-size: 12px; color: var(--fg-faint); }
+.set-ctl { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.set-ctl input[type="range"] { flex: 1; accent-color: var(--accent); }
+.set-ctl output { width: 46px; text-align: right; font-size: 12px; color: var(--fg); }
+.set-ctl .seg { flex: 1; max-width: 460px; }
+.font-row { display: flex; gap: 6px; flex: 1; max-width: 460px; }
+.font-row .sel { flex: 1; }
+.font-row .sel-w { flex: none; width: 92px; }
+.font-note { margin: 0 0 12px; font-size: 11.5px; color: var(--fg-faint); }
+.server-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.server-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.about { font-size: 12px; color: var(--fg-dim); }
+.set-foot { display: flex; padding: 0 4px 8px; }

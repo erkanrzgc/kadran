@@ -10,6 +10,7 @@ import { useT } from "./i18n/I18nProvider.tsx";
 import { errorText } from "./lib/errors.ts";
 import { healthOf, healthTone } from "./lib/health.ts";
 import type { VersionPayload } from "./lib/types.ts";
+import { AuditScreen } from "./screens/AuditScreen.tsx";
 import { StatusScreen } from "./screens/StatusScreen.tsx";
 import { useToast } from "./toast/ToastProvider.tsx";
 
@@ -72,6 +73,8 @@ export function App() {
           />
           {view === "status" ? (
             <StatusScreen server={server} onSeeAll={() => setView("audit")} />
+          ) : view === "audit" ? (
+            <AuditScreen target={server.state.target} />
           ) : (
             <EmptyState title={t("status.empty_title")} body={t("status.empty_body")} />
           )}

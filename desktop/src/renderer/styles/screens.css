@@ -57,3 +57,19 @@
 .fp { font: inherit; color: inherit; background: transparent; border: 0; padding: 0; cursor: copy; text-decoration: underline dotted; }
 .outcome { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; }
 .audit-placeholder { text-align: center; color: var(--fg-faint); padding: 16px 8px; }
+
+/* Sonuç çubuğu */
+.outcomes { display: flex; flex-direction: column; gap: 10px; }
+.outcome-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--fg-dim); }
+.legend { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.legend b { color: var(--fg); font-weight: var(--w-strong); }
+.outcome-track { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.outcome-seg { display: block; min-width: 3px; }
+.outcome-seg.is-ok { background: var(--ok); }
+.outcome-seg.is-warn { background: var(--warn); }
+.outcome-seg.is-bad { background: var(--bad); }
+
+/* Süzgeçler */
+.filters { justify-content: flex-start; }
+.filter { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-dim); }

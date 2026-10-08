@@ -75,6 +75,7 @@
   "audit.load_older": "Daha eskiler",
   "audit.loading": "Yükleniyor…",
   "audit.empty": "Zincirde kayıt yok.",
+  "audit.no_match": "Süzgeçlere uyan kayıt yok.",
   "audit.load_failed": "Denetim kayıtları yüklenemedi.",
   "audit.range": "Göster",
   "audit.last": "son {n}",

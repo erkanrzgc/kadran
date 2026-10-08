@@ -10870,7 +10870,9 @@ Mutant `afterSeq: 0` iki yerde de yakalanıyor.
 ### Uygulama sırasında ölçülen hatalar
 
 İncelemelerin bulduğu ve denetleyicinin düzelttiği hatalar. Her biri birim testiyle
-düzeltildi ve `scripts/mutate-desktop.sh`'te bir mutantı var.
+düzeltildi. Sürüm maddesi dışındakilerin `scripts/mutate-desktop.sh`'te mutantı var;
+sürüm damgası denetimi elle KIRMIZI ölçüldü (`-X` yolu bozulunca `dist.mjs` durdu),
+`versionLabel` yalnız birim testli.
 
 - Bozuk `latest_seq` (null, "abc", "-1"…) ve zincir başını içermeyen en yeni sayfa
   "zincirde kayıt yok" gösteriyordu. `parseLatestSeq` (yalnız tam ondalık dize, güvenli

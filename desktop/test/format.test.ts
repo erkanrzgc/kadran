@@ -15,6 +15,7 @@ import {
   memoryText,
   memoryUsedGiB,
   shortFingerprint,
+  versionLabel,
 } from "../src/renderer/lib/format.ts";
 
 test("humanDuration CLI ile aynı: en çok iki birim, d h m s", () => {
@@ -80,4 +81,13 @@ test("formatTime ve formatCount", () => {
   assert.equal(formatTime(null, "en"), "—");
   assert.notEqual(formatTime("2026-10-06T18:42:10Z", "en"), "—");
   assert.equal(formatCount(1284, "en"), "1,284");
+});
+
+test("versionLabel: CI etiketi zaten v ile başlar, iki kez v yazılmaz", () => {
+  assert.equal(versionLabel("v0.5.1"), "v0.5.1");
+  assert.equal(versionLabel("0.5.1"), "v0.5.1");
+  assert.equal(versionLabel("v0.5.1-47-g0c91e9c-dirty"), "v0.5.1-47-g0c91e9c-dirty");
+  // Etiketsiz yerel derleme: "dev" ya da kısa commit; başına v konmaz.
+  assert.equal(versionLabel("dev"), "dev");
+  assert.equal(versionLabel("0c91e9c"), "0c91e9c");
 });

@@ -96,3 +96,12 @@ export function formatTime(ts: string | null, locale: string): string {
 export function formatCount(n: number, locale: string): string {
   return n.toLocaleString(locale);
 }
+
+/**
+ * versionLabel: sidecar'ın bildirdiği sürüm. CI etiketi olduğu gibi
+ * damgalar ("v0.5.1"); başına bir v daha eklenince "vv0.5.1" oluyordu.
+ * Rakamla başlayana v eklenir; "dev" gibi etiketsiz derleme olduğu gibi kalır.
+ */
+export function versionLabel(version: string): string {
+  return /^\d+\.\d+/.test(version) ? `v${version}` : version;
+}

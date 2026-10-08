@@ -6,7 +6,7 @@ import { FontPicker } from "../components/FontPicker.tsx";
 import { Segmented } from "../components/Segmented.tsx";
 import { RangeRow, SetRow } from "../components/SetRow.tsx";
 import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
-import { formatCount } from "../lib/format.ts";
+import { formatCount, versionLabel } from "../lib/format.ts";
 import { nearestWeight, weightsOf } from "../lib/fonts.ts";
 import { LANGUAGES } from "../lib/languages.ts";
 import type { VersionPayload } from "../lib/types.ts";
@@ -134,7 +134,7 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
       <section className="panel glass settings">
         <SetRow title={t("settings.about")} hint={t("settings.about_hint")}>
           <span className="about mono" data-testid="about">
-            {t("about.line", { version: version ? `v${version.version}` : "…", protocol: version ? version.protocol : "…" })}
+            {t("about.line", { version: version ? versionLabel(version.version) : "…", protocol: version ? version.protocol : "…" })}
           </span>
         </SetRow>
       </section>

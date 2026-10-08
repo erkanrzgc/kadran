@@ -4,6 +4,7 @@ import type { Profile } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { ActivityIcon, SettingsIcon, ShieldCheckIcon } from "../icons/index.ts";
 import type { Tone } from "../lib/chain.ts";
+import { versionLabel } from "../lib/format.ts";
 import type { VersionPayload } from "../lib/types.ts";
 import { NavButton } from "./NavButton.tsx";
 
@@ -88,7 +89,7 @@ export function Rail({ profiles, currentTarget, currentTone, view, connecting, v
       </nav>
 
       <p className="foot mono" data-testid="rail-version">
-        {t("rail.version", { version: version ? `v${version.version}` : "…" })}
+        {t("rail.version", { version: version ? versionLabel(version.version) : "…" })}
       </p>
     </aside>
   );

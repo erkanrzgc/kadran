@@ -53,6 +53,42 @@ test("İngilizce dosyada Türkçe harf yok", async () => {
   }
 });
 
+/**
+ * Türkçe harf denetimi "Ayarlar" gibi harfsiz bir Türkçe kelimeyi
+ * kaçırıyordu (mutate-desktop.sh'ta yakalanmayan mutant). İki dilde aynı
+ * değer yalnız dilden bağımsız anahtarlarda olabilir: marka, teknik terim,
+ * örnek hedef. Böylece İngilizceye sızan Türkçe de, çevrilmeden kalan
+ * Türkçe de düşer.
+ */
+const SAME_IN_BOTH = new Set([
+  "rail.target_placeholder",
+  "rail.version",
+  "topbar.rtt",
+  "tile.executor",
+  "card.daemon",
+  "card.executor",
+  "row.docker",
+  "mode.mica",
+  "mode.vibrancy",
+]);
+
+test("iki dilde aynı değer yalnız dilden bağımsız anahtarlarda", async () => {
+  const en = await dict("en");
+  const tr = await dict("tr");
+  const same = Object.keys(en).filter((k) => en[k] === tr[k]);
+  assert.deepEqual(
+    same.filter((k) => !SAME_IN_BOTH.has(k)),
+    [],
+    "çevrilmemiş ya da öbür dile sızmış metin",
+  );
+  // Liste dürüst kalsın: artık farklı olan anahtar listeden çıkarılmalı.
+  assert.deepEqual(
+    [...SAME_IN_BOTH].filter((k) => en[k] !== tr[k]),
+    [],
+    "SAME_IN_BOTH'ta artık iki dilde farklı olan anahtar var",
+  );
+});
+
 test("koddaki her t(\"…\") anahtarı en.json'da var", async () => {
   const en = await dict("en");
   const missing: string[] = [];

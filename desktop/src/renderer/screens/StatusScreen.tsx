@@ -9,6 +9,7 @@ import { Tile } from "../components/Tile.tsx";
 import { useAudit } from "../hooks/useAudit.ts";
 import type { ServerApi } from "../hooks/useServer.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
+import { auditPlaceholderKey } from "../lib/audit-view.ts";
 import { chainView, worstTone } from "../lib/chain.ts";
 import { humanDuration, memoryText } from "../lib/format.ts";
 import { statusMetaKeys } from "../lib/health.ts";
@@ -65,6 +66,12 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
   const root = status.running_as_user === "root";
   const daemonChain = chainView(verify?.daemon_status);
   const execChain = chainView(verify?.executor_status);
+  const previewKey = auditPlaceholderKey({
+    total: audit.records.length,
+    shown: audit.records.length,
+    failed: audit.failed,
+    loaded: audit.loaded,
+  });
 
   return (
     <div className="screen" data-testid="screen-status">
@@ -175,15 +182,7 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
         <AuditTable
           records={audit.records}
           testId="audit-preview"
-          placeholder={
-            audit.records.length > 0
-              ? undefined
-              : audit.failed
-                ? t("audit.load_failed")
-                : audit.loaded
-                  ? t("audit.empty")
-                  : t("audit.loading")
-          }
+          placeholder={previewKey ? t(previewKey) : undefined}
         />
       </section>
     </div>

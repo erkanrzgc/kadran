@@ -69,6 +69,7 @@
 .outcome-seg.is-ok { background: var(--ok); }
 .outcome-seg.is-warn { background: var(--warn); }
 .outcome-seg.is-bad { background: var(--bad); }
+.outcome-seg.is-muted { background: var(--muted); }
 
 /* Süzgeçler */
 .filters { justify-content: flex-start; }

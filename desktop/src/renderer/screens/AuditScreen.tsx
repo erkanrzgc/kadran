@@ -6,6 +6,7 @@ import { OutcomeBar } from "../components/OutcomeBar.tsx";
 import { Segmented } from "../components/Segmented.tsx";
 import { useAudit } from "../hooks/useAudit.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
+import { auditPlaceholderKey, effectiveChoice } from "../lib/audit-view.ts";
 import { filterRecords, OUTCOME_KEYS, type OutcomeKey } from "../lib/chain.ts";
 
 const RANGES = ["50", "200", "1000"] as const;
@@ -26,21 +27,22 @@ export function AuditScreen({ target }: { target: string | null }) {
   }, [target]);
 
   const actions = useMemo(() => [...new Set(audit.records.map((r) => r.action))].sort(), [audit.records]);
-  const shown = useMemo(() => filterRecords(audit.records, { action, outcome }), [audit.records, action, outcome]);
+  // Seçici ile süzgeç aynı değeri kullanır: listeden düşen eylem "All" gösterip kayıt gizlemez.
+  const actionFilter = effectiveChoice(action, actions);
+  const shown = useMemo(
+    () => filterRecords(audit.records, { action: actionFilter, outcome }),
+    [audit.records, actionFilter, outcome],
+  );
 
   if (!target) return <EmptyState title={t("audit.no_target_title")} body={t("audit.no_target_body")} />;
 
-  // Yüklenemeyen liste "kayıt yok" diye gösterilmez (StatusScreen ile aynı).
-  const placeholder =
-    audit.records.length > 0
-      ? shown.length === 0
-        ? t("audit.no_match")
-        : undefined
-      : audit.failed
-        ? t("audit.load_failed")
-        : audit.loaded
-          ? t("audit.empty")
-          : t("audit.loading");
+  const placeholderKey = auditPlaceholderKey({
+    total: audit.records.length,
+    shown: shown.length,
+    failed: audit.failed,
+    loaded: audit.loaded,
+  });
+  const placeholder = placeholderKey ? t(placeholderKey) : undefined;
 
   return (
     <div className="screen" data-testid="screen-audit">
@@ -66,7 +68,7 @@ export function AuditScreen({ target }: { target: string | null }) {
         <div className="panel-head filters">
           <label className="filter">
             {t("audit.filter_action")}
-            <select className="sel" value={action} onChange={(e) => setAction(e.target.value)} data-testid="filter-action">
+            <select className="sel" value={actionFilter} onChange={(e) => setAction(e.target.value)} data-testid="filter-action">
               <option value="">{t("audit.filter_all")}</option>
               {actions.map((a) => (
                 <option key={a} value={a}>{a}</option>

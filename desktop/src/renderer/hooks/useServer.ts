@@ -1,7 +1,8 @@
 /**
  * Bağlı sunucunun durumu. Hedef değişince eski istekler yok sayılır:
  * yavaş bir sunucunun geç gelen cevabı yeni seçilen sunucunun üstüne
- * yazmamalı.
+ * yazmamalı. Aynı sunucuya da aynı anda tek status ve tek verify isteği
+ * gider (lib/single-flight.ts): yoksa geç gelen eski cevap yenisini ezer.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import { bridge } from "../bridge.ts";
 import { errorText } from "../lib/errors.ts";
 import { memoryUsedGiB } from "../lib/format.ts";
 import { pushSample } from "../lib/samples.ts";
+import { createSingleFlight } from "../lib/single-flight.ts";
 import type { StatusPayload, VerifyPayload } from "../lib/types.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
 
@@ -43,8 +45,10 @@ export function useServer() {
   const toast = useToast();
   const [state, setState] = useState<ServerState>(EMPTY);
   const current = useRef<string | null>(null);
+  const [statusFlight] = useState(() => createSingleFlight<boolean>());
+  const [verifyFlight] = useState(() => createSingleFlight<void>());
 
-  const loadStatus = useCallback(
+  const fetchStatus = useCallback(
     async (target: string): Promise<boolean> => {
       const started = performance.now();
       try {
@@ -71,19 +75,33 @@ export function useServer() {
     [toast],
   );
 
+  const loadStatus = useCallback(
+    (target: string): Promise<boolean> => statusFlight(target, () => fetchStatus(target)),
+    [statusFlight, fetchStatus],
+  );
+
+  const runVerify = useCallback(
+    async (target: string): Promise<void> => {
+      try {
+        const verify = await bridge.auditVerify(target);
+        if (current.current === target) setState((s) => ({ ...s, verify }));
+      } catch (err) {
+        if (current.current === target) toast("toast.verify_failed", { error: errorText(err) });
+      } finally {
+        if (current.current === target) setState((s) => ({ ...s, verifying: false }));
+      }
+    },
+    [toast],
+  );
+
+  // connect durumu sıfırlayınca Verify düğmesi açılır; o sırada süren eski
+  // doğrulama varsa yenisi onu bekler, ikisi üst üste binmez.
   const verifyChains = useCallback(async () => {
     const target = current.current;
     if (!target) return;
     setState((s) => ({ ...s, verifying: true }));
-    try {
-      const verify = await bridge.auditVerify(target);
-      if (current.current === target) setState((s) => ({ ...s, verify }));
-    } catch (err) {
-      if (current.current === target) toast("toast.verify_failed", { error: errorText(err) });
-    } finally {
-      if (current.current === target) setState((s) => ({ ...s, verifying: false }));
-    }
-  }, [toast]);
+    await verifyFlight(target, () => runVerify(target));
+  }, [verifyFlight, runVerify]);
 
   const connect = useCallback(
     async (target: string): Promise<boolean> => {

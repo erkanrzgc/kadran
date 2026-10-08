@@ -52,6 +52,15 @@ function freshHealth(status: HealthStatusInput | null, verify: HealthVerifyInput
   return "healthy";
 }
 
+/**
+ * Status ekranının durum satırı. Bayatken "Executor reachable" (iyi haber)
+ * gösterilmez; "Executor unreachable" (kötü haber) bayat da olsa kalır.
+ */
+export function statusMetaKeys(stale: boolean, reachable: boolean): string[] {
+  if (!stale) return [reachable ? "status.meta_ok" : "status.meta_down"];
+  return reachable ? ["status.meta_stale"] : ["status.meta_stale", "status.meta_down"];
+}
+
 const TONE: Readonly<Record<Health, Tone>> = {
   unknown: "muted",
   healthy: "ok",

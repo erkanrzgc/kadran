@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { healthKey, healthOf, healthTone } from "../src/renderer/lib/health.ts";
+import { healthKey, healthOf, healthTone, statusMetaKeys } from "../src/renderer/lib/health.ts";
 
 const ok = { running_as_user: "kadran", executor_reachable: true };
 const valid = { daemon_status: "CHAIN_STATUS_VALID", executor_status: "CHAIN_STATUS_VALID" };
@@ -44,6 +44,13 @@ test("bayat olsa da kötü haber kalır", () => {
 
 test("bağlantı yoksa bayatlık anlamsız: bilinmiyor", () => {
   assert.equal(healthOf(null, null, true), "unknown");
+});
+
+test("durum satırı: bayatken iyi haber yok, kötü haber kalır", () => {
+  assert.deepEqual(statusMetaKeys(false, true), ["status.meta_ok"]);
+  assert.deepEqual(statusMetaKeys(false, false), ["status.meta_down"]);
+  assert.deepEqual(statusMetaKeys(true, true), ["status.meta_stale"]);
+  assert.deepEqual(statusMetaKeys(true, false), ["status.meta_stale", "status.meta_down"]);
 });
 
 test("ton ve i18n anahtarı", () => {

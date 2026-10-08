@@ -11,6 +11,7 @@ import type { ServerApi } from "../hooks/useServer.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { chainView, worstTone } from "../lib/chain.ts";
 import { humanDuration, memoryText } from "../lib/format.ts";
+import { statusMetaKeys } from "../lib/health.ts";
 
 /** Coolify'daki gibi: açıkken her 10 saniyede yenile. Varsayılan kapalı. */
 const LIVE_INTERVAL_MS = 10_000;
@@ -70,9 +71,11 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
       <header className="stage-head">
         <p className="eyebrow">{stale ? t("status.eyebrow_stale") : t("status.eyebrow")}</p>
         <h1 className="title mono">{target}</h1>
-        <p className="meta">
-          {stale ? t("status.meta_stale") : reachable ? t("status.meta_ok") : t("status.meta_down")}
-        </p>
+        {statusMetaKeys(stale, reachable).map((k) => (
+          <p key={k} className="meta">
+            {t(k)}
+          </p>
+        ))}
       </header>
 
       <section className="panel glass">

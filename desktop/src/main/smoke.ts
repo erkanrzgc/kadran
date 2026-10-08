@@ -151,10 +151,13 @@ async function journey(win: BrowserWindow): Promise<void> {
   // Bağlantı koptuktan sonra yenileme: ekran bayat işaretlenmeli.
   await click(win, '[data-testid="server-fake@flaky"]');
   await waitFor(win, q('[data-testid="screen-status"]'), "status screen for fake@flaky");
+  // fake@flaky sağlıklı başlar; bayatlık "Healthy"i düşürmeli (yalnız "Healthy değil" boş bir iddia olurdu).
+  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "healthy pill for fake@flaky");
   await click(win, '[data-testid="refresh"]');
   await waitFor(win, `${q(".stage-head .eyebrow")}?.textContent === "Connection lost"`, "stale eyebrow");
   expect((await text(win, ".stage-head")).includes("out of date"), "stale header does not say the values may be out of date");
-  expect((await text(win, '[data-testid="health"]')) !== "Healthy", "health pill still says Healthy while stale");
+  const pill = await text(win, '[data-testid="health"]');
+  expect(pill === "Attention required", `health pill while stale: ${pill}`);
 
   await click(win, '[data-testid="nav-settings"]');
   await waitFor(win, q('[data-testid="screen-settings"]'), "settings screen");

@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, "..", "src", "renderer");
-const FORBIDDEN = [/dangerouslySetInnerHTML/, /\.innerHTML\s*=/, /insertAdjacentHTML/, /\.outerHTML\s*=/, /document\.write\(/, /popLayout/];
+const FORBIDDEN = [/dangerouslySetInnerHTML/, /\.(?:inner|outer)HTML\s*\+?=(?!=)/, /insertAdjacentHTML/, /document\.write\(/, /popLayout/];
 
 async function files(dir: string): Promise<string[]> {
   const out: string[] = [];

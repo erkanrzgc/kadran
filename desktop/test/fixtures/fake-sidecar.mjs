@@ -14,7 +14,9 @@
  * - `fake@badseq`: audit.list bozuk bir latest_seq döner; arayüz bunu
  *   "zincirde kayıt yok" diye DEĞİL hata diye göstermeli.
  * - `fake@flaky`: ilk status çağrısı başarılı, sonrakiler hata; arayüz
- *   bayat veriyi "bağlantı koptu" diye işaretlemeli.
+ *   bayat veriyi "bağlantı koptu" diye işaretlemeli. Bu hedef SAĞLIKLI
+ *   başlar (executor erişilebilir, iki zincir VALID): bayatlığın "Healthy"
+ *   hapını düşürdüğü ancak böyle ölçülebilir.
  */
 
 import { readFileSync } from "node:fs";
@@ -27,6 +29,8 @@ const load = (name) => JSON.parse(readFileSync(join(here, name), "utf8"));
 const status = load("status.json");
 const verify = load("verify.json");
 const template = load("audit-record.json");
+const healthyStatus = { ...status, executor_reachable: true };
+const healthyVerify = { ...verify, executor_status: "CHAIN_STATUS_VALID" };
 
 export const LATEST = 1284;
 export const DOWN_MESSAGE =
@@ -74,8 +78,9 @@ rl.on("line", (line) => {
       reply({ result: { version: "0.5.1", commit: "fake", protocol: 3 } });
       return;
     case "status":
-      if (params.target === "fake@flaky" && ++flakyStatusCalls > 1) {
-        reply({ error: { code: -32000, message: FLAKY_MESSAGE } });
+      if (params.target === "fake@flaky") {
+        if (++flakyStatusCalls > 1) reply({ error: { code: -32000, message: FLAKY_MESSAGE } });
+        else reply({ result: healthyStatus });
         return;
       }
       reply({ result: status });
@@ -84,7 +89,7 @@ rl.on("line", (line) => {
       reply({ result: auditList(params) });
       return;
     case "audit.verify":
-      reply({ result: verify });
+      reply({ result: params.target === "fake@flaky" ? healthyVerify : verify });
       return;
     default:
       reply({ error: { code: -32601, message: `unknown method "${req.method}"` } });

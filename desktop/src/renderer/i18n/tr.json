@@ -31,6 +31,8 @@
   "status.eyebrow": "Bağlı",
   "status.meta_ok": "Executor erişilebilir. Ayrıcalıklı işlemler çalışır.",
   "status.meta_down": "Executor erişilemiyor. Ayrıcalıklı işlemler başarısız olur.",
+  "status.eyebrow_stale": "Bağlantı koptu",
+  "status.meta_stale": "Son yenileme başarısız oldu. Aşağıdaki değerler eski olabilir.",
   "status.overview": "Genel bakış",
   "status.live": "Canlı yenile",
   "status.refresh": "Yenile",

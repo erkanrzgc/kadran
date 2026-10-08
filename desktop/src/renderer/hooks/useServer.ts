@@ -23,6 +23,8 @@ export interface ServerState {
   rttSamples: readonly number[];
   connecting: boolean;
   verifying: boolean;
+  /** Son durum yenilemesi başarısız: ekrandaki değerler eski, "Healthy" gösterilmemeli. */
+  stale: boolean;
 }
 
 const EMPTY: ServerState = {
@@ -34,6 +36,7 @@ const EMPTY: ServerState = {
   rttSamples: [],
   connecting: false,
   verifying: false,
+  stale: false,
 };
 
 export function useServer() {
@@ -52,12 +55,16 @@ export function useServer() {
           ...s,
           status,
           rtt,
+          stale: false,
           memorySamples: pushSample(s.memorySamples, memoryUsedGiB(status.host)),
           rttSamples: pushSample(s.rttSamples, rtt),
         }));
         return true;
       } catch (err) {
-        if (current.current === target) toast("toast.connect_failed", { error: errorText(err) });
+        if (current.current === target) {
+          setState((s) => ({ ...s, stale: true }));
+          toast("toast.connect_failed", { error: errorText(err) });
+        }
         return false;
       }
     },

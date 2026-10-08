@@ -18,7 +18,7 @@ const PREVIEW_SIZE = 10;
 
 export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll: () => void }) {
   const t = useT();
-  const { target, status, verify, rtt, memorySamples, rttSamples } = server.state;
+  const { target, status, verify, rtt, memorySamples, rttSamples, stale } = server.state;
   const [live, setLive] = useState(false);
   const audit = useAudit(target, PREVIEW_SIZE);
   const { refresh } = server;
@@ -68,9 +68,11 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
   return (
     <div className="screen" data-testid="screen-status">
       <header className="stage-head">
-        <p className="eyebrow">{t("status.eyebrow")}</p>
+        <p className="eyebrow">{stale ? t("status.eyebrow_stale") : t("status.eyebrow")}</p>
         <h1 className="title mono">{target}</h1>
-        <p className="meta">{reachable ? t("status.meta_ok") : t("status.meta_down")}</p>
+        <p className="meta">
+          {stale ? t("status.meta_stale") : reachable ? t("status.meta_ok") : t("status.meta_down")}
+        </p>
       </header>
 
       <section className="panel glass">

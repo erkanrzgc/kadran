@@ -31,6 +31,21 @@ test("doğrulama yoksa ve executor açıksa bilinmiyor; ikisi VALID ise sağlık
   assert.equal(healthOf(ok, valid), "healthy");
 });
 
+test("bayat veri iyi haber taşımaz: healthy ve unknown → attention", () => {
+  assert.equal(healthOf(ok, valid, true), "attention");
+  assert.equal(healthOf(ok, null, true), "attention");
+  assert.equal(healthOf(ok, valid, false), "healthy");
+});
+
+test("bayat olsa da kötü haber kalır", () => {
+  assert.equal(healthOf(ok, { ...valid, daemon_status: "CHAIN_STATUS_INVALID" }, true), "tampering");
+  assert.equal(healthOf({ ...ok, running_as_user: "root" }, valid, true), "broken-install");
+});
+
+test("bağlantı yoksa bayatlık anlamsız: bilinmiyor", () => {
+  assert.equal(healthOf(null, null, true), "unknown");
+});
+
 test("ton ve i18n anahtarı", () => {
   assert.equal(healthTone("healthy"), "ok");
   assert.equal(healthTone("attention"), "warn");

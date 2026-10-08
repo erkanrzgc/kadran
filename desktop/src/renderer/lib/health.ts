@@ -20,7 +20,22 @@ export interface HealthVerifyInput {
   executor_status?: string;
 }
 
-export function healthOf(status: HealthStatusInput | null, verify: HealthVerifyInput | null): Health {
+/**
+ * stale: son durum yenilemesi başarısız oldu, ekrandaki değerler eski.
+ * Bayat veri iyi haber taşıyamaz (healthy/unknown → attention); kötü
+ * haber (tampering, broken-install) bayat da olsa geçerli kalır.
+ */
+export function healthOf(
+  status: HealthStatusInput | null,
+  verify: HealthVerifyInput | null,
+  stale = false,
+): Health {
+  const h = freshHealth(status, verify);
+  if (!stale || !status) return h;
+  return h === "healthy" || h === "unknown" ? "attention" : h;
+}
+
+function freshHealth(status: HealthStatusInput | null, verify: HealthVerifyInput | null): Health {
   if (!status) return "unknown";
   if (status.running_as_user === "root") return "broken-install";
   if (

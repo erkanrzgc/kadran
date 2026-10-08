@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { bridge } from "../bridge.ts";
-import { AUDIT_PAGE, mergeNewestFirst, newestWindow, olderWindow } from "../lib/audit-window.ts";
+import { AUDIT_PAGE, mergeNewestFirst, newestWindow, olderWindow, parseLatestSeq } from "../lib/audit-window.ts";
 import { errorText } from "../lib/errors.ts";
 import type { AuditRecord } from "../lib/types.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
@@ -57,9 +57,11 @@ export function useAudit(target: string | null, size: number) {
     try {
       const head = await bridge.auditList(target, 0, 1);
       if (!isCurrent()) return;
-      const latestSeq = Number(head.latest_seq);
+      const latestSeq = parseLatestSeq(head.latest_seq);
+      // Bozuk cevap "zincirde kayıt yok" değil, hatadır: catch'e düşer.
+      if (latestSeq === null) throw new Error("server sent an invalid latest_seq");
       setLatest(latestSeq);
-      if (!Number.isFinite(latestSeq) || latestSeq <= 0) {
+      if (latestSeq === 0) {
         commit([]);
         setFailed(false);
         return;

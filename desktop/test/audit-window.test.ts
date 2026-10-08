@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { clampLimit, mergeNewestFirst, newestWindow, olderWindow } from "../src/renderer/lib/audit-window.ts";
+import { clampLimit, mergeNewestFirst, newestWindow, olderWindow, parseLatestSeq } from "../src/renderer/lib/audit-window.ts";
 import type { AuditRecord } from "../src/renderer/lib/types.ts";
 
 function rec(seq: number): AuditRecord {
@@ -52,4 +52,15 @@ test("limit 1…1000 aralığında", () => {
   assert.equal(clampLimit(5000), 1000);
   assert.equal(clampLimit(Number.NaN), 1);
   assert.equal(clampLimit(50.7), 50);
+});
+
+test("latest_seq yalnız ondalık rakam dizisi; boş zincir tam \"0\"", () => {
+  assert.equal(parseLatestSeq("0"), 0);
+  assert.equal(parseLatestSeq("1284"), 1284);
+});
+
+test("latest_seq bozuksa null: \"kayıt yok\" diye okunmaz", () => {
+  for (const bad of [null, undefined, "", " 1", "abc", "-1", "1.5", "1e3", "0x10", "01", 12, "9007199254740993"]) {
+    assert.equal(parseLatestSeq(bad), null, String(bad));
+  }
 });

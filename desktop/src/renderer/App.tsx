@@ -44,7 +44,7 @@ export function App() {
     [server, profiles, toast],
   );
 
-  const health = healthOf(server.state.status, server.state.verify);
+  const health = healthOf(server.state.status, server.state.verify, server.state.stale);
 
   return (
     <div className="app" data-testid="app">

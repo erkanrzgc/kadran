@@ -17,6 +17,18 @@ export interface AuditWindow {
   limit: number;
 }
 
+/**
+ * parseLatestSeq, sunucunun latest_seq alanını okur. protojson uint64'ü
+ * dize yazar ve boş zinciri tam "0" olarak gönderir (EmitUnpopulated).
+ * Başka her biçim null döner: bozuk cevap "zincirde kayıt yok" diye
+ * gösterilmemeli, hata olarak gösterilmeli.
+ */
+export function parseLatestSeq(raw: unknown): number | null {
+  if (typeof raw !== "string" || !/^(0|[1-9][0-9]*)$/.test(raw)) return null;
+  const n = Number(raw);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
 export function clampLimit(n: number): number {
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(MAX_LIMIT, Math.floor(n));

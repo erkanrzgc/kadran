@@ -31,6 +31,8 @@
   "status.eyebrow": "Connected",
   "status.meta_ok": "Executor reachable. Privileged operations work.",
   "status.meta_down": "Executor unreachable. Privileged operations will fail.",
+  "status.eyebrow_stale": "Connection lost",
+  "status.meta_stale": "The last refresh failed. The values below may be out of date.",
   "status.overview": "Overview",
   "status.live": "Live refresh",
   "status.refresh": "Refresh",

@@ -105,7 +105,7 @@ func (c *Client) negotiate(ctx context.Context) (string, error) {
 // pickVersion, iki aralığı kesiştirip ortak en yüksek sürümü seçer.
 func pickVersion(daemonMin, daemonMax string) (string, error) {
 	if daemonMax == "" {
-		return "", errors.New("docker: daemon API sürümünü bildirmedi")
+		return "", errors.New("docker: the daemon did not report its API version")
 	}
 	// MinAPIVersion çok eski daemon'larda boş gelebilir; o durumda tabanı
 	// bizimki belirler.
@@ -119,7 +119,7 @@ func pickVersion(daemonMin, daemonMax string) (string, error) {
 	}
 	if compareVersions(lo, hi) > 0 {
 		return "", fmt.Errorf(
-			"docker: ortak API sürümü yok — daemon [%s, %s], Kadran [%s, %s]",
+			"docker: no common API version — daemon [%s, %s], Kadran [%s, %s]",
 			daemonMin, daemonMax, minAPIVersion, maxAPIVersion)
 	}
 	return "v" + hi, nil
@@ -220,7 +220,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
-			return nil, fmt.Errorf("docker: istek kodlanamadı: %w", err)
+			return nil, fmt.Errorf("docker: could not encode the request: %w", err)
 		}
 		rdr = bytes.NewReader(b)
 	}
@@ -237,7 +237,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 
 	req, err := http.NewRequestWithContext(ctx, method, u, rdr)
 	if err != nil {
-		return nil, fmt.Errorf("docker: istek kurulamadı: %w", err)
+		return nil, fmt.Errorf("docker: could not build the request: %w", err)
 	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -245,7 +245,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("docker: soketle konuşulamadı: %w", err)
+		return nil, fmt.Errorf("docker: could not talk to the socket: %w", err)
 	}
 	if resp.StatusCode >= 400 {
 		defer func() { _ = resp.Body.Close() }()
@@ -259,7 +259,7 @@ func decodeMessage(r io.Reader) string {
 	// Sınır: kötü davranan bir daemon'ın belleği doldurmasını engeller.
 	b, err := io.ReadAll(io.LimitReader(r, 8<<10))
 	if err != nil {
-		return "yanıt okunamadı"
+		return "could not read the response"
 	}
 	var payload struct {
 		Message string `json:"message"`
@@ -296,7 +296,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, q url.Values, 
 		return nil
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("docker: yanıt çözümlenemedi: %w", err)
+		return fmt.Errorf("docker: could not decode the response: %w", err)
 	}
 	return nil
 }
@@ -311,11 +311,11 @@ func (c *Client) getJSON(ctx context.Context, url string, out any) error {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return fmt.Errorf("docker: istek kurulamadı: %w", err)
+		return fmt.Errorf("docker: could not build the request: %w", err)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("docker: soketle konuşulamadı: %w", err)
+		return fmt.Errorf("docker: could not talk to the socket: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -323,7 +323,7 @@ func (c *Client) getJSON(ctx context.Context, url string, out any) error {
 		return &apiError{Status: resp.StatusCode, Message: decodeMessage(resp.Body)}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("docker: yanıt çözümlenemedi: %w", err)
+		return fmt.Errorf("docker: could not decode the response: %w", err)
 	}
 	return nil
 }

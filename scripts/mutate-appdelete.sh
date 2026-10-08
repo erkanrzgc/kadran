@@ -98,7 +98,7 @@ mutate "API canlilik kontrolu silindi" "$A" ./internal/api/ \
 mutate "durdurma atlandi (dogrudan kaldir)" "$A" ./internal/api/ \
     "TestDeleteRemovesContainersThenRecords" \
     "s=s.replace('''		if _, err := s.exec.StopRelease(ctx, appID, relID, deleteGrace); err != nil {
-			return removed, fmt.Errorf(\"sürüm %s durdurulamadı: %w\", relID, err)
+			return removed, fmt.Errorf(\"could not stop release %s: %w\", relID, err)
 		}
 ''','',1)"
 

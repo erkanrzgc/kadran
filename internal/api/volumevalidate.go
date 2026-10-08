@@ -46,24 +46,24 @@ var forbiddenMountRoots = []string{"/proc", "/sys", "/dev"}
 // validateVolumes, hacim listesini doğrular.
 func validateVolumes(vols []*kadranv1.AppVolume) error {
 	if len(vols) > maxVolumes {
-		return fmt.Errorf("çok fazla hacim (%d, sınır %d)", len(vols), maxVolumes)
+		return fmt.Errorf("too many volumes (%d, limit %d)", len(vols), maxVolumes)
 	}
 	seenNames := make(map[string]bool, len(vols))
 	seenPaths := make([]string, 0, len(vols))
 
 	for i, v := range vols {
 		if v == nil {
-			return fmt.Errorf("hacim %d boş", i)
+			return fmt.Errorf("volume %d is empty", i)
 		}
 		name := v.GetName()
 		if !volumeNamePat.MatchString(name) {
-			return fmt.Errorf("hacim adı geçersiz (%q) — "+
-				"^[a-z0-9][a-z0-9-]{0,63}$ olmalı", name)
+			return fmt.Errorf("invalid volume name (%q) — "+
+				"must match ^[a-z0-9][a-z0-9-]{0,63}$", name)
 		}
 		// Aynı ad iki kez: ikisi de diskte AYNI dizini gösterirdi ve
 		// hangi bağlama noktasının geçerli olduğu belirsiz kalırdı.
 		if seenNames[name] {
-			return fmt.Errorf("hacim adı %q iki kez verildi", name)
+			return fmt.Errorf("volume name %q given twice", name)
 		}
 		seenNames[name] = true
 
@@ -76,7 +76,7 @@ func validateVolumes(vols []*kadranv1.AppVolume) error {
 		// davranış kabul edilemez.
 		for _, prev := range seenPaths {
 			if pathOverlaps(prev, mp) {
-				return fmt.Errorf("bağlama noktası %q ile %q çakışıyor", prev, mp)
+				return fmt.Errorf("mount point %q overlaps %q", prev, mp)
 			}
 		}
 		seenPaths = append(seenPaths, mp)
@@ -92,24 +92,24 @@ func validateVolumes(vols []*kadranv1.AppVolume) error {
 func validateMountPath(p string) error {
 	switch {
 	case p == "":
-		return errors.New("bağlama noktası boş olamaz")
+		return errors.New("mount point must not be empty")
 	case len(p) > maxMountPath:
-		return fmt.Errorf("bağlama noktası çok uzun (%d bayt)", len(p))
+		return fmt.Errorf("mount point too long (%d bytes)", len(p))
 	case !path.IsAbs(p):
-		return fmt.Errorf("bağlama noktası mutlak olmalı (%q)", p)
+		return fmt.Errorf("mount point must be absolute (%q)", p)
 	// Temizlik kontrolü `..` denetimini de kapsar: path.Clean("/a/../b")
 	// "/b" döner, yani girdiden farklıdır. Ayrıca "//a", "/a/./b" ve
 	// "/a/" gibi AYNI yeri gösteren farklı yazımları da eler — bunlar
 	// elenmezse aşağıdaki çakışma kontrolü atlatılabilirdi.
 	case path.Clean(p) != p:
-		return fmt.Errorf("bağlama noktası temiz değil (%q, beklenen %q)",
+		return fmt.Errorf("mount point is not clean (%q, expected %q)",
 			p, path.Clean(p))
 	case p == "/":
-		return errors.New("bağlama noktası kök dizin olamaz")
+		return errors.New("mount point must not be the root directory")
 	}
 	for _, root := range forbiddenMountRoots {
 		if p == root || strings.HasPrefix(p, root+"/") {
-			return fmt.Errorf("bağlama noktası %q altına düşemez (%q)", root, p)
+			return fmt.Errorf("mount point must not be under %q (%q)", root, p)
 		}
 	}
 	return nil
@@ -131,12 +131,12 @@ func pathOverlaps(a, b string) bool {
 func validateVolumeRemove(set []*kadranv1.AppVolume, remove []string) error {
 	for _, name := range remove {
 		if !volumeNamePat.MatchString(name) {
-			return fmt.Errorf("ayrılacak hacim adı geçersiz (%q)", name)
+			return fmt.Errorf("invalid name of volume to detach (%q)", name)
 		}
 		for _, v := range set {
 			if v.GetName() == name {
-				return fmt.Errorf("%q hem tanımlanıyor hem ayrılıyor — "+
-					"hangisini istediğinizi belirtin", name)
+				return fmt.Errorf("%q is both defined and detached — "+
+					"say which one you want", name)
 			}
 		}
 	}

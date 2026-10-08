@@ -35,19 +35,19 @@ const (
 func LoadVaultIdentity(path string) (*age.X25519Identity, error) {
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the vault key: %w", err)
 	}
 	if runtime.GOOS != "windows" && fi.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("kasa anahtarı %s başkalarına açık (%v), 0600 olmalı", path, fi.Mode().Perm())
+		return nil, fmt.Errorf("vault key %s is open to others (%v), must be 0600", path, fi.Mode().Perm())
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the vault key: %w", err)
 	}
 	// age'in hatası anahtarın parçalarını taşıyabilir; journal'a gitmesin.
 	id, err := age.ParseX25519Identity(strings.TrimSpace(string(data)))
 	if err != nil {
-		return nil, fmt.Errorf("kasa anahtarı geçersiz (X25519 olmalı): %s", path)
+		return nil, fmt.Errorf("invalid vault key (must be X25519): %s", path)
 	}
 	return id, nil
 }
@@ -60,26 +60,26 @@ func openEnv(id age.Identity, appID string, sealed map[string]string) (map[strin
 	for k, v := range sealed {
 		b64, ok := strings.CutPrefix(v, sealPrefix)
 		if !ok {
-			return nil, fmt.Errorf("env %q mühürlü değil (kasa zorunlu)", k)
+			return nil, fmt.Errorf("env %q is not sealed (the vault is required)", k)
 		}
 		if len(b64) > maxSealedValue {
-			return nil, fmt.Errorf("env %q mühürlü değeri çok büyük", k)
+			return nil, fmt.Errorf("sealed value of env %q is too large", k)
 		}
 		raw, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
-			return nil, fmt.Errorf("env %q mühürlü değeri bozuk", k)
+			return nil, fmt.Errorf("sealed value of env %q is corrupt", k)
 		}
 		r, err := age.Decrypt(bytes.NewReader(raw), id)
 		if err != nil {
-			return nil, fmt.Errorf("env %q açılamadı: %w", k, err)
+			return nil, fmt.Errorf("could not open env %q: %w", k, err)
 		}
 		plain, err := io.ReadAll(r)
 		if err != nil {
-			return nil, fmt.Errorf("env %q açılamadı: %w", k, err)
+			return nil, fmt.Errorf("could not open env %q: %w", k, err)
 		}
 		val, ok := strings.CutPrefix(string(plain), appID+"\x00"+k+"\x00")
 		if !ok {
-			return nil, fmt.Errorf("env %q başka bir uygulamaya ya da ada mühürlenmiş", k)
+			return nil, fmt.Errorf("env %q is sealed to another app or name", k)
 		}
 		out[k] = val
 	}

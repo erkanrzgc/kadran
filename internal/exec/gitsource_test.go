@@ -358,7 +358,7 @@ func TestRepoAllowlistBlocksTheCredentialFromReachingOtherRepos(t *testing.T) {
 	if err == nil {
 		t.Fatal("beyaz listede olmayan depo kabul edildi — kimlik bilgisi sınırsız")
 	}
-	if !strings.Contains(err.Error(), "beyaz listede değil") {
+	if !strings.Contains(err.Error(), "not on the allowlist") {
 		t.Errorf("hata sebebi açık değil: %v", err)
 	}
 

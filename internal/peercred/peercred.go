@@ -34,13 +34,13 @@ import (
 // ErrUnsupportedPlatform, SO_PEERCRED bulunmayan platformlarda döner.
 // Kadran sunucu bileşenleri yalnızca Linux'ta çalışır; bu hata Windows
 // veya macOS üzerinde derleme yapılabilsin diye vardır.
-var ErrUnsupportedPlatform = errors.New("peercred: bu platformda desteklenmiyor")
+var ErrUnsupportedPlatform = errors.New("peercred: not supported on this platform")
 
 // ErrNotUnixConn, bağlantı bir unix soketi olmadığında döner.
-var ErrNotUnixConn = errors.New("peercred: bağlantı unix soketi değil")
+var ErrNotUnixConn = errors.New("peercred: connection is not a unix socket")
 
 // ErrDenied, çağıranın kimliği politikaya uymadığında döner.
-var ErrDenied = errors.New("peercred: çağıran reddedildi")
+var ErrDenied = errors.New("peercred: caller rejected")
 
 // Cred, çekirdekten doğrulanmış çağıran kimliğidir.
 type Cred struct {
@@ -110,7 +110,7 @@ func (AuthInfo) AuthType() string { return "peercred" }
 // yapılandırması değildir ve büyük olasılıkla bir kurulum hatasıdır.
 func TransportCredentials(p Policy) (credentials.TransportCredentials, error) {
 	if p.IsEmpty() {
-		return nil, errors.New("peercred: boş politika — en az bir uid veya gid gerekli")
+		return nil, errors.New("peercred: empty policy — at least one uid or gid is required")
 	}
 	return &transportCreds{policy: p}, nil
 }
@@ -136,7 +136,7 @@ func (t *transportCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.Au
 // bilgisi yalnızca sunucu tarafındadır; istemci tarafında insecure taşıma
 // kullanılır çünkü güven sınırı zaten dosya sistemi ve SSH'tır.
 func (t *transportCreds) ClientHandshake(_ context.Context, _ string, raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
-	return raw, nil, errors.New("peercred: istemci tarafında kullanılamaz")
+	return raw, nil, errors.New("peercred: cannot be used on the client side")
 }
 
 func (t *transportCreds) Info() credentials.ProtocolInfo {
@@ -151,5 +151,5 @@ func (t *transportCreds) Clone() credentials.TransportCredentials {
 }
 
 func (t *transportCreds) OverrideServerName(string) error {
-	return errors.New("peercred: sunucu adı geçersiz kılınamaz")
+	return errors.New("peercred: server name cannot be overridden")
 }

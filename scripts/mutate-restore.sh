@@ -132,7 +132,7 @@ mutate "güvenlik kopyası alınmıyor" "$REST" \
 mutate "şema doğrulaması kaldırıldı" "$REST" \
     "s=s.replace('''	if n == 0 {
 		return fmt.Errorf(
-			\"yedekte hiç göç kaydı yok (%s) — boş ya da yabancı bir dosya\",
+			\"backup has no migration records (%s) — an empty or foreign file\",
 			path)
 	}''','''	_ = n''',1)"
 

@@ -188,7 +188,7 @@ func TestValidateEnvEnforcesTotalByteBudget(t *testing.T) {
 	}
 	// Hatanın SEBEBİ de doğrulanıyor: "bir hata döndü" iddiası, hatanın
 	// bambaşka bir kontrolden gelmesi hâlinde de geçerdi.
-	if !strings.Contains(err.Error(), "toplam") {
+	if !strings.Contains(err.Error(), "TOTAL") {
 		t.Errorf("hata bayt bütçesinden gelmiyor: %v", err)
 	}
 }

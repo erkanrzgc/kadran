@@ -68,10 +68,10 @@ var forbiddenMountRoots = []string{"/proc", "/sys", "/dev"}
 
 func validateAppID(appID string) error {
 	if appID == "" {
-		return errors.New("app_id boş olamaz")
+		return errors.New("app_id must not be empty")
 	}
 	if !appIDPattern.MatchString(appID) {
-		return fmt.Errorf("app_id biçimi geçersiz (%q): ^[a-z][a-z0-9-]{0,%d}$",
+		return fmt.Errorf("invalid app_id format (%q): ^[a-z][a-z0-9-]{0,%d}$",
 			appID, maxAppIDLen-1)
 	}
 	return nil
@@ -79,13 +79,13 @@ func validateAppID(appID string) error {
 
 func validateReleaseRef(ref *kadranv1.ReleaseRef) error {
 	if ref == nil {
-		return errors.New("release referansı zorunludur")
+		return errors.New("a release reference is required")
 	}
 	if err := validateAppID(ref.GetAppId()); err != nil {
 		return err
 	}
 	if !releaseIDPattern.MatchString(ref.GetReleaseId()) {
-		return fmt.Errorf("release_id biçimi geçersiz (%q): ^[a-z0-9]{1,%d}$",
+		return fmt.Errorf("invalid release_id format (%q): ^[a-z0-9]{1,%d}$",
 			ref.GetReleaseId(), maxReleaseIDLen)
 	}
 	return nil
@@ -93,20 +93,20 @@ func validateReleaseRef(ref *kadranv1.ReleaseRef) error {
 
 func validateContainerRef(ref *kadranv1.ContainerRef) error {
 	if ref == nil {
-		return errors.New("konteyner referansı zorunludur")
+		return errors.New("a container reference is required")
 	}
 	if err := validateReleaseRef(ref.GetRelease()); err != nil {
 		return err
 	}
 	if ref.GetReplica() >= maxReplica {
-		return fmt.Errorf("replica %d, üst sınır %d", ref.GetReplica(), maxReplica)
+		return fmt.Errorf("replica %d, limit %d", ref.GetReplica(), maxReplica)
 	}
 	return nil
 }
 
 func validateSelector(sel *kadranv1.ContainerSelector) error {
 	if sel == nil {
-		return errors.New("seçici zorunludur")
+		return errors.New("a selector is required")
 	}
 	if err := validateReleaseRef(sel.GetRelease()); err != nil {
 		return err
@@ -114,14 +114,14 @@ func validateSelector(sel *kadranv1.ContainerSelector) error {
 	// Replica VERİLMEMİŞ olabilir; o zaman sürümün tamamı seçilir.
 	// Verilmişse sınır içinde olmalı.
 	if sel.Replica != nil && sel.GetReplica() >= maxReplica {
-		return fmt.Errorf("replica %d, üst sınır %d", sel.GetReplica(), maxReplica)
+		return fmt.Errorf("replica %d, limit %d", sel.GetReplica(), maxReplica)
 	}
 	return nil
 }
 
 func validateStopTimeout(seconds uint32) error {
 	if seconds > maxStopTimeoutSeconds {
-		return fmt.Errorf("timeout_seconds %d, üst sınır %d saniye",
+		return fmt.Errorf("timeout_seconds %d, limit %d seconds",
 			seconds, maxStopTimeoutSeconds)
 	}
 	return nil
@@ -131,13 +131,13 @@ func validateStopTimeout(seconds uint32) error {
 
 func validateCreate(req *kadranv1.ContainerCreateRequest) error {
 	if req == nil {
-		return errors.New("istek boş")
+		return errors.New("empty request")
 	}
 	if err := validateContainerRef(req.GetRef()); err != nil {
 		return err
 	}
 	if !commitSHAPattern.MatchString(req.GetCommitSha()) {
-		return fmt.Errorf("commit_sha biçimi geçersiz (%q): ^[0-9a-f]{7,64}$",
+		return fmt.Errorf("invalid commit_sha format (%q): ^[0-9a-f]{7,64}$",
 			req.GetCommitSha())
 	}
 	if err := validateEnv(req.GetEnv(), maxSealedEnvBytes); err != nil {
@@ -150,32 +150,32 @@ func validateCreate(req *kadranv1.ContainerCreateRequest) error {
 		return err
 	}
 	if p := req.GetContainerPort(); p == 0 || p > 65535 {
-		return fmt.Errorf("container_port %d, 1-65535 aralığında olmalı", p)
+		return fmt.Errorf("container_port %d, must be in 1-65535", p)
 	}
 	return nil
 }
 
 func validateEnv(env map[string]string, maxTotal int) error {
 	if len(env) > maxEnvEntries {
-		return fmt.Errorf("env %d girdi, üst sınır %d", len(env), maxEnvEntries)
+		return fmt.Errorf("env has %d entries, limit %d", len(env), maxEnvEntries)
 	}
 	total := 0
 	for k, v := range env {
 		if len(k) > maxEnvKeyBytes {
-			return fmt.Errorf("env anahtarı çok uzun (%d bayt)", len(k))
+			return fmt.Errorf("env key too long (%d bytes)", len(k))
 		}
 		if !envKeyPattern.MatchString(k) {
-			return fmt.Errorf("env anahtarı geçersiz (%q): ^[A-Za-z_][A-Za-z0-9_]*$", k)
+			return fmt.Errorf("invalid env key (%q): ^[A-Za-z_][A-Za-z0-9_]*$", k)
 		}
 		// NUL, execve'nin argüman dizisini erken sonlandırır: değerin
 		// görünen kısmı ile çekirdeğe ulaşan kısmı ayrışabilir.
 		if strings.ContainsRune(v, 0) || strings.ContainsRune(k, 0) {
-			return fmt.Errorf("env %q NUL baytı içeriyor", k)
+			return fmt.Errorf("env %q contains a NUL byte", k)
 		}
 		total += len(k) + len(v)
 	}
 	if total > maxTotal {
-		return fmt.Errorf("env toplamı %d bayt, üst sınır %d", total, maxTotal)
+		return fmt.Errorf("env total %d bytes, limit %d", total, maxTotal)
 	}
 	return nil
 }
@@ -184,18 +184,18 @@ func validateLimits(l *kadranv1.ResourceLimits) error {
 	// Limitsiz konteyner yoktur: tek sunucuda kaynak tüketen bir uygulama
 	// kadrand dahil her şeyi düşürebilir.
 	if l == nil {
-		return errors.New("kaynak limitleri zorunludur")
+		return errors.New("resource limits are required")
 	}
 	if m := l.GetMemoryBytes(); m < minMemoryBytes || m > maxMemoryBytes {
-		return fmt.Errorf("memory_bytes %d, %d-%d aralığında olmalı",
+		return fmt.Errorf("memory_bytes %d, must be in %d-%d",
 			m, minMemoryBytes, maxMemoryBytes)
 	}
 	if c := l.GetCpuMillis(); c < minCPUMillis || c > maxCPUMillis {
-		return fmt.Errorf("cpu_millis %d, %d-%d aralığında olmalı",
+		return fmt.Errorf("cpu_millis %d, must be in %d-%d",
 			c, minCPUMillis, maxCPUMillis)
 	}
 	if w := l.GetBlkioWeight(); w < minBlkioWeight || w > maxBlkioWeight {
-		return fmt.Errorf("blkio_weight %d, %d-%d aralığında olmalı",
+		return fmt.Errorf("blkio_weight %d, must be in %d-%d",
 			w, minBlkioWeight, maxBlkioWeight)
 	}
 	return nil
@@ -203,15 +203,15 @@ func validateLimits(l *kadranv1.ResourceLimits) error {
 
 func validateVolumes(vols []*kadranv1.VolumeMount) error {
 	if len(vols) > maxVolumes {
-		return fmt.Errorf("%d hacim, üst sınır %d", len(vols), maxVolumes)
+		return fmt.Errorf("%d volumes, limit %d", len(vols), maxVolumes)
 	}
 	seen := make([]string, 0, len(vols))
 	for i, v := range vols {
 		if v == nil {
-			return fmt.Errorf("hacim %d boş", i)
+			return fmt.Errorf("volume %d is empty", i)
 		}
 		if !volumeNamePat.MatchString(v.GetVolumeName()) {
-			return fmt.Errorf("volume_name biçimi geçersiz (%q): ^[a-z0-9][a-z0-9-]{0,%d}$",
+			return fmt.Errorf("invalid volume_name format (%q): ^[a-z0-9][a-z0-9-]{0,%d}$",
 				v.GetVolumeName(), maxVolumeName-1)
 		}
 		mp := v.GetMountPath()
@@ -223,7 +223,7 @@ func validateVolumes(vols []*kadranv1.VolumeMount) error {
 		// kabul edilemez.
 		for _, prev := range seen {
 			if pathOverlaps(prev, mp) {
-				return fmt.Errorf("mount_path %q ile %q çakışıyor", prev, mp)
+				return fmt.Errorf("mount_path %q overlaps %q", prev, mp)
 			}
 		}
 		seen = append(seen, mp)
@@ -239,23 +239,23 @@ func validateVolumes(vols []*kadranv1.VolumeMount) error {
 func validateMountPath(p string) error {
 	switch {
 	case p == "":
-		return errors.New("mount_path boş olamaz")
+		return errors.New("mount_path must not be empty")
 	case len(p) > maxMountPath:
-		return fmt.Errorf("mount_path çok uzun (%d bayt)", len(p))
+		return fmt.Errorf("mount_path too long (%d bytes)", len(p))
 	case !path.IsAbs(p):
-		return fmt.Errorf("mount_path mutlak olmalı (%q)", p)
+		return fmt.Errorf("mount_path must be absolute (%q)", p)
 	// Temizlik kontrolü `..` denetimini de kapsar: path.Clean("/a/../b")
 	// "/b" döner, yani girdiden farklıdır. Ayrıca "//a", "/a/./b" ve
 	// "/a/" gibi AYNI yeri gösteren farklı yazımları da eler — bunlar
 	// elenmezse aşağıdaki çakışma kontrolü atlatılabilirdi.
 	case path.Clean(p) != p:
-		return fmt.Errorf("mount_path temiz değil (%q, beklenen %q)", p, path.Clean(p))
+		return fmt.Errorf("mount_path is not clean (%q, expected %q)", p, path.Clean(p))
 	case p == "/":
-		return errors.New("mount_path kök dizin olamaz")
+		return errors.New("mount_path must not be the root directory")
 	}
 	for _, root := range forbiddenMountRoots {
 		if p == root || strings.HasPrefix(p, root+"/") {
-			return fmt.Errorf("mount_path %q altına bağlanamaz (%q)", root, p)
+			return fmt.Errorf("mount_path must not be under %q (%q)", root, p)
 		}
 	}
 	return nil

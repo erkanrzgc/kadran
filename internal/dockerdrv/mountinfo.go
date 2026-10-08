@@ -48,14 +48,14 @@ func (c *Client) checkVolumeRootHardened() error {
 	}
 	if !ok {
 		return fmt.Errorf(
-			"hacim kökü %q ayrı bir mount DEĞİL — nodev,nosuid uygulanamaz; "+
-				"var-lib-kadran-volumes.mount birimi etkin mi?", c.volumeRoot)
+			"volume root %q is NOT a separate mount — nodev,nosuid cannot be applied; "+
+				"is the var-lib-kadran-volumes.mount unit enabled?", c.volumeRoot)
 	}
 	for _, want := range requiredMountFlags {
 		if !hasOption(opts, want) {
 			return fmt.Errorf(
-				"hacim kökü %q üzerinde %q bayrağı yok (etkin: %s) — "+
-					"hacim sertleştirilmeden bağlanmaz", c.volumeRoot, want, opts)
+				"volume root %q lacks the %q flag (active: %s) — "+
+					"a volume is not mounted without hardening", c.volumeRoot, want, opts)
 		}
 	}
 	return nil
@@ -70,7 +70,7 @@ func (c *Client) checkVolumeRootHardened() error {
 func mountOptionsFor(target string) (opts string, found bool, err error) {
 	data, err := os.ReadFile(mountinfoPath)
 	if err != nil {
-		return "", false, fmt.Errorf("mount bilgisi okunamadı: %w", err)
+		return "", false, fmt.Errorf("could not read mount info: %w", err)
 	}
 
 	// mountinfo(5): ... 5=mount noktası  6=mount seçenekleri ...

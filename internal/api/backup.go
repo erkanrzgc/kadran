@@ -35,7 +35,7 @@ func (s *Server) CreateBackup(
 		if rerr := s.completed(ctx, action, target, nil, err); rerr != nil {
 			return nil, rerr
 		}
-		return nil, status.Errorf(codes.Internal, "yedek alınamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not take a backup: %v", err)
 	}
 
 	// Dosya ADI kayda giriyor, tam yol değil: dizin sunucu
@@ -65,7 +65,7 @@ func (s *Server) ListBackups(
 ) (*kadranv1.ListBackupsResponse, error) {
 	snaps, err := s.store.ListSnapshots()
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "yedekler listelenemedi: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not list backups: %v", err)
 	}
 
 	out := make([]*kadranv1.BackupInfo, 0, len(snaps))

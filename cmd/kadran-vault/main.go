@@ -23,8 +23,8 @@ import (
 )
 
 func main() {
-	key := flag.String("key", "/var/lib/kadran-exec/vault.key", "kasa anahtarının yolu")
-	showVersion := flag.Bool("version", false, "sürümü yazdır ve çık")
+	key := flag.String("key", "/var/lib/kadran-exec/vault.key", "path of the vault key")
+	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 
 	if *showVersion {

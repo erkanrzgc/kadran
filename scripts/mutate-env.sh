@@ -149,7 +149,7 @@ mutate "copyEnv referans paylasiyor (kopya degil)" "$ROLLOUT" \
 # değiştiriyordu. Mutant hedeflediği SELECT'e hiç dokunmadan "yakalandı"
 # sayılıyordu (tek-eşleşme kapısı ekleyince bulundu).
 mutate "appSelect'ten env_json dusuruldu" "$STORE_APPS" \
-    "s=s.replace('       dockerfile_path, build_args_json, env_json,','       dockerfile_path, build_args_json,',1); s=s.replace('&app.DockerfilePath, &argsJSON, &envJSON,','&app.DockerfilePath, &argsJSON,',1); s=s.replace('\tif err := json.Unmarshal([]byte(envJSON), &app.Env); err != nil {\n\t\treturn App{}, fmt.Errorf(\"ortam değişkenleri çözümlenemedi: %w\", err)\n\t}','\t_ = envJSON',1)" \
+    "s=s.replace('       dockerfile_path, build_args_json, env_json,','       dockerfile_path, build_args_json,',1); s=s.replace('&app.DockerfilePath, &argsJSON, &envJSON,','&app.DockerfilePath, &argsJSON,',1); s=s.replace('\tif err := json.Unmarshal([]byte(envJSON), &app.Env); err != nil {\n\t\treturn App{}, fmt.Errorf(\"could not decode environment variables: %w\", err)\n\t}','\t_ = envJSON',1)" \
     "./internal/store/" "Env"
 
 mutate "UPDATE cumlesi env_json yazmiyor" "$STORE_UPD" \
@@ -189,7 +189,7 @@ mutate "toplam bayt siniri deger basina cevrildi" "$API_VAL" \
     "./internal/api/" "Env"
 
 mutate "anahtar deseni dogrulanmiyor" "$API_VAL" \
-    "s=s.replace('if !buildArgPattern.MatchString(k) {\n\t\t\treturn fmt.Errorf(\"ortam değişkeni adı geçersiz (%q) — \"+','if false {\n\t\t\treturn fmt.Errorf(\"ortam değişkeni adı geçersiz (%q) — \"+',1)" \
+    "s=s.replace('if !buildArgPattern.MatchString(k) {\n\t\t\treturn fmt.Errorf(\"invalid environment variable name (%q) — \"+','if false {\n\t\t\treturn fmt.Errorf(\"invalid environment variable name (%q) — \"+',1)" \
     "./internal/api/" "Env"
 
 mutate "girdi sayisi siniri kaldirildi" "$API_VAL" \

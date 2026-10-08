@@ -68,7 +68,7 @@ var sqliteSidecars = []string{"-wal", "-shm"}
 //     kopya asla `kadran.db` adını almaz).
 func Restore(ctx context.Context, dbPath, snapshotPath string) (string, error) {
 	if dbPath == ":memory:" || dbPath == "" {
-		return "", fmt.Errorf("bellek veritabanına geri yükleme yapılamaz")
+		return "", fmt.Errorf("cannot restore into an in-memory database")
 	}
 
 	// 1. Yedek gerçekten açılabilir ve Kadran şeması taşıyor mu?
@@ -90,8 +90,8 @@ func Restore(ctx context.Context, dbPath, snapshotPath string) (string, error) {
 	for _, ext := range sqliteSidecars {
 		if err := os.Remove(dbPath + ext); err != nil && !os.IsNotExist(err) {
 			return "", fmt.Errorf(
-				"eski yan dosya silinemedi (%s) — geri yükleme YARIM "+
-					"kalırdı ve SQLite eski WAL'i yeni dosyaya oynatırdı: %w",
+				"could not remove an old side file (%s) — the restore would be "+
+					"HALF DONE and SQLite would replay the old WAL onto the new file: %w",
 				dbPath+ext, err)
 		}
 	}
@@ -110,14 +110,14 @@ func Restore(ctx context.Context, dbPath, snapshotPath string) (string, error) {
 // doğrulamak istediğimiz dosyayı DEĞİŞTİRİRDİ. Salt okunur açıyoruz.
 func validateSnapshot(ctx context.Context, path string) error {
 	if _, err := os.Stat(path); err != nil {
-		return fmt.Errorf("yedek bulunamadı (%s): %w", path, err)
+		return fmt.Errorf("backup not found (%s): %w", path, err)
 	}
 
 	// mode=ro: göç de yazmaz, yanlışlıkla yan dosya da oluşmaz.
 	db, err := sql.Open("sqlite",
 		"file:"+filepath.ToSlash(path)+"?mode=ro&_pragma=query_only(1)")
 	if err != nil {
-		return fmt.Errorf("yedek açılamadı (%s): %w", path, err)
+		return fmt.Errorf("could not open the backup (%s): %w", path, err)
 	}
 	defer func() { _ = db.Close() }()
 
@@ -139,10 +139,10 @@ func validateSnapshot(ctx context.Context, path string) error {
 	var result string
 	if err := db.QueryRowContext(ctx,
 		`PRAGMA integrity_check`).Scan(&result); err != nil {
-		return fmt.Errorf("yedek okunamadı (%s): %w", path, err)
+		return fmt.Errorf("could not read the backup (%s): %w", path, err)
 	}
 	if result != "ok" {
-		return fmt.Errorf("yedek BOZUK (%s): integrity_check = %q",
+		return fmt.Errorf("backup CORRUPT (%s): integrity_check = %q",
 			path, result)
 	}
 
@@ -152,12 +152,12 @@ func validateSnapshot(ctx context.Context, path string) error {
 	if err := db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
 		return fmt.Errorf(
-			"yedek Kadran veritabanı değil (%s): schema_migrations "+
-				"okunamadı: %w", path, err)
+			"backup is not a Kadran database (%s): could not read "+
+				"schema_migrations: %w", path, err)
 	}
 	if n == 0 {
 		return fmt.Errorf(
-			"yedekte hiç göç kaydı yok (%s) — boş ya da yabancı bir dosya",
+			"backup has no migration records (%s) — an empty or foreign file",
 			path)
 	}
 	return nil
@@ -172,7 +172,7 @@ func validateSnapshot(ctx context.Context, path string) error {
 func safetyCopy(ctx context.Context, dbPath string) (string, error) {
 	dir := SnapshotDir(dbPath)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", fmt.Errorf("yedek dizini oluşturulamadı (%s): %w", dir, err)
+		return "", fmt.Errorf("could not create the backup directory (%s): %w", dir, err)
 	}
 
 	dest := filepath.Join(dir,
@@ -185,7 +185,7 @@ func safetyCopy(ctx context.Context, dbPath string) (string, error) {
 
 	db, err := sql.Open("sqlite", buildDSN(dbPath))
 	if err != nil {
-		return "", fmt.Errorf("veritabanı açılamadı (%s): %w", dbPath, err)
+		return "", fmt.Errorf("could not open the database (%s): %w", dbPath, err)
 	}
 	defer func() { _ = db.Close() }()
 	db.SetMaxOpenConns(1)
@@ -193,8 +193,8 @@ func safetyCopy(ctx context.Context, dbPath string) (string, error) {
 	if _, err := db.ExecContext(ctx, "VACUUM INTO ?",
 		filepath.ToSlash(dest)); err != nil {
 		return "", fmt.Errorf(
-			"geri yükleme öncesi güvenlik kopyası alınamadı (%s) — "+
-				"geri dönüş yolu olmadan devam EDİLMEZ: %w", dest, err)
+			"could not take the safety copy before restoring (%s) — "+
+				"NOT continuing without a way back: %w", dest, err)
 	}
 	return dest, nil
 }
@@ -207,7 +207,7 @@ func safetyCopy(ctx context.Context, dbPath string) (string, error) {
 func copyFileAtomic(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
-		return fmt.Errorf("yedek okunamadı (%s): %w", src, err)
+		return fmt.Errorf("could not read the backup (%s): %w", src, err)
 	}
 	defer func() { _ = in.Close() }()
 
@@ -215,7 +215,7 @@ func copyFileAtomic(src, dst string) error {
 	// sistemi içinde atomiktir.
 	tmp, err := os.CreateTemp(filepath.Dir(dst), ".restore-*")
 	if err != nil {
-		return fmt.Errorf("geçici dosya oluşturulamadı: %w", err)
+		return fmt.Errorf("could not create a temporary file: %w", err)
 	}
 	tmpName := tmp.Name()
 	// Başarısız her yolda geçici dosya temizlenir; başarıda rename onu
@@ -229,22 +229,22 @@ func copyFileAtomic(src, dst string) error {
 	// CreateTemp zaten 0600 veriyor, ama açıkça yazmak niyeti belgeliyor
 	// ve ileride bir umask değişikliği bunu sessizce gevşetemez.
 	if err := tmp.Chmod(0o600); err != nil {
-		return fmt.Errorf("geçici dosya izinleri ayarlanamadı: %w", err)
+		return fmt.Errorf("could not set temporary file permissions: %w", err)
 	}
 	if _, err := io.Copy(tmp, in); err != nil {
-		return fmt.Errorf("yedek kopyalanamadı: %w", err)
+		return fmt.Errorf("could not copy the backup: %w", err)
 	}
 	// fsync: rename'den önce veri gerçekten diskte olmalı. Aksi hâlde bir
 	// güç kesintisi, adı doğru ama içi boş bir dosya bırakabilir.
 	if err := tmp.Sync(); err != nil {
-		return fmt.Errorf("yedek diske yazılamadı: %w", err)
+		return fmt.Errorf("could not sync the backup to disk: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("geçici dosya kapatılamadı: %w", err)
+		return fmt.Errorf("could not close the temporary file: %w", err)
 	}
 
 	if err := os.Rename(tmpName, dst); err != nil {
-		return fmt.Errorf("yedek yerine konulamadı (%s): %w", dst, err)
+		return fmt.Errorf("could not move the backup into place (%s): %w", dst, err)
 	}
 	return nil
 }

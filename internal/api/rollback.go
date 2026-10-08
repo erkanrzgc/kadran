@@ -45,7 +45,7 @@ func (s *Server) Rollback(
 
 	app, err := s.store.GetApp(ctx, appID)
 	if err != nil {
-		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "uygulama bulunamadı")
+		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "app not found")
 		return nil, appError(err)
 	}
 
@@ -54,7 +54,7 @@ func (s *Server) Rollback(
 	// nereye taşındığı.
 	live, err := s.store.ActiveDeployment(ctx, appID)
 	if err != nil {
-		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "aktif sürüm yok")
+		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "no active release")
 		return nil, appError(err)
 	}
 	params["from_release_id"] = live.ReleaseID
@@ -62,7 +62,7 @@ func (s *Server) Rollback(
 	targetID, err := s.store.PreviousActiveRelease(ctx, appID)
 	if err != nil {
 		_ = s.recordAction(ctx, action, tgt, params, auditFailure,
-			"geri alınacak önceki sürüm yok")
+			"no previous release to roll back to")
 		return nil, appError(err)
 	}
 	params["to_release_id"] = targetID
@@ -73,7 +73,7 @@ func (s *Server) Rollback(
 	// GERÇEKTEN var olduğunu doğruluyor.
 	rel, err := s.store.GetRelease(ctx, appID, targetID)
 	if err != nil {
-		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "hedef sürüm okunamadı")
+		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "could not read the target release")
 		return nil, appError(err)
 	}
 

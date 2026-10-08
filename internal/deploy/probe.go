@@ -81,7 +81,7 @@ func NewHTTPProber(timeout time.Duration) *HTTPProber {
 // en yaygın belirtisi.
 func (p *HTTPProber) Probe(ctx context.Context, ip string, port uint32, path string) error {
 	if path == "" {
-		return errors.New("sağlık yolu boş")
+		return errors.New("health path is empty")
 	}
 
 	// URL bir YAPIDAN kuruluyor, dize birleştirmesinden değil: konak
@@ -95,12 +95,12 @@ func (p *HTTPProber) Probe(ctx context.Context, ip string, port uint32, path str
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
-		return fmt.Errorf("sağlık isteği kurulamadı: %w", err)
+		return fmt.Errorf("could not build the health request: %w", err)
 	}
 
 	resp, err := p.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("sağlık yoklaması başarısız (%s): %w", u.Host, err)
+		return fmt.Errorf("health probe failed (%s): %w", u.Host, err)
 	}
 	defer func() {
 		// Sınırlı boşaltma: bağlantının düzgün kapanması için gövdeden
@@ -110,7 +110,7 @@ func (p *HTTPProber) Probe(ctx context.Context, ip string, port uint32, path str
 	}()
 
 	if resp.StatusCode >= http.StatusBadRequest {
-		return fmt.Errorf("sağlık yoklaması %d döndü (%s%s)", resp.StatusCode, u.Host, path)
+		return fmt.Errorf("health probe returned %d (%s%s)", resp.StatusCode, u.Host, path)
 	}
 	return nil
 }

@@ -42,8 +42,8 @@ func (s *Server) UpdateApp(
 
 	if upd.IsEmpty() {
 		return nil, s.denied(ctx, action, tgt, params, errors.New(
-			"hiçbir alan belirtilmedi — bu çağrı yalnızca zaman damgasını "+
-				"ilerletirdi, yani sessiz bir işlemsizlik olurdu"))
+			"no field given — this call would only advance the timestamp, "+
+				"that is, a silent no-op"))
 	}
 
 	// Çelişki kontrolü BİRLEŞTİRMEDEN ÖNCE: `applyEnv` sırayı
@@ -168,9 +168,9 @@ func envForValidation(appID string, current map[string]string, upd store.AppUpda
 // girmez.
 func envNeedsRedeploy(appID string) string {
 	return fmt.Sprintf(
-		"⚠ env KAYDEDİLDİ ama ÇALIŞAN KONTEYNERLER hâlâ eski ortamla "+
-			"koşuyor — Docker çalışan bir konteynerin ortamını "+
-			"değiştiremez. Uygulayın: kadran deploy %s", appID)
+		"⚠ env SAVED but RUNNING CONTAINERS still run with the old "+
+			"environment — Docker cannot change the environment of a "+
+			"running container. Apply it: kadran deploy %s", appID)
 }
 
 // moveTraffic, alan adı değişikliğini ters vekile yansıtır.
@@ -193,24 +193,24 @@ func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (strin
 		// komutun hiç etki etmediğini sanıp başka bir alan adıyla
 		// yeniden denemeye iterdi — oysa kayıt zaten yeni değerde.
 		return "", status.Errorf(codes.Unavailable,
-			"alan adı %q → %q olarak KAYDEDİLDİ, ama ters vekil "+
-				"güncellenemedi: trafik hâlâ eski rotada. Uzlaştırma bir "+
-				"sonraki dağıtımda veya kadrand yeniden başlatıldığında "+
-				"tekrar denenir. Sebep: %v", from, to, err)
+			"domain %q → %q SAVED, but the reverse proxy "+
+				"could not be updated: traffic is still on the old route. Reconciliation "+
+				"is retried on the next deploy or when kadrand restarts. "+
+				"Cause: %v", from, to, err)
 	}
 
 	if to == "" {
-		return "uygulama ters vekilden ÇIKARILDI — artık hiçbir alan adında yayınlanmıyor", nil
+		return "app REMOVED from the reverse proxy — no longer served on any domain", nil
 	}
 	if why, skipped := res.Skipped[appID]; skipped {
 		// Hata DEĞİL: hiç dağıtılmamış bir uygulamanın ayakta replikası
 		// olmaz ve rota üretilemez. Ama sessiz kalmak, kullanıcının yeni
 		// alan adının canlıda cevap verdiğini sanması demekti.
 		return fmt.Sprintf(
-			"⚠ alan adı kaydedildi ama TRAFİK TAŞINMADI (%s) — "+
-				"uygulamayı dağıtın: kadran deploy %s", why, appID), nil
+			"⚠ domain saved but TRAFFIC NOT MOVED (%s) — "+
+				"deploy the app: kadran deploy %s", why, appID), nil
 	}
-	return fmt.Sprintf("ters vekil güncellendi — %q artık bu uygulamaya gidiyor", to), nil
+	return fmt.Sprintf("reverse proxy updated — %q now goes to this app", to), nil
 }
 
 // updateFromProto, isteği depo katmanının tipine çevirir.
@@ -287,13 +287,13 @@ func updateAuditParams(req *kadranv1.UpdateAppRequest) map[string]string {
 		params["env."+k] = "[REDACTED]"
 	}
 	for _, k := range req.GetEnvRemove() {
-		params["env_remove."+k] = "kaldırıldı"
+		params["env_remove."+k] = "removed"
 	}
 	for _, v := range req.GetVolumes() {
 		params["volume."+v.GetName()] = v.GetMountPath()
 	}
 	for _, n := range req.GetVolumeRemove() {
-		params["volume_remove."+n] = "ayrıldı"
+		params["volume_remove."+n] = "detached"
 	}
 	return params
 }
@@ -311,7 +311,7 @@ func updateAuditParams(req *kadranv1.UpdateAppRequest) map[string]string {
 // KENDI katmaninda durur ve bir sonraki dagitimda KAYBOLUR.
 func volumesNeedRedeploy(appID string) string {
 	return fmt.Sprintf(
-		"\u26a0 hacim tanimi KAYDEDILDI ama CALISAN KONTEYNERLER hâlâ eski "+
-			"baglamalarla kosuyor -- disk konteyner olusturulurken baglanir. "+
-			"Uygulayin: kadran deploy %s", appID)
+		"\u26a0 volume definition SAVED but RUNNING CONTAINERS still run with the old "+
+			"mounts -- a disk is mounted when the container is created. "+
+			"Apply it: kadran deploy %s", appID)
 }

@@ -73,7 +73,7 @@ func snapshotBeforeMigrate(
 	// gerek yoktu — enjeksiyon sınıfı tamamen ortadan kalkıyor.
 	if _, err := db.ExecContext(ctx, "VACUUM INTO ?",
 		filepath.ToSlash(dest)); err != nil {
-		return fmt.Errorf("göç öncesi yedek alınamadı (%s): %w", dest, err)
+		return fmt.Errorf("could not take the pre-migration backup (%s): %w", dest, err)
 	}
 
 	pruneBackups(path)

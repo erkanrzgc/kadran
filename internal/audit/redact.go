@@ -57,7 +57,7 @@ func MarshalParams(m map[string]string) (string, error) {
 	}
 	b, err := json.Marshal(m)
 	if err != nil {
-		return "", fmt.Errorf("audit: parametreler kodlanamadı: %w", err)
+		return "", fmt.Errorf("audit: could not encode parameters: %w", err)
 	}
 	return string(b), nil
 }

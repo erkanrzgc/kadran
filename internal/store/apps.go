@@ -14,10 +14,10 @@ import (
 )
 
 // ErrAppNotFound, istenen uygulamanın tanımlı olmadığını bildirir.
-var ErrAppNotFound = errors.New("uygulama bulunamadı")
+var ErrAppNotFound = errors.New("app not found")
 
 // ErrAppExists, aynı kimlikle bir uygulamanın zaten var olduğunu bildirir.
-var ErrAppExists = errors.New("uygulama zaten var")
+var ErrAppExists = errors.New("app already exists")
 
 // VolumeMount, kalıcı bir hacmin uygulamaya nasıl bağlandığıdır.
 //
@@ -104,7 +104,7 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 
 	args, err := json.Marshal(sortedArgs(app.BuildArgs))
 	if err != nil {
-		return App{}, fmt.Errorf("derleme argümanları serileştirilemedi: %w", err)
+		return App{}, fmt.Errorf("could not serialize build args: %w", err)
 	}
 
 	// Normalleştirme DÖNEN yapıya da yazılıyor. Yalnızca serileştirmede
@@ -122,13 +122,13 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 	app.Env = sortedArgs(sealed)
 	env, err := json.Marshal(app.Env)
 	if err != nil {
-		return App{}, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
+		return App{}, fmt.Errorf("could not serialize environment variables: %w", err)
 	}
 
 	app.Volumes = sortedVolumes(app.Volumes)
 	vols, err := json.Marshal(app.Volumes)
 	if err != nil {
-		return App{}, fmt.Errorf("hacimler serileştirilemedi: %w", err)
+		return App{}, fmt.Errorf("could not serialize volumes: %w", err)
 	}
 
 	const q = `
@@ -151,7 +151,7 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 		if isUniqueViolation(err) {
 			return App{}, s.explainCreateConflict(ctx, app, err)
 		}
-		return App{}, fmt.Errorf("uygulama yazılamadı: %w", err)
+		return App{}, fmt.Errorf("could not write the app: %w", err)
 	}
 	return app, nil
 }
@@ -192,7 +192,7 @@ func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 	case errors.Is(err, sql.ErrNoRows):
 		return App{}, fmt.Errorf("%w: %s", ErrAppNotFound, id)
 	case err != nil:
-		return App{}, fmt.Errorf("uygulama okunamadı: %w", err)
+		return App{}, fmt.Errorf("could not read the app: %w", err)
 	}
 	return app, nil
 }
@@ -201,7 +201,7 @@ func (s *Store) GetApp(ctx context.Context, id string) (App, error) {
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	rows, err := s.db.QueryContext(ctx, appSelect+` ORDER BY id`)
 	if err != nil {
-		return nil, fmt.Errorf("uygulamalar okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read apps: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -209,12 +209,12 @@ func (s *Store) ListApps(ctx context.Context) ([]App, error) {
 	for rows.Next() {
 		app, err := scanApp(rows)
 		if err != nil {
-			return nil, fmt.Errorf("uygulama satırı okunamadı: %w", err)
+			return nil, fmt.Errorf("could not read an app row: %w", err)
 		}
 		apps = append(apps, app)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("uygulama listesi okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the app list: %w", err)
 	}
 	return apps, nil
 }
@@ -252,10 +252,10 @@ func scanApp(sc scanner) (App, error) {
 		return App{}, err
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &app.BuildArgs); err != nil {
-		return App{}, fmt.Errorf("derleme argümanları çözümlenemedi: %w", err)
+		return App{}, fmt.Errorf("could not decode build args: %w", err)
 	}
 	if err := json.Unmarshal([]byte(envJSON), &app.Env); err != nil {
-		return App{}, fmt.Errorf("ortam değişkenleri çözümlenemedi: %w", err)
+		return App{}, fmt.Errorf("could not decode environment variables: %w", err)
 	}
 	// "{}" nil DEĞİL boş harita üretir, ama "null" nil üretir — göç
 	// öncesi yazılmış bir satır ya da elle yapılmış bir müdahale bunu
@@ -263,7 +263,7 @@ func scanApp(sc scanner) (App, error) {
 	// hiçbiri nil kontrolü yapmak zorunda kalmasın.
 	app.Env = sortedArgs(app.Env)
 	if err := json.Unmarshal([]byte(volsJSON), &app.Volumes); err != nil {
-		return App{}, fmt.Errorf("hacimler çözümlenemedi: %w", err)
+		return App{}, fmt.Errorf("could not decode volumes: %w", err)
 	}
 	app.Volumes = sortedVolumes(app.Volumes)
 	app.CreatedAt = time.Unix(0, created)

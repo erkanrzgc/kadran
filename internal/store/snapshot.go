@@ -82,7 +82,7 @@ func (s *Store) Snapshot(ctx context.Context) (SnapshotInfo, error) {
 func (s *Store) snapshotAt(ctx context.Context, now time.Time) (SnapshotInfo, error) {
 	// Bellek veritabanının dosyası yok; yedeklenecek bir şey de yok.
 	if s.path == ":memory:" || s.path == "" {
-		return SnapshotInfo{}, fmt.Errorf("bellek veritabanı yedeklenemez")
+		return SnapshotInfo{}, fmt.Errorf("an in-memory database cannot be backed up")
 	}
 
 	dir := SnapshotDir(s.path)
@@ -91,7 +91,7 @@ func (s *Store) snapshotAt(ctx context.Context, now time.Time) (SnapshotInfo, er
 	// açık olmaları için hiçbir sebep yok.
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return SnapshotInfo{}, fmt.Errorf(
-			"yedek dizini oluşturulamadı (%s): %w", dir, err)
+			"could not create the backup directory (%s): %w", dir, err)
 	}
 
 	stamp := now.UTC().Truncate(time.Second)
@@ -109,7 +109,7 @@ func (s *Store) snapshotAt(ctx context.Context, now time.Time) (SnapshotInfo, er
 		if _, err := s.db.ExecContext(ctx, "VACUUM INTO ?",
 			filepath.ToSlash(dest)); err != nil {
 			return SnapshotInfo{}, fmt.Errorf(
-				"yedek alınamadı (%s): %w", dest, err)
+				"could not take a backup (%s): %w", dest, err)
 		}
 		if err := s.writeAnchor(ctx, dir, stamp); err != nil {
 			return SnapshotInfo{}, err
@@ -173,7 +173,7 @@ func pruneSnapshots(dir string) {
 func (s *Store) writeAnchor(ctx context.Context, dir string, stamp time.Time) error {
 	seq, hash, err := s.AuditHead(ctx)
 	if err != nil {
-		return fmt.Errorf("zincir çapası okunamadı: %w", err)
+		return fmt.Errorf("could not read the chain anchor: %w", err)
 	}
 	if seq == 0 {
 		return nil
@@ -182,11 +182,11 @@ func (s *Store) writeAnchor(ctx context.Context, dir string, stamp time.Time) er
 	dest := filepath.Join(dir, anchor.FileName(stamp))
 	tmp := dest + ".yaziliyor"
 	if err := os.WriteFile(tmp, anchor.Format(seq, hash), 0o600); err != nil {
-		return fmt.Errorf("zincir çapası yazılamadı (%s): %w", dest, err)
+		return fmt.Errorf("could not write the chain anchor (%s): %w", dest, err)
 	}
 	if err := os.Rename(tmp, dest); err != nil {
 		_ = os.Remove(tmp)
-		return fmt.Errorf("zincir çapası yazılamadı (%s): %w", dest, err)
+		return fmt.Errorf("could not write the chain anchor (%s): %w", dest, err)
 	}
 	return nil
 }
@@ -210,7 +210,7 @@ func ListSnapshots(dbPath string) ([]SnapshotInfo, error) {
 	matches, err := filepath.Glob(
 		filepath.Join(dir, snapshotPrefix+"*"+snapshotExt))
 	if err != nil {
-		return nil, fmt.Errorf("yedekler listelenemedi (%s): %w", dir, err)
+		return nil, fmt.Errorf("could not list backups (%s): %w", dir, err)
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 

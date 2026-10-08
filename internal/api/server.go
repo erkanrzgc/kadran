@@ -126,15 +126,15 @@ type Reconciler interface {
 // NewServer, API servisini oluşturur.
 func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Store == nil {
-		return nil, errors.New("api: veritabanı zorunludur")
+		return nil, errors.New("api: a database is required")
 	}
 	if err := checkExecutor(opts.Executor); err != nil {
 		return nil, err
 	}
-	if err := checkNotTypedNil(opts.Rollout, "rollout orkestratörü"); err != nil {
+	if err := checkNotTypedNil(opts.Rollout, "rollout orchestrator"); err != nil {
 		return nil, err
 	}
-	if err := checkNotTypedNil(opts.Reconciler, "vekil uzlaştırıcısı"); err != nil {
+	if err := checkNotTypedNil(opts.Reconciler, "proxy reconciler"); err != nil {
 		return nil, err
 	}
 
@@ -175,7 +175,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 // değişikliğin yan etkisini kapatıyor. Kurucuda yakalamak, kadrand'yi
 // hatalı kablolamayla ayağa kaldırıp ilk isteği bekletmekten iyidir.
 func checkExecutor(e Executor) error {
-	return checkNotTypedNil(e, "executor istemcisi")
+	return checkNotTypedNil(e, "executor client")
 }
 
 // checkNotTypedNil, bir arayüz bağımlılığının GERÇEKTEN kullanılabilir
@@ -186,10 +186,10 @@ func checkExecutor(e Executor) error {
 // durum, alanlar arayüze çevrildiğinde ortaya çıktı.
 func checkNotTypedNil(v any, what string) error {
 	if v == nil {
-		return fmt.Errorf("api: %s zorunludur", what)
+		return fmt.Errorf("api: %s is required", what)
 	}
 	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
-		return fmt.Errorf("api: %s tipli nil — arayüze nil bir işaretçi konmuş", what)
+		return fmt.Errorf("api: typed nil %s — a nil pointer was put into an interface", what)
 	}
 	return nil
 }
@@ -206,8 +206,8 @@ func (s *Server) Ping(_ context.Context, req *kadranv1.PingRequest) (*kadranv1.P
 	// aynı olduğu sürece iletişim geçerlidir. Asıl uyumsuzluk denetimini
 	// istemci, ProtocolVersion'a bakarak yapar.
 	if cv := req.GetClientVersion(); cv != "" && cv != version.Version {
-		resp.CompatibilityWarning = "istemci sürümü " + cv +
-			", daemon sürümü " + version.Version + " — ikisini birlikte güncellemek önerilir"
+		resp.CompatibilityWarning = "client version " + cv +
+			", daemon version " + version.Version + " — upgrading both together is recommended"
 	}
 	return resp, nil
 }
@@ -246,12 +246,12 @@ func (s *Server) GetSystemInfo(ctx context.Context, _ *kadranv1.GetSystemInfoReq
 func (s *Server) ListAuditRecords(ctx context.Context, req *kadranv1.ListAuditRecordsRequest) (*kadranv1.ListAuditRecordsResponse, error) {
 	records, err := s.store.ListAudit(ctx, req.GetAfterSeq(), int(req.GetLimit()))
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "denetim kayıtları okunamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not read audit records: %v", err)
 	}
 
 	latestSeq, _, err := s.store.AuditHead(ctx)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "zincir başı okunamadı: %v", err)
+		return nil, status.Errorf(codes.Internal, "could not read the chain head: %v", err)
 	}
 
 	return &kadranv1.ListAuditRecordsResponse{
@@ -311,7 +311,7 @@ func (s *Server) VerifyAuditChain(ctx context.Context, _ *kadranv1.VerifyAuditCh
 	switch {
 	case err == nil:
 		resp.DaemonStatus = kadranv1.ChainStatus_CHAIN_STATUS_VALID
-		resp.Detail = "daemon zinciri geçerli"
+		resp.Detail = "daemon chain valid"
 
 	case errors.Is(err, audit.ErrChainBroken):
 		// Zincirin kendisi kırık: bu gerçek bir bulgu.
@@ -323,7 +323,7 @@ func (s *Server) VerifyAuditChain(ctx context.Context, _ *kadranv1.VerifyAuditCh
 	default:
 		// Veritabanı okunamadı. Zincir hakkında bir iddiada BULUNMUYORUZ.
 		resp.DaemonStatus = kadranv1.ChainStatus_CHAIN_STATUS_UNREACHABLE
-		resp.Detail = "daemon zinciri doğrulanamadı: " + err.Error()
+		resp.Detail = "could not verify the daemon chain: " + err.Error()
 	}
 
 	execStatus, execChecked, execDetail := s.verifyExecutorChain(ctx)
@@ -354,10 +354,10 @@ func (s *Server) verifyExecutorChain(ctx context.Context) (kadranv1.ChainStatus,
 		if len(page.Records) == 0 {
 			if v.Count() == 0 {
 				return kadranv1.ChainStatus_CHAIN_STATUS_VALID, 0,
-					"executor zinciri boş (henüz ayrıcalıklı işlem yapılmadı)"
+					"executor chain empty (no privileged operation yet)"
 			}
 			return kadranv1.ChainStatus_CHAIN_STATUS_VALID, v.Count(),
-				"executor zinciri geçerli"
+				"executor chain valid"
 		}
 		for _, rec := range page.Records {
 			if err := v.Next(rec); err != nil {

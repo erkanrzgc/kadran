@@ -103,7 +103,7 @@ echo "== Executor: kasa zorunlu, bağ, sınırlar =="
 
 mutate "öneksiz (şifresiz) değer kabul ediliyor" internal/exec/kasa.go $EX \
     'TestOpenEnvRejectsPlaintext|TestContainerCreateRejectsPlaintextEnv' <<'EOF'
-s = s.replace('\t\t\treturn nil, fmt.Errorf("env %q mühürlü değil (kasa zorunlu)", k)', '\t\t\tout[k] = v\n\t\t\tcontinue', 1)
+s = s.replace('\t\t\treturn nil, fmt.Errorf("env %q is not sealed (the vault is required)", k)', '\t\t\tout[k] = v\n\t\t\tcontinue', 1)
 EOF
 
 mutate "ContainerCreate kasa adımını atlıyor" internal/exec/container.go $EX \
@@ -160,7 +160,7 @@ EOF
 
 mutate "kasa açılmadan değer yazılabiliyor" internal/store/vault.go $ST \
     'TestEnvWritesRequireVault' <<'EOF'
-s = s.replace('\tif s.sealer == nil {\n\t\treturn nil, errors.New("kasa açılmadı: ortam değişkeni yazılamaz")', '\tif s.sealer == nil {\n\t\treturn env, nil', 1)
+s = s.replace('\tif s.sealer == nil {\n\t\treturn nil, errors.New("vault not open: environment variables cannot be written")', '\tif s.sealer == nil {\n\t\treturn env, nil', 1)
 EOF
 
 mutate "göçten sonra VACUUM yok (düz metin dosyada kalır)" internal/store/vault.go $ST \

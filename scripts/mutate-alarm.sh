@@ -150,7 +150,7 @@ mutate "since her yükseltmede üzerine yazılıyor" "$STORE" ./internal/alarm/ 
 
 mutate "ciddiyet doğrulaması kaldırıldı" "$STORE" ./internal/alarm/ \
     "s=s.replace('''	if a.Severity != SeverityWarning && a.Severity != SeverityCritical {
-		return false, fmt.Errorf(\"bilinmeyen ciddiyet: %q\", a.Severity)
+		return false, fmt.Errorf(\"unknown severity: %q\", a.Severity)
 	}''','''	_ = a.Severity''',1)"
 
 mutate "tırmanma kaldırıldı" "$STORE" ./internal/alarm/ \

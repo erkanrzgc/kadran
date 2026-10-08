@@ -73,12 +73,12 @@ type Reconciler struct {
 // yükleme anında değil kurulum anında görülmesi için.
 func New(d Deployments, r Replicas, p Proxy, admin proxydrv.Admin) (*Reconciler, error) {
 	if d == nil || r == nil || p == nil {
-		return nil, errors.New("deploy: dağıtım, replika ve vekil bağımlılıkları zorunlu")
+		return nil, errors.New("deploy: deployment, replica and proxy dependencies are required")
 	}
 	if admin.Listen == "" {
 		return nil, errors.New(
-			"deploy: admin bloğu zorunlu — onsuz yüklenen yapılandırma " +
-				"kadrand'yi Caddy'den kalıcı olarak kilitler")
+			"deploy: the admin block is required — a config loaded without it " +
+				"locks kadrand out of Caddy for good")
 	}
 	return &Reconciler{deployments: d, replicas: r, proxy: p, admin: admin}, nil
 }
@@ -121,7 +121,7 @@ func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	// Load, yüklemekle kalmıyor GERİ DE OKUYOR: "200 aldım", canlı
 	// yapılandırmanın benimki olduğunu kanıtlamaz (K-054).
 	if err := rc.proxy.Load(ctx, cfg); err != nil {
-		return p.res, fmt.Errorf("deploy: vekil yapılandırması yüklenemedi: %w", err)
+		return p.res, fmt.Errorf("deploy: could not load the proxy config: %w", err)
 	}
 
 	sort.Strings(p.res.Routed)
@@ -174,7 +174,7 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 	}
 	live, err := rc.proxy.Current(ctx)
 	if err != nil {
-		return out, fmt.Errorf("deploy: canlı vekil yapılandırması okunamadı: %w", err)
+		return out, fmt.Errorf("deploy: could not read the live proxy config: %w", err)
 	}
 	out.Missing = proxydrv.MissingHosts(cfg, live)
 	if len(out.Missing) == 0 {
@@ -194,7 +194,7 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 		return out, err
 	}
 	if err := rc.proxy.Load(ctx, cfg); err != nil {
-		return out, fmt.Errorf("deploy: kaybolan rotalar yüklenemedi: %w", err)
+		return out, fmt.Errorf("deploy: could not load the lost routes: %w", err)
 	}
 	// Load geri okuyarak İKİ YÖNLÜ doğruladı (K-054).
 	out.Exact = true
@@ -214,7 +214,7 @@ func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
 	if err != nil {
-		return p, fmt.Errorf("deploy: aktif dağıtımlar okunamadı: %w", err)
+		return p, fmt.Errorf("deploy: could not read active deployments: %w", err)
 	}
 
 	p.routes = make([]proxydrv.AppRoute, 0, len(deps))
@@ -249,7 +249,7 @@ func (rc *Reconciler) build(routes []proxydrv.AppRoute) (*proxydrv.Config, error
 		Routes: routes,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("deploy: vekil yapılandırması üretilemedi: %w", err)
+		return nil, fmt.Errorf("deploy: could not build the proxy config: %w", err)
 	}
 	return cfg, nil
 }
@@ -260,7 +260,7 @@ func (rc *Reconciler) build(routes []proxydrv.AppRoute) (*proxydrv.Config, error
 func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]proxydrv.Upstream, string) {
 	reps, err := rc.replicas.ListReplicas(ctx, d.AppID)
 	if err != nil {
-		return nil, fmt.Sprintf("konteynerler listelenemedi: %v", err)
+		return nil, fmt.Sprintf("could not list containers: %v", err)
 	}
 
 	// ⚠ Replicas SIFIR OLAMAZ ve sıfırsa sessiz kalmıyoruz.
@@ -275,8 +275,8 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 	// Bu yüzden sebep açıkça söyleniyor. Uygulama yine atlanıyor
 	// (fail-closed), ama NEDEN atlandığı belli.
 	if d.Replicas == 0 {
-		return nil, "istenen replika sayısı sıfır — şema bunu yasaklıyor, " +
-			"demek ki Deployment kaydı eksik dolduruldu"
+		return nil, "requested replica count is zero — the schema forbids this, " +
+			"so the Deployment record was filled in incompletely"
 	}
 
 	// Belirlenimli sıra: aynı durumdan aynı JSON çıkmazsa geri okuma
@@ -327,15 +327,15 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 			// Adres executor'dan geliyor ve ayrıştırılamıyorsa bu, üst
 			// katmanda bir bozulmadır; sessizce atlamak trafiği eksik
 			// replikaya sıkıştırırdı.
-			return nil, fmt.Sprintf("replika #%d adresi kullanılamaz: %v", rep.Index, err)
+			return nil, fmt.Sprintf("address of replica #%d unusable: %v", rep.Index, err)
 		}
 		ups = append(ups, u)
 	}
 
 	if len(ups) == 0 {
 		return nil, fmt.Sprintf(
-			"aktif sürümün (%s) ayakta replikası yok (hostta %d konteyner: "+
-				"%d başka sürümden, %d hazır değil, %d ölçek fazlası)",
+			"active release (%s) has no running replica (%d containers on the host: "+
+				"%d from another release, %d not ready, %d over the scale)",
 			d.ReleaseID, len(reps), notMine, notUp, extra)
 	}
 	return ups, ""

@@ -47,7 +47,7 @@ func (s *Server) record(action, target string, params map[string]string, outcome
 	if len(params) > 0 {
 		var err error
 		if paramsJSON, err = audit.MarshalParams(params); err != nil {
-			return fmt.Errorf("denetim parametreleri kodlanamadı: %w", err)
+			return fmt.Errorf("could not encode audit parameters: %w", err)
 		}
 	}
 
@@ -64,7 +64,7 @@ func (s *Server) record(action, target string, params map[string]string, outcome
 		Detail:     detail,
 	})
 	if err != nil {
-		return fmt.Errorf("denetim kaydı yazılamadı: %w", err)
+		return fmt.Errorf("could not write the audit record: %w", err)
 	}
 	return nil
 }
@@ -93,7 +93,7 @@ func (s *Server) completed(action, target string, params map[string]string, opEr
 		// ⚠ opErr'in METNİ kayda GİRMEZ. Docker'ın hata mesajı kullanıcının
 		// imajından/deposundan gelen metni taşıyabilir ve zincir
 		// ekle-sadece'dir: bir kez yazılan sır geri alınamaz.
-		detail = "işlem başarısız (ayrıntı çağırana döndü, kayda yazılmadı)"
+		detail = "operation failed (detail returned to the caller, not recorded)"
 	}
 	if err := s.record(action, target, params, outcome, detail); err != nil {
 		return err

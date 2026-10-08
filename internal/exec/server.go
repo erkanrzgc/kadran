@@ -83,10 +83,10 @@ const DefaultVolumeRoot = "/var/lib/kadran/volumes"
 // NewServer, executor servisini oluşturur.
 func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Journal == nil {
-		return nil, errors.New("exec: denetim günlüğü zorunludur")
+		return nil, errors.New("exec: an audit log is required")
 	}
 	if opts.Vault == nil {
-		return nil, errors.New("exec: kasa anahtarı zorunludur")
+		return nil, errors.New("exec: a vault key is required")
 	}
 	if opts.DockerSocket == "" {
 		opts.DockerSocket = DefaultDockerSocket
@@ -152,7 +152,7 @@ func (s *Server) ReadAuditJournal(_ context.Context, req *kadranv1.ReadAuditJour
 	if err != nil {
 		// Zincir doğrulanamıyorsa bu bir iç tutarsızlık değil, güvenlik
 		// olayıdır. DataLoss kodu çağırana durumun ciddiyetini bildirir.
-		return nil, status.Errorf(codes.DataLoss, "denetim günlüğü okunamadı: %v", err)
+		return nil, status.Errorf(codes.DataLoss, "could not read the audit log: %v", err)
 	}
 
 	latestSeq, _ := s.journal.Head()

@@ -216,7 +216,7 @@ func TestRestoreRejectsMissingFile(t *testing.T) {
 	if err == nil {
 		t.Fatal("var olmayan yedek kabul edildi")
 	}
-	if !strings.Contains(err.Error(), "bulunamadı") {
+	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("hata mesajı sebebi söylemiyor: %v", err)
 	}
 }

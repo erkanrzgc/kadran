@@ -73,14 +73,14 @@ func parseArgs(args []string, stderr io.Writer) (options, error) {
 
 	fs := flag.NewFlagSet("kadran-connect", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	fs.StringVar(&opts.socket, "socket", defaultSocket, "kadrand api soketi")
-	fs.BoolVar(&opts.version, "version", false, "sürümü yazdır ve çık")
+	fs.StringVar(&opts.socket, "socket", defaultSocket, "kadrand API socket")
+	fs.BoolVar(&opts.version, "version", false, "print the version and exit")
 
 	deploySet := false
-	fs.Func("deploy", "yalnızca bu uygulamaları dağıtabilen anahtar (virgülle ayrılmış)",
+	fs.Func("deploy", "key that can only deploy these apps (comma-separated)",
 		func(v string) error {
 			if deploySet {
-				return errors.New("-deploy bir kez verilir")
+				return errors.New("-deploy can be given only once")
 			}
 			deploySet = true
 			apps, err := connproto.ParseDeployScope(v)
@@ -95,7 +95,7 @@ func parseArgs(args []string, stderr io.Writer) (options, error) {
 		return options{}, err
 	}
 	if fs.NArg() > 0 {
-		return options{}, fmt.Errorf("beklenmeyen argüman: %q", fs.Args())
+		return options{}, fmt.Errorf("unexpected argument: %q", fs.Args())
 	}
 	return opts, nil
 }
@@ -107,7 +107,7 @@ func run() error {
 	}
 
 	if opts.version {
-		fmt.Fprintf(os.Stderr, "kadran-connect %s (%s) protokol %d\n",
+		fmt.Fprintf(os.Stderr, "kadran-connect %s (%s) protocol %d\n",
 			version.Version, version.Commit, version.Protocol)
 		return nil
 	}
@@ -134,7 +134,7 @@ func run() error {
 	var dialer net.Dialer
 	conn, err := dialer.DialContext(ctx, "unix", opts.socket)
 	if err != nil {
-		return fmt.Errorf("kadrand'ye bağlanılamadı (%s): %w", opts.socket, err)
+		return fmt.Errorf("could not connect to kadrand (%s): %w", opts.socket, err)
 	}
 	defer func() { _ = conn.Close() }()
 
@@ -179,7 +179,7 @@ func resolveIdentity(getenv func(string) string, opts options) connproto.Identit
 func pump(conn net.Conn) error {
 	unixConn, ok := conn.(*net.UnixConn)
 	if !ok {
-		return fmt.Errorf("beklenmedik bağlantı türü: %T", conn)
+		return fmt.Errorf("unexpected connection type: %T", conn)
 	}
 
 	upstream := make(chan error, 1)
@@ -192,14 +192,14 @@ func pump(conn net.Conn) error {
 
 	// Soket→stdout yönü oturumun ömrünü belirler.
 	if _, err := io.Copy(os.Stdout, unixConn); err != nil && !isExpectedClose(err) {
-		return fmt.Errorf("yanıt akışı kesildi: %w", err)
+		return fmt.Errorf("response stream broken: %w", err)
 	}
 
 	// Yukarı akışta biriken bir hata varsa bildir; yoksa bekleme.
 	select {
 	case err := <-upstream:
 		if err != nil && !isExpectedClose(err) {
-			return fmt.Errorf("istek akışı kesildi: %w", err)
+			return fmt.Errorf("request stream broken: %w", err)
 		}
 	default:
 	}

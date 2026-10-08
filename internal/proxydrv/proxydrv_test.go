@@ -343,7 +343,7 @@ func TestLoadDetectsConfigThatDidNotApply(t *testing.T) {
 	if err == nil {
 		t.Fatal("uygulanmayan yapılandırma başarılı sayıldı")
 	}
-	if !strings.Contains(err.Error(), "BULUNAMADI") {
+	if !strings.Contains(err.Error(), "NOT FOUND") {
 		t.Errorf("hata sebebi açık değil: %v", err)
 	}
 	if f.loadCalls != 1 {

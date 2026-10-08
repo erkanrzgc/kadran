@@ -10617,8 +10617,8 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 ## K-141 — CLI İngilizce
 
 **Tarih:** 5 Ekim 2026
-**Durum:** 1. AŞAMA PR #8 (CI 10/10, mutasyon 27/27). 2. AŞAMA KOD BİTTİ (dal
-`cli-ingilizce-2`). 3–5. aşamalar sırada.
+**Durum:** 1. AŞAMA PR #8 (CI 10/10, mutasyon 27/27), 2. AŞAMA PR #9 (`fa4f77a`)
+birleşti. 3. AŞAMA KOD BİTTİ (dal `cli-ingilizce-3`). 4–5. aşamalar sırada.
 
 ### Neden
 
@@ -10725,3 +10725,79 @@ sözcük ve ek listesiyle ayrıca tarandı; üç kalıntı (`listelenemedi`, `ok
 Kanıt (Debian 13 konteyneri, CI taklidi): `check-offsite` (root), `check-install-sh`
 (root + uid 1001), `check-goc-sh`, `go test ./...` yeşil; `mutate-install`, `mutate-goc`,
 `mutate-kasa`, `mutate-anchor` "Bütün mutasyonlar yakalandı".
+
+### 3. aşama: sunucunun CLI'a dönen metni
+
+`internal/api`'nin `appError`'ı store hatalarını gRPC koduna eşliyor ama `err.Error()`'ı
+olduğu gibi geçiriyor (eşleşmeyen hata `codes.Internal`). Store, deploy ve executor
+hatalarının metni bu yolla CLI'ın ekranına düşüyor. Bu yüzden kapsam paketle değil, metnin
+GİTTİĞİ yerle çizildi:
+
+- **Çevrildi:** hata değerleri (`fmt.Errorf`, `errors.New`, `status.Error*`); CLI'a dönen
+  yanıt metni: denetim ve zincir ayrıntısı, uyumluluk uyarısı, `app update` uyarıları,
+  budamanın korunan etiketleri (`active`, `rollback target`) ve dağıtım gerekçeleri.
+  Bunlara ek olarak sunucu ikililerinin `-h` metni ve `kadrand -restore` çıktısı.
+  Toplam 65 üretim dosyası ve 22 paket. Her çeviri kendi satırında kaldı; ayrıcalıklı yüzey
+  2581/2600, değişmedi.
+- **5. aşamaya bırakıldı:**
+  - slog iletileri, alan anahtarları ve değerleri. E2E `yetki reddedildi`, `rol=deploy`
+    ve `anahtar=SHA256:` bekliyor.
+  - `store.Alarm`'ın `Detail` alanı.
+  - `sdnotify.Status`.
+  - Döngü adları. `gözetmen` watchdog günlüğünde ve e2e-watchdog beklentisinde geçiyor.
+- **Değiştirilemeyen veri:**
+  - Alarm şiddeti `uyari`/`kritik` depoda saklanan değer. CLI bu değeri proto enum'undan
+    İngilizce etikete çeviriyor; metne bakmıyor.
+  - Uygulanmış göçlerdeki SQL tetikleyici `RAISE` iletileri değişmedi; CLI'a Türkçe
+    düşebilirler. CHANGELOG bunu söylüyor.
+- **Denetim kaydı ekle-yalnız.** Eski kayıtlar yeniden yazılmaz; ayrıntı değerleri
+  (`kaldırıldı`, `ayrıldı`) Türkçe kalır. Yeni kayıtlar `removed`/`detached` yazar.
+
+Sözleşme taraması: sunucu kodunda kendi hata metnine bakıp karar veren yer YOK; ayrım
+sentinel hatalarla yapılıyor. CLI sunucu metnini yalnız basıyor. Masaüstü sunucu metnine
+bakmıyor. Metne bakanlar yalnız testler, `e2e-cli-runner.sh` ve mutasyon iğneleri.
+
+Koruma, `TestServerErrorsAreEnglish` (`cmd/kadran/english_test.go`):
+
+- 25 sunucu paketinin üretim kodundaki her dize sabitinde Türkçe harf arıyor.
+- Journal'a ya da alarma giden dizeleri sözdizimiyle ayırıyor: bir `slog.X` ya da
+  `sdnotify.Status` çağrısının içindeki dize ya da `store.Alarm{Detail: …}` alanı. Bunu
+  `ast.Inspect` üzerinde bir ata yığınıyla buluyor.
+- Bu kalıba uymayan üç journal dizesi adıyla listede (`journalOnlyLiterals`).
+
+KIRMIZI üç yoldan ölçüldü:
+
+- Bir hata değerine Türkçe metin eklenince düşüyor.
+- Ayırıcı kapatılınca 58 dize düşüyor. Bu, ayırıcının gerçekten bir şey ayırdığını gösteriyor.
+- Listeden her girdi tek tek çıkarılınca kendi dizesi düşüyor.
+
+Kontrol grubu: 80 dosya / 2000 dizeden azı denetlenirse düşüyor; ölçülen 85 / 2106.
+
+Türkçe harfsiz Türkçe korumaya görünmez ("konteynerler listelenemedi", "protokol",
+"aktif"). Bunlar iki ayrı taramayla bulundu: İngilizce işlev sözcüğü taşımayan dize
+sabitleri tersine tarandı, tek sözcüklük dizeler de tek tek okundu.
+
+Metne bağlı yapılar metinle aynı değişiklikte güncellendi:
+
+- İlk koşuda 16 olumlu test iddiası düştü; konteyner koşusunda budamanın iki testi daha.
+- Mutasyon iğneleri: dokuz betikteki 15 iğne eski metne bakıyordu (`alarm`, `appdelete`,
+  `authz` 2, `env` 2, `heal` 3, `kasa` 2, `prune` 2, `restore`, `volumes`). Çeviriden önce
+  ve sonra her iğnenin kaynakta TEK eşleştiği statik olarak sayıldı (K-127 kapısı).
+- `e2e-cli-runner.sh`'ın kapsam ve rol denetimleri yeni metne çevrildi. Bunlara iki
+  "kapsam içi … reddi yok" denetimi de dahil: metin değişince sessizce boşa düşecekti.
+
+**1. aşamadan kalma iki ölü denetim.** `e2e-cli-runner.sh`'ın iki "GEÇMESİN" denetimi
+1. aşamadan beri hiçbir şey ölçmüyordu: `KURULUM BOZUK` ve `GEÇERSİZ` CLI'ın artık
+basmadığı etiketlerdi. Yerlerine `BROKEN INSTALL` ve `BROKEN` geldi. `BROKEN` çıktıda
+yalnız kırık zincirin etiketinde ve stderr'deki `CHAIN BROKEN`'da geçiyor; eşleşme
+büyük/küçük harfe duyarlı.
+
+Kanıt: Debian 13 konteyneri, CI taklidi (uid 1001, parolasız sudo,
+`KADRAN_TEST_REAL_SUDO=1`).
+
+- `go test ./...` yeşil.
+- `e2e-cli-runner` gerçek kadrand'a karşı geçti; yeni yetki metinleri ve onarılan iki
+  denetim dahil.
+- `check-exec-surface` 2581/2600.
+- 27 mutasyon betiğinin hepsinde "Bütün mutasyonlar yakalandı"; UYGULANAMADI ya da KIRMIZI
+  OLMADI yok.

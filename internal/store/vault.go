@@ -21,7 +21,7 @@ import (
 // ErrVaultRecipientChanged, veritabanındaki değerlerin yapılandırılandan
 // başka bir alıcıya mühürlü olduğunu söyler: kayıp anahtarın yerine yenisi
 // üretilmiş olabilir.
-var ErrVaultRecipientChanged = errors.New("kasa alıcısı değişmiş")
+var ErrVaultRecipientChanged = errors.New("vault recipient changed")
 
 // sealedHead, mühürlü bir değerin başı: önek + base64("age-encryption.org/v1").
 // Yalnız ÇİFT mühürlemeyi önlemek için bakılıyor; bir değerin mühürlü olup
@@ -47,10 +47,10 @@ func (s *Store) EnableVault(ctx context.Context, sealer *vault.Sealer) (int, err
 	marked := err == nil
 	switch {
 	case marked && recipient != sealer.Recipient():
-		return 0, fmt.Errorf("%w: değerler %s için mühürlü, yapılandırılan alıcı %s",
+		return 0, fmt.Errorf("%w: values are sealed for %s, configured recipient is %s",
 			ErrVaultRecipientChanged, recipient, sealer.Recipient())
 	case !marked && !errors.Is(err, sql.ErrNoRows):
-		return 0, fmt.Errorf("kasa işareti okunamadı: %w", err)
+		return 0, fmt.Errorf("could not read the vault marker: %w", err)
 	}
 
 	n, err := s.sealAllEnv(ctx, sealer, marked)
@@ -78,18 +78,18 @@ func (s *Store) EnableVault(ctx context.Context, sealer *vault.Sealer) (int, err
 // sonucunu satırda bildiriyor, hata olarak değil; o yüzden okunuyor.
 func (s *Store) scrub(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, "VACUUM"); err != nil {
-		return fmt.Errorf("eski düz metin temizlenemedi (VACUUM): %w", err)
+		return fmt.Errorf("could not scrub old plaintext (VACUUM): %w", err)
 	}
 	var busy, logFrames, moved int
 	if err := s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &moved); err != nil {
-		return fmt.Errorf("eski düz metin temizlenemedi (WAL): %w", err)
+		return fmt.Errorf("could not scrub old plaintext (WAL): %w", err)
 	}
 	if busy != 0 {
-		return errors.New("eski düz metin temizlenemedi: WAL kesilemedi (meşgul)")
+		return errors.New("could not scrub old plaintext: WAL could not be truncated (busy)")
 	}
 	if _, err := s.db.ExecContext(ctx,
 		`UPDATE env_seal SET scrubbed_at = ? WHERE id = 1`, time.Now().UnixNano()); err != nil {
-		return fmt.Errorf("temizlik işarete yazılamadı: %w", err)
+		return fmt.Errorf("could not record the scrub in the marker: %w", err)
 	}
 	return nil
 }
@@ -100,7 +100,7 @@ func (s *Store) scrub(ctx context.Context) error {
 func (s *Store) sealAllEnv(ctx context.Context, sealer *vault.Sealer, marked bool) (int, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("kasa transaction'ı açılamadı: %w", err)
+		return 0, fmt.Errorf("could not begin the vault transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -116,8 +116,8 @@ func (s *Store) sealAllEnv(ctx context.Context, sealer *vault.Sealer, marked boo
 			case !strings.HasPrefix(v, sealedHead):
 				plain[k] = v
 			case !marked:
-				return 0, fmt.Errorf("%s/%s zaten mühürlü görünüyor ama kasa işareti yok; "+
-					"ikinci kez mühürlenmedi, elle bakılmalı", id, k)
+				return 0, fmt.Errorf("%s/%s already looks sealed but there is no vault marker; "+
+					"not sealed a second time, inspect it by hand", id, k)
 			}
 		}
 		if len(plain) == 0 {
@@ -136,10 +136,10 @@ func (s *Store) sealAllEnv(ctx context.Context, sealer *vault.Sealer, marked boo
 		}
 		data, err := json.Marshal(merged)
 		if err != nil {
-			return 0, fmt.Errorf("ortam değişkenleri serileştirilemedi: %w", err)
+			return 0, fmt.Errorf("could not serialize environment variables: %w", err)
 		}
 		if _, err := tx.ExecContext(ctx, `UPDATE apps SET env_json = ? WHERE id = ?`, string(data), id); err != nil {
-			return 0, fmt.Errorf("%s mühürlenemedi: %w", id, err)
+			return 0, fmt.Errorf("could not seal %s: %w", id, err)
 		}
 		n += len(plain)
 	}
@@ -147,11 +147,11 @@ func (s *Store) sealAllEnv(ctx context.Context, sealer *vault.Sealer, marked boo
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO env_seal (id, recipient, sealed_at) VALUES (1, ?, ?)`,
 			sealer.Recipient(), time.Now().UnixNano()); err != nil {
-			return 0, fmt.Errorf("kasa işareti yazılamadı: %w", err)
+			return 0, fmt.Errorf("could not write the vault marker: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("mühürlenen değerler yazılamadı: %w", err)
+		return 0, fmt.Errorf("could not write the sealed values: %w", err)
 	}
 	return n, nil
 }
@@ -159,18 +159,18 @@ func (s *Store) sealAllEnv(ctx context.Context, sealer *vault.Sealer, marked boo
 func readAllEnv(ctx context.Context, tx *sql.Tx) (map[string]map[string]string, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT id, env_json FROM apps`)
 	if err != nil {
-		return nil, fmt.Errorf("ortam değişkenleri okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read environment variables: %w", err)
 	}
 	defer rows.Close()
 	out := map[string]map[string]string{}
 	for rows.Next() {
 		var id, raw string
 		if err := rows.Scan(&id, &raw); err != nil {
-			return nil, fmt.Errorf("ortam değişkenleri okunamadı: %w", err)
+			return nil, fmt.Errorf("could not read environment variables: %w", err)
 		}
 		var env map[string]string
 		if err := json.Unmarshal([]byte(raw), &env); err != nil {
-			return nil, fmt.Errorf("%s ortam değişkenleri çözümlenemedi: %w", id, err)
+			return nil, fmt.Errorf("could not decode environment variables of %s: %w", id, err)
 		}
 		out[id] = env
 	}
@@ -184,7 +184,7 @@ func (s *Store) sealEnv(appID string, env map[string]string) (map[string]string,
 		return env, nil
 	}
 	if s.sealer == nil {
-		return nil, errors.New("kasa açılmadı: ortam değişkeni yazılamaz")
+		return nil, errors.New("vault not open: environment variables cannot be written")
 	}
 	return s.sealer.SealEnv(appID, env)
 }

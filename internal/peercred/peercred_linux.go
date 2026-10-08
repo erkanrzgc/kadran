@@ -22,7 +22,7 @@ func FromConn(c net.Conn) (Cred, error) {
 
 	raw, err := uc.SyscallConn()
 	if err != nil {
-		return Cred{}, fmt.Errorf("peercred: syscall bağlantısı alınamadı: %w", err)
+		return Cred{}, fmt.Errorf("peercred: could not get the syscall connection: %w", err)
 	}
 
 	var (
@@ -34,10 +34,10 @@ func FromConn(c net.Conn) (Cred, error) {
 	if ctlErr := raw.Control(func(fd uintptr) {
 		ucred, sockErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 	}); ctlErr != nil {
-		return Cred{}, fmt.Errorf("peercred: dosya tanıtıcısına erişilemedi: %w", ctlErr)
+		return Cred{}, fmt.Errorf("peercred: could not access the file descriptor: %w", ctlErr)
 	}
 	if sockErr != nil {
-		return Cred{}, fmt.Errorf("peercred: SO_PEERCRED okunamadı: %w", sockErr)
+		return Cred{}, fmt.Errorf("peercred: could not read SO_PEERCRED: %w", sockErr)
 	}
 
 	return Cred{PID: ucred.Pid, UID: ucred.Uid, GID: ucred.Gid}, nil

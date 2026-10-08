@@ -68,7 +68,7 @@ func (s *Server) DeleteApp(
 	// hacimlerin diskte kaldigini soyleyebilecek kimse kalmaz.
 	app, err := s.store.GetApp(ctx, appID)
 	if err != nil {
-		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "uygulama bulunamadı")
+		_ = s.recordAction(ctx, action, tgt, params, auditFailure, "app not found")
 		return nil, appError(err)
 	}
 
@@ -79,8 +79,8 @@ func (s *Server) DeleteApp(
 	if live, err := s.store.ActiveDeployment(ctx, appID); err == nil {
 		params["live_release_id"] = live.ReleaseID
 		cause := fmt.Errorf(
-			"uygulamanın canlı sürümü var (%s) — silmek trafiği keserdi. "+
-				"Canlı uygulamaların silinmesi TOTP kapısıyla birlikte gelecek",
+			"the app has a live release (%s) — deleting it would cut traffic. "+
+				"Deleting live apps will come with the TOTP gate",
 			live.ReleaseID)
 		// ⚠ `s.denied()` KULLANILMIYOR: o her zaman InvalidArgument
 		// döndürüyor ve burası bir argüman hatası DEĞİL. İstek kusursuz;
@@ -138,7 +138,7 @@ func (s *Server) DeleteApp(
 func (s *Server) removeContainers(ctx context.Context, appID string) (uint32, error) {
 	reps, err := s.exec.ListReplicas(ctx, appID)
 	if err != nil {
-		return 0, fmt.Errorf("konteynerler listelenemedi: %w", err)
+		return 0, fmt.Errorf("could not list containers: %w", err)
 	}
 
 	seen := map[string]struct{}{}
@@ -156,11 +156,11 @@ func (s *Server) removeContainers(ctx context.Context, appID string) (uint32, er
 	var removed uint32
 	for _, relID := range releases {
 		if _, err := s.exec.StopRelease(ctx, appID, relID, deleteGrace); err != nil {
-			return removed, fmt.Errorf("sürüm %s durdurulamadı: %w", relID, err)
+			return removed, fmt.Errorf("could not stop release %s: %w", relID, err)
 		}
 		n, err := s.exec.RemoveRelease(ctx, appID, relID)
 		if err != nil {
-			return removed, fmt.Errorf("sürüm %s kaldırılamadı: %w", relID, err)
+			return removed, fmt.Errorf("could not remove release %s: %w", relID, err)
 		}
 		removed += n
 	}

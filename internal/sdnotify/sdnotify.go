@@ -18,7 +18,7 @@ import (
 
 // ErrNoSocket, NOTIFY_SOCKET tanımlı olmadığında döner. Bu bir hata
 // durumu değildir: servis systemd dışında (testte, elle) çalışıyordur.
-var ErrNoSocket = errors.New("sdnotify: NOTIFY_SOCKET tanımlı değil")
+var ErrNoSocket = errors.New("sdnotify: NOTIFY_SOCKET is not set")
 
 // Ready, systemd'ye servisin hazır olduğunu bildirir.
 func Ready() error { return Send("READY=1") }

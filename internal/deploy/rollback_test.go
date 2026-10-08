@@ -146,7 +146,7 @@ func TestRollbackStopsAtHealthGate(t *testing.T) {
 	if err == nil {
 		t.Fatal("sağlıksız sürüme geri alındı")
 	}
-	if !strings.Contains(err.Error(), "TRAFİK TAŞINMADI") {
+	if !strings.Contains(err.Error(), "TRAFFIC NOT MOVED") {
 		t.Errorf("hata trafiğin taşınmadığını söylemiyor: %v", err)
 	}
 

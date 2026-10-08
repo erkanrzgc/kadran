@@ -54,24 +54,24 @@ func main() {
 
 func run() error {
 	var (
-		socketPath   = flag.String("socket", defaultSocket, "dinlenecek unix soketi")
-		journalPath  = flag.String("journal", defaultJournal, "denetim günlüğü dosyası")
-		dockerSocket = flag.String("docker-socket", kadranexec.DefaultDockerSocket, "Docker Engine API soketi")
-		allowUser    = flag.String("allow-user", defaultAllowedUser, "bağlanmasına izin verilen tek kullanıcı")
-		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "soket ve günlük dosyasının grubu")
-		showVersion  = flag.Bool("version", false, "sürümü yazdır ve çık")
-		vaultKey     = flag.String("vault-key", defaultVaultKey, "kasa anahtarı (K-123)")
-		debug        = flag.Bool("debug", false, "ayrıntılı günlük (KADRAN_DEBUG=1 ile de açılır)")
+		socketPath   = flag.String("socket", defaultSocket, "unix socket to listen on")
+		journalPath  = flag.String("journal", defaultJournal, "audit log file")
+		dockerSocket = flag.String("docker-socket", kadranexec.DefaultDockerSocket, "Docker Engine API socket")
+		allowUser    = flag.String("allow-user", defaultAllowedUser, "the only user allowed to connect")
+		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "group of the socket and the log file")
+		showVersion  = flag.Bool("version", false, "print the version and exit")
+		vaultKey     = flag.String("vault-key", defaultVaultKey, "vault key (K-123)")
+		debug        = flag.Bool("debug", false, "verbose logging (also enabled by KADRAN_DEBUG=1)")
 		gitHosts     = flag.String("allow-git-host", kadranexec.DefaultGitHost,
-			"ImageBuild için izinli git sunucuları (virgülle ayrılmış)")
+			"git hosts allowed for ImageBuild (comma-separated)")
 		gitRepos = flag.String("allow-repo", "",
-			"derlenmesine izin verilen owner/repo çiftleri (virgülle ayrılmış; "+
-				"boş = kısıt yok). Hostta git kimlik bilgisi varsa DOLDURULMALIDIR")
+			"owner/repo pairs allowed to be built (comma-separated; "+
+				"empty = no limit). MUST be set if the host has git credentials")
 	)
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Printf("kadran-exec %s (%s) protokol %d\n", version.Version, version.Commit, version.Protocol)
+		fmt.Printf("kadran-exec %s (%s) protocol %d\n", version.Version, version.Commit, version.Protocol)
 		return nil
 	}
 
@@ -84,7 +84,7 @@ func run() error {
 	// olur. Baştan ve açıkça reddetmek daha iyidir.
 	if euid := os.Geteuid(); euid != 0 {
 		return fmt.Errorf(
-			"executor root çalışmalı, efektif uid %d bulundu — systemd unit dosyasını kontrol edin", euid)
+			"executor must run as root, found effective uid %d — check the systemd unit file", euid)
 	}
 
 	vault, err := kadranexec.LoadVaultIdentity(*vaultKey)
@@ -106,7 +106,7 @@ func run() error {
 	policy := peercred.Policy{AllowUIDs: []uint32{allowedUID}}
 	creds, err := peercred.TransportCredentials(policy)
 	if err != nil {
-		return fmt.Errorf("çağıran doğrulaması kurulamadı: %w", err)
+		return fmt.Errorf("could not set up caller verification: %w", err)
 	}
 
 	// Günlük açılışta zincirini doğrular. Bozuksa executor BAŞLAMAZ:
@@ -117,7 +117,7 @@ func run() error {
 		GroupGID: groupGID,
 	})
 	if err != nil {
-		return fmt.Errorf("denetim günlüğü açılamadı: %w", err)
+		return fmt.Errorf("could not open the audit log: %w", err)
 	}
 	defer func() {
 		if err := journal.Close(); err != nil {
@@ -195,11 +195,11 @@ func lookupUID(name string) (uint32, error) {
 	u, err := user.Lookup(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%q kullanıcısı bulunamadı — `kadran bootstrap` çalıştırıldı mı?: %w", name, err)
+			"user %q not found — has `kadran bootstrap` been run?: %w", name, err)
 	}
 	id, err := strconv.ParseUint(u.Uid, 10, 32)
 	if err != nil {
-		return 0, fmt.Errorf("%q kullanıcısının uid'i çözümlenemedi: %w", name, err)
+		return 0, fmt.Errorf("could not parse the uid of user %q: %w", name, err)
 	}
 	return uint32(id), nil
 }
@@ -208,11 +208,11 @@ func lookupGID(name string) (int, error) {
 	g, err := user.LookupGroup(name)
 	if err != nil {
 		return 0, fmt.Errorf(
-			"%q grubu bulunamadı — `kadran bootstrap` çalıştırıldı mı?: %w", name, err)
+			"group %q not found — has `kadran bootstrap` been run?: %w", name, err)
 	}
 	id, err := strconv.Atoi(g.Gid)
 	if err != nil {
-		return 0, fmt.Errorf("%q grubunun gid'i çözümlenemedi: %w", name, err)
+		return 0, fmt.Errorf("could not parse the gid of group %q: %w", name, err)
 	}
 	return id, nil
 }

@@ -74,7 +74,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("sqlite açılamadı: %w", err)
+		return nil, fmt.Errorf("could not open sqlite: %w", err)
 	}
 
 	// SQLite tek yazarlıdır; bağlantı havuzunu büyütmek çekişmeyi
@@ -85,13 +85,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("sqlite'a bağlanılamadı: %w", err)
+		return nil, fmt.Errorf("could not connect to sqlite: %w", err)
 	}
 
 	s := &Store{db: db, path: path}
 	if err := s.migrate(ctx); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("göçler uygulanamadı: %w", err)
+		return nil, fmt.Errorf("could not apply migrations: %w", err)
 	}
 	return s, nil
 }
@@ -133,12 +133,12 @@ func (s *Store) migrate(ctx context.Context) error {
 			applied_at INTEGER NOT NULL
 		) STRICT;`
 	if _, err := s.db.ExecContext(ctx, createTable); err != nil {
-		return fmt.Errorf("schema_migrations oluşturulamadı: %w", err)
+		return fmt.Errorf("could not create schema_migrations: %w", err)
 	}
 
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("göç dizini okunamadı: %w", err)
+		return fmt.Errorf("could not read the migrations directory: %w", err)
 	}
 
 	names := make([]string, 0, len(entries))
@@ -179,7 +179,7 @@ func (s *Store) migrate(ctx context.Context) error {
 		}
 
 		if err := s.applyMigration(ctx, name); err != nil {
-			return fmt.Errorf("göç %s uygulanamadı: %w", name, err)
+			return fmt.Errorf("could not apply migration %s: %w", name, err)
 		}
 	}
 	return nil
@@ -193,7 +193,7 @@ func (s *Store) isFreshDatabase(ctx context.Context) (bool, error) {
 	var n int
 	if err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil {
-		return false, fmt.Errorf("göç sayısı okunamadı: %w", err)
+		return false, fmt.Errorf("could not read the migration count: %w", err)
 	}
 	return n == 0, nil
 }
@@ -206,7 +206,7 @@ func (s *Store) migrationApplied(ctx context.Context, name string) (bool, error)
 	case errors.Is(err, sql.ErrNoRows):
 		return false, nil
 	case err != nil:
-		return false, fmt.Errorf("göç durumu okunamadı: %w", err)
+		return false, fmt.Errorf("could not read the migration state: %w", err)
 	default:
 		return true, nil
 	}
@@ -215,7 +215,7 @@ func (s *Store) migrationApplied(ctx context.Context, name string) (bool, error)
 func (s *Store) applyMigration(ctx context.Context, name string) error {
 	body, err := fs.ReadFile(migrationFS, "migrations/"+name)
 	if err != nil {
-		return fmt.Errorf("göç dosyası okunamadı: %w", err)
+		return fmt.Errorf("could not read a migration file: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -246,13 +246,13 @@ func (s *Store) applyMigration(ctx context.Context, name string) error {
 // Mühürlenmiş kayıt geri döndürülür; Seq ve Hash alanları doludur.
 func (s *Store) AppendAudit(ctx context.Context, rec audit.Record) (audit.Record, error) {
 	if rec.Action == "" {
-		return audit.Record{}, errors.New("denetim kaydının action alanı boş olamaz")
+		return audit.Record{}, errors.New("the action field of an audit record must not be empty")
 	}
 	if !rec.Outcome.Valid() {
-		return audit.Record{}, fmt.Errorf("geçersiz outcome: %d", uint8(rec.Outcome))
+		return audit.Record{}, fmt.Errorf("invalid outcome: %d", uint8(rec.Outcome))
 	}
 	if !rec.Source.Valid() {
-		return audit.Record{}, fmt.Errorf("geçersiz source: %d", uint8(rec.Source))
+		return audit.Record{}, fmt.Errorf("invalid source: %d", uint8(rec.Source))
 	}
 	if rec.TS.IsZero() {
 		rec.TS = time.Now().UTC()
@@ -291,7 +291,7 @@ func (s *Store) AppendAudit(ctx context.Context, rec audit.Record) (audit.Record
 		uint8(sealed.Outcome), sealed.Detail, uint8(sealed.Source),
 		sealed.PrevHash[:], sealed.Hash[:],
 	); err != nil {
-		return audit.Record{}, fmt.Errorf("denetim kaydı eklenemedi: %w", err)
+		return audit.Record{}, fmt.Errorf("could not append the audit record: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -323,11 +323,11 @@ func auditHeadTx(ctx context.Context, tx *sql.Tx) (uint64, [audit.HashSize]byte,
 		return 0, audit.GenesisHash, nil
 	}
 	if err != nil {
-		return 0, audit.GenesisHash, fmt.Errorf("zincir başı okunamadı: %w", err)
+		return 0, audit.GenesisHash, fmt.Errorf("could not read the chain head: %w", err)
 	}
 	if len(hash) != audit.HashSize {
 		return 0, audit.GenesisHash, fmt.Errorf(
-			"bozuk zincir başı: hash uzunluğu %d, beklenen %d", len(hash), audit.HashSize)
+			"corrupt chain head: hash length %d, expected %d", len(hash), audit.HashSize)
 	}
 
 	var head [audit.HashSize]byte
@@ -361,7 +361,7 @@ func (s *Store) ListAudit(ctx context.Context, afterSeq uint64, limit int) ([]au
 		ORDER BY seq ASC
 		LIMIT ?`, afterSeq, limit)
 	if err != nil {
-		return nil, fmt.Errorf("denetim kayıtları okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read audit records: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -394,12 +394,12 @@ func scanAuditRecord(sc scanner) (audit.Record, error) {
 		&outcome, &rec.Detail, &source,
 		&prevHash, &hashBs,
 	); err != nil {
-		return audit.Record{}, fmt.Errorf("denetim kaydı çözümlenemedi: %w", err)
+		return audit.Record{}, fmt.Errorf("could not decode an audit record: %w", err)
 	}
 
 	if len(prevHash) != audit.HashSize || len(hashBs) != audit.HashSize {
 		return audit.Record{}, fmt.Errorf(
-			"kayıt %d bozuk hash uzunluğu taşıyor", rec.Seq)
+			"record %d has a corrupt hash length", rec.Seq)
 	}
 
 	rec.TS = time.Unix(0, tsNano).UTC()

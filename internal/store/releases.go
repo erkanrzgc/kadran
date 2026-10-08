@@ -25,7 +25,7 @@ const (
 )
 
 // ErrReleaseNotFound, istenen sürümün bulunmadığını bildirir.
-var ErrReleaseNotFound = errors.New("sürüm bulunamadı")
+var ErrReleaseNotFound = errors.New("release not found")
 
 // Release, bir commit'in tek bir derleme denemesidir.
 type Release struct {
@@ -58,7 +58,7 @@ type Release struct {
 func (s *Store) StartRelease(ctx context.Context, appID, commitSHA string) (Release, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Release{}, fmt.Errorf("sürüm transaction'ı açılamadı: %w", err)
+		return Release{}, fmt.Errorf("could not begin the release transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -72,7 +72,7 @@ func (s *Store) StartRelease(ctx context.Context, appID, commitSHA string) (Rele
 	case errors.Is(err, sql.ErrNoRows):
 		return Release{}, fmt.Errorf("%w: %s", ErrAppNotFound, appID)
 	case err != nil:
-		return Release{}, fmt.Errorf("sürüm sayacı artırılamadı: %w", err)
+		return Release{}, fmt.Errorf("could not increment the release counter: %w", err)
 	}
 
 	rel := Release{
@@ -90,11 +90,11 @@ func (s *Store) StartRelease(ctx context.Context, appID, commitSHA string) (Rele
 		rel.AppID, rel.ID, rel.Seq, rel.CommitSHA, int(rel.Status),
 		rel.StartedAt.UnixNano(),
 	); err != nil {
-		return Release{}, fmt.Errorf("sürüm yazılamadı: %w", err)
+		return Release{}, fmt.Errorf("could not write the release: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return Release{}, fmt.Errorf("sürüm kaydedilemedi: %w", err)
+		return Release{}, fmt.Errorf("could not commit the release: %w", err)
 	}
 	return rel, nil
 }
@@ -116,8 +116,8 @@ func ReleaseID(seq uint32) string { return "r" + strconv.FormatUint(uint64(seq),
 // mesajla döndürmek içindir, tek savunma değildir.
 func (s *Store) FinishRelease(ctx context.Context, appID, releaseID, imageID string) error {
 	if imageID == "" {
-		return errors.New("sürüm imaj kimliği olmadan BUILT işaretlenemez — " +
-			"derleme başarısının tek pozitif kanıtı aux karesidir")
+		return errors.New("a release cannot be marked BUILT without an image id — " +
+			"the aux frame is the only positive proof of a successful build")
 	}
 	return s.sealRelease(ctx, appID, releaseID, ReleaseBuilt, imageID, "")
 }
@@ -147,14 +147,14 @@ func (s *Store) sealRelease(
 		appID, releaseID, int(ReleaseBuilding),
 	)
 	if err != nil {
-		return fmt.Errorf("sürüm mühürlenemedi: %w", err)
+		return fmt.Errorf("could not seal the release: %w", err)
 	}
 	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("sürüm mühürleme sonucu okunamadı: %w", err)
+		return fmt.Errorf("could not read the release seal result: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("%w: %s/%s (zaten mühürlenmiş olabilir)",
+		return fmt.Errorf("%w: %s/%s (may already be sealed)",
 			ErrReleaseNotFound, appID, releaseID)
 	}
 	return nil
@@ -172,7 +172,7 @@ func (s *Store) ListReleases(ctx context.Context, appID string, limit int) ([]Re
 	rows, err := s.db.QueryContext(ctx,
 		releaseSelect+` WHERE app_id = ? ORDER BY seq DESC LIMIT ?`, appID, limit)
 	if err != nil {
-		return nil, fmt.Errorf("sürümler okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read releases: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -180,12 +180,12 @@ func (s *Store) ListReleases(ctx context.Context, appID string, limit int) ([]Re
 	for rows.Next() {
 		rel, err := scanRelease(rows)
 		if err != nil {
-			return nil, fmt.Errorf("sürüm satırı okunamadı: %w", err)
+			return nil, fmt.Errorf("could not read a release row: %w", err)
 		}
 		releases = append(releases, rel)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("sürüm listesi okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read the release list: %w", err)
 	}
 	return releases, nil
 }
@@ -200,7 +200,7 @@ func (s *Store) GetRelease(ctx context.Context, appID, releaseID string) (Releas
 	case errors.Is(err, sql.ErrNoRows):
 		return Release{}, fmt.Errorf("%w: %s/%s", ErrReleaseNotFound, appID, releaseID)
 	case err != nil:
-		return Release{}, fmt.Errorf("sürüm okunamadı: %w", err)
+		return Release{}, fmt.Errorf("could not read the release: %w", err)
 	}
 	return rel, nil
 }

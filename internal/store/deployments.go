@@ -33,14 +33,14 @@ type Deployment struct {
 }
 
 // ErrNoDeployment, uygulamanın canlı bir sürümü olmadığını bildirir.
-var ErrNoDeployment = errors.New("uygulamanın aktif sürümü yok")
+var ErrNoDeployment = errors.New("the app has no active release")
 
 // ErrNoPreviousDeployment, geri alınacak bir sürüm olmadığını bildirir.
 //
 // ErrNoDeployment'tan AYRI: "hiç dağıtılmamış" ile "dağıtılmış ama geri
 // alınacak öncesi yok" farklı durumlar ve kullanıcıya farklı şey
 // söylenmeli. İlk dağıtımdan sonra geri alma denemesi bu ikincisidir.
-var ErrNoPreviousDeployment = errors.New("geri alınacak önceki sürüm yok")
+var ErrNoPreviousDeployment = errors.New("no previous release to roll back to")
 
 // SetActiveRelease, trafiği bir sürüme çevirir.
 //
@@ -64,7 +64,7 @@ var ErrNoPreviousDeployment = errors.New("geri alınacak önceki sürüm yok")
 func (s *Store) SetActiveRelease(ctx context.Context, appID, releaseID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("aktif sürüm yazılamadı (%s/%s): %w", appID, releaseID, err)
+		return fmt.Errorf("could not write the active release (%s/%s): %w", appID, releaseID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -76,7 +76,7 @@ func (s *Store) SetActiveRelease(ctx context.Context, appID, releaseID string) e
 	case errors.Is(err, sql.ErrNoRows):
 		// Aktif sürüm yok; doğrudan açılacak.
 	case err != nil:
-		return fmt.Errorf("açık dağıtım okunamadı (%s): %w", appID, err)
+		return fmt.Errorf("could not read the open deployment (%s): %w", appID, err)
 	case current == releaseID:
 		// ZATEN AKTİF — hiçbir şey yapılmıyor.
 		//
@@ -95,13 +95,13 @@ func (s *Store) SetActiveRelease(ctx context.Context, appID, releaseID string) e
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE deployments SET deactivated_at = MAX(activated_at, ?)
 		 WHERE app_id = ? AND deactivated_at IS NULL`, now, appID); err != nil {
-		return fmt.Errorf("önceki dağıtım kapatılamadı (%s): %w", appID, err)
+		return fmt.Errorf("could not close the previous deployment (%s): %w", appID, err)
 	}
 
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO deployments (app_id, release_id, activated_at)
 		 VALUES (?, ?, ?)`, appID, releaseID, now); err != nil {
-		return fmt.Errorf("aktif sürüm yazılamadı (%s/%s): %w", appID, releaseID, err)
+		return fmt.Errorf("could not write the active release (%s/%s): %w", appID, releaseID, err)
 	}
 
 	return tx.Commit()
@@ -117,7 +117,7 @@ func (s *Store) ClearActiveRelease(ctx context.Context, appID string) error {
 		`UPDATE deployments SET deactivated_at = MAX(activated_at, ?)
 		 WHERE app_id = ? AND deactivated_at IS NULL`,
 		time.Now().UnixNano(), appID); err != nil {
-		return fmt.Errorf("aktif sürüm kapatılamadı (%s): %w", appID, err)
+		return fmt.Errorf("could not close the active release (%s): %w", appID, err)
 	}
 	return nil
 }
@@ -145,7 +145,7 @@ func (s *Store) PreviousActiveRelease(ctx context.Context, appID string) (string
 		return "", fmt.Errorf("%w (%s)", ErrNoPreviousDeployment, appID)
 	}
 	if err != nil {
-		return "", fmt.Errorf("önceki dağıtım okunamadı (%s): %w", appID, err)
+		return "", fmt.Errorf("could not read the previous deployment (%s): %w", appID, err)
 	}
 	return releaseID, nil
 }
@@ -159,7 +159,7 @@ func (s *Store) ActiveDeployment(ctx context.Context, appID string) (Deployment,
 		return Deployment{}, fmt.Errorf("%w (%s)", ErrNoDeployment, appID)
 	}
 	if err != nil {
-		return Deployment{}, fmt.Errorf("aktif sürüm okunamadı (%s): %w", appID, err)
+		return Deployment{}, fmt.Errorf("could not read the active release (%s): %w", appID, err)
 	}
 	return d, nil
 }
@@ -181,7 +181,7 @@ func (s *Store) ActiveDeployment(ctx context.Context, appID string) (Deployment,
 func (s *Store) ActiveDeployments(ctx context.Context) ([]Deployment, error) {
 	rows, err := s.db.QueryContext(ctx, deploymentSelect+` ORDER BY d.app_id`)
 	if err != nil {
-		return nil, fmt.Errorf("aktif sürümler okunamadı: %w", err)
+		return nil, fmt.Errorf("could not read active releases: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -189,14 +189,14 @@ func (s *Store) ActiveDeployments(ctx context.Context) ([]Deployment, error) {
 	for rows.Next() {
 		d, err := scanDeployment(rows)
 		if err != nil {
-			return nil, fmt.Errorf("aktif sürüm satırı çözümlenemedi: %w", err)
+			return nil, fmt.Errorf("could not decode an active release row: %w", err)
 		}
 		out = append(out, d)
 	}
 	if err := rows.Err(); err != nil {
 		// Yutulmuyor: yarım okunmuş bir liste, ters vekilde EKSİK bir
 		// yapılandırma demek — yani sessizce düşen siteler.
-		return nil, fmt.Errorf("aktif sürümler okunurken hata: %w", err)
+		return nil, fmt.Errorf("error while reading active releases: %w", err)
 	}
 	return out, nil
 }

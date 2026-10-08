@@ -75,7 +75,7 @@ type Identity struct {
 }
 
 // ErrNoConnectionInfo, SSH_CONNECTION bulunamadığında döner.
-var ErrNoConnectionInfo = errors.New("sshenv: SSH_CONNECTION tanımlı değil")
+var ErrNoConnectionInfo = errors.New("sshenv: SSH_CONNECTION is not set")
 
 // Parse, ortamdan ve sshd'nin kimlik dosyasından kimliği çıkarır.
 //
@@ -155,18 +155,18 @@ func clientIP(sshConnection string) string {
 func parseAuthLine(line string) (keyType, fingerprint string, err error) {
 	fields := strings.Fields(line)
 	if len(fields) < 3 {
-		return "", "", errors.New("sshenv: beklenmedik kimlik satırı biçimi")
+		return "", "", errors.New("sshenv: unexpected auth line format")
 	}
 	if fields[0] != "publickey" {
 		// Kadran yalnızca açık anahtarla girişe izin verir; başka bir
 		// yöntem görülürse parmak izi üretilmez.
-		return "", "", fmt.Errorf("sshenv: açık anahtar dışı yöntem: %s", fields[0])
+		return "", "", fmt.Errorf("sshenv: non-publickey method: %s", fields[0])
 	}
 
 	keyType = fields[1]
 	blob, err := base64.StdEncoding.DecodeString(fields[2])
 	if err != nil {
-		return "", "", fmt.Errorf("sshenv: anahtar çözümlenemedi: %w", err)
+		return "", "", fmt.Errorf("sshenv: could not parse the key: %w", err)
 	}
 
 	sum := sha256.Sum256(blob)

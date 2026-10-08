@@ -81,8 +81,8 @@ func TestPruneKeepsActiveAndRollbackTarget(t *testing.T) {
 	if got := strings.Join(resp.GetPrunedReleases(), ","); got != "r1,r2" {
 		t.Errorf("budanan sürümler %q, \"r1,r2\" bekleniyordu", got)
 	}
-	if got := strings.Join(resp.GetKeptReleases(), " | "); !strings.Contains(got, "r4 (aktif)") ||
-		!strings.Contains(got, "r3 (geri alma hedefi)") {
+	if got := strings.Join(resp.GetKeptReleases(), " | "); !strings.Contains(got, "r4 (active)") ||
+		!strings.Contains(got, "r3 (rollback target)") {
 		t.Errorf("korunanlar %q — r4 aktif, r3 geri alma hedefi olmalıydı", got)
 	}
 	if resp.GetContainersRemoved() != 2 {
@@ -134,10 +134,10 @@ func TestPruneAfterRollbackKeepsTheRightTarget(t *testing.T) {
 	}
 
 	kept := strings.Join(resp.GetKeptReleases(), " | ")
-	if !strings.Contains(kept, "r1 (aktif)") {
+	if !strings.Contains(kept, "r1 (active)") {
 		t.Errorf("korunanlar %q — r1 aktif olmalıydı", kept)
 	}
-	if !strings.Contains(kept, "r3 (geri alma hedefi)") {
+	if !strings.Contains(kept, "r3 (rollback target)") {
 		t.Errorf("korunanlar %q — geri alma hedefi r3 olmalıydı. "+
 			"r2 görünüyorsa saklama kümesi releases.seq'ten okunuyor "+
 			"demektir; sıra numarası aktivasyon geçmişi DEĞİLDİR (göç 0005)",
@@ -416,7 +416,7 @@ func TestKeepSetFailsOnUnexpectedDeploymentError(t *testing.T) {
 		t.Fatalf("ilk dağıtım dalı da hata döndü: %v — kontrol grubu "+
 			"çöktü, yukarıdaki iddia ölçüm DEĞİL", err)
 	}
-	if len(keep) != 1 || keep["r9"] != "aktif" {
+	if len(keep) != 1 || keep["r9"] != "active" {
 		t.Errorf("saklama kümesi %v, {r9: aktif} bekleniyordu", keep)
 	}
 }

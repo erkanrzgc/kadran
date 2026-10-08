@@ -20,7 +20,7 @@ func NewIdentity(t testing.TB) *age.X25519Identity {
 	t.Helper()
 	id, err := age.GenerateX25519Identity()
 	if err != nil {
-		t.Fatalf("anahtar üretilemedi: %v", err)
+		t.Fatalf("could not generate a key: %v", err)
 	}
 	return id
 }
@@ -30,7 +30,7 @@ func Sealer(t testing.TB, id *age.X25519Identity) *vault.Sealer {
 	t.Helper()
 	s, err := vault.NewSealer(id.Recipient().String())
 	if err != nil {
-		t.Fatalf("sealer kurulamadı: %v", err)
+		t.Fatalf("could not set up the sealer: %v", err)
 	}
 	return s
 }
@@ -40,7 +40,7 @@ func Open(t testing.TB, id age.Identity, sealed string) (appID, key, value strin
 	t.Helper()
 	appID, key, value, err := TryOpen(id, sealed)
 	if err != nil {
-		t.Fatalf("mühürlü değer açılamadı: %v", err)
+		t.Fatalf("could not open the sealed value: %v", err)
 	}
 	return appID, key, value
 }
@@ -49,7 +49,7 @@ func Open(t testing.TB, id age.Identity, sealed string) (appID, key, value strin
 func TryOpen(id age.Identity, sealed string) (appID, key, value string, err error) {
 	b64, ok := strings.CutPrefix(sealed, vault.Prefix)
 	if !ok {
-		return "", "", "", errors.New("önek yok")
+		return "", "", "", errors.New("no prefix")
 	}
 	raw, err := base64.StdEncoding.DecodeString(b64)
 	if err != nil {
@@ -65,7 +65,7 @@ func TryOpen(id age.Identity, sealed string) (appID, key, value string, err erro
 	}
 	parts := strings.SplitN(string(plain), "\x00", 3)
 	if len(parts) != 3 {
-		return "", "", "", errors.New("bağ biçimi bozuk")
+		return "", "", "", errors.New("malformed binding")
 	}
 	return parts[0], parts[1], parts[2], nil
 }

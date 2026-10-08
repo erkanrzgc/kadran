@@ -40,7 +40,7 @@ func (c *Client) ImageBuild(
 ) (string, error) {
 	stream, err := c.rpc.ImageBuild(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("derleme başlatılamadı: %w", err)
+		return "", fmt.Errorf("could not start the build: %w", err)
 	}
 
 	var imageID string
@@ -50,7 +50,7 @@ func (c *Client) ImageBuild(
 			break
 		}
 		if err != nil {
-			return "", fmt.Errorf("derleme akışı koptu: %w", err)
+			return "", fmt.Errorf("build stream broken: %w", err)
 		}
 
 		// Kimlik karesi ile günlük karesi aynı mesaj tipinde geliyor;
@@ -78,7 +78,7 @@ func (c *Client) ImageBuild(
 	// zaten kabul etmiyor.
 	if imageID == "" {
 		return "", errors.New(
-			"executor derleme imaj kimliği döndürmedi — başarı kanıtlanamadı")
+			"the executor returned no image id for the build — success could not be proven")
 	}
 	return imageID, nil
 }

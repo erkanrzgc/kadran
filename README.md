@@ -587,8 +587,8 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   mount the same directory. Apps that keep a single-writer database in a volume should run
   one replica and accept that a deploy overlaps two writers for a few seconds.
 - **The desktop app is read-only:** version, status and the audit log. Management is CLI only.
-- **Some messages are still in Turkish.** The CLI's own output, help and errors are
-  English. The install output, errors the server sends back, the desktop app and alarm
+- **Some messages are still in Turkish.** The CLI, the install output and the errors the
+  server sends back are English. The desktop app, the server's journal lines and alarm
   texts are being translated.
 - **Dockerfile builds only**, from public repositories. No buildpacks, no private
   repositories.

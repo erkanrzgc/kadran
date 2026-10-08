@@ -14,7 +14,7 @@ import (
 // yıkıcı bir işlemdir ve şartname §1.3 o sınıfı TOTP kapısına koyuyor.
 // Kapı Faz 2'de gelince buradaki kısıt GEVŞETİLECEK — kısıtlanmayacak —
 // ve gevşetme geriye dönük uyumludur. Gerekçenin tamamı api.proto'da.
-var ErrAppIsLive = errors.New("uygulamanın canlı sürümü var — önce trafiği kaldırın")
+var ErrAppIsLive = errors.New("the app has a live release — remove its traffic first")
 
 // DeletedCounts, silmenin NEYİ yok ettiğini sayar.
 type DeletedCounts struct {
@@ -48,14 +48,14 @@ func (s *Store) DeleteApp(ctx context.Context, appID string) (DeletedCounts, err
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return out, fmt.Errorf("silme işlemi açılamadı: %w", err)
+		return out, fmt.Errorf("could not begin the delete transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var exists int
 	if err := tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM apps WHERE id = ?`, appID).Scan(&exists); err != nil {
-		return out, fmt.Errorf("uygulama okunamadı: %w", err)
+		return out, fmt.Errorf("could not read the app: %w", err)
 	}
 	if exists == 0 {
 		return out, ErrAppNotFound
@@ -69,26 +69,26 @@ func (s *Store) DeleteApp(ctx context.Context, appID string) (DeletedCounts, err
 	case err == nil:
 		// Hangi sürümün canlı olduğunu SÖYLÜYORUZ: "silinemez" tek
 		// başına operatöre ne yapacağını göstermiyor.
-		return out, fmt.Errorf("%w (canlı sürüm: %s)", ErrAppIsLive, live)
+		return out, fmt.Errorf("%w (live release: %s)", ErrAppIsLive, live)
 	case !errors.Is(err, sql.ErrNoRows):
-		return out, fmt.Errorf("canlı sürüm sorgulanamadı: %w", err)
+		return out, fmt.Errorf("could not query the live release: %w", err)
 	}
 
 	deployments, err := deleteRows(ctx, tx,
 		`DELETE FROM deployments WHERE app_id = ?`, appID)
 	if err != nil {
-		return out, fmt.Errorf("dağıtım geçmişi silinemedi: %w", err)
+		return out, fmt.Errorf("could not delete the deployment history: %w", err)
 	}
 	releases, err := deleteRows(ctx, tx, `DELETE FROM releases WHERE app_id = ?`, appID)
 	if err != nil {
-		return out, fmt.Errorf("sürümler silinemedi: %w", err)
+		return out, fmt.Errorf("could not delete releases: %w", err)
 	}
 	if _, err := deleteRows(ctx, tx, `DELETE FROM apps WHERE id = ?`, appID); err != nil {
-		return out, fmt.Errorf("uygulama silinemedi: %w", err)
+		return out, fmt.Errorf("could not delete the app: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return out, fmt.Errorf("silme işlemi tamamlanamadı: %w", err)
+		return out, fmt.Errorf("could not commit the delete: %w", err)
 	}
 	out.Deployments, out.Releases = deployments, releases
 	return out, nil

@@ -164,7 +164,7 @@ func TestImageBuildNeedsImageIDToSucceed(t *testing.T) {
 	if err == nil {
 		t.Fatalf("kimlik karesi olmadan başarı bildirildi (imageID=%q)", id)
 	}
-	if !strings.Contains(err.Error(), "kanıtlanamadı") {
+	if !strings.Contains(err.Error(), "could not be proven") {
 		t.Errorf("hata mesajı sebebi açıklamıyor: %v", err)
 	}
 }

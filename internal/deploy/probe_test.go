@@ -168,3 +168,26 @@ func TestProbeHonoursContextCancellation(t *testing.T) {
 		t.Fatal("iptal edilmiş bağlamda yoklama BAŞARILI döndü")
 	}
 }
+
+func TestProbeRejectsStalledSuccessBody(t *testing.T) {
+	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	err := NewHTTPProber(40*time.Millisecond).Probe(context.Background(), ip, port, "/health")
+	if err == nil {
+		t.Fatal("200 headers with an incomplete, timed-out body were accepted as healthy")
+	}
+}
+
+func TestProbeRejectsTruncatedSuccessBody(t *testing.T) {
+	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte("short"))
+	}))
+	if err := NewHTTPProber(time.Second).Probe(context.Background(), ip, port, "/health"); err == nil {
+		t.Fatal("an incomplete successful response was accepted as healthy")
+	}
+}

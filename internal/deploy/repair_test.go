@@ -112,25 +112,28 @@ func TestRepairReportsAnExactMatch(t *testing.T) {
 }
 
 // TestRepairReportsAForeignRoute: admin soketine başkası yazmış.
-func TestRepairReportsAForeignRoute(t *testing.T) {
+func TestRepairRemovesAForeignRoute(t *testing.T) {
 	sonuc, proxy := repairOn(t, canli(t,
 		rota("blog", "blog.example.com", "172.18.0.5:8080"),
 		rota("shop", "shop.example.com", "172.19.0.4:3000"),
 		rota("yabanci", "evil.example.com", "10.0.0.9:80")))
-	if sonuc.Exact {
-		t.Error("canlıda gönderilmeyen bir rota varken 'birebir' sayıldı")
+	if !sonuc.Exact {
+		t.Error("foreign route was not repaired")
 	}
-	if proxy.calls != 0 {
-		t.Error("tetik tek yönlü olmalı: fazla rota yüklemeye yol açtı")
+	if proxy.calls != 1 || len(hosts(t, proxy.loaded)["evil.example.com"]) != 0 {
+		t.Error("foreign route remains in the loaded proxy configuration")
 	}
 }
 
-func TestRepairReportsADifferentUpstream(t *testing.T) {
-	sonuc, _ := repairOn(t, canli(t,
+func TestRepairCorrectsADifferentUpstream(t *testing.T) {
+	sonuc, proxy := repairOn(t, canli(t,
 		rota("blog", "blog.example.com", "172.18.0.99:8080"),
 		rota("shop", "shop.example.com", "172.19.0.4:3000")))
-	if sonuc.Exact {
-		t.Error("upstream farklıyken 'birebir' sayıldı")
+	if !sonuc.Exact || proxy.calls != 1 {
+		t.Error("incorrect upstream was reported but not repaired")
+	}
+	if proxy.loaded != nil && !slices.Equal(hosts(t, proxy.loaded)["blog.example.com"], []string{"172.18.0.5:8080"}) {
+		t.Error("repair did not restore the expected upstream")
 	}
 }
 
@@ -285,6 +288,7 @@ func (s *surumluDagitimlar) ayarla(d []store.Deployment) {
 // kadar bekletir ve yüklemelerin SIRASINI kaydeder.
 type kapiliVekil struct {
 	mu        sync.Mutex
+	eskiOnce  sync.Once
 	sira      []string // yüklenen yapılandırmadaki blog upstream'i
 	eskiGeldi chan struct{}
 	birak     chan struct{}
@@ -306,7 +310,7 @@ func (k *kapiliVekil) Load(_ context.Context, cfg *proxydrv.Config) error {
 		}
 	}
 	if dial == "172.18.0.5:8080" { // eski sürüm
-		close(k.eskiGeldi)
+		k.eskiOnce.Do(func() { close(k.eskiGeldi) })
 		<-k.birak
 	}
 	k.mu.Lock()
@@ -356,5 +360,36 @@ func TestRepairAndReconcileAreSerialized(t *testing.T) {
 	defer vekil.mu.Unlock()
 	if n := len(vekil.sira); n != 2 || vekil.sira[n-1] != "172.18.0.9:8080" {
 		t.Errorf("yükleme sırası %v — SON yükleme yeni sürümü (172.18.0.9) taşımalı", vekil.sira)
+	}
+}
+
+func TestReconcilerCanceledWaitDoesNotBlockOnAnotherLoad(t *testing.T) {
+	deps, reps := ikiUygulama()
+	deps = deps[:1]
+	proxy := &kapiliVekil{eskiGeldi: make(chan struct{}), birak: make(chan struct{})}
+	rc := mustReconciler(t, deps, reps, proxy)
+	first := make(chan error, 1)
+	go func() { _, err := rc.Reconcile(context.Background()); first <- err }()
+	<-proxy.eskiGeldi
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	second := make(chan error, 1)
+	go func() { _, err := rc.Repair(ctx); second <- err }()
+	completed := false
+	select {
+	case err := <-second:
+		completed = true
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("canceled reconciliation = %v", err)
+		}
+	case <-time.After(30 * time.Millisecond):
+		t.Error("canceled reconciliation waited for another proxy operation")
+	}
+	close(proxy.birak)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if !completed {
+		<-second
 	}
 }

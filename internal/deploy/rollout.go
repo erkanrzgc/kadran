@@ -49,6 +49,8 @@ func (realClock) Sleep(ctx context.Context, d time.Duration) error {
 }
 
 // Rollout, derlenmiş bir sürümü canlıya alır.
+// Callers own the app's Coordinator turn before reading its definition and
+// keep it through the full operation. Rollout does not reacquire that turn.
 type Rollout struct {
 	lifecycle Lifecycle
 	store     Activations

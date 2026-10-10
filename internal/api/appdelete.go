@@ -63,6 +63,11 @@ func (s *Server) DeleteApp(
 	appID := req.GetAppId()
 	tgt := appTarget(appID)
 	params := map[string]string{}
+	release, err := s.acquireApp(ctx, appID)
+	if err != nil {
+		return nil, s.completed(ctx, action, tgt, params, err)
+	}
+	defer release()
 
 	// Tanim SILMEDEN ONCE okunuyor ve TUTULUYOR: kayit gidince hangi
 	// hacimlerin diskte kaldigini soyleyebilecek kimse kalmaz.

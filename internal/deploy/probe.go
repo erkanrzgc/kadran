@@ -102,15 +102,15 @@ func (p *HTTPProber) Probe(ctx context.Context, ip string, port uint32, path str
 	if err != nil {
 		return fmt.Errorf("health probe failed (%s): %w", u.Host, err)
 	}
-	defer func() {
-		// Sınırlı boşaltma: bağlantının düzgün kapanması için gövdeden
-		// biraz okunması gerekiyor, hepsini okumak ise saldırı yüzeyi.
-		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, probeBodyLimit))
-		_ = resp.Body.Close()
-	}()
+	defer resp.Body.Close()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("health probe returned %d (%s%s)", resp.StatusCode, u.Host, path)
+	}
+	// Headers alone do not establish health: a stalled or truncated body
+	// must fail within the same request deadline. The byte cap stays bounded.
+	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, probeBodyLimit)); err != nil {
+		return fmt.Errorf("health response body failed (%s): %w", u.Host, err)
 	}
 	return nil
 }

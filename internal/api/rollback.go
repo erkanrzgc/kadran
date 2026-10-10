@@ -2,11 +2,9 @@ package api
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strconv"
 
-	"github.com/erkanrzgc/kadran/internal/deploy"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
@@ -42,6 +40,11 @@ func (s *Server) Rollback(
 	appID := req.GetAppId()
 	tgt := appTarget(appID)
 	params := map[string]string{}
+	release, err := s.acquireApp(ctx, appID)
+	if err != nil {
+		return nil, s.completed(ctx, action, tgt, params, err)
+	}
+	defer release()
 
 	app, err := s.store.GetApp(ctx, appID)
 	if err != nil {
@@ -80,16 +83,16 @@ func (s *Server) Rollback(
 	recreated, err := s.rollout.Rollback(ctx, app, rel)
 	params["recreated"] = strconv.FormatBool(recreated)
 	if err != nil {
-		var skipped deploy.SkippedError
-		if !errors.As(err, &skipped) {
+		skipped, warningOnly := unrelatedSkippedRoutes(err, app.ID)
+		if !warningOnly {
 			return nil, s.completed(ctx, action, tgt, params, err)
 		}
 		// Bu sürüm canlıya ÇIKTI; rotalanamayan BAŞKA uygulamalar var.
 		// Geri almayı başarısız saymak yanlış olurdu ama sessiz kalmak da:
 		// operatörün bunu görmesi gerekiyor.
 		slog.Warn("geri alma tamamlandı ama bazı uygulamalar rotalanamadı",
-			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Result.Error())
-		params["skipped_routes"] = skipped.Result.Error()
+			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Error())
+		params["skipped_routes"] = skipped.Error()
 	}
 
 	if err := s.completed(ctx, action, tgt, params, nil); err != nil {

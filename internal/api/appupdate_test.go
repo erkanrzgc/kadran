@@ -240,31 +240,26 @@ func TestUpdateAppSaysTheChangeWasSavedWhenTheProxyFails(t *testing.T) {
 	}
 }
 
-// TestUpdateAppWarnsWhenTrafficDidNotMove, uzlaştırmanın BAŞARILI olup
-// bizim uygulamamızı atladığı durumu kapsar.
-//
-// Bu bir hata değil (hiç dağıtılmamış uygulamanın ayakta replikası
-// olmaz), ama sessiz kalmak kullanıcıya yeni alan adının canlıda cevap
-// verdiğini düşündürürdü — apex taşımasında tam olarak yanlış inanç.
-func TestUpdateAppWarnsWhenTrafficDidNotMove(t *testing.T) {
+// A saved definition is not proof that the target route was moved.
+func TestUpdateAppFailsWhenItsTargetRouteIsSkipped(t *testing.T) {
 	rec := &fakeReconciler{result: deploy.Result{
 		Skipped: map[string]string{"blog": "aktif sürümün ayakta replikası yok"},
 	}}
-	srv, _ := newUpdateServer(t, rec)
+	srv, db := newUpdateServer(t, rec)
 	spec := testSpec()
 	spec.Domain = "eski.example.com"
 	mustCreateApp(t, srv, spec)
 
-	resp := update(t, srv, &kadranv1.UpdateAppRequest{
+	_, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{
 		AppId: "blog", Domain: strp("yeni.example.com"),
 	})
 
-	detail := resp.GetProxyDetail()
-	if !strings.Contains(detail, "TRAFFIC NOT MOVED") {
-		t.Errorf("trafiğin taşınmadığı söylenmiyor: %q", detail)
+	if status.Code(err) != codes.Unavailable || !strings.Contains(err.Error(), "SAVED") || !strings.Contains(err.Error(), "TRAFFIC NOT MOVED") {
+		t.Fatalf("skipped target route returned success or lost saved-state detail: %v", err)
 	}
-	if !strings.Contains(detail, "kadran deploy blog") {
-		t.Errorf("kullanıcıya ne yapacağı söylenmiyor: %q", detail)
+	records := auditActions(t, db)
+	if records[len(records)-1].Outcome != audit.OutcomeFailure {
+		t.Error("skipped update route recorded a successful operation")
 	}
 }
 

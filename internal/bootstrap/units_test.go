@@ -396,8 +396,8 @@ func TestReverseProxyIsNotInTheKadranGroup(t *testing.T) {
 	}
 }
 
-// TestAdminSocketCarriesGroupOwnershipNotMembership, kadrand'nin admin
-// soketine nasıl ULAŞTIĞINI doğrular.
+// TestAdminSocketCarriesGroupOwnershipNotMembership verifies that only the
+// separate proxy broker can connect to raw Caddy admin.
 //
 // Erişim grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle sağlanıyor.
 // Fark tam da yukarıdaki testin koruduğu şey: üyelik verilseydi exec.sock
@@ -407,7 +407,7 @@ func TestAdminSocketCarriesGroupOwnershipNotMembership(t *testing.T) {
 
 	beklenenler := map[string]string{
 		"SocketUser":  "kadran-caddy",
-		"SocketGroup": "kadran",
+		"SocketGroup": "kadran-proxy",
 		"SocketMode":  "0660",
 		// .socket birimi varsayılan olarak AYNI ADLI .service'i tetikler;
 		// bizimki farklı adda ve bu satır olmadan hiç başlamıyor

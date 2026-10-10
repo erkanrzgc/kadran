@@ -65,6 +65,9 @@ for arch in amd64 arm64; do
     tarball="$OUT/kadran-server-$V-linux-$arch.tar"
     # İki adım, çünkü kip tek: ikililer 0755, lisans dosyaları 0644.
     tar "${tarflags[@]}" --mode=0755 -cf "$tarball" "bin/linux-$arch"
+    # Bootstrap needs the unit/configuration assets from the same release as
+    # the binaries, including the new raw-admin permission boundary.
+    tar "${tarflags[@]}" --mode=u=rwX,go=rX -rf "$tarball" deploy/systemd deploy/caddy deploy/notify deploy/offsite
     tar "${tarflags[@]}" --mode=0644 -rf "$tarball" -C "$OUT" LICENSE NOTICE THIRD_PARTY_LICENSES.txt
     gzip -n -9 "$tarball"
 done

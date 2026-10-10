@@ -1,0 +1,43 @@
+[Unit]
+Description=Kadran typed proxy capability broker
+Documentation=https://github.com/erkanrzgc/kadran
+Requires=kadran-proxy.socket kadran-caddy.service
+After=kadran-proxy.socket kadran-caddy.service
+
+[Service]
+Type=simple
+User=kadran-proxy
+Group=kadran-proxy
+ExecStart=/usr/local/lib/kadran/kadran-proxy
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
+InaccessiblePaths=-/run/kadran-exec -/run/docker.sock -/var/lib/kadran -/var/lib/kadran-caddy
+
+[Install]
+WantedBy=multi-user.target

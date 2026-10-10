@@ -288,7 +288,7 @@ step "Binary'ler"
 
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
-for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-vault; do
+for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-proxy kadran-vault; do
     [ -f "$STAGE/$binary" ] || die "$binary is missing from the staging directory"
 done
 
@@ -301,6 +301,7 @@ install -m 0755 -o root -g root "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect
 # taşıyor (K-050) ve çalıştıran kullanıcının onu değiştirebilmesi sınırı
 # anlamsız kılardı.
 install -m 0755 -o root -g root "$STAGE/kadran-caddy"  "$LIB_DIR/kadran-caddy"
+install -m 0755 -o root -g root "$STAGE/kadran-proxy"  "$LIB_DIR/kadran-proxy"
 # Kasa anahtarını üretir (K-123). Yalnız kurulumda, root olarak koşuyor.
 install -m 0755 -o root -g root "$STAGE/kadran-vault"  "$LIB_DIR/kadran-vault"
 # Kasanın geri dönüşü (v0.4.x'e inmeden önce elle çalıştırılır).
@@ -446,10 +447,9 @@ ters_vekil_hazirla() {
 
     # ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
     #
-    # Bu, kurulumun en önemli ölçümü. Sınır bir yapılandırmada değil,
-    # BINARY'DE: kadrand admin soketine yazabildiği için, stok Caddy'de o
-    # yetki "alan adının TLS özel anahtarını okuyabilme"yi de kapsıyordu
-    # (ölçüldü, varsayılmadı).
+    # Module exclusions reduce surface. They cannot prevent the core Caddy
+    # file placeholder: the typed broker and raw socket permissions below are
+    # the authorization boundary, including on upgrades of old installations.
     #
     # ⚠ ÖNCE POZİTİF KONTROL. Doğrudan "file_server var mı" diye sormak,
     # binary hiç çalışmasa bile "yok" cevabı üretirdi — cevapsızlığı istenen
@@ -472,7 +472,7 @@ With this binary the reverse proxy could serve the directory holding
 the TLS private keys. The build does not follow the exclusion list in
 build/caddy/main.go — the K-050 boundary is VOID."
 
-    say "K-050 boundary verified ($(printf '%s\n' "$caddy_modules" | grep -c '^') modules, no file serving)"
+    say "Caddy module exclusions verified; typed broker enforces the admin boundary"
 
     # ── Yapılandırma ve birimler ────────────────────────────────────────
 
@@ -484,6 +484,10 @@ build/caddy/main.go — the K-050 boundary is VOID."
         /etc/systemd/system/kadran-caddy.service
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-admin.socket" \
         /etc/systemd/system/kadran-caddy-admin.socket
+    install -m 0644 -o root -g root "$STAGE/kadran-proxy.service" \
+        /etc/systemd/system/kadran-proxy.service
+    install -m 0644 -o root -g root "$STAGE/kadran-proxy.socket" \
+        /etc/systemd/system/kadran-proxy.socket
     systemctl daemon-reload
 
     # ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
@@ -508,9 +512,24 @@ kadran-caddy cannot bind them. To continue:
     # ikisi de aşağıda DOĞRULANIYOR.
     systemctl enable kadran-caddy-admin.socket
     systemctl enable kadran-caddy.service
+    systemctl enable kadran-proxy.socket
+    systemctl enable kadran-proxy.service
 }
 
 ters_vekil_baslat() {
+    getent group kadran-proxy >/dev/null || groupadd --system kadran-proxy
+    if ! id -u kadran-proxy >/dev/null 2>&1; then
+        useradd --system --gid kadran-proxy --home-dir /nonexistent \
+            --no-create-home --shell "$NOLOGIN" --comment "Kadran proxy capability broker" kadran-proxy
+    fi
+    for forbidden_group in kadran kadran-client docker; do
+        if id -nG kadran-proxy | tr ' ' '\n' | grep -qx "$forbidden_group"; then
+            die "kadran-proxy must not belong to $forbidden_group"
+        fi
+    done
+    if id -nG kadran | tr ' ' '\n' | grep -qx kadran-proxy; then
+        die "kadran must not belong to the raw-admin kadran-proxy group"
+    fi
     getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
 
     if ! id -u kadran-caddy >/dev/null 2>&1; then
@@ -536,6 +555,9 @@ To fix:  gpasswd -d kadran-caddy kadran"
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
         /etc/tmpfiles.d/kadran-caddy.conf
     systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
+    install -m 0644 -o root -g root "$STAGE/kadran-proxy-tmpfiles.conf" \
+        /etc/tmpfiles.d/kadran-proxy.conf
+    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-proxy.conf
 
     # Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
     # Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
@@ -552,10 +574,18 @@ To fix:  gpasswd -d kadran-caddy kadran"
             && calisan_ayni_mi kadran-caddy.service "$LIB_DIR/kadran-caddy"; then
         say "reverse proxy unchanged — not restarted, traffic not interrupted"
     else
+        # A permission change must close old accepted raw-admin connections.
+        # Stop the old daemon before recreating the Caddy socket; a chmod alone
+        # would leave its already open HTTP connection authorized.
+        systemctl stop kadrand.service 2>/dev/null || true
+        systemctl stop kadran-proxy.service 2>/dev/null || true
         systemctl stop kadran-caddy.service 2>/dev/null || true
         systemctl restart kadran-caddy-admin.socket
         systemctl restart kadran-caddy.service
     fi
+    systemctl stop kadran-proxy.service 2>/dev/null || true
+    systemctl restart kadran-proxy.socket
+    systemctl start kadran-proxy.service
 }
 
 ters_vekil_kur() {
@@ -816,7 +846,7 @@ fi
 # etkinleştirilmemişti ve yalnızca REBOOT testinde ortaya çıktı. "Şu an
 # çalışıyor" bir kabul ölçütü değil; ölçüt "yeniden başlatmadan sonra da
 # çalışır".
-for unit in kadran-caddy-admin.socket kadran-caddy.service; do
+for unit in kadran-caddy-admin.socket kadran-caddy.service kadran-proxy.socket kadran-proxy.service; do
     state="$(systemctl is-enabled "$unit" 2>/dev/null || echo missing)"
     if [ "$state" = "enabled" ]; then
         check_ok "$unit enabled (survives a reboot)"
@@ -838,6 +868,7 @@ calisan_ikili_dogrula() {
 }
 calisan_ikili_dogrula kadrand
 calisan_ikili_dogrula kadran-exec
+calisan_ikili_dogrula kadran-proxy
 
 # 7. Çalışan İMAJ, kurduğumuz binary olmalı (K-049).
 #
@@ -868,18 +899,38 @@ fi
 
 # 9. Admin soketinin izinleri.
 admin_mode="$(stat -c '%a %U:%G' /run/kadran-caddy/admin.sock 2>/dev/null || echo missing)"
-if [ "$admin_mode" = "660 kadran-caddy:kadran" ]; then
+if [ "$admin_mode" = "660 kadran-caddy:kadran-proxy" ]; then
     check_ok "admin.sock: $admin_mode"
 else
-    check_fail "admin.sock unexpected: $admin_mode (expected 660 kadran-caddy:kadran)"
+    check_fail "admin.sock unexpected: $admin_mode (expected 660 kadran-caddy:kadran-proxy)"
 fi
 
-# 10. kadrand admin soketine ULAŞABİLMELİ — K-050'nin dayandığı erişim.
+# 10. Daemon reaches only the typed socket. Broker reaches raw admin.
 if setpriv --reuid kadran --regid kadran --clear-groups \
         test -w /run/kadran-caddy/admin.sock 2>/dev/null; then
-    check_ok "user kadran can write to the admin socket"
+    check_fail "user kadran can still write to raw Caddy admin"
 else
-    check_fail "user kadran CANNOT write to the admin socket — the reverse proxy cannot be managed"
+    check_ok "user kadran cannot reach raw Caddy admin"
+fi
+proxy_mode="$(stat -c '%a %U:%G' /run/kadran-proxy/proxy.sock 2>/dev/null || echo missing)"
+if [ "$proxy_mode" = "660 kadran-proxy:kadran" ] \
+        && setpriv --reuid kadran --regid kadran --clear-groups \
+           test -w /run/kadran-proxy/proxy.sock; then
+    check_ok "daemon reaches typed proxy socket: $proxy_mode"
+else
+    check_fail "typed proxy socket inaccessible or incorrectly owned: $proxy_mode"
+fi
+if setpriv --reuid kadran-proxy --regid kadran-proxy --clear-groups \
+        test -w /run/kadran-caddy/admin.sock; then
+    check_ok "broker reaches raw Caddy admin"
+else
+    check_fail "broker cannot reach raw Caddy admin"
+fi
+if setpriv --reuid kadran-proxy --regid kadran-proxy --clear-groups \
+        test -w /run/kadran-exec/exec.sock 2>/dev/null; then
+    check_fail "proxy broker reaches privileged executor"
+else
+    check_ok "proxy broker cannot reach privileged executor"
 fi
 
 # 11. Ters vekil executor'a ULAŞAMAMALI. Modelin can alıcı noktası:

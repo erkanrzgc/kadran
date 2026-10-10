@@ -1,9 +1,9 @@
 [Unit]
 Description=Kadran control plane daemon
 Documentation=https://github.com/erkanrzgc/kadran
-After=network-online.target kadran-exec.service
+After=network-online.target kadran-exec.service kadran-proxy.socket
 Wants=network-online.target
-Requires=kadran-exec.service
+Requires=kadran-exec.service kadran-proxy.socket
 
 [Service]
 Type=notify
@@ -19,6 +19,7 @@ NotifyAccess=main
 ExecStart=/usr/local/lib/kadran/kadrand \
     --socket /run/kadran/api.sock \
     --exec-socket /run/kadran-exec/exec.sock \
+    --caddy-socket /run/kadran-proxy/proxy.sock \
     --db /var/lib/kadran/kadran.db \
     --client-group kadran-client \
     --backup-interval 1h
@@ -72,6 +73,7 @@ PrivateTmp=yes
 PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
+InaccessiblePaths=-/run/kadran-caddy -/var/lib/kadran-caddy
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes

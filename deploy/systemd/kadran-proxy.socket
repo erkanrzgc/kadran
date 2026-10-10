@@ -1,0 +1,13 @@
+[Unit]
+Description=Kadran typed proxy route socket
+
+[Socket]
+ListenStream=/run/kadran-proxy/proxy.sock
+SocketUser=kadran-proxy
+SocketGroup=kadran
+SocketMode=0660
+RemoveOnStop=yes
+Service=kadran-proxy.service
+
+[Install]
+WantedBy=sockets.target

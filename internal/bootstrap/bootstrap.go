@@ -44,7 +44,7 @@ var installScript embed.FS
 // scripts/build-release.sh onu da aynı `bin/linux-<arch>/` dizinine
 // üretiyor, yani burada özel bir muamele gerekmiyor.
 var serverBinaries = []string{
-	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy", "kadran-vault",
+	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy", "kadran-proxy", "kadran-vault",
 }
 
 // unitFiles, depodan kopyalanan systemd varlıkları.
@@ -53,8 +53,11 @@ var serverBinaries = []string{
 // drop-in yerine KENDİ birimiyle geldiği için buna ihtiyaç da kalmadı
 // (gerekçe kadran-caddy.service'in başında).
 var unitFiles = map[string]string{
-	"kadrand.service":     "deploy/systemd/kadrand.service",
-	"kadran-exec.service": "deploy/systemd/kadran-exec.service",
+	"kadran-proxy.service":       "deploy/systemd/kadran-proxy.service",
+	"kadran-proxy.socket":        "deploy/systemd/kadran-proxy.socket",
+	"kadran-proxy-tmpfiles.conf": "deploy/systemd/kadran-proxy-tmpfiles.conf",
+	"kadrand.service":            "deploy/systemd/kadrand.service",
+	"kadran-exec.service":        "deploy/systemd/kadran-exec.service",
 
 	// Ters vekil: kendi birimi, kendi admin soketi, kendi tmpfiles
 	// kuralı ve yol açıcı yapılandırması.

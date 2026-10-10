@@ -99,9 +99,8 @@ Environment=XDG_CONFIG_HOME=/var/lib/kadran-caddy
 
 # ── Sertleştirme ────────────────────────────────────────────────────
 #
-# Asıl güvenlik sınırı bu blok DEĞİL, BINARY'nin kendisi: dosya servis
-# eden modüller kadran-caddy'de hiç yok (K-050). Buradakiler ikinci
-# katman.
+# The typed kadran-proxy broker and raw admin socket permissions enforce the
+# control-plane boundary. Caddy core handlers can still expand file placeholders.
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

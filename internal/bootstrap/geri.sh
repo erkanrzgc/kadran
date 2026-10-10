@@ -45,6 +45,7 @@ say "$n images tagged under panely/, kadran/ tags removed"
 
 # Her şey durur; ters vekil dahil (KESİNTİ burada başlar).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \
+         kadran-proxy.service kadran-proxy.socket \
          kadran-notify.timer kadran-offsite.timer kadran-volume-backup.timer \
          kadran-notify.service kadran-offsite.service kadran-volume-backup.service \
          var-lib-kadran-volumes.mount; do
@@ -93,6 +94,7 @@ fi
 # değiştirilmiş olabilirler (ör. daraltılmış --allow-repo) ve geri dönen
 # eski drop-in onları sessizce geri alırdı (güvenlik incelemesi, K-136).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \
+         kadran-proxy.service kadran-proxy.socket \
          var-lib-kadran-volumes.mount kadran-notify.service kadran-notify.timer \
          kadran-notify-failure@.service kadran-offsite.service kadran-offsite.timer \
          kadran-volume-backup.service kadran-volume-backup.timer; do
@@ -102,7 +104,7 @@ for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-a
         mv "/etc/systemd/system/$b.d" "$GOC_DIR/yeni-dropin/"
     fi
 done
-rm -f /etc/tmpfiles.d/kadran.conf /etc/tmpfiles.d/kadran-caddy.conf \
+rm -f /etc/tmpfiles.d/kadran.conf /etc/tmpfiles.d/kadran-caddy.conf /etc/tmpfiles.d/kadran-proxy.conf \
       /etc/ssh/sshd_config.d/60-kadran.conf
 if [ -d "$GOC_DIR/eski-birimler" ]; then
     for f in "$GOC_DIR/eski-birimler"/*; do
@@ -112,7 +114,7 @@ if [ -d "$GOC_DIR/eski-birimler" ]; then
 fi
 goc_tasi "$GOC_DIR/eski-lib" /usr/local/lib/panely
 systemctl daemon-reload
-rm -rf /run/kadran /run/kadran-exec /run/kadran-caddy
+rm -rf /run/kadran /run/kadran-exec /run/kadran-caddy /run/kadran-proxy
 
 # Göç kaydı kenara alınır: aynı sunucuda yeniden göç, eski gözlemlerle
 # (beklenen replikalar, zamanlayıcılar) değil taze başlamalı.

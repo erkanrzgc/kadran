@@ -204,7 +204,7 @@ jobs:
           ldflags="-s -w"
           ldflags="$ldflags -X $mod/internal/version.Version=$version"
           ldflags="$ldflags -X $mod/internal/version.Commit=${GITHUB_SHA::12}"
-          for binary in kadrand kadran-exec kadran-connect kadran-vault kadran; do
+          for binary in kadrand kadran-exec kadran-connect kadran-proxy kadran-vault kadran; do
             go build -trimpath -ldflags "$ldflags" -o "dist/$binary" "./cmd/$binary"
           done
           ls -la dist/
@@ -278,7 +278,7 @@ jobs:
             for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
                      "bin/linux-$arch/kadrand" "bin/linux-$arch/kadran-exec" \
                      "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy" \
-                     "bin/linux-$arch/kadran-vault"; do
+                     "bin/linux-$arch/kadran-proxy" "bin/linux-$arch/kadran-vault"; do
               grep -qxF "$f" <<<"$listed" || { echo "::error::$t içinde $f yok" >&2; exit 1; }
             done
             # Tar'daki lisans dosyası boş ya da yanlış olmamalı: içinden oku.
@@ -409,6 +409,12 @@ jobs:
       # Bu adım kasten bozulmuş şemalarla kontrolün yakaladığını doğrular.
       - name: Yüzey kontrolünün kendisini sına
         run: bash scripts/check-exec-surface-test.sh
+
+      - name: Typed proxy boundary and raw Caddy capability regression
+        run: |
+          go test -race -count=1 ./internal/proxydrv ./internal/proxyguard ./internal/bootstrap
+          sudo env "PATH=$PATH" KADRAN_TEST_PROXY_PERMISSIONS=1 go test -count=1 -run TestUnixPermissionsSeparateRawTypedAndExecutorSockets ./internal/proxyguard
+          (cd build/caddy && go test -race -count=1 ./...)
 
       # Ayrıcalıklı yüzey ne kadar büyürse "en az yetki" o kadar
       # anlamsızlaşır. Şemada temsil EDİLEMEYEN bir seçenek, doğrulanan

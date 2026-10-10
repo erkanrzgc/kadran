@@ -28,7 +28,7 @@ MOD="$(go list -m)"
 LDFLAGS="$LDFLAGS -X $MOD/internal/version.Version=$VERSION"
 LDFLAGS="$LDFLAGS -X $MOD/internal/version.Commit=$COMMIT"
 
-SERVER_BINARIES=(kadrand kadran-exec kadran-connect kadran-vault)
+SERVER_BINARIES=(kadrand kadran-exec kadran-connect kadran-proxy kadran-vault)
 
 for arch in "${ARCHES[@]}"; do
     out="bin/linux-$arch"

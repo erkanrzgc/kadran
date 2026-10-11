@@ -18,6 +18,8 @@
  * 1'den önce döndü. Eşleştirme bu yüzden `id` üzerinden yapılıyor.
  */
 
+import { StringDecoder } from "node:string_decoder";
+
 /** JSON-RPC 2.0 protokol sürümü. */
 const JSONRPC_VERSION = "2.0";
 
@@ -103,6 +105,7 @@ export class SidecarClient {
 
   #proc: SidecarProcess | null = null;
   #buffer = "";
+  #decoder = new StringDecoder("utf8");
   #nextId = 1;
   #pending = new Map<number, Pending>();
   #closed = false;
@@ -119,7 +122,7 @@ export class SidecarClient {
    * Alt süreç ilk çağrıda başlatılır: uygulama açılışta bir süreç
    * doğurup hiç kullanmamalı.
    */
-  call<T = unknown>(method: string, params?: unknown): Promise<T> {
+  call<T = unknown>(method: string, params?: unknown, options: { timeoutMs?: number } = {}): Promise<T> {
     if (this.#closed) {
       return Promise.reject(new SidecarError("the sidecar is closed"));
     }
@@ -133,6 +136,10 @@ export class SidecarClient {
       );
     }
 
+    const timeoutMs = options.timeoutMs ?? this.#timeoutMs;
+    if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 15 * 60_000) {
+      return Promise.reject(new SidecarError("invalid request timeout"));
+    }
     const id = this.#nextId++;
     const request = JSON.stringify({
       jsonrpc: JSONRPC_VERSION,
@@ -146,10 +153,10 @@ export class SidecarClient {
         this.#pending.delete(id);
         reject(
           new SidecarError(
-            `"${method}" got no answer within ${this.#timeoutMs} ms`,
+            `"${method}" got no answer within ${timeoutMs} ms`,
           ),
         );
-      }, this.#timeoutMs);
+      }, timeoutMs);
 
       // unref: bekleyen bir zamanlayıcı Node sürecini ayakta tutmasın.
       timer.unref?.();
@@ -197,8 +204,9 @@ export class SidecarClient {
     const proc = this.#spawn();
     this.#proc = proc;
     this.#buffer = "";
+    this.#decoder = new StringDecoder("utf8");
 
-    proc.stdout.on("data", (chunk) => this.#onStdout(chunk));
+    proc.stdout.on("data", (chunk) => { if (this.#proc === proc) this.#onStdout(chunk); });
 
     proc.stderr?.on("data", (chunk) => {
       // stderr PROTOKOL KANALI DEĞİL: sidecar tanılamayı oraya yazar.
@@ -211,6 +219,7 @@ export class SidecarClient {
     });
 
     proc.on("exit", (code) => {
+      if (this.#proc !== proc) return;
       this.#proc = null;
       this.#rejectAll(
         new SidecarError(`the sidecar exited (code ${code ?? "unknown"})`),
@@ -218,6 +227,7 @@ export class SidecarClient {
     });
 
     proc.on("error", (err) => {
+      if (this.#proc !== proc) return;
       this.#proc = null;
       this.#rejectAll(new SidecarError(`the sidecar process failed: ${err.message}`));
     });
@@ -226,9 +236,9 @@ export class SidecarClient {
   }
 
   #onStdout(chunk: Buffer | string): void {
-    this.#buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    this.#buffer += typeof chunk === "string" ? chunk : this.#decoder.write(chunk);
 
-    if (this.#buffer.length > MAX_BUFFER_BYTES) {
+    if (Buffer.byteLength(this.#buffer, "utf8") > MAX_BUFFER_BYTES) {
       this.#buffer = "";
       this.#rejectAll(
         new SidecarError("the sidecar's output went over the buffer limit; stopping it"),
@@ -259,8 +269,15 @@ export class SidecarClient {
       return;
     }
 
-    if (typeof resp.id !== "number") {
+    if (!resp || typeof resp !== "object" || Array.isArray(resp) || resp.jsonrpc !== "2.0" || typeof resp.id !== "number" || !Number.isSafeInteger(resp.id)) {
       this.#onDiagnostic?.(`id'siz sidecar yanıtı yok sayıldı: ${line}`);
+      return;
+    }
+
+    const hasResult = Object.hasOwn(resp, "result");
+    const hasError = Object.hasOwn(resp, "error");
+    if (hasResult === hasError || (hasError && (!resp.error || typeof resp.error !== "object" || typeof resp.error.message !== "string" || typeof resp.error.code !== "number"))) {
+      this.#onDiagnostic?.("malformed sidecar response ignored");
       return;
     }
 

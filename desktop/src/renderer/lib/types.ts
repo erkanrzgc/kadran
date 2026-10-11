@@ -83,3 +83,30 @@ export interface VersionPayload {
   commit: string;
   protocol: number;
 }
+
+export interface ResourceLimits { memory_bytes: U64; cpu_millis: number; blkio_weight: number }
+export interface AppVolume { name: string; mount_path: string; read_only: boolean }
+export interface AppSpec {
+  app_id: string; git_host: string; git_owner: string; git_repo: string; git_branch: string;
+  dockerfile_path: string; build_args: Record<string, string>; container_port: number;
+  replicas: number; health_path: string; domain: string; limits: ResourceLimits;
+  env: Record<string, string>; volumes: AppVolume[];
+}
+export interface AppUpdate {
+  domain?: string; git_branch?: string; health_path?: string; replicas?: number;
+  env?: Record<string, string>; env_remove?: string[]; volumes?: AppVolume[]; volume_remove?: string[];
+}
+export interface ManagedApp { spec: AppSpec; created_at: string | null; updated_at: string | null; release_count: number }
+export interface AppRelease { release_id: string; app_id: string; commit_sha: string; status: string; image_id: string; started_at: string | null; finished_at: string | null; detail: string }
+export interface AppsListPayload { apps: ManagedApp[] }
+export interface AppGetPayload { app: ManagedApp; releases: AppRelease[]; active_release_id?: string }
+export interface AppWritePayload { app: ManagedApp; proxy_detail?: string; env_detail?: string; volume_detail?: string }
+export interface AppDeletePayload { app_id: string; containers_removed: number; releases_deleted: number; deployments_deleted: number; volumes_kept: string[] }
+export interface RollbackPayload { app_id: string; from_release_id: string; to_release_id: string; recreated: boolean }
+export interface DeployPayload { release_id: string; image_id: string; output: string; truncated: boolean }
+export interface LogsPayload { output: string; truncated: boolean }
+export interface AlarmInfo { id: string; kind: string; target: string; severity: string; since_unix: U64; detail: string }
+export interface AlarmsPayload { alarms: AlarmInfo[]; delivery_is_local_only: boolean }
+export interface BackupInfo { path: string; bytes: U64; taken_unix: U64 }
+export interface BackupsPayload { backups: BackupInfo[]; keep: number }
+export interface BackupCreatePayload { backup: BackupInfo; volumes_excluded: boolean }

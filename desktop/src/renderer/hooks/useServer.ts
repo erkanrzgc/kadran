@@ -5,7 +5,7 @@
  * gider (lib/single-flight.ts): yoksa geç gelen eski cevap yenisini ezer.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { bridge } from "../bridge.ts";
 import { errorText } from "../lib/errors.ts";
@@ -13,12 +13,15 @@ import { memoryUsedGiB } from "../lib/format.ts";
 import { pushSample } from "../lib/samples.ts";
 import { createSingleFlight } from "../lib/single-flight.ts";
 import type { StatusPayload, VerifyPayload } from "../lib/types.ts";
+import { verificationExpired, verificationFailed } from "../lib/verification-state.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
 
 export interface ServerState {
   target: string | null;
   status: StatusPayload | null;
   verify: VerifyPayload | null;
+  verifiedAt: number | null;
+  verifyStale: boolean;
   /** Son status çağrısının gidiş-dönüş süresi (ms): IPC + sidecar başlatma + ssh + daemon, köprü çağrısının tamamı. */
   rtt: number | null;
   memorySamples: readonly number[];
@@ -33,6 +36,8 @@ const EMPTY: ServerState = {
   target: null,
   status: null,
   verify: null,
+  verifiedAt: null,
+  verifyStale: false,
   rtt: null,
   memorySamples: [],
   rttSamples: [],
@@ -47,6 +52,13 @@ export function useServer() {
   const current = useRef<string | null>(null);
   const [statusFlight] = useState(() => createSingleFlight<boolean>());
   const [verifyFlight] = useState(() => createSingleFlight<void>());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setState((s) =>
+      s.verifiedAt !== null && !s.verifyStale && verificationExpired(s.verifiedAt, Date.now())
+        ? { ...s, verify: verificationFailed(s.verify), verifyStale: true } : s), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const fetchStatus = useCallback(
     async (target: string): Promise<boolean> => {
@@ -84,9 +96,12 @@ export function useServer() {
     async (target: string): Promise<void> => {
       try {
         const verify = await bridge.auditVerify(target);
-        if (current.current === target) setState((s) => ({ ...s, verify }));
+        if (current.current === target) setState((s) => ({ ...s, verify, verifiedAt: Date.now(), verifyStale: false }));
       } catch (err) {
-        if (current.current === target) toast("toast.verify_failed", { error: errorText(err) });
+        if (current.current === target) {
+          setState((s) => ({ ...s, verify: verificationFailed(s.verify), verifyStale: true }));
+          toast("toast.verify_failed", { error: errorText(err) });
+        }
       } finally {
         if (current.current === target) setState((s) => ({ ...s, verifying: false }));
       }

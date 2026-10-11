@@ -8,11 +8,9 @@
  * sınırını istemci tarafından delmek olurdu — kötü bir bağımlılık ya da
  * bir XSS, sidecar'a istediği çağrıyı yaptırabilirdi.
  *
- * Burada sunucunun durumunu DEĞİŞTİREN hiçbir işlem yok; eklenenler
- * (görünüm, pencere düğmeleri, panoya kopyalama) yalnız bu bilgisayarı
- * etkiliyor. Faz 1'de durum değiştiren işlemler geldiğinde (dağıtım,
- * geri alma, silme) ayrı bir onay mekanizması gerekecek; o zaman bu
- * yorumun da güncellenmesi gerekiyor.
+ * Yönetim işlemleri de adlandırılmış tipli kanallardır; genel RPC,
+ * kabuk veya dosya erişimi yoktur. Geri alma ve silme ana süreçte
+ * uygulama adı ile doğrulanır; girdi boyutları ayrıca sınırlanır.
  *
  * # Neden CommonJS?
  *
@@ -34,6 +32,17 @@ const CHANNELS = {
   status: "kadran:status",
   auditList: "kadran:audit-list",
   auditVerify: "kadran:audit-verify",
+  appsList: "kadran:apps-list",
+  appGet: "kadran:app-get",
+  appCreate: "kadran:app-create",
+  appUpdate: "kadran:app-update",
+  appDelete: "kadran:app-delete",
+  appDeploy: "kadran:app-deploy",
+  appRollback: "kadran:app-rollback",
+  appLogs: "kadran:app-logs",
+  alarmsList: "kadran:alarms-list",
+  backupsList: "kadran:backups-list",
+  backupCreate: "kadran:backup-create",
   loadProfiles: "kadran:profiles-load",
   saveProfiles: "kadran:profiles-save",
   loadAppearance: "kadran:appearance-load",
@@ -43,6 +52,17 @@ const CHANNELS = {
 };
 
 contextBridge.exposeInMainWorld("kadran", {
+  appsList: (target) => ipcRenderer.invoke(CHANNELS.appsList, target),
+  appGet: (target, appId) => ipcRenderer.invoke(CHANNELS.appGet, target, appId),
+  appCreate: (target, spec) => ipcRenderer.invoke(CHANNELS.appCreate, target, spec),
+  appUpdate: (target, appId, update) => ipcRenderer.invoke(CHANNELS.appUpdate, target, appId, update),
+  appDelete: (target, appId, confirmation) => ipcRenderer.invoke(CHANNELS.appDelete, target, appId, confirmation),
+  appDeploy: (target, appId, ref) => ipcRenderer.invoke(CHANNELS.appDeploy, target, appId, ref),
+  appRollback: (target, appId, confirmation) => ipcRenderer.invoke(CHANNELS.appRollback, target, appId, confirmation),
+  appLogs: (target, appId, tail) => ipcRenderer.invoke(CHANNELS.appLogs, target, appId, tail),
+  alarmsList: (target) => ipcRenderer.invoke(CHANNELS.alarmsList, target),
+  backupsList: (target) => ipcRenderer.invoke(CHANNELS.backupsList, target),
+  backupCreate: (target) => ipcRenderer.invoke(CHANNELS.backupCreate, target),
   /** Sidecar'ın sürüm ve protokol bilgisi. Sunucuya dokunmaz. */
   version: () => ipcRenderer.invoke(CHANNELS.version),
 

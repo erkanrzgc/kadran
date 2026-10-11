@@ -206,6 +206,8 @@ func (s *sidecar) handleLine(ctx context.Context, line []byte) {
 
 func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError) {
 	switch req.Method {
+	case "apps.list", "apps.get", "apps.create", "apps.update", "apps.delete", "apps.deploy", "apps.rollback", "apps.logs", "alarms.list", "backups.list", "backups.create":
+		return s.dispatchManagement(ctx, req)
 	case "version":
 		return map[string]any{
 			"version":  version.Version,
@@ -274,6 +276,10 @@ func (s *sidecar) withConn(
 	params json.RawMessage,
 	fn func(context.Context, *client.Client) (any, error),
 ) (any, *rpcError) {
+	return s.withConnTimeout(ctx, params, s.callTimeout, fn)
+}
+
+func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, timeout time.Duration, fn func(context.Context, *client.Client) (any, error)) (any, *rpcError) {
 	var p targetParams
 	if err := decodeParams(params, &p); err != nil {
 		return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
@@ -284,7 +290,7 @@ func (s *sidecar) withConn(
 		return nil, &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	result, err := fn(ctx, conn)

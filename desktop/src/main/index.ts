@@ -26,6 +26,7 @@ import type { SidecarProcess } from "../shared/sidecar-client.ts";
 import { loadAppearance, saveAppearance } from "./appearance.ts";
 import { requireCopyText, requireTarget, requireWindowAction, toUint } from "./ipc-validate.ts";
 import { lockDownPermissions } from "./permissions.ts";
+import { registerManagementHandlers } from "./management-handlers.ts";
 import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
 import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
@@ -70,6 +71,9 @@ function userData(): string {
 // Her biri renderer'dan gelen girdiyi doğrular (ipc-validate.ts).
 
 function registerHandlers(): void {
+  const command = resolveSidecarCommand({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, repoRoot });
+  const syntheticFixture = SMOKE_TEST && !app.isPackaged && command.args.some((arg) => resolve(arg) === join(repoRoot, "desktop", "test", "fixtures", "fake-sidecar.mjs"));
+  registerManagementHandlers(sidecar, syntheticFixture);
   ipcMain.handle(CHANNELS.version, () => sidecar().call("version"));
   ipcMain.handle(CHANNELS.status, (_event, target: unknown) =>
     sidecar().call("status", { target: requireTarget(target) }),
@@ -132,7 +136,7 @@ if (!app.requestSingleInstanceLock()) {
 
     registerHandlers();
     const appearance = await loadAppearance(userData(), platformInfo, warn);
-    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, showOnReady: !SMOKE_TEST });
+    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-logo.png") });
     const win = host.open(appearance.mode);
     if (SMOKE_TEST) void runSmokeTest(win);
 

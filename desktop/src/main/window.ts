@@ -21,6 +21,7 @@ export interface WindowHostOptions {
   rendererIndex: string;
   platform: string;
   showOnReady: boolean;
+  iconPath?: string;
 }
 
 export interface WindowHost {
@@ -42,7 +43,7 @@ export function createWindowHost(opts: WindowHostOptions): WindowHost {
   let mode: WindowMode | null = null;
 
   function open(next: WindowMode, view?: string, state?: WindowState): BrowserWindow {
-    const created = new BrowserWindow(windowOptions(next, opts.platform, opts.preloadPath, state));
+    const created = new BrowserWindow({ ...windowOptions(next, opts.platform, opts.preloadPath, state), ...(opts.iconPath ? { icon: opts.iconPath } : {}) });
     lockNavigation(created);
     created.once("ready-to-show", () => {
       if (state?.maximized) created.maximize();

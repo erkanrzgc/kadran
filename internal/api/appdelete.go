@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/audit"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 // deleteGrace, silmeden önce konteynere SIGTERM ile SIGKILL arasında
@@ -97,6 +99,10 @@ func (s *Server) DeleteApp(
 		// gerektiğini bilir — ki burada yapılacak şey tam olarak budur.
 		_ = s.recordAction(ctx, action, tgt, params, audit.OutcomeDenied, cause.Error())
 		return nil, status.Error(codes.FailedPrecondition, cause.Error())
+	} else if !errors.Is(err, store.ErrNoDeployment) {
+		// Only a confirmed absence of an active release permits deletion.
+		// A database/query failure leaves traffic ownership unknown.
+		return nil, s.completed(ctx, action, tgt, params, appError(err))
 	}
 
 	removed, err := s.removeContainers(ctx, appID)

@@ -6,7 +6,7 @@ import { requireTarget } from "./ipc-validate.ts";
 import { createManagementGate, requireAppId, requireAppPayload, requireConfirmation, requireRef, requireTail } from "./management-ipc.ts";
 import { validateManagementResult } from "./management-results.ts";
 import type { Language } from "../shared/appearance.ts";
-import { managementConfirmation } from "./management-confirmation.ts";
+import { managementCancellation, managementConfirmation } from "./management-confirmation.ts";
 
 export function registerManagementHandlers(client: () => SidecarClient, syntheticFixture: boolean, language: () => Promise<Language>): void {
   const gate = createManagementGate();
@@ -19,7 +19,7 @@ export function registerManagementHandlers(client: () => SidecarClient, syntheti
     if (!win) throw new Error("confirmation window is unavailable");
     const selectedLanguage = await language();
     const { response } = await dialog.showMessageBox(win, managementConfirmation(selectedLanguage, method, target, appId));
-    if (response !== 1) throw new Error(selectedLanguage === "tr" ? "İşlemden vazgeçildi" : "operation cancelled");
+    if (response !== 1) throw new Error(managementCancellation(selectedLanguage));
   };
   ipcMain.handle(CHANNELS.appsList, (_e, target) => invoke("apps.list", target));
   ipcMain.handle(CHANNELS.appGet, (_e, target, id) => invoke("apps.get", target, { app_id: requireAppId(id) }));

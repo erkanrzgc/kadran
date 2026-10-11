@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
@@ -20,6 +21,9 @@ func TestRolloutSkippedErrorSemantics(t *testing.T) {
 	}{
 		{"own route", own, true},
 		{"unrelated route", other, false},
+		{"wrapped unrelated pointer", fmt.Errorf("rollout: %w", &other), false},
+		{"wrapped unrelated and shutdown failure", fmt.Errorf("rollout: %w", errors.Join(&other, errors.New("stop failed"))), true},
+		{"joined wrapped own route", errors.Join(fmt.Errorf("other: %w", other), fmt.Errorf("own: %w", &own)), true},
 		{"unrelated joined with shutdown failure", errors.Join(other, deploy.DrainError{AppID: "blog", Err: errors.New("stop failed")}), true},
 		{"unrelated joined with own route", errors.Join(other, own), true},
 	} {

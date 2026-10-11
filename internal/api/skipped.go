@@ -1,6 +1,10 @@
 package api
 
-import "github.com/erkanrzgc/kadran/internal/deploy"
+import (
+	"errors"
+
+	"github.com/erkanrzgc/kadran/internal/deploy"
+)
 
 // unrelatedSkippedRoutes accepts only an error tree made entirely of skipped
 // routes for other apps. errors.As alone finds one warning and would conceal
@@ -9,21 +13,9 @@ func unrelatedSkippedRoutes(err error, appID string) (deploy.Result, bool) {
 	out := deploy.Result{Skipped: map[string]string{}}
 	var visit func(error) bool
 	visit = func(err error) bool {
-		switch e := err.(type) {
-		case deploy.SkippedError:
-			if len(e.Result.Skipped) == 0 {
-				return false
-			}
-			for id, why := range e.Result.Skipped {
-				if id == appID {
-					return false
-				}
-				out.Skipped[id] = why
-			}
-			return true
-		case *deploy.SkippedError:
-			return e != nil && visit(*e)
-		case interface{ Unwrap() []error }:
+		// Inspect every branch before matching a leaf; errors.As on the
+		// joined parent would accept one warning and hide a sibling failure.
+		if e, ok := err.(interface{ Unwrap() []error }); ok {
 			children := e.Unwrap()
 			if len(children) == 0 {
 				return false
@@ -34,11 +26,28 @@ func unrelatedSkippedRoutes(err error, appID string) (deploy.Result, bool) {
 				}
 			}
 			return true
-		case interface{ Unwrap() error }:
+		}
+		if e, ok := err.(interface{ Unwrap() error }); ok {
 			return visit(e.Unwrap())
-		default:
+		}
+		var skipped deploy.SkippedError
+		if !errors.As(err, &skipped) {
+			var pointer *deploy.SkippedError
+			if !errors.As(err, &pointer) || pointer == nil {
+				return false
+			}
+			skipped = *pointer
+		}
+		if len(skipped.Result.Skipped) == 0 {
 			return false
 		}
+		for id, why := range skipped.Result.Skipped {
+			if id == appID {
+				return false
+			}
+			out.Skipped[id] = why
+		}
+		return true
 	}
 	return out, visit(err)
 }

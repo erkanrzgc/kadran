@@ -62,7 +62,10 @@ func TestEveryAppMutationHonorsCanceledQueue(t *testing.T) {
 			if err != nil || app.ReleaseSeq != 2 || app.GitBranch != "main" {
 				t.Fatalf("canceled operation changed stored app: %+v, %v", app, err)
 			}
-			fe := srv.exec.(*fakeExec)
+			fe, ok := srv.exec.(*fakeExec)
+			if !ok {
+				t.Fatal("fixture did not install the expected executor")
+			}
 			if len(fe.rmCalls) != 0 || len(fe.stopCalls) != 0 || fe.buildCalls != 2 {
 				t.Fatal("canceled operation reached executor")
 			}

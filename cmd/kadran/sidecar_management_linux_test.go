@@ -34,13 +34,41 @@ func (c managementCreds) ServerHandshake(conn net.Conn) (net.Conn, credentials.A
 
 type desktopAPIFixture struct {
 	kadranv1.UnimplementedKadranServiceServer
-	app    *kadranv1.App
-	commit string
-	tail   uint32
+	app       *kadranv1.App
+	commit    string
+	tail      uint32
+	pingDelay time.Duration
 }
 
 func (f *desktopAPIFixture) Ping(context.Context, *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
+	if f.pingDelay > 0 {
+		time.Sleep(f.pingDelay)
+	}
 	return &kadranv1.PingResponse{ProtocolVersion: version.Protocol}, nil
+}
+
+func TestManagementTimeoutIncludesInitialConnection(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "slow.sock")
+	listener, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture := &desktopAPIFixture{pingDelay: 80 * time.Millisecond}
+	server := grpc.NewServer(grpc.Creds(managementCreds{insecure.NewCredentials()}))
+	kadranv1.RegisterKadranServiceServer(server, fixture)
+	go func() { _ = server.Serve(listener) }()
+	defer server.Stop()
+	s := &sidecar{callTimeout: time.Second, conns: map[string]*client.Client{}}
+	defer s.closeAll()
+	params, _ := json.Marshal(targetParams{Target: path})
+	called := false
+	_, failure := s.withConnTimeout(context.Background(), params, 20*time.Millisecond, func(context.Context, *client.Client) (any, error) {
+		called = true
+		return "mutation", nil
+	})
+	if called || failure == nil {
+		t.Fatal("expired connection setup allowed management mutation")
+	}
 }
 func (f *desktopAPIFixture) ListApps(context.Context, *kadranv1.ListAppsRequest) (*kadranv1.ListAppsResponse, error) {
 	return &kadranv1.ListAppsResponse{Apps: []*kadranv1.App{f.app}}, nil

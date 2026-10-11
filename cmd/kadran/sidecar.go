@@ -285,13 +285,16 @@ func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, t
 		return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	conn, err := s.connFor(ctx, p.Target)
 	if err != nil {
 		return nil, &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, &rpcError{Code: codeInternalError, Message: "call timed out before execution", Data: err.Error()}
+	}
 
 	result, err := fn(ctx, conn)
 	if err != nil {

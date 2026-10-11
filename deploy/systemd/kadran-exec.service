@@ -12,6 +12,11 @@ NotifyAccess=main
 #
 # ── ÖZEL DEPOLAR: --allow-repo ───────────────────────────────────────
 #
+# K-146: --git-credentials ile root-only GitHub archive desteği geldi.
+# Varsayılan birim hâlâ ağa çıkmaz. Dosya, allowlist ve ağ opt-in drop-in
+# birlikte docs/guides/private-git.md'de anlatılır. Eski git helper yolu
+# aşağıdaki tarihsel ölçümde olduğu gibi kullanılmaz.
+#
 # ⚠ Hostta duran bir git kimlik bilgisi bugün İŞE YARAMIYOR. Ölçüldü
 # (K-057): dockerd, git'i `HOME=/dev/null` + `GIT_CONFIG_NOSYSTEM=1` ile
 # çalıştırıyor, yani ne `~/.gitconfig`'i ne `/etc/gitconfig`'i okuyor.

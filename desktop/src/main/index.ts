@@ -73,7 +73,7 @@ function userData(): string {
 function registerHandlers(): void {
   const command = resolveSidecarCommand({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, repoRoot });
   const syntheticFixture = SMOKE_TEST && !app.isPackaged && command.args.some((arg) => resolve(arg) === join(repoRoot, "desktop", "test", "fixtures", "fake-sidecar.mjs"));
-  registerManagementHandlers(sidecar, syntheticFixture);
+  registerManagementHandlers(sidecar, syntheticFixture, async () => (await loadAppearance(userData(), platformInfo, warn)).language);
   ipcMain.handle(CHANNELS.version, () => sidecar().call("version"));
   ipcMain.handle(CHANNELS.status, (_event, target: unknown) =>
     sidecar().call("status", { target: requireTarget(target) }),

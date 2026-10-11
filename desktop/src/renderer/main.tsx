@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { MotionConfig } from "motion/react";
 
 import { App } from "./App.tsx";
 import { AppearanceProvider, useAppearance } from "./appearance/AppearanceProvider.tsx";
@@ -15,6 +16,7 @@ import "./styles/controls.css";
 import "./styles/focus.css";
 import "./styles/layout.css";
 import "./styles/screens.css";
+import "./styles/management.css";
 
 /** Dil görünüm ayarlarından geliyor; sağlayıcı onun içinde. */
 function Localized() {
@@ -35,10 +37,12 @@ const bundle = await bridge.loadAppearance();
 
 createRoot(root).render(
   <StrictMode>
-    <ToastProvider>
-      <AppearanceProvider initial={bundle}>
-        <Localized />
-      </AppearanceProvider>
-    </ToastProvider>
+    <MotionConfig reducedMotion="user">
+      <ToastProvider>
+        <AppearanceProvider initial={bundle}>
+          <Localized />
+        </AppearanceProvider>
+      </ToastProvider>
+    </MotionConfig>
   </StrictMode>,
 );

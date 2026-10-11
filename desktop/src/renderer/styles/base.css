@@ -29,13 +29,17 @@ body {
   flex-direction: column;
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(var(--tone), var(--tint));
+  background: radial-gradient(ellipse at 5% 5%, rgba(var(--acc), 0.08), transparent 55%), rgba(var(--tone), var(--tint));
   border: 1px solid rgba(255, 255, 255, calc(var(--edge) * 0.6));
 }
 :root[data-mode="acrylic"] .app,
 :root[data-mode="mica"] .app,
 :root[data-mode="vibrancy"] .app { border-radius: 0; border: 0; }
 :root[data-mode="solid"] .app { border-radius: 0; border: 0; background: rgb(var(--tone)); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
 
 .is-ok { color: var(--ok); }
 .is-warn { color: var(--warn); }

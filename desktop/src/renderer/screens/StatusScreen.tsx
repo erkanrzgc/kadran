@@ -2,16 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AuditTable } from "../components/AuditTable.tsx";
 import { ChainCard } from "../components/ChainCard.tsx";
-import { EmptyState } from "../components/EmptyState.tsx";
+import { SetupHelp } from "../components/SetupHelp.tsx";
 import { InfoCard } from "../components/InfoCard.tsx";
 import { Sparkline } from "../components/Sparkline.tsx";
 import { Tile } from "../components/Tile.tsx";
 import { useAudit } from "../hooks/useAudit.ts";
 import type { ServerApi } from "../hooks/useServer.ts";
-import { useT } from "../i18n/I18nProvider.tsx";
+import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
 import { auditPlaceholderKey } from "../lib/audit-view.ts";
 import { chainView, worstTone } from "../lib/chain.ts";
-import { humanDuration, memoryText } from "../lib/format.ts";
+import { formatTime, humanDuration, memoryText } from "../lib/format.ts";
 import { statusMetaKeys } from "../lib/health.ts";
 
 /** Coolify'daki gibi: açıkken her 10 saniyede yenile. Varsayılan kapalı. */
@@ -20,7 +20,8 @@ const PREVIEW_SIZE = 10;
 
 export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll: () => void }) {
   const t = useT();
-  const { target, status, verify, rtt, memorySamples, rttSamples, stale } = server.state;
+  const language = useLanguage();
+  const { target, status, verify, rtt, memorySamples, rttSamples, stale, verifiedAt, verifyStale } = server.state;
   const [live, setLive] = useState(false);
   const audit = useAudit(target, PREVIEW_SIZE);
   const { refresh } = server;
@@ -59,13 +60,15 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
     return () => clearInterval(id);
   }, [live, target, reload]);
 
-  if (!target || !status) return <EmptyState title={t("status.empty_title")} body={t("status.empty_body")} />;
+  if (!target || !status) return <SetupHelp />;
 
   const host = status.host;
   const reachable = status.executor_reachable;
   const root = status.running_as_user === "root";
-  const daemonChain = chainView(verify?.daemon_status);
-  const execChain = chainView(verify?.executor_status);
+  const daemonStatus = verifyStale && verify?.daemon_status === "CHAIN_STATUS_VALID" ? undefined : verify?.daemon_status;
+  const execStatus = verifyStale && verify?.executor_status === "CHAIN_STATUS_VALID" ? undefined : verify?.executor_status;
+  const daemonChain = chainView(daemonStatus);
+  const execChain = chainView(execStatus);
   const previewKey = auditPlaceholderKey({
     total: audit.records.length,
     shown: audit.records.length,
@@ -157,19 +160,20 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
       <section className="chains">
         <ChainCard
           name={t("chains.daemon")}
-          status={verify?.daemon_status}
+          status={daemonStatus}
           checked={verify?.records_checked}
           detail={verify?.detail}
           testId="chain-daemon"
         />
         <ChainCard
           name={t("chains.executor")}
-          status={verify?.executor_status}
+          status={execStatus}
           checked={verify?.executor_records_checked}
           detail={verify?.executor_detail}
           testId="chain-executor"
         />
       </section>
+      <p className={verifyStale ? "chain-note is-warn" : "chain-note"} data-testid="verification-time" role="status">{verifiedAt ? t("chains.verified_at", { time: formatTime(new Date(verifiedAt).toISOString(), language) }) : t("chains.never_verified")}{verifyStale ? ` ${t("chains.stale")}` : ""}</p>
       <p className="chain-note">{t("chains.note")}</p>
 
       <section className="panel glass">

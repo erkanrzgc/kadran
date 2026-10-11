@@ -10,15 +10,26 @@
  */
 
 import { app, type BrowserWindow } from "electron";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 export const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
 
 export const EXPECTED_BRIDGE = [
+  "alarmsList",
+  "appCreate",
+  "appDelete",
+  "appDeploy",
+  "appGet",
+  "appLogs",
+  "appRollback",
+  "appUpdate",
+  "appsList",
   "auditList",
   "auditVerify",
+  "backupCreate",
+  "backupsList",
   "copyText",
   "loadAppearance",
   "loadProfiles",
@@ -47,9 +58,11 @@ export function prepareSmokeUserData(): string {
       { name: "down", target: "fake@down" },
       { name: "badseq", target: "fake@badseq" },
       { name: "flaky", target: "fake@flaky" },
+      { name: "verifyfail", target: "fake@verifyfail" },
+      { name: "slow", target: "fake@slow" },
     ]),
   );
-  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ mode: "solid" }));
+  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ mode: process.env.KADRAN_SMOKE_MODE === "clear" ? "clear" : "solid" }));
   app.setPath("userData", dir);
   return dir;
 }
@@ -95,6 +108,173 @@ async function text(win: BrowserWindow, selector: string): Promise<string> {
   return evaluate<string>(win, `${q(selector)}?.textContent ?? ""`);
 }
 
+async function fill(win: BrowserWindow, selector: string, value: string): Promise<void> {
+  const ok = await evaluate<boolean>(win, `(() => { const el = ${q(selector)}; if (!el) return false; const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
+  if (!ok) throw new Error(`not found: ${selector}`);
+}
+
+async function noHorizontalOverflow(win: BrowserWindow, label: string): Promise<void> {
+  const offenders = await evaluate<string[]>(win, `(() => { const nodes = [...document.querySelectorAll('.app, .stage, .rail, .panel, .table-wrap, .settings, .resource-card, .operation-dialog')]; return nodes.filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth); })()`);
+  expect(offenders.length === 0, `${label} horizontal overflow: ${offenders.join(", ")}`);
+}
+
+async function screenshot(win: BrowserWindow, name: string): Promise<void> {
+  // A DOM update can precede its compositor frame, especially in hidden windows.
+  await evaluate(win, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+  const dir = join(app.getPath("userData"), "evidence");
+  mkdirSync(dir, { recursive: true });
+  const capture = await win.capturePage(undefined, { stayHidden: true, stayAwake: true });
+  expect(!capture.isEmpty(), `empty screenshot: ${name}`);
+  const path = join(dir, `${name}.png`);
+  writeFileSync(path, capture.toPNG());
+  if (process.env.KADRAN_SMOKE_MODE === "clear") {
+    const bitmap = capture.toBitmap();
+    let translucent = 0;
+    let visible = 0;
+    for (let index = 3; index < bitmap.length; index += 4) { if (bitmap[index]! > 0) visible++; if (bitmap[index]! > 0 && bitmap[index]! < 255) translucent++; }
+    expect(visible > 1000 && translucent > 1000, `Clear mode does not retain visible translucent pixels (${visible}, ${translucent})`);
+    console.log(`Clear alpha evidence: ${translucent} translucent pixels`);
+  }
+  console.log(`UI evidence: ${path}`);
+}
+
+async function managementJourney(win: BrowserWindow): Promise<void> {
+  await click(win, '[data-testid="nav-apps"]');
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
+  await waitFor(win, `${q('[data-testid="brand-logo"]')}?.naturalWidth === 1254`, "original logo image");
+  const glass = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backdropFilter`);
+  expect(glass.includes("blur"), `glass surfaces have no real backdrop blur (${glass}); ${await evaluate<string>(win, "JSON.stringify({spaced:CSS.supports('backdrop-filter','blur(24px) saturate(135%)'),minified:CSS.supports('backdrop-filter','blur(24px)saturate(135%)'),rules:[...document.styleSheets].flatMap(s=>[...s.cssRules]).filter(r=>r.selectorText==='.glass').map(r=>r.cssText)})")}`);
+  await screenshot(win, "apps-dark-1180x780");
+  await click(win, '[data-testid="app-card-hello"]');
+  await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "r2"`, "active release");
+  await click(win, '[data-testid="app-tab-configuration"]');
+  expect(await evaluate<boolean>(win, `${q('[data-testid="app-delete"]')}.disabled`), "live app deletion is enabled");
+
+  await click(win, '[data-testid="app-deploy"]');
+  expect(await evaluate<boolean>(win, `document.activeElement === ${q('[data-testid="operation-confirmation"]')}`), "confirmation dialog did not focus its input");
+  expect(await evaluate<boolean>(win, `${q('[data-testid="operation-submit"]')}.disabled`), "deploy accepted without typed confirmation");
+  await fill(win, '[data-testid="operation-confirmation"]', "hello");
+  await fill(win, '[data-testid="deploy-ref"]', "fail");
+  await click(win, '[data-testid="operation-submit"]');
+  expect(await evaluate<boolean>(win, `${q('[data-testid="operation-submit"]')}.disabled`), "duplicate deploy remains enabled");
+  await waitFor(win, `${q('[data-testid="operation-error"]')}?.textContent.includes("health gate failed")`, "deployment failure");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="operation-result"]')})`)), "failed deploy reported success");
+  await fill(win, '[data-testid="deploy-ref"]', "main");
+  await click(win, '[data-testid="operation-submit"]');
+  await waitFor(win, `${q('[data-testid="operation-result"]')}?.textContent.includes("Deployment succeeded: r3")`, "deployment success");
+  await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "r3"`, "new active release");
+
+  await click(win, '[data-testid="app-rollback"]');
+  await fill(win, '[data-testid="operation-confirmation"]', "hello");
+  await click(win, '[data-testid="operation-submit"]');
+  await waitFor(win, `${q('[data-testid="operation-result"]')}?.textContent.includes("from r3 to r2")`, "rollback result");
+  await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "r2"`, "rollback active release");
+
+  await click(win, '[data-testid="app-tab-logs"]');
+  await waitFor(win, `${q('[data-testid="app-logs"]')}?.textContent.includes("Merhaba")`, "UTF-8 logs");
+  expect(!(await evaluate<boolean>(win, `Boolean(document.querySelector('#unsafe-log'))`)), "log output was interpreted as HTML");
+  await click(win, '[data-testid="app-tab-configuration"]');
+  expect((await text(win, '[data-testid="app-existing-env"]')).includes("MODE"), "existing environment names are missing");
+  expect(await evaluate<boolean>(win, `${q('[data-testid="app-envText"]')}.value === ""`), "redacted environment values were added as replacements");
+  await fill(win, '[data-testid="app-domain"]', "changed.example.com");
+  await click(win, '[data-testid="app-save"]');
+  await waitFor(win, `${q('[data-testid="operation-result"]')}?.textContent.includes("Configuration saved")`, "domain-only configuration update");
+  await waitFor(win, `${q('[data-testid="app-domain"]')}?.value === "changed.example.com"`, "domain-only refreshed configuration");
+  expect((await text(win, '[data-testid="app-existing-env"]')).includes("OLD"), "domain update removed an existing environment name");
+  await fill(win, '[data-testid="app-envText"]', "MODE=new\nEMPTY=");
+  await fill(win, '[data-testid="app-envRemoveText"]', "OLD");
+  await click(win, '[data-testid="app-save"]');
+  await waitFor(win, `${q('[data-testid="operation-result"]')}?.textContent.includes("Configuration saved")`, "configuration update");
+  await waitFor(win, `${q('[data-testid="app-domain"]')}?.value === "changed.example.com"`, "updated configuration");
+  expect(!(await text(win, '[data-testid="app-existing-env"]')).includes("OLD"), "explicit environment removal was not applied");
+
+  win.setSize(760, 520);
+  await waitFor(win, "window.innerWidth <= 760", "minimum window size");
+  await noHorizontalOverflow(win, "configuration at 760x520");
+  await evaluate(win, `${q('[data-testid="app-form"]')}.scrollIntoView({block:'start'})`);
+  await screenshot(win, "configuration-dark-760x520");
+  await click(win, '[data-testid="app-tab-deployments"]');
+  await noHorizontalOverflow(win, "releases at 760x520");
+  await click(win, '[data-testid="release-r2"] summary');
+  await noHorizontalOverflow(win, "release detail at 760x520");
+  await evaluate(win, `${q('[data-testid="release-r2"]')}.scrollIntoView({block:'start'})`);
+  await screenshot(win, "releases-dark-760x520");
+
+  await click(win, '[data-testid="apps-back"]');
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "application list after back");
+  await click(win, '[data-testid="app-new"]');
+  await fill(win, '[data-testid="app-appId"]', "INVALID");
+  await click(win, '[data-testid="app-save"]');
+  await waitFor(win, q('[data-testid="form-validation"]'), "application validation");
+  await fill(win, '[data-testid="app-appId"]', "demo");
+  await fill(win, '[data-testid="app-gitOwner"]', "team");
+  await fill(win, '[data-testid="app-gitRepo"]', "site");
+  await click(win, '[data-testid="app-save"]');
+  await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "No active deployment"`, "created app has no deployment");
+  await click(win, '[data-testid="app-tab-configuration"]');
+  await click(win, '[data-testid="app-delete"]');
+  await fill(win, '[data-testid="operation-confirmation"]', "demo");
+  await noHorizontalOverflow(win, "confirmation at 760x520");
+  await click(win, '[data-testid="operation-submit"]');
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "application list after deletion");
+  await waitFor(win, `${q('[data-testid="app-deleted"]')}?.textContent.includes("demo")`, "confirmed deletion result");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-card-demo"]')})`)), "deleted definition still exists");
+
+  await click(win, '[data-testid="nav-alarms"]');
+  await waitFor(win, q('[data-testid="alarm-row"]'), "alarm list");
+  await noHorizontalOverflow(win, "alarms at 760x520");
+  await click(win, '[data-testid="nav-backups"]');
+  await waitFor(win, q('[data-testid="backup-row"]'), "backup list");
+  expect((await text(win, '[data-testid="backups-scope"]')).includes("Application volumes"), "backup scope is missing");
+  await click(win, '[data-testid="backup-create"]');
+  await waitFor(win, `${q('[data-testid="backup-error"]')}?.textContent.includes("disk full")`, "backup failure");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="backup-result"]')})`)), "failed backup reported success");
+  await click(win, '[data-testid="backup-create"]');
+  await waitFor(win, q('[data-testid="backup-result"]'), "backup success");
+  await waitFor(win, `document.querySelectorAll('[data-testid="backup-row"]').length === 2`, "backup refreshed list");
+  await noHorizontalOverflow(win, "backups at 760x520");
+
+  await click(win, '[data-testid="server-fake@slow"]');
+  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "slow server connected");
+  await click(win, '[data-testid="nav-apps"]');
+  await waitFor(win, q('[data-testid="screen-apps"]'), "slow application read started");
+  await click(win, '[data-testid="server-fake@test"]');
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "new server application list");
+  await new Promise((r) => setTimeout(r, 1900));
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-card-old-only"]')})`)), "old-server response overwrote new application list");
+  await noHorizontalOverflow(win, "apps at 760x520");
+
+  await click(win, '[data-testid="nav-status"]');
+  await click(win, '[data-testid="server-fake@verifyfail"]');
+  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "initial successful verification");
+  const verifiedAt = await text(win, '[data-testid="verification-time"]');
+  expect(verifiedAt.includes("Last verified:"), "last verification time missing");
+  await click(win, '[data-testid="verify"]');
+  await waitFor(win, `${q('[data-testid="verification-time"]')}?.textContent.includes("out of date")`, "stale verification marker");
+  expect((await text(win, '[data-testid="health"]')) === "Attention required", "failed verification retained healthy status");
+  expect(!(await evaluate<boolean>(win, `Boolean(document.querySelector('.chains .badge.is-ok'))`)), "failed verification retained current green chain");
+  await noHorizontalOverflow(win, "status at 760x520");
+  await click(win, '[data-testid="nav-audit"]');
+  await waitFor(win, q('[data-testid="audit-detail-1284"]'), "minimum audit");
+  await click(win, '[data-testid="audit-detail-1284"]');
+  await noHorizontalOverflow(win, "audit detail at 760x520");
+  await screenshot(win, "audit-dark-760x520");
+  await click(win, '[data-testid="nav-settings"]');
+  await noHorizontalOverflow(win, "settings at 760x520");
+  await screenshot(win, "settings-dark-760x520");
+  await click(win, '[data-testid="tone-light"]');
+  await waitFor(win, "document.documentElement.dataset.tone === 'light'", "light appearance");
+  await click(win, '[data-testid="server-fake@test"]');
+  await click(win, '[data-testid="nav-apps"]');
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "light application list");
+  await noHorizontalOverflow(win, "light apps at 760x520");
+  await screenshot(win, "apps-light-760x520");
+  await click(win, '[data-testid="nav-settings"]');
+  await click(win, '[data-testid="tone-dark"]');
+  await click(win, '[data-testid="nav-status"]');
+  win.setSize(1180, 780);
+}
+
 async function rowSeqs(win: BrowserWindow, tableId: string): Promise<string[]> {
   return evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="${tableId}"] [data-testid="audit-row"]')].map((r) => r.dataset.seq)`);
 }
@@ -138,6 +318,10 @@ async function journey(win: BrowserWindow): Promise<void> {
   full = await rowSeqs(win, "audit-full");
   expect(full[99] === "1185", `older page ends at ${full[99]}`);
   expect(Boolean(await evaluate<boolean>(win, `Boolean(${q('[data-testid="outcome-bar"] .outcome-seg')})`)), "outcome bar is empty");
+  await click(win, '[data-testid="audit-detail-1284"]');
+  await waitFor(win, q('[data-testid="audit-detail-row"]'), "audit record detail");
+
+  await managementJourney(win);
 
   // Bozuk latest_seq HATA olmalı, "zincirde kayıt yok" değil.
   await click(win, '[data-testid="nav-status"]');
@@ -180,6 +364,7 @@ async function journey(win: BrowserWindow): Promise<void> {
 
 export async function runSmokeTest(win: BrowserWindow): Promise<void> {
   const problems: string[] = [];
+  win.webContents.setBackgroundThrottling(false);
 
   win.webContents.on("console-message", (_event, level, message) => {
     // level 3 = error. CSP ihlalleri de buraya düşer.

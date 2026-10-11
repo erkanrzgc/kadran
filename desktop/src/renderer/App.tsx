@@ -10,13 +10,16 @@ import { healthOf, healthTone } from "./lib/health.ts";
 import { createProfileStore } from "./lib/profile-store.ts";
 import type { VersionPayload } from "./lib/types.ts";
 import { AuditScreen } from "./screens/AuditScreen.tsx";
+import { AppsScreen } from "./screens/AppsScreen.tsx";
+import { AlarmsScreen } from "./screens/AlarmsScreen.tsx";
+import { BackupsScreen } from "./screens/BackupsScreen.tsx";
 import { SettingsScreen } from "./screens/SettingsScreen.tsx";
 import { StatusScreen } from "./screens/StatusScreen.tsx";
 import { useToast } from "./toast/ToastProvider.tsx";
 
 function initialView(): View {
   const v = new URLSearchParams(window.location.search).get("view");
-  return v === "audit" || v === "settings" ? v : "status";
+  return v === "audit" || v === "settings" || v === "apps" || v === "alarms" || v === "backups" ? v : "status";
 }
 
 export function App() {
@@ -63,7 +66,7 @@ export function App() {
     [store, toast],
   );
 
-  const health = healthOf(server.state.status, server.state.verify, server.state.stale);
+  const health = healthOf(server.state.status, server.state.verify, server.state.stale || server.state.verifyStale);
 
   return (
     <div className="app" data-testid="app">
@@ -93,6 +96,12 @@ export function App() {
             <StatusScreen server={server} onSeeAll={() => setView("audit")} />
           ) : view === "audit" ? (
             <AuditScreen target={server.state.target} />
+          ) : view === "apps" ? (
+            <AppsScreen key={server.state.target} target={server.state.target} />
+          ) : view === "alarms" ? (
+            <AlarmsScreen key={server.state.target} target={server.state.target} />
+          ) : view === "backups" ? (
+            <BackupsScreen key={server.state.target} target={server.state.target} />
           ) : (
             <SettingsScreen profiles={profiles} version={version} onRemoveProfile={(target) => void removeProfile(target)} />
           )}

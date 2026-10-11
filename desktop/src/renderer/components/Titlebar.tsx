@@ -3,8 +3,7 @@ import { useT } from "../i18n/I18nProvider.tsx";
 
 /**
  * Pencerenin başlık çubuğu. Sürükleme alanı CSS'te (-webkit-app-region).
- * macOS'ta sistem trafik ışıkları kalır; düğmeleri biz çizmeyiz. Logo
- * yeri (.mark) tasarımcının logosu gelene kadar boş.
+ * macOS'ta sistem trafik ışıkları kalır; düğmeleri biz çizmeyiz.
  */
 export function Titlebar() {
   const t = useT();
@@ -12,7 +11,7 @@ export function Titlebar() {
   return (
     <header className={mac ? "titlebar is-mac" : "titlebar"}>
       <div className="tb-brand">
-        <span className="mark" aria-hidden="true" />
+        <img className="brand-logo" src="./kadran-logo.png" alt={t("brand.logo")} data-testid="brand-logo" />
         <span className="wordmark">KΛDRΛN</span>
       </div>
       <div className="tb-drag" />

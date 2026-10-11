@@ -2,13 +2,13 @@ import { useState, type FormEvent } from "react";
 
 import type { Profile } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
-import { ActivityIcon, SettingsIcon, ShieldCheckIcon } from "../icons/index.ts";
+import { ActivityIcon, BadgeAlertIcon, HistoryIcon, ServerIcon, SettingsIcon, ShieldCheckIcon } from "../icons/index.ts";
 import type { Tone } from "../lib/chain.ts";
 import { versionLabel } from "../lib/format.ts";
 import type { VersionPayload } from "../lib/types.ts";
 import { NavButton } from "./NavButton.tsx";
 
-export type View = "status" | "audit" | "settings";
+export type View = "status" | "apps" | "alarms" | "backups" | "audit" | "settings";
 
 interface Props {
   profiles: readonly Profile[];
@@ -51,6 +51,7 @@ export function Rail({ profiles, currentTarget, currentTone, view, connecting, v
           </button>
         </div>
         <p className="hint">{t("rail.hint")}</p>
+        <details className="connection-help"><summary>{t("setup.connection_help")}</summary><p>{t("setup.compact_help")}</p></details>
       </form>
 
       <p className="label">{t("rail.saved")}</p>
@@ -84,6 +85,9 @@ export function Rail({ profiles, currentTarget, currentTone, view, connecting, v
 
       <nav className="nav" aria-label={t("nav.label")}>
         <NavButton icon={ActivityIcon} label={t("nav.status")} active={view === "status"} onClick={() => onNavigate("status")} testId="nav-status" />
+        <NavButton icon={ServerIcon} label={t("nav.apps")} active={view === "apps"} onClick={() => onNavigate("apps")} testId="nav-apps" />
+        <NavButton icon={BadgeAlertIcon} label={t("nav.alarms")} active={view === "alarms"} onClick={() => onNavigate("alarms")} testId="nav-alarms" />
+        <NavButton icon={HistoryIcon} label={t("nav.backups")} active={view === "backups"} onClick={() => onNavigate("backups")} testId="nav-backups" />
         <NavButton icon={ShieldCheckIcon} label={t("nav.audit")} active={view === "audit"} onClick={() => onNavigate("audit")} testId="nav-audit" />
         <NavButton icon={SettingsIcon} label={t("nav.settings")} active={view === "settings"} onClick={() => onNavigate("settings")} testId="nav-settings" />
       </nav>

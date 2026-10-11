@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 
 import { bridge } from "../bridge.ts";
 import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
@@ -16,6 +16,7 @@ export function AuditTable({ records, testId, placeholder }: { records: readonly
   const language = useLanguage();
   const toast = useToast();
   const [copied, setCopied] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Bileşen kapanırken bekleyen "kopyalandı" zamanlayıcısı bırakılmaz.
@@ -63,7 +64,7 @@ export function AuditTable({ records, testId, placeholder }: { records: readonly
             const actor = describeActor(r.actor) ?? t("audit.unknown_actor");
             const out = outcomeView(r.outcome);
             return (
-              <tr key={r.seq} data-testid="audit-row" data-seq={r.seq}>
+              <Fragment key={r.seq}><tr data-testid="audit-row" data-seq={r.seq}>
                 <td className="mono">{r.seq}</td>
                 <td className="mono">{formatTime(r.ts, language)}</td>
                 <td className="mono">
@@ -75,10 +76,10 @@ export function AuditTable({ records, testId, placeholder }: { records: readonly
                     actor
                   )}
                 </td>
-                <td className="mono">{r.action || "—"}</td>
+                <td className="mono"><button className="audit-detail-button" type="button" aria-expanded={expanded === r.seq} onClick={() => setExpanded((value) => value === r.seq ? null : r.seq)} title={t("audit.show_detail")} data-testid={`audit-detail-${r.seq}`}>{r.action || "—"}</button></td>
                 <td>{r.target || "—"}</td>
                 <td className={`outcome is-${out.tone}`}>{out.label}</td>
-              </tr>
+              </tr>{expanded === r.seq ? <tr data-testid="audit-detail-row"><td colSpan={6}><div className="audit-detail"><dl className="rows"><div className="row"><dt>{t("audit.detail")}</dt><dd className="operation-message">{r.detail || "—"}</dd></div><div className="row"><dt>{t("audit.source")}</dt><dd className="mono">{r.source || "—"}</dd></div><div className="row"><dt>{t("audit.fingerprint")}</dt><dd className="mono">{r.actor?.ssh_key_fingerprint || "—"}</dd></div><div className="row"><dt>{t("audit.source_ip")}</dt><dd className="mono">{r.actor?.source_ip || "—"}</dd></div><div className="row"><dt>{t("audit.origin")}</dt><dd>{r.actor?.origin || "—"}</dd></div></dl><h3 className="label">{t("audit.parameters")}</h3><pre className="log-output mono">{r.params_json || "—"}</pre></div></td></tr> : null}</Fragment>
             );
           })}
         </tbody>

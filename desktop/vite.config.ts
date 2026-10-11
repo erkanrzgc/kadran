@@ -8,6 +8,7 @@ import { defineConfig } from "vite";
 // CSP'ye geliştirme istisnası açılmasın diye hep derlenmiş dosya yüklenir.
 export default defineConfig({
   root: fileURLToPath(new URL("./src/renderer", import.meta.url)),
+  publicDir: fileURLToPath(new URL("./public", import.meta.url)),
   base: "./",
   plugins: [react()],
   build: {

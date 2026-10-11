@@ -64,6 +64,7 @@ const paths = await packager({
   arch: "x64",
   name: "Kadran",
   executableName: "Kadran",
+  icon: process.platform === "win32" ? join(desktop, "assets", "kadran.ico") : undefined,
   overwrite: true,
   asar: true,
   prune: false,

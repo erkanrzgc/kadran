@@ -1,0 +1,16 @@
+{
+  "source": "../public/kadran-logo.png",
+  "source_sha256": "cf247a056c7d877055bc4aa8e7d9d7997f7971ff25f3affb89ec35e2bacbfc18",
+  "ico_sha256": "ab76c133df15d8d515d8b58edef1b49a5df893403231454735db6c43dcde2540",
+  "sizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "encoder": "Pillow 12.3.0 ICO with RGBA PNG frames",
+  "transform": "RGBA format conversion and LANCZOS resizing only; original source unchanged"
+}

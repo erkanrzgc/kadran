@@ -1,0 +1,25 @@
+# Güvenlik ve masaüstü yönetim yükseltmesi
+
+Bu değişiklikler `90a6c55` üstüne hazırlanmıştır. GitHub'daki eski bir release'i indirmek bunları getirmez; güncellenmiş commit'ten üretilen bütün sunucu paketini kullan. Yerel testler canlı sunucuda yükseltme yapıldığı anlamına gelmez.
+
+## Birlikte yükseltilen parçalar
+
+`kadran`, `kadrand`, `kadran-exec`, `kadran-connect`, `kadran-vault`, `kadran-caddy`, yeni `kadran-proxy` ve systemd/tmpfiles dosyaları aynı paketten gelmelidir. Eski daemon'u yalnız yeni masaüstüyle kullanmak proxy güvenlik sınırını düzeltmez. `scripts/build-release.sh` ve `scripts/package-release.sh` yeni broker'ı pakete ekler. Derleme için Go 1.26.9 veya daha yeni yamalı araç zinciri gerekir; özel Caddy modülü 2.11.7 kullanır.
+
+Bootstrap yükseltmesi eski daemon/Caddy bağlantılarını kapatır, ham admin izinlerini değiştirir ve broker'ı etkinleştirir. Güvenlik geçişi kısa proxy kesintisi gerektirebilir; bakım penceresi ayır. Eski açık admin bağlantısını yalnız chmod ile daraltmak yeterli değildir.
+
+| Yol | İzin / erişim |
+|---|---|
+| `/run/kadran-proxy/proxy.sock` | Daemon tipli route API'sine erişir |
+| `/run/kadran-caddy/admin.sock` | Ham admin yalnız `kadran-proxy` grubuna açıktır |
+| `/run/kadran-exec/exec.sock` | Broker ve Caddy erişemez; mevcut executor sınırı korunur |
+
+Sunucuya `kadran-proxy.socket` ve `kadran-proxy.service` kurulmuş olmalı. Caddy veya broker kullanıcısını `kadran`, `docker` gruplarına ekleme. Daemon'u `kadran-proxy` grubuna ekleme. Proxy upstream'leri Docker IPv4 havuzu `172.16.0.0/12` içindedir; farklı havuz kullanan sunucuyu yükseltmeden önce uyumlu hale getir.
+
+## Yükseltmeden önce ve sonra
+
+Önce mevcut sürümü, etkin uygulamaları, rota ve alarm durumunu kaydet; veritabanı, hacim verisi ve vault anahtarının uygun yedeğini doğrula. Bootstrap için README'deki yönetici hedefi ve tam paket yolunu kullan.
+
+Sonra `systemctl is-active kadrand kadran-exec kadran-caddy kadran-proxy`, masaüstü bağlantısı, zincir doğrulaması, HTTPS rota, loglar ve yedek listesini kontrol et. Sıradan HTTP yanıtı tek başına dağıtım/rollback kanıtı değildir; canlı sürüm kimliği ve önceki sürümün geri alınabilmesi ayrıca doğrulanmalı.
+
+Geri dönüşte eski bir systemd/socket dosyasını yeniden kurmak ham Caddy yetkisini tekrar açabilir. Güvenlik sınırını koruyan önceki paket veya düzeltme kullan; sürüm geri alma ile uygulama rollback'ini karıştırma. Değişikliklerin yerel kanıtları [tamamlanma kaydında](../quality/2026-10-11-completion.md) bulunur.

@@ -10924,3 +10924,73 @@ Hepsi bu kayıt yazılırken koşuldu (Windows 11, Node 24, Electron 43.7.8):
 
 2–4. parçalar; logo (grafik tasarımcı); kurulum sihirbazı, imza, otomatik güncelleme;
 macOS ve Linux'ta görsel doğrulama.
+
+## K-143 — Ham Caddy admin yerine tipli proxy broker (2026-10-11)
+
+Dosya servis modüllerini çıkarmak tek başına dosya okuma sınırı değildi:
+`static_response` dosya placeholder'ı ile sentetik dosyanın içeriği okunabiliyordu.
+Daemon'un ham admin yetkisi kaldırıldı. Ayrı kullanıcıdaki `kadran-proxy` yalnız
+boyut sınırlı, bilinmeyen alanları reddeden rota DTO'larından sabit Caddy ayarını
+üretir. Domain, Docker IPv4 adresi ve port doğrulanır; keyfi JSON kabul edilmez.
+Unix soket izinleri, systemd kısıtları, bootstrap ve paketleme birlikte değişti.
+Yükseltme açık eski bağlantıları da kapatır; kısa bakım kesintisi mümkündür.
+Bu sınır IP'nin gerçek container sahipliğini kanıtlamaz. Kanıt: Unix/numerik UID
+erişim testleri, Caddy dosya okuma regresyonu ve altı broker mutasyonunun yakalanması.
+
+## K-144 — Uygulama yaşam döngüsünü birlikte sırala (2026-10-11)
+
+API deploy/rollback/update/delete/prune ile sağlık gözetmeninin heal işlemi aynı
+iptal edilebilir uygulama kuyruğunu paylaşır. Kilit rollout/drain sonuna kadar
+tutulur; farklı uygulamalar birbirini beklemez. Reconciler yüklemeleri de sıralar.
+Kendi rotası atlanan dağıtım başarı değildir. Başarısız/atlanan rota için mevcut
+doğrulanmış aynı-domain rota korunur; domain değiştirilmişse eski adın sahipliği
+kanıtlanmaz. Proxy onarımı yalnız domain kümesini değil upstream'i de karşılaştırır.
+Probe en fazla 4096 bayt tamamlanmış gövde kabul eder; yarım, takılan veya büyük
+gövde başarısızdır. ActiveDeployment veritabanı hatası silmeyi yetkilendirmez.
+Gerçek SQLite/API/rollout, kuyruk iptali ve gövde sınır testleri Windows/Linux
+`go test -race -count=1 ./...` içinde geçti.
+
+## K-145 — Dar masaüstü yönetim köprüsü ve cam kaynak görünümü (2026-10-11)
+
+On bir yönetim yöntemi mevcut gRPC API'sine bağlandı. Serbest kabuk/RPC eklenmedi.
+Deploy eşleşen Accepted/Succeeded olayı ve tamamlanan akış gerektirir. Logs UTF-8
+snapshot'ı 512 KiB ile sınırlı; JSON şekilleri ve yöntem girdileri kontrol edilir.
+SSH bağlantı kurulumu işlem zaman bütçesine dahildir. UTF-8 chunk decoder,
+başarısız doğrulamada eski yeşilin temizlenmesi ve beş dakikalık geçerlilik eklendi.
+Silme/rollback tam uygulama adı ve ana süreçte varsayılanı iptal olan TR/EN onayı
+gerektirir. Dokunulmayan ENV yer tutucusu sırrı ezmez.
+
+Kaynak navigasyonu, uygulama sekmeleri, log/alarm/yedek/audit ayrıntıları gerçek
+Clear pencere saydamlığıyla sunulur. 760×520 taşma ve koyu/açık TR/EN yolculuğu
+gerçek Electron'da sentetik sidecar ile ölçüldü. 168 masaüstü testi, dört derlenmiş
+çıktı testi ve 26 mutasyon geçti. Kullanıcının torus PNG'si değiştirilmeden
+README ve uygulamaya eklendi; ICO yalnız aynı görselin boyutlandırılmış sürümleri.
+Canlı sunucu yolculuğu, macOS/Linux görsel kontrolü, imza ve otomatik güncelleme
+bu kanıtın kapsamı dışında kalır.
+
+## K-146 — Sınırlı özel GitHub arşivi ve açık yetkili kod bütçesi (2026-10-11)
+
+Executor opt-in root/0600 credential dosyasından allowlist repo token'ını okur.
+Sabit GitHub API → doğrulanan tek codeload yönlendirmesiyle tam SHA arşivi alır;
+Bearer token Docker URL'sine, daemon'a veya audit'e girmez. 128 MiB sıkıştırılmış,
+512 MiB açılmış, 100000 girdi ve iki dakika sınırı vardır. Traversal, link, özel
+dosya, yinelenen/multiple-root girdiler reddedilir; geçici dosya temizlenir.
+Unix Docker HTTP testinde gerçek arşiv akışı sentetik token ile sınandı.
+Gerçek özel repo/token kullanılmadı; branch çözümü hâlâ istemcidedir. Özel erişim
+network systemd drop-in gerektirir, varsayılan executor AF_UNIX sınırı korunur.
+
+Yetkili import graph aynı 11 pakette kaldı; ölçülen kod 2581 → 2876 satıra çıktı.
+2600 sınırı gizlice aşılmadı: arşiv doğrulaması nedeniyle açıkça 2900'e yükseltildi.
+Bu büyüme güvenlik maliyetidir; yeni token kaynakları veya genel HTTP fetch API'si
+eklemek ayrı tasarım ve bütçe değerlendirmesi gerektirir.
+
+## K-147 — Kullanılan bağımlılık bulgularını kapat (2026-10-11)
+
+Go 1.26.5 ile tarama ana modülde 17, Caddy modülünde 26 erişilebilir bulgu
+gösterdi. İki modül ve CI Go 1.26.9'a taşındı; Caddy 2.11.7'ye yükseltildi,
+ilgili transitif yamalar ve go.sum güncellendi. CEL'i eski Caddy'de tek başına
+yükseltmek API uyumsuzluğu üretti; uyumlu Caddy patch sürümüyle birlikte yükseltildi.
+Son `govulncheck ./...` iki modülde de 0 erişilebilir ve 0 import edilen paket
+bulgusu gösteriyor. Her birinde modül grafiğinde kullanım dışı OpenPGP
+`GO-2026-5932` notu kalıyor; sıfır modül bulgusu iddiası yok.
+Caddy yarış testleri ve 151 modülün lisans toplama kontrolü geçti.

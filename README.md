@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/kadran-logo.png" alt="Kadran — yıldız benekli segmente torus logosu" width="220" />
+
 # KΛDRΛN
 
 ### Self-hosted Git deployments, with a control panel that never runs as root.
@@ -7,7 +9,7 @@
 [![CI](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/erkanrzgc/kadran?color=F59E0B)](https://github.com/erkanrzgc/kadran/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache_2.0-0E1116.svg)](LICENSE)
-[![Go 1.25+](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
+[![Go 1.26.9+](https://img.shields.io/badge/Go-1.26.9%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 
 [Quick start](#quick-start) · [Why](#why-kadran) · [Features](#what-it-does) · [Security model](#security-model) · [Upgrading](#upgrading-from-v030) · [Known gaps](#known-gaps)
 
@@ -17,7 +19,9 @@
 
 > [!NOTE]
 > **Pre-release.** The core deployment loop is complete and serves a real site on a live
-> server. Kadran is maintained by one person, some server-side messages are still in
+> server. Changes in the current quality upgrade are verified locally and in synthetic
+> integration tests; a fresh production upgrade is still to be validated. Kadran is
+> maintained by one person, some server-side messages are still in
 > Turkish, and the [known gaps](#known-gaps) matter for production use. Read them first.
 >
 > The project was called Panely until October 2026. Since v0.4.0 every name on the server
@@ -101,12 +105,13 @@ checks on the way.
 
 ## What it does
 
-Every row was measured on a live server, not only in tests. The evidence for each is in
-[`docs/decisions.md`](docs/decisions.md).
+The existing server measurements are in [`docs/decisions.md`](docs/decisions.md).
+Current desktop/proxy/lifecycle changes have separate local regression evidence in
+the [quality completion record](docs/quality/2026-10-11-completion.md).
 
 | Capability | Notes |
 |---|---|
-| **Git → container deploys** | Builds a commit's `Dockerfile` from a public repository. Only `github.com` by default; builds can be limited to a per-repository allowlist |
+| **Git → container deploys** | Builds a commit's `Dockerfile`. Public Git by default; opt-in [private GitHub archives](docs/guides/private-git.md) use root-only credentials and an explicit repository allowlist |
 | **Blue-green releases** | Traffic moves only after the new release answers its HTTP health check |
 | **Rollback** | Back to the previous release without rebuilding: ~18 s end to end, 55 of 55 probes returned `200` during the switch |
 | **Automatic HTTPS** | Let's Encrypt through a custom Caddy build with no file server compiled in. Atomic config reloads. A restarted or crashed proxy gets its routes back within 10 s (measured: 3 s after a restart, 7 s after a crash) |
@@ -122,6 +127,9 @@ Every row was measured on a live server, not only in tests. The evidence for eac
 | **Heartbeat** *(optional)* | A free-tier Cloudflare Worker ([`deploy/nabiz`](deploy/nabiz/README.md)) tells you when the alarm sender goes silent for 15 minutes, meaning it or the whole server is down |
 | **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `kadran audit verify` checks both |
 | **CI deploys** | Deploy-only SSH keys scoped to named apps; a GitHub Actions workflow that deploys on every push ([below](#continuous-deployment)) |
+| **Glass desktop management** | Apps, definitions, release history, deploy/rollback, bounded log snapshots, alarms, database backups and audit details. English/Turkish, adjustable native transparency and a responsive resource layout. [Desktop guide](docs/guides/desktop.md) |
+| **Typed proxy boundary** | Rootless `kadran-proxy` accepts only bounded domain/IP/port route sets. The daemon cannot reach raw Caddy admin or request file placeholders. [Upgrade guide](docs/guides/quality-upgrade.md) |
+| **Serialized application operations** | Same-app deploy, rollback, update, delete, prune and heal share a cancelable queue; independent apps proceed separately. Health probes must finish reading the response body |
 
 ## Install
 
@@ -135,7 +143,7 @@ Every row was measured on a live server, not only in tests. The evidence for eac
   2 GB swap, where a Node build peaked with 237 MiB free, K-121), both x86_64. arm64
   binaries are built and CI runs the tests on real ARM hardware, but no arm64 server has
   been installed yet.
-- **Workstation:** Go 1.25+, an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is
+- **Workstation:** Go 1.26.9+, an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is
   used by default; `-client-key` picks another.
 - **Ports 80 and 443** must be free. The installer stops if `caddy`, `nginx`, `apache2`,
   `httpd` or `lighttpd` is running.
@@ -298,7 +306,9 @@ place** (K-136):
                                          │                                               │
                                          │  kadran-caddy       user: kadran-caddy        │
                                          │    • :80/:443 for deployed apps               │
-                                         │    • configured by kadrand over a unix socket │
+                                         │    • raw admin reachable only by proxy broker│
+                                         │  kadran-proxy       user: kadran-proxy        │
+                                         │    • typed routes only, no Docker or root    │
                                          └───────────────────────────────────────────────┘
 ```
 
@@ -307,6 +317,7 @@ place** (K-136):
 | `kadrand` | `kadran` | Not in `docker`, empty capability set, `IPAddressDeny=any` | Business logic, SQLite, supervisor, alarms, backups, audit chain |
 | `kadran-exec` | `root` | Privileged, but accepts **only** typed schemas | Docker Engine API, constrained filesystem writes |
 | `kadran-caddy` | `kadran-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME |
+| `kadran-proxy` | `kadran-proxy` | Unix sockets only; no Docker, vault or Caddy state access | Validates typed route sets and builds fixed Caddy config; sole raw admin client |
 | `kadran-connect` | `kadran-client` | None; ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
 | `kadran` | workstation | — | CLI, and sidecar for the Electron GUI |
 
@@ -346,7 +357,7 @@ removed:
   CVE-2026-33748 are unrepresentable, independently of BuildKit's own validation.
 - **Every container is confined:** empty capability bounding set, `no-new-privileges`, a PID
   limit and memory/CPU/IO limits from the app definition.
-- **Privileged code is size-capped** at 2600 lines (raised from 2500 for the vault, K-123), measured from the *actual import graph*
+- **Privileged code is size-capped** at 2900 lines (private archive fetch/validation added in K-146), measured from the *actual import graph*
   of `cmd/kadran-exec` (not a hand-kept path list a new package could walk around), comments
   excluded. CI fails the build otherwise: a least-privilege boundary that keeps growing
   stops being one.
@@ -357,7 +368,8 @@ removed:
 |---|---|
 | kadrand API | `/run/kadran/api.sock` (unix socket) |
 | Executor | `/run/kadran-exec/exec.sock` (unix socket, directory `0750 root:kadran`) |
-| Proxy admin | `/run/kadran-caddy/admin.sock` (unix socket) |
+| Typed proxy capability | `/run/kadran-proxy/proxy.sock` (unix socket) |
+| Raw proxy admin | `/run/kadran-caddy/admin.sock` (unix socket, broker only) |
 | GUI ↔ sidecar | stdio (process pipes) |
 
 On the live server the only listening TCP ports are 22 (sshd) and 80/443 (the proxy, for
@@ -583,15 +595,20 @@ Tracked in the open rather than hidden. Each is a real limitation today.
 - **Volume backups are not snapshots.** Files are read while the app runs, so a database's
   files can come from different moments. Dump the database into the volume (`pg_dump`,
   `sqlite3 .backup`). Archives are full copies every night.
-- **Replicas share a volume.** Every replica, and both releases during a blue-green deploy,
-  mount the same directory. Apps that keep a single-writer database in a volume should run
-  one replica and accept that a deploy overlaps two writers for a few seconds.
-- **The desktop app is read-only:** version, status and the audit log. Management is CLI only.
+- **Replicas and overlapping releases share a volume.** Blue-green is suitable for
+  stateless apps and apps designed for concurrent writers. A single-writer database
+  on a writable volume needs an external database or a controlled maintenance
+  procedure; one replica alone does not remove overlap. The desktop displays this
+  boundary when configuring volumes.
+- **Desktop management has explicit limits.** Logs are bounded snapshots, build output
+  is shown after completion, and deletion is permitted only for apps without an active
+  release. Restore, pruning and advanced integrations remain documented CLI/admin flows.
 - **Some messages are still in Turkish.** The CLI, the install output and the errors the
   server sends back are English. The desktop app is English by default and can switch to
   Turkish. The server's journal lines and alarm texts are being translated.
-- **Dockerfile builds only**, from public repositories. No buildpacks, no private
-  repositories.
+- **Dockerfile builds only.** No buildpacks. [Private GitHub builds](docs/guides/private-git.md)
+  require a root credential file, repository allowlist and explicit executor network opt-in;
+  deploy an exact commit. The archive path does not clone submodules or support symlinks.
 - **Single node.** No TOTP on destructive actions, no rate limiting, no Cloudflare
   integration.
 
@@ -628,7 +645,7 @@ docs/                Architecture decision records
 scripts/             Surface checks, mutation tests — and the tests for those checks
 ```
 
-Requirements: Go 1.25+, Node 20+ (desktop only), [`buf`](https://buf.build/docs/installation),
+Requirements: Go 1.26.9+, Node 22.6+ (desktop only), [`buf`](https://buf.build/docs/installation),
 Docker for integration tests.
 
 ```bash

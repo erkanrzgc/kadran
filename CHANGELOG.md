@@ -7,6 +7,15 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ### Added
 
+- **Typed proxy broker (K-143).** The daemon can submit validated routes through
+  `kadran-proxy`; it can no longer send arbitrary JSON to Caddy's raw admin socket.
+- **Desktop resource management and original Kadran logo (K-145).** Applications,
+  configuration, deployments, rollback, bounded logs, alarms, backups and audit
+  details are available in the glass interface, including the 760×520 window.
+- **Private GitHub archives (K-146).** An opt-in executor credential file scopes
+  access to configured repositories. Credentials never enter Docker build URLs,
+  renderer state or deployment records. See `docs/guides/private-git.md`.
+
 - **New desktop app (K-142).** A glass window — Clear, Acrylic, Mica or Vibrancy, with
   the desktop showing through — and Appearance settings you tune yourself: tint, panel
   glass, edge highlight, hover glow, accent, theme, interface and code fonts (any
@@ -17,6 +26,10 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   this release Electron granted every permission request.
 
 ### Changed
+
+- **Patched build dependencies (K-147).** Both modules and CI require Go 1.26.9;
+  the separate proxy module uses Caddy 2.11.7. Reachable dependency findings were
+  removed; one unused module-level OpenPGP advisory remains in the module graph.
 
 - **The CLI speaks English (K-141).** Help, usage errors, tables, status labels and every
   message the CLI produces itself are English, including `bootstrap`'s own steps and the
@@ -41,6 +54,20 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   and Telegram texts, and the database's own trigger messages.
 
 ### Fixed
+
+- **Concurrent lifecycle operations (K-144).** Deploy, rollback, configuration,
+  deletion, pruning and automatic healing share a cancellable per-application queue.
+  Skipped target routes and failed proxy loads cannot report successful deployment.
+  Current validated routes for skipped existing domains are retained. Health probes
+  reject incomplete or oversized responses, with a 4 KiB body limit.
+- **Deletion fails closed (K-144).** Database errors while looking up the active
+  deployment no longer authorize container deletion.
+- **Desktop protocol and stale state (K-145).** UTF-8 is decoded across chunks;
+  management results are shape-checked; deploy needs a matching success event;
+  connection setup counts toward the operation deadline. Failed or expired audit
+  verification clears a previous green result, and stale health cannot remain green.
+- **Secret configuration edits (K-145).** An untouched secret placeholder does not
+  overwrite the stored secret; replacement and removal require explicit input.
 
 - **Desktop "recent audit records" showed the oldest records.** It asked for the first
   50 records after sequence 0; once a chain had more than 50 records, new ones never

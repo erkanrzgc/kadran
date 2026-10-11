@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/kadran-logo.png" alt="Kadran — yıldız benekli segmente torus logosu" width="220" />
+
 # KΛDRΛN
 
 ### Self-hosted Git deployments, with a control panel that never runs as root.

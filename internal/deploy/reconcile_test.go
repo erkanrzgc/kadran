@@ -335,3 +335,53 @@ func TestListingFailureSkipsOnlyThatApp(t *testing.T) {
 		t.Errorf("sebep taşınmıyor: %q", res.Skipped["blog"])
 	}
 }
+
+func TestReconcilePreservesSkippedRouteWhileUpdatingHealthyApp(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{live: canliShop(t, "172.19.0.4:3000")}
+	res, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skipped["shop"] == "" || len(res.Routed) != 1 || res.Routed[0] != "blog" {
+		t.Fatalf("preserved route was incorrectly reported as current success: %+v", res)
+	}
+	loaded := hosts(t, proxy.loaded)
+	if len(loaded["blog.example.com"]) != 1 || len(loaded["shop.example.com"]) != 1 || loaded["shop.example.com"][0] != "172.19.0.4:3000" {
+		t.Fatalf("updating healthy app removed skipped app's route: %v", loaded)
+	}
+}
+
+func TestReconcileDoesNotBlindlyLoadWhenSkippedLiveRouteIsUnreadable(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{currentErr: errors.New("proxy read failed")}
+	if _, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background()); err == nil {
+		t.Fatal("unreadable live route was ignored")
+	}
+	if proxy.calls != 0 {
+		t.Fatal("could not preserve skipped route, but replaced the live config anyway")
+	}
+}
+
+func TestReconcileDoesNotCarryForgedSkippedUpstream(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{live: canliShop(t, "172.19.0.4:3000")}
+	for _, srv := range proxy.live.Apps.HTTP.Servers {
+		for i := range srv.Routes {
+			for j := range srv.Routes[i].Handle {
+				for k := range srv.Routes[i].Handle[j].Upstreams {
+					srv.Routes[i].Handle[j].Upstreams[k].Dial = "unix//run/docker.sock"
+				}
+			}
+		}
+	}
+	if _, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(hosts(t, proxy.loaded)["shop.example.com"]) != 0 {
+		t.Fatal("forged live upstream was preserved")
+	}
+}

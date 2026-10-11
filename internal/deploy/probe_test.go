@@ -112,8 +112,8 @@ func TestProbeDoesNotDrainUnboundedBodies(t *testing.T) {
 
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatalf("yoklama başarısız: %v", err)
+		if err == nil {
+			t.Fatal("oversized health body was accepted as healthy")
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("yoklama 16 MB gövdeyi yutmaya çalıştı")
@@ -189,5 +189,36 @@ func TestProbeRejectsTruncatedSuccessBody(t *testing.T) {
 	}))
 	if err := NewHTTPProber(time.Second).Probe(context.Background(), ip, port, "/health"); err == nil {
 		t.Fatal("an incomplete successful response was accepted as healthy")
+	}
+}
+
+func TestProbeAcceptsCompletedBodyAtLimit(t *testing.T) {
+	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(strings.Repeat("x", probeBodyLimit)))
+	}))
+	if err := NewHTTPProber(time.Second).Probe(context.Background(), ip, port, "/health"); err != nil {
+		t.Fatalf("completed body at the limit was rejected: %v", err)
+	}
+}
+
+func TestProbeRejectsStalledBodyAtLimit(t *testing.T) {
+	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(probeBodyLimit+1))
+		_, _ = w.Write([]byte(strings.Repeat("x", probeBodyLimit)))
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	if err := NewHTTPProber(40*time.Millisecond).Probe(context.Background(), ip, port, "/health"); err == nil {
+		t.Fatal("body stalled after the byte limit was accepted as healthy")
+	}
+}
+
+func TestProbeRejectsTruncatedBodyAtLimit(t *testing.T) {
+	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(probeBodyLimit+1))
+		_, _ = w.Write([]byte(strings.Repeat("x", probeBodyLimit)))
+	}))
+	if err := NewHTTPProber(time.Second).Probe(context.Background(), ip, port, "/health"); err == nil {
+		t.Fatal("body truncated after the byte limit was accepted as healthy")
 	}
 }

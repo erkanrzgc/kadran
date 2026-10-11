@@ -24,10 +24,8 @@ type Prober interface {
 
 // probeBodyLimit, yanıt gövdesinden okunacak en fazla bayt.
 //
-// Gövdeyi hiç okumamak bağlantının yeniden kullanılmasını engeller;
-// tamamını okumak ise sağlıksız bir uygulamanın sonsuz akışıyla kadrand'nin
-// belleğini bitirmesine izin verir. Sağlık yanıtı için 4 KB fazlasıyla
-// yeter.
+// Sağlık yanıtı en fazla bu boyutta ve tamamlanmış olmalı. Bir ek bayt
+// okunarak sınırda tamamlanan yanıt ile daha büyük/sonsuz gövde ayrılır.
 const probeBodyLimit = 4 << 10
 
 // DefaultProbeTimeout, tek bir yoklamanın toplam süre sınırı.
@@ -107,10 +105,14 @@ func (p *HTTPProber) Probe(ctx context.Context, ip string, port uint32, path str
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("health probe returned %d (%s%s)", resp.StatusCode, u.Host, path)
 	}
-	// Headers alone do not establish health: a stalled or truncated body
-	// must fail within the same request deadline. The byte cap stays bounded.
-	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, probeBodyLimit)); err != nil {
+	// Reading one byte beyond the accepted limit distinguishes a completed
+	// response from a body that stalls or truncates exactly at the limit.
+	n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, probeBodyLimit+1))
+	if err != nil {
 		return fmt.Errorf("health response body failed (%s): %w", u.Host, err)
+	}
+	if n > probeBodyLimit {
+		return fmt.Errorf("health response body exceeds %d bytes (%s)", probeBodyLimit, u.Host)
 	}
 	return nil
 }

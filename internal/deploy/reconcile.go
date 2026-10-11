@@ -114,7 +114,18 @@ func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	if err != nil {
 		return p.res, err
 	}
-	cfg, err := rc.build(p.routes)
+	routes := p.routes
+	if len(p.skippedDomains) > 0 {
+		// A skipped new release must not remove the healthy previous route
+		// before rollout reports the failure. Preserve only validated live
+		// upstreams for the app's known domain; it stays reported as skipped.
+		live, err := rc.proxy.Current(ctx)
+		if err != nil {
+			return p.res, fmt.Errorf("deploy: could not preserve skipped live routes: %w", err)
+		}
+		routes = p.carrySkippedRoutes(live)
+	}
+	cfg, err := rc.build(routes)
 	if err != nil {
 		return p.res, err
 	}
@@ -179,13 +190,7 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 		return out, fmt.Errorf("deploy: could not read the live proxy config: %w", err)
 	}
 	out.Missing = proxydrv.MissingHosts(cfg, live)
-	routes := p.routes
-	for appID, domain := range p.skippedDomains {
-		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
-			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
-		}
-	}
-	if cfg, err = rc.build(routes); err != nil {
+	if cfg, err = rc.build(p.carrySkippedRoutes(live)); err != nil {
 		return out, err
 	}
 	// Compare after carrying the validated last known route of unhealthy
@@ -226,6 +231,19 @@ type plan struct {
 	routes         []proxydrv.AppRoute
 	skippedDomains map[string]string // uygulama → alan adı (atlananlar)
 	res            Result
+}
+
+// Carrying a previous route protects continuity, not the new desired state.
+// Keep Result.Skipped and Result.Routed unchanged so callers still fail an
+// operation whose own current release could not be routed.
+func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
+	routes := p.routes
+	for appID, domain := range p.skippedDomains {
+		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
+			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
+		}
+	}
+	return routes
 }
 
 // plan'ı kurar. Çağıran rc.gate'i tutmalı.

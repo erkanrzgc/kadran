@@ -173,7 +173,12 @@ func TestProbeRejectsStalledSuccessBody(t *testing.T) {
 	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(http.StatusOK)
-		w.(http.Flusher).Flush()
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("test response writer cannot flush")
+			return
+		}
+		flusher.Flush()
 		<-r.Context().Done()
 	}))
 	err := NewHTTPProber(40*time.Millisecond).Probe(context.Background(), ip, port, "/health")
@@ -205,7 +210,12 @@ func TestProbeRejectsStalledBodyAtLimit(t *testing.T) {
 	ip, port := serveOn(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Length", strconv.Itoa(probeBodyLimit+1))
 		_, _ = w.Write([]byte(strings.Repeat("x", probeBodyLimit)))
-		w.(http.Flusher).Flush()
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("test response writer cannot flush")
+			return
+		}
+		flusher.Flush()
 		<-r.Context().Done()
 	}))
 	if err := NewHTTPProber(40*time.Millisecond).Probe(context.Background(), ip, port, "/health"); err == nil {

@@ -31,7 +31,7 @@ ICO üretimi ve lisans/provenance [desktop/assets](../../desktop/assets/README.m
 | Windows, Go 1.26.9: `go test -race -count=1 ./...` | Geçti |
 | Ubuntu 24.04 root, Go 1.26.9, gerçek kasa araçları/sudo zorunlu: aynı yarış testi | Geçti |
 | `go vet ./...`, `buf lint`, golangci-lint | Geçti; lint 0 sorun |
-| Caddy ayrı modül: `go test -race -count=1 ./...` | Windows geçti; Linux/paket kontrolü aşağıdaki teslim kaydında |
+| Caddy ayrı modül: `go test -race -count=1 ./...` | Windows ve Linux geçti; Linux amd64 ikilisi de derlendi |
 | İki modülde `govulncheck ./...` | 0 erişilebilir, 0 import edilen paket; 1 kullanım dışı modül notu |
 | `go run ./tools/thirdparty -check` | 151 modül + standart kütüphane lisansı bulundu |
 | Yetkili kod/import graph kapısı | 2876/2900 satır; 11 paket |
@@ -76,5 +76,17 @@ verilmez. Yetkili kodun büyümesi K-146'da açıkça kaydedildi.
 
 ## Teslim kaydı
 
-Son Linux Caddy derlemesi, Windows paketi ve orijinal klasöre aktarım doğrulaması
-tamamlandığında bu bölüm gerçek sonuçlarla güncellenir.
+- Değişiklikler temiz `masaustu-temel` dalına fast-forward ile aktarıldı;
+  kullanıcının proje klasörü `C:/Users/erkanrzgc/Desktop/kadran`.
+- İmzasız Windows x64 paketi: `desktop/dist/Kadran-win32-x64/Kadran.exe`.
+  Paket, test edilen uygulama commit'i `00260b3ff1e6` ve
+  `v0.5.1-70-g00260b3` sidecar damgasıyla üretildi; sonraki teslim kaydı
+  commit'i yalnız dokümantasyon/CI değişiklikleri içerir.
+- Paket asıl klasöre kopyalandı ve burada Node bulunmayan PATH ile tekrar açıldı:
+  pencere yüklendi, beklenen IPC köprüsü mevcut, renderer'a Node sızmıyor.
+- `app.asar` 48 girdi içeriyor, `node_modules` girdisi 0; özgün logo renderer
+  çıktısına kopyalanmış. Paketlenen `Kadran.exe` ikon kaynağı çıkarılıp görsel
+  olarak kontrol edildi: kullanıcının torus simgesi mevcut.
+- Caddy 2.11.7 ayrı modülünün hem Windows hem Linux yarış testi geçti. Linux
+  amd64 derlemesi tamamlandı. CI artık iki Go modülünü ayrı güvenlik tarar;
+  bu yeni CI düzeni uzak runner'da çalıştırılmadı.

@@ -208,10 +208,9 @@ jobs:
       # atlarında değişebiliyor ve arıza ancak sunucuda kurulum sırasında
       # görülürdü.
       #
-      # ⚠ Bu binary bir GÜVENLİK SINIRI taşıyor: dosya servis eden
-      # modüller kasten dışarıda (docs/decisions.md K-050). Derlemenin
-      # CI'da koşması, o sınırın hâlâ derlenebilir olduğunu garanti eder;
-      # sınırın hâlâ ETKİLİ olduğu ise sunucuda ölçülüyor.
+      # Dosya servis modülleri kasten dışarıda (K-050), ancak çekirdek
+      # placeholder'lar da dosya okuyabilir. Ham admin erişiminin asıl
+      # güvenlik sınırı K-143'ün tipli broker ve Unix izinleridir.
       - name: Ters vekili derle (ayrı modül)
         run: |
           bash scripts/build-caddy.sh "${{ matrix.arch }}" "$PWD/dist/kadran-caddy"
@@ -447,6 +446,8 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+          # Kök tarama ayrı Caddy modülüne girmez; onu ayrıca tara.
+          (cd build/caddy && govulncheck ./...)
 
   # Masaüstü uygulaması (K-142). Bu işe kadar CI masaüstünü HİÇ koşmuyordu:
   # ne birim testleri ne pencerenin gerçekten açıldığı ölçülüyordu.

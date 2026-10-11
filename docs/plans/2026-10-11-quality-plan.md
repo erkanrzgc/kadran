@@ -56,10 +56,10 @@ Files: desktop renderer ekran/bileşen/stil/i18n, anlamlı davranış testleri v
 - [x] Özel Git desteğinin mevcut root/daemon ayrımına uygun kimlik bilgisi yolunu tasarla; unsafe Docker URL token veya renderer token ekleme.
 - [x] Destek uygulanırsa yalnız sentetik kimlik bilgisiyle redaksiyon, erişim kapsamı ve hata testleri; canlı kanıt sınırını açık tut.
 - [x] Yeni parçaları bağımsız gereksinim/kod incelemesinden geçir ve sorunları düzelt.
-- [ ] Tam Go yarış testi, go vet, buf lint, güvenlik yüzeyi, masaüstü test/build/Electron ve yeni proxy modülü kontrolleri geçti. Nihai Windows paket açılışı son teslim kapısıdır.
+- [x] Tam Go yarış testi, go vet, buf lint, güvenlik yüzeyi, masaüstü test/build/Electron ve yeni proxy modülü kontrolleri geçti. Nihai Windows paket açılışı da geçti; Node olmayan PATH ile orijinal klasörde doğrulandı.
 
 ## 7. Dokümantasyon ve teslim
 
 - [x] README/SECURITY/CHANGELOG/karar kaydı güncellenir; ilk bağlantı ve kullanım rehberi, yükseltme, volume/veritabanı tutarlılığı sınırı açık yazılır.
 - [x] `docs/quality/2026-10-11-completion.md` dosyasında yapılanlar, testler, gerçek sunucuda doğrulanmayanlar ve başlangıç commit'i yazılır.
-- [ ] Sadece doğrulanan değişiklikleri commit et; orijinal dal hâlâ aynı ve temizse fast-forward ile kullanıcının klasörüne taşı. Genel kalite paketi push veya canlı upgrade yapılmaz. Kullanıcının ayrıca istediği logo/README GitHub main değişikliği 138b7cc olarak yayımlandı.
+- [x] Sadece doğrulanan değişiklikleri commit et; orijinal dal hâlâ aynı ve temizse fast-forward ile kullanıcının klasörüne taşı. Genel kalite paketi push veya canlı upgrade yapılmaz. Kullanıcının ayrıca istediği logo/README GitHub main değişikliği 138b7cc olarak yayımlandı.

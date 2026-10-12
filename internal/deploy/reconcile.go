@@ -264,6 +264,16 @@ func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 			continue
 		}
 
+		// Veritabanında geçersiz alan adlı bir uygulama zaten olabilir
+		// (eski sürümde kabul edilmiş). Bu, proxydrv.FixedConfig'i bütün
+		// rota kümesi için başarısız kılardı; yalnız o uygulama atlanır.
+		// skippedDomains'e KONMUYOR: geçersiz alan adı için canlı rota
+		// taşınmaz.
+		if !proxydrv.ValidDomain(d.Domain) {
+			p.res.Skipped[d.AppID] = fmt.Sprintf("invalid domain %q: the proxy would reject it", d.Domain)
+			continue
+		}
+
 		ups, why := rc.upstreamsFor(ctx, d)
 		if why != "" {
 			p.res.Skipped[d.AppID] = why

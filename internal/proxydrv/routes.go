@@ -36,7 +36,7 @@ func FixedConfig(set RouteSet) (*Config, error) {
 	}
 	routes := make([]AppRoute, 0, len(set.Routes))
 	for i, r := range set.Routes {
-		if !validDomain(r.Domain) {
+		if !ValidDomain(r.Domain) {
 			return nil, fmt.Errorf("invalid proxy domain %q", r.Domain)
 		}
 		if len(r.Upstreams) == 0 || len(r.Upstreams) > MaxRouteUpstreams {
@@ -64,7 +64,12 @@ func FixedConfig(set RouteSet) (*Config, error) {
 	return BuildConfig(BuildOptions{Admin: Admin{Listen: "fd/3", Origins: []string{"localhost"}}, Routes: routes})
 }
 
-func validDomain(domain string) bool {
+// ValidDomain, vekilin kabul ettiği alan adı kuralının TEK tanımıdır.
+// API (create/update) ve proxydrv (FixedConfig) aynı işlevi kullanır: iki
+// ayrı doğrulayıcı, API'nin kabul ettiği ama vekilin tüm rota kümesini
+// reddettiği uygulamalar üretiyordu. Küçük harf, en az bir nokta, etiket
+// başına en fazla 63 karakter ve IP sabiti DEĞİL.
+func ValidDomain(domain string) bool {
 	if len(domain) > 253 || !strings.Contains(domain, ".") || domain != strings.ToLower(domain) {
 		return false
 	}

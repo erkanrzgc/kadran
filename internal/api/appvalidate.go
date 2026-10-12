@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/proxydrv"
 )
 
 // ── Doğrulama: KARAKTER KÜMELERİ evet, POLİTİKA hayır ────────────────
@@ -269,8 +270,11 @@ func validateDomain(d string) error {
 		return nil // Alan adı olmayan uygulama geçerli: yalnızca iç ağdan erişilir.
 	case len(d) > maxDomainLen:
 		return fmt.Errorf("domain too long (%d bytes)", len(d))
-	case !hostPattern.MatchString(d):
-		return fmt.Errorf("invalid domain (%q) — must not contain a scheme, port or path", d)
+	case !proxydrv.ValidDomain(d):
+		// Vekil ile AYNI kural: IP sabiti ve 63 karakterden uzun etiket
+		// burada kabul edilirse vekil bütün rota kümesini reddederdi.
+		return fmt.Errorf("invalid domain (%q) — must be a lowercase DNS name with labels of at most 63 characters, "+
+			"not an IP address, and must not contain a scheme, port or path", d)
 	}
 	return nil
 }

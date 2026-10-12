@@ -14,6 +14,7 @@ import type { Language } from "../src/shared/appearance.ts";
 import { CHANNELS } from "../src/shared/channels.ts";
 import { isCancelled } from "../src/shared/management.ts";
 import { createManagementHandlers } from "../src/main/management-core.ts";
+import { SidecarError } from "../src/shared/sidecar-client.ts";
 import type { ConfirmationOptions } from "../src/main/management-confirmation.ts";
 
 const TARGET = "kadran-client@203.0.113.7";
@@ -50,7 +51,7 @@ function validSpec(): Record<string, unknown> {
   };
 }
 
-interface Options { isFixture?: boolean; response?: number; language?: Language }
+interface Options { isFixture?: boolean; response?: number; language?: Language; failWith?: unknown }
 
 function harness(options: Options = {}) {
   const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
@@ -59,7 +60,11 @@ function harness(options: Options = {}) {
   const state = { response: options.response ?? 1, release: null as null | (() => void) };
   createManagementHandlers({
     handle: (channel, fn) => { handlers.set(channel, fn); },
-    call: async (method, params, opts) => { calls.push({ method, params, timeoutMs: opts.timeoutMs }); return RESULTS[method]; },
+    call: async (method, params, opts) => {
+      calls.push({ method, params: params ?? {}, timeoutMs: opts?.timeoutMs ?? 0 });
+      if (options.failWith !== undefined) throw options.failWith;
+      return RESULTS[method];
+    },
     showDialog: async (_event, dialogOptions) => {
       dialogs.push(dialogOptions);
       if (state.release === null) return { response: state.response };
@@ -325,3 +330,23 @@ test("sidecar'ın geçersiz yanıtı yine reddedilir", async () => {
     RESULTS["backups.create"] = original;
   }
 });
+
+// Gerçek sidecar hatası {message: "call failed", data: <sebep>} biçiminde gelir;
+// her yönetim kanalı sebebi arıtılmış hâlde renderer'a iletmeli, ham data'yı değil.
+const READS: [string, unknown[]][] = [
+  ["appsList", [TARGET]], ["appGet", [TARGET, "blog"]], ["appLogs", [TARGET, "blog", 100]],
+  ["alarmsList", [TARGET]], ["backupsList", [TARGET]],
+];
+
+for (const [name, args] of [...READS, ...MUTATING.map(([n, , a]) => [n, a] as [string, unknown[]])]) {
+  test(`${name}: sidecar hatasının gerçek sebebi arıtılıp iletilir`, async () => {
+    const failure = new SidecarError("call failed", -32603, "clone https://user:hunter2@git.example/x.git failed‮: ghp_abcdef123456");
+    const h = harness({ failWith: failure });
+    await assert.rejects(h.invoke(CHANNELS[name as keyof typeof CHANNELS], ...args), (err: unknown) => {
+      assert.ok(err instanceof Error);
+      assert.equal(err instanceof SidecarError, false, "ham SidecarError (data alanıyla) geçmemeli");
+      assert.equal(err.message, "call failed: clone https://***@git.example/x.git failed: ***");
+      return true;
+    });
+  });
+}

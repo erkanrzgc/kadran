@@ -403,7 +403,7 @@ async function journey(win: BrowserWindow): Promise<void> {
   const downToast = `[...document.querySelectorAll('[data-testid="toast"] .toast-text')].find((el) => el.textContent.includes("Connection refused"))`;
   await waitFor(win, downToast, "error toast");
   const toast = await evaluate<string>(win, `${downToast}.textContent`);
-  expect(toast.startsWith("Bağlanılamadı: could not connect to fake@down"), `toast text: ${toast}`);
+  expect(toast.startsWith("Bağlanılamadı: could not connect: ssh: connect to host down"), `toast text: ${toast}`);
   expect(toast.includes("authorized_keys"), "toast text was cut");
 }
 

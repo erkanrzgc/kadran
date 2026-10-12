@@ -24,11 +24,12 @@ import { CHANNELS } from "../shared/channels.ts";
 import { SidecarClient } from "../shared/sidecar-client.ts";
 import type { SidecarProcess } from "../shared/sidecar-client.ts";
 import { loadAppearance, saveAppearance } from "./appearance.ts";
-import { requireCopyText, requireTarget, requireWindowAction, toUint } from "./ipc-validate.ts";
+import { requireCopyText, requireWindowAction } from "./ipc-validate.ts";
 import { lockDownPermissions } from "./permissions.ts";
 import { registerManagementHandlers } from "./management-handlers.ts";
 import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
 import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
+import { registerSidecarReads } from "./sidecar-reads.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
 import { createWindowHost, type WindowHost } from "./window.ts";
 
@@ -74,16 +75,7 @@ function registerHandlers(): void {
   const command = resolveSidecarCommand({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, repoRoot });
   const syntheticFixture = SMOKE_TEST && !app.isPackaged && command.args.some((arg) => resolve(arg) === join(repoRoot, "desktop", "test", "fixtures", "fake-sidecar.mjs"));
   registerManagementHandlers(sidecar, syntheticFixture, async () => (await loadAppearance(userData(), platformInfo, warn)).language);
-  ipcMain.handle(CHANNELS.version, () => sidecar().call("version"));
-  ipcMain.handle(CHANNELS.status, (_event, target: unknown) =>
-    sidecar().call("status", { target: requireTarget(target) }),
-  );
-  ipcMain.handle(CHANNELS.auditList, (_event, target: unknown, afterSeq: unknown, limit: unknown) =>
-    sidecar().call("audit.list", { target: requireTarget(target), after_seq: toUint(afterSeq, 0), limit: toUint(limit, 50) }),
-  );
-  ipcMain.handle(CHANNELS.auditVerify, (_event, target: unknown) =>
-    sidecar().call("audit.verify", { target: requireTarget(target) }),
-  );
+  registerSidecarReads({ handle: (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(event, ...args)), call: (method, params, options) => sidecar().call(method, params, options) });
   ipcMain.handle(CHANNELS.loadProfiles, () => loadProfiles(userData(), (msg) => console.warn("[profiller]", msg)));
   ipcMain.handle(CHANNELS.saveProfiles, (_event, profiles: unknown) => saveProfiles(userData(), profiles));
   ipcMain.handle(CHANNELS.loadAppearance, async () => ({

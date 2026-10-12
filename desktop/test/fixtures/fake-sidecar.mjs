@@ -29,14 +29,18 @@ const load = (name) => JSON.parse(readFileSync(join(here, name), "utf8"));
 const status = load("status.json");
 const verify = load("verify.json");
 const template = load("audit-record.json");
+// Hata biçimi gerçek sidecar'dan: cmd/kadran/sidecar_error_test.go bu altın dosyayı üretir/denetler.
+// `message` sabit sınıf adı, gerçek sebep `data`'dadır.
+const goldenError = load("sidecar-error.json");
+const rpcFail = (kind, data) => ({ error: { ...goldenError[kind], data } });
 const healthyStatus = { ...status, executor_reachable: true };
 const healthyVerify = { ...verify, executor_status: "CHAIN_STATUS_VALID" };
 
 export const LATEST = 1284;
 export const DOWN_MESSAGE =
-  "could not connect to fake@down: ssh: connect to host down port 22: Connection refused; " +
+  "ssh: connect to host down port 22: Connection refused; " +
   "check that the server is running and that this key is allowed in /home/kadran-client/.ssh/authorized_keys";
-export const FLAKY_MESSAGE = "could not reach fake@flaky: connection reset by peer";
+export const FLAKY_MESSAGE = "rpc error: code = Unavailable desc = connection reset by peer";
 
 const ACTIONS = ["deploy", "app.update", "rollback", "backup.create", "app.delete"];
 const OUTCOMES = ["AUDIT_OUTCOME_SUCCESS", "AUDIT_OUTCOME_SUCCESS", "AUDIT_OUTCOME_SUCCESS", "AUDIT_OUTCOME_FAILURE", "AUDIT_OUTCOME_DENIED"];
@@ -80,7 +84,7 @@ rl.on("line", (line) => {
   const reply = (body) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, ...body }) + "\n");
   const params = req.params ?? {};
   if (params.target === "fake@down") {
-    reply({ error: { code: -32000, message: DOWN_MESSAGE } });
+    reply(rpcFail("connect", DOWN_MESSAGE));
     return;
   }
   switch (req.method) {
@@ -89,7 +93,7 @@ rl.on("line", (line) => {
       return;
     case "status":
       if (params.target === "fake@flaky") {
-        if (++flakyStatusCalls > 1) reply({ error: { code: -32000, message: FLAKY_MESSAGE } });
+        if (++flakyStatusCalls > 1) reply(rpcFail("call", FLAKY_MESSAGE));
         else reply({ result: healthyStatus });
         return;
       }
@@ -100,7 +104,7 @@ rl.on("line", (line) => {
       reply({ result: auditList(params) });
       return;
     case "audit.verify":
-      if (params.target === "fake@verifyfail" && ++verificationCalls > 1) { reply({ error: { code: -32000, message: "verification connection lost" } }); return; }
+      if (params.target === "fake@verifyfail" && ++verificationCalls > 1) { reply(rpcFail("call", "verification connection lost")); return; }
       reply({ result: ["fake@flaky", "fake@verifyfail", "fake@slow"].includes(params.target) ? healthyVerify : verify });
       return;
     case "apps.list":
@@ -108,17 +112,17 @@ rl.on("line", (line) => {
       reply({ result: { apps: [...apps.values()].map(publicApp) } });
       return;
     case "apps.get":
-      if (!apps.has(params.app_id)) { reply({ error: { code: -32000, message: "application not found" } }); return; }
+      if (!apps.has(params.app_id)) { reply(rpcFail("call", "application not found")); return; }
       reply({ result: { app: publicApp(apps.get(params.app_id)), releases: params.app_id === "hello" ? releases : [], active_release_id: params.app_id === "hello" ? activeRelease : "" } });
       return;
     case "apps.create":
-      if (apps.has(params.spec.app_id)) { reply({ error: { code: -32000, message: "application already exists" } }); return; }
+      if (apps.has(params.spec.app_id)) { reply(rpcFail("call", "application already exists")); return; }
       apps.set(params.spec.app_id, { ...app(params.spec), release_count: 0 });
       reply({ result: { app: publicApp(apps.get(params.spec.app_id)) } });
       return;
     case "apps.update": {
       const current = apps.get(params.app_id);
-      if (!current) { reply({ error: { code: -32000, message: "application not found" } }); return; }
+      if (!current) { reply(rpcFail("call", "application not found")); return; }
       const { env_remove = [], volume_remove = [], env = {}, volumes = [], ...scalars } = params.update;
       current.spec = { ...current.spec, ...scalars, env: { ...current.spec.env, ...env }, volumes: [...current.spec.volumes.filter((v) => !volume_remove.includes(v.name) && !volumes.some((n) => n.name === v.name)), ...volumes] };
       for (const key of env_remove) delete current.spec.env[key];
@@ -127,7 +131,7 @@ rl.on("line", (line) => {
     }
     case "apps.deploy":
       setTimeout(() => {
-        if (params.ref === "fail") { reply({ error: { code: -32000, message: "health gate failed: HTTP 503; existing traffic retained" } }); return; }
+        if (params.ref === "fail") { reply(rpcFail("call", "health gate failed: HTTP 503; existing traffic retained")); return; }
         activeRelease = "r3";
         apps.get("hello").release_count = 3;
         releases.unshift({ ...releases[0], release_id: "r3", commit_sha: "d".repeat(40) });
@@ -141,7 +145,7 @@ rl.on("line", (line) => {
       return;
     }
     case "apps.delete": {
-      if (params.app_id === "hello" && activeRelease) { reply({ error: { code: -32000, message: "application has an active release" } }); return; }
+      if (params.app_id === "hello" && activeRelease) { reply(rpcFail("call", "application has an active release")); return; }
       const current = apps.get(params.app_id);
       apps.delete(params.app_id);
       reply({ result: { app_id: params.app_id, containers_removed: 0, releases_deleted: 0, deployments_deleted: 0, volumes_kept: (current?.spec.volumes ?? []).map((v) => v.name) } });
@@ -158,7 +162,7 @@ rl.on("line", (line) => {
       return;
     case "backups.create":
       setTimeout(() => {
-        if (++backupCalls === 1) { reply({ error: { code: -32000, message: "backup failed: disk full" } }); return; }
+        if (++backupCalls === 1) { reply(rpcFail("call", "backup failed: disk full")); return; }
         const backup = { path: "/var/lib/kadran/backups/kadran-20261011T120000Z.db", bytes: "266240", taken_unix: "1791720000" };
         backups.unshift(backup);
         reply({ result: { backup, volumes_excluded: true } });

@@ -46,6 +46,8 @@ FILES=(
     src/main/management-results.ts
     src/main/management-confirmation.ts
     src/main/management-payload.ts
+    src/main/sidecar-error.ts
+    src/main/sidecar-reads.ts
 )
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -213,6 +215,28 @@ mutate_in src/main/management-payload.ts "yasak bağlama kökü /dev kabul edili
     "s=s.replace('[\"/proc\", \"/sys\", \"/dev\"]','[\"/proc\", \"/sys\"]',1)"
 mutate_in src/main/ipc-validate.ts "hedefte biçim karakteri (bidi) kabul ediliyor" \
     "s=s.replace('[\\\\p{Cc}\\\\p{Cf}]','[\\\\p{Cc}]',1)"
+
+echo "== Sidecar hata metni (gerçek sebep, redaksiyon) =="
+mutate_in src/main/sidecar-error.ts "gerçek sebep (data) atılıyor, yalnız 'call failed' kalıyor" \
+    "s=s.replace('}: \${err.data}\`','}\`',1)"
+mutate_in src/main/sidecar-error.ts "URL kimlik bilgisi silinmiyor" \
+    "s=s.replace('.replace(URL_USERINFO,','.replace(/(?!)/g,',1)"
+mutate_in src/main/sidecar-error.ts "x-access-token silinmiyor" \
+    "s=s.replace('.replace(X_ACCESS_TOKEN,','.replace(/(?!)/g,',1)"
+mutate_in src/main/sidecar-error.ts "ghp_/gho_/ghu_/ghs_/ghr_ jetonu silinmiyor" \
+    "s=s.replace('.replace(GITHUB_TOKEN,','.replace(/(?!)/g,',1)"
+mutate_in src/main/sidecar-error.ts "github_pat_ jetonu silinmiyor" \
+    "s=s.replace('.replace(GITHUB_PAT,','.replace(/(?!)/g,',1)"
+mutate_in src/main/sidecar-error.ts "biçim (bidi) karakterleri geçiyor" \
+    "s=s.replace('[\\\\p{Cc}\\\\p{Cf}]','[\\\\p{Cc}]',1)"
+mutate_in src/main/sidecar-error.ts "uzunluk sınırı yok" \
+    "s=s.replace('chars.length > MAX_ERROR_CHARS ?','false ?',1)"
+mutate_in src/main/sidecar-error.ts "redaksiyon karakter temizliğinden ÖNCE (bölünmüş jeton kaçar)" \
+    "s=s.replace('redactSecrets(stripUnsafeCharacters(raw))','stripUnsafeCharacters(redactSecrets(raw))',1)"
+mutate_in src/main/management-core.ts "yönetim kanalları ham sidecar hatasını geçiriyor" \
+    "s=s.replace('callForUi(deps.call, method,','deps.call(method,',1)"
+mutate_in src/main/sidecar-reads.ts "durum/denetim kanalları ham sidecar hatasını geçiriyor" \
+    "s=s.replace('callForUi(deps.call, method, params)','deps.call(method, params)',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

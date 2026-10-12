@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { isCancelled, type ManagementCancelled } from "../../shared/management.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
+import { errorText } from "../lib/errors.ts";
 import { createRequestScope } from "../lib/management.ts";
 
 /**
@@ -28,7 +29,7 @@ export function useManagementOperation() {
     if (result.status === "discarded") return null;
     busy.current = false;
     setPending(false);
-    if (result.status === "error") { setError(result.error.message); return null; }
+    if (result.status === "error") { setError(errorText(result.error)); return null; }
     if (isCancelled(result.value)) { setNotice(t("operation.cancelled")); return null; }
     return result.value;
   }, [scope, t]);

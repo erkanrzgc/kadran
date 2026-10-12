@@ -16,10 +16,11 @@ import { requireTarget } from "./ipc-validate.ts";
 import { managementConfirmation, type ConfirmationOptions, type ConfirmRequest } from "./management-confirmation.ts";
 import { createManagementGate, requireAppId, requireAppPayload, requireConfirmation, requireRef, requireTail } from "./management-ipc.ts";
 import { validateManagementResult } from "./management-results.ts";
+import { callForUi, type SidecarCall } from "./sidecar-error.ts";
 
 export interface ManagementDeps {
   handle(channel: string, fn: (event: unknown, ...args: unknown[]) => unknown): void;
-  call(method: string, params: Record<string, unknown>, options: { timeoutMs: number }): Promise<unknown>;
+  call: SidecarCall;
   showDialog(event: unknown, options: ConfirmationOptions): Promise<{ response: number }>;
   language(): Promise<Language>;
   /** Yalnız paketlenmemiş, açıkça seçilmiş yerel sahte sidecar düzeneğinde true. */
@@ -46,7 +47,7 @@ const BACKUP_TIMEOUT_MS = 90_000 + SIDECAR_MARGIN_MS;
 export function createManagementHandlers(deps: ManagementDeps): void {
   const gate = createManagementGate();
   const invoke = (method: string, target: unknown, params: Record<string, unknown> = {}, timeoutMs = READ_TIMEOUT_MS) =>
-    deps.call(method, { target: requireTarget(target), ...params }, { timeoutMs }).then((value) => validateManagementResult(method, value));
+    callForUi(deps.call, method, { target: requireTarget(target), ...params }, { timeoutMs }).then((value) => validateManagementResult(method, value));
   const confirm = async (event: unknown, request: ConfirmRequest): Promise<boolean> => {
     // Yalnızca paketlenmemiş yerel sahte düzenekte ve yalnız fake@test hedefinde atlanır.
     if (deps.isFixture && request.target === "fake@test") return true;

@@ -289,7 +289,7 @@ func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, t
 	defer cancel()
 	conn, err := s.connFor(ctx, p.Target)
 	if err != nil {
-		return nil, &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
+		return nil, connectFailure(err)
 	}
 
 	if err := ctx.Err(); err != nil {
@@ -301,9 +301,21 @@ func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, t
 		if shouldDropConnection(err) {
 			s.closeTarget(p.Target)
 		}
-		return nil, &rpcError{Code: codeInternalError, Message: "call failed", Data: err.Error()}
+		return nil, callFailure(err)
 	}
 	return result, nil
+}
+
+// connectFailure ve callFailure, masaüstüne giden hata biçiminin TEK
+// kaynağıdır: `message` sabit bir sınıf adı, gerçek sebep `data`'dadır.
+// Masaüstü ikisini birleştirip gösterir; biçim desktop/test/fixtures/
+// sidecar-error.json altın dosyasıyla sabitlenir (sidecar_error_test.go).
+func connectFailure(err error) *rpcError {
+	return &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
+}
+
+func callFailure(err error) *rpcError {
+	return &rpcError{Code: codeInternalError, Message: "call failed", Data: err.Error()}
 }
 
 // shouldDropConnection, hatanın önbellekteki bağlantıyı düşürmeyi

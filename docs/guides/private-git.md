@@ -28,7 +28,19 @@ ExecStart=
 ExecStart=/usr/local/lib/kadran/kadran-exec --socket /run/kadran-exec/exec.sock --journal /var/lib/kadran-exec/exec-audit.log --allow-user kadran --owner-group kadran --allow-repo YOUR_ORG/YOUR_REPO --git-credentials /etc/kadran/private-git/credentials.json
 RestrictAddressFamilies=
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Bulut meta veri servisi root executor'dan ERİŞİLEMEZ olmalı: GCP/AWS/Azure'da
+# 169.254.169.254 örnek kimlik belirteci demektir. Link-local (IPv4 ve IPv6) ve
+# AWS'nin IPv6 meta veri adresi kapatılır.
+IPAddressDeny=169.254.0.0/16 fe80::/10 fd00:ec2::254/128
 ```
+
+Kısıtı uygulamadan ÖNCE ölç: drop-in'i kaydetmeden, aynı kısıtla DNS çözümlemesinin hâlâ çalıştığını doğrula. `/etc/resolv.conf` dosyası meta veri sunucusunu (ör. GCP'de `169.254.169.254`) çözümleyici olarak gösteriyorsa kısıt DNS'i de keser; `systemd-resolved` ya da yerel bir çözümleyici kullan (kısıtta `127.0.0.0/8` kapatılmaz, böylece `127.0.0.53` çalışır).
+
+```sh
+sudo systemd-run --wait --pipe -p IPAddressDeny='169.254.0.0/16 fe80::/10' getent hosts api.github.com
+```
+
+Loopback ve özel ağ aralıkları (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `100.64.0.0/10`) bu varsayılanda KAPATILMAZ: executor yalnızca `api.github.com` ve `codeload.github.com` ile konuşur, ama bulut çözümleyicileri (ör. AWS VPC DNS) çoğu zaman özel aralıkta durur. Kapatmak istersen, önce çözümleyici adresini `IPAddressAllow=` ile açıkça izin ver (Allow, Deny'ı geçer).
 
 ```sh
 sudo systemctl daemon-reload

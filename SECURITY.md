@@ -91,8 +91,11 @@ These are known and documented limitations, not undisclosed weaknesses:
   processes still see runtime values; backups and pre-migration copies made before
   sealing can retain plaintext. See the [vault boundary](README.md#secrets-are-sealed-with-the-executors-key).
 - **Proxy routing is an administrative capability.** The broker restricts upstreams
-  to IPv4 addresses in `172.16.0.0/12`, matching the daemon's Docker network sandbox.
-  It does not attest that a given IP belongs to a particular container. An
+  to IPv4 addresses in `172.16.0.0/12`, matching the daemon's Docker network sandbox,
+  and rejects the network (`x.y.0.0`), gateway (`x.y.0.1`, the host itself) and
+  broadcast (`x.y.255.255`) address of each `/16` block. Cloud VPC ranges that
+  overlap `172.16.0.0/12` and the gateway of a custom smaller Docker subnet are not
+  excluded. It does not attest that a given IP belongs to a particular container. An
   authorized or compromised daemon can redirect app traffic within that pool.
   Module omission alone is insufficient: Caddy's core `static_response` can expand
   file placeholders; isolation of raw admin and the typed broker provide the boundary.

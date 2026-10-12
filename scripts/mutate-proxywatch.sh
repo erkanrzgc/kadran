@@ -142,11 +142,17 @@ mutate "ilk başarısızlıkta alarm" "$WAT" "$PAN" \
 
 echo "== Birebir eşleşmenin hesabı =="
 
-mutate "eksik yokken birebir hep true" "$REC" "$DEP" \
-    "s=s.replace('\t\tout.Exact = proxydrv.Matches(cfg, live) == nil\n','\t\tout.Exact = true\n',1)"
+# Eşleme (B2, C3): Repair artık `Exact`'ı ayrı bir atamayla değil
+# `if proxydrv.Matches(cfg, live) == nil { out.Exact = true; return }`
+# kapısıyla hesaplıyor. Eski iki mutant aynı özelliği bu kapı üzerinden
+# bozuyor:
+#   "eksik yokken birebir hep true"  -> "her zaman birebir sayılıyor"
+#   "birebir tek yönlü (deploy)"     -> aynı ad, kapı MissingHosts'a iniyor
+mutate "her zaman birebir sayılıyor (sürüklenme onarılmıyor)" "$REC" "$DEP" \
+    "s=s.replace('\tif proxydrv.Matches(cfg, live) == nil {\n','\tif true {\n',1)"
 
 mutate "birebir tek yönlü (deploy)" "$REC" "$DEP" \
-    "s=s.replace('\t\tout.Exact = proxydrv.Matches(cfg, live) == nil\n','\t\tout.Exact = len(proxydrv.MissingHosts(cfg, live)) == 0\n',1)"
+    "s=s.replace('\tif proxydrv.Matches(cfg, live) == nil {\n','\tif len(proxydrv.MissingHosts(cfg, live)) == 0 {\n',1)"
 
 mutate "Matches tek yönlü (proxydrv)" "$CLI" "$DRV $DEP" \
     "s=s.replace('func Matches(want, live *Config) error {\n\treturn verifyApplied(want, live)\n}','func Matches(want, live *Config) error {\n\tif len(MissingHosts(want, live)) > 0 {\n\t\treturn fmt.Errorf(\"eksik\")\n\t}\n\treturn nil\n}',1)"
@@ -159,8 +165,10 @@ echo "== Onarım =="
 mutate "tetik iki yönlü (fazla rota da yükletiyor)" "$CLI" "$DRV $DEP" \
     "s=s.replace('\tsort.Strings(missing)\n\treturn missing\n}','\tfor host := range liveRoutes {\n\t\tif _, ok := routesByHost(want)[host]; !ok {\n\t\t\tmissing = append(missing, host)\n\t\t}\n\t}\n\tsort.Strings(missing)\n\treturn missing\n}',1)"
 
+# Eşleme: eski "Exact atamasından sonraki return" -> birebir kapısının
+# içindeki return. Kalkarsa birebir eşleşen canlıya da her turda Load gider.
 mutate "her turda yüklüyor" "$REC" "$DEP" \
-    "s=s.replace('\t\tout.Exact = proxydrv.Matches(cfg, live) == nil\n\t\treturn out, nil\n','\t\tout.Exact = proxydrv.Matches(cfg, live) == nil\n',1)"
+    "s=s.replace('\t\tout.Exact = true\n\t\treturn out, nil\n','\t\tout.Exact = true\n',1)"
 
 mutate "hiç yüklemiyor" "$REC" "$DEP" \
     "s=s.replace('\tif err := rc.proxy.Load(ctx, cfg); err != nil {\n\t\treturn out,','\tif err := error(nil); err != nil {\n\t\treturn out,',1)"
@@ -181,10 +189,10 @@ echo "== Eşzamanlılık =="
 # Kilit olmadan izleyici bir dağıtımla yarışıp eski yapılandırmayı
 # yükleyebilir.
 mutate "Repair kilitsiz" "$REC" "$DEP" \
-    "s=s.replace('func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {\n\trc.mu.Lock()\n\tdefer rc.mu.Unlock()\n','func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {\n',1)"
+    "s=s.replace('func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {\n\tif err := rc.acquire(ctx); err != nil {\n\t\treturn RepairResult{}, err\n\t}\n\tdefer rc.release()\n','func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {\n',1)"
 
 mutate "Reconcile kilitsiz" "$REC" "$DEP" \
-    "s=s.replace('func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {\n\trc.mu.Lock()\n\tdefer rc.mu.Unlock()\n','func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {\n',1)"
+    "s=s.replace('func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {\n\tif err := rc.acquire(ctx); err != nil {\n\t\treturn Result{}, err\n\t}\n\tdefer rc.release()\n','func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {\n',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

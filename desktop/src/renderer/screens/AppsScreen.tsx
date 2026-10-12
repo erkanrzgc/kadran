@@ -6,6 +6,7 @@ import { EmptyState } from "../components/EmptyState.tsx";
 import { OperationDialog, type AppAction } from "../components/OperationDialog.tsx";
 import { useManagementOperation } from "../hooks/useManagementOperation.ts";
 import { useManagementQuery } from "../hooks/useManagementQuery.ts";
+import { logsBody } from "../lib/logs-view.ts";
 import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
 import { isCancelled } from "../../shared/management.ts";
 import { formatTime } from "../lib/format.ts";
@@ -129,5 +130,7 @@ function AppLogs({ target, appId }: { target: string; appId: string }) {
   const [tail, setTail] = useState("100");
   const load = useCallback(() => bridge.appLogs(target, appId, Number(tail)), [target, appId, tail]);
   const query = useManagementQuery(load);
-  return <section className="panel glass"><div className="panel-head"><h2 className="section-title">{t("apps.tab_logs")}</h2><div className="panel-actions"><label className="filter">{t("logs.tail")}<select className="sel" value={tail} onChange={(event) => setTail(event.target.value)} data-testid="logs-tail">{["100", "500", "1000"].map((value) => <option value={value} key={value}>{value}</option>)}</select></label><button type="button" className="btn btn-ghost" disabled={query.loading} onClick={() => void query.reload()} data-testid="logs-refresh">{t("status.refresh")}</button></div></div><p className="scope-note">{t("logs.snapshot")}</p>{query.error ? <p className="operation-message is-bad" role="alert">{query.error}</p> : null}{query.loading ? <p className="meta" role="status">{t("resource.loading")}</p> : <pre className="log-output mono" data-testid="app-logs">{query.data?.output || t("logs.empty")}</pre>}{query.data?.truncated ? <p className="scope-note">{t("logs.truncated")}</p> : null}</section>;
+  // Hata varken veri yoktur: "günlük boş" yanlış iddiası çizilmez.
+  const body = logsBody(query.data);
+  return <section className="panel glass"><div className="panel-head"><h2 className="section-title">{t("apps.tab_logs")}</h2><div className="panel-actions"><label className="filter">{t("logs.tail")}<select className="sel" value={tail} onChange={(event) => setTail(event.target.value)} data-testid="logs-tail">{["100", "500", "1000"].map((value) => <option value={value} key={value}>{value}</option>)}</select></label><button type="button" className="btn btn-ghost" disabled={query.loading} onClick={() => void query.reload()} data-testid="logs-refresh">{t("status.refresh")}</button></div></div><p className="scope-note">{t("logs.snapshot")}</p>{query.error ? <p className="operation-message is-bad" role="alert">{query.error}</p> : null}{query.loading ? <p className="meta" role="status">{t("resource.loading")}</p> : body.kind === "none" ? null : <pre className="log-output mono" data-testid="app-logs">{body.kind === "empty" ? t("logs.empty") : body.text}</pre>}{query.data?.truncated ? <p className="scope-note">{t("logs.truncated")}</p> : null}</section>;
 }

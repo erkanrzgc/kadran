@@ -59,7 +59,7 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   deletion, pruning and automatic healing share a cancellable per-application queue.
   Skipped target routes and failed proxy loads cannot report successful deployment.
   Current validated routes for skipped existing domains are retained. Health probes
-  reject incomplete or oversized responses, with a 4 KiB body limit.
+  reject truncated or stalled response bodies; at most 4 KiB of the body is read, and a body that reaches that limit without error is healthy (the connection is closed without draining the rest).
 - **Deletion fails closed (K-144).** Database errors while looking up the active
   deployment no longer authorize container deletion.
 - **Desktop protocol and stale state (K-145).** UTF-8 is decoded across chunks;

@@ -4,7 +4,7 @@
 
 Aynı uygulamanın dağıtım, geri alma, güncelleme, silme, budama ve otomatik iyileştirmesi ortak bir sırayı paylaşır. Dağıtımın derlemesi, hazır olma kontrolü, trafik değişimi ve eski sürümü boşaltması bitmeden sıradaki değişim başlamaz. Kuyrukta iptal edilen işlem çalışmaz. Farklı uygulamalar bu sırayı paylaşmaz.
 
-Sağlık yoklamasında yalnız HTTP 200 başlığı yeterli değildir; yanıt gövdesinin de süre içinde tamamlanması ve 4 KiB'ı aşmaması gerekir. Kendi proxy rotası eksik olan dağıtım veya geri alma başarısızdır. Vekil sapması alan adı kadar upstream ve yabancı rota açısından da karşılaştırılır ve onarılır. Atlanan aynı domain için doğrulanmış eski rota korunur; bu, farklı bir eski domain'in kalıcı sahiplik kaydı değildir.
+Sağlık yoklamasında yalnız HTTP 200 başlığı yeterli değildir; yanıt gövdesinin okunabilmesi gerekir: en fazla 4 KiB okunur, sınıra hatasız ulaşan (daha büyük) gövde sağlıklıdır; okuma hatası, takılma veya sınırın altında kesilme başarısızdır. Kendi proxy rotası eksik olan dağıtım veya geri alma başarısızdır. Vekil sapması alan adı kadar upstream ve yabancı rota açısından da karşılaştırılır ve onarılır. Atlanan aynı domain için doğrulanmış eski rota korunur; bu, farklı bir eski domain'in kalıcı sahiplik kaydı değildir.
 
 Bir istemci zaman aşımı, sunucuda hiçbir değişim olmadığını kanıtlamaz. `app show`, `status`, `alarms`, uygulama logları ve denetim kayıtlarını kontrol et; otomatik tekrar ile yeni bir dağıtım başlatma. Alan adı güncellemesi kaydedilip trafik değişimi başarısız olmuş olabilir; hata ayrıntısı bu durumu belirtir.
 

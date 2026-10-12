@@ -10,7 +10,7 @@ Tarih: 11 Ekim 2026. Kararlar: [K-143–K-147](../decisions.md).
 | Ham Caddy admin JSON'u dosya okuyan placeholder'a ulaşabiliyordu | Ayrı kimlikte tipli broker; sabit yapılandırma, strict DTO ve Unix erişim sınırı |
 | Deploy/rollback/heal yarışları aktif sürümü etkileyebiliyordu | Ortak uygulama kuyruğu, iptal ve tüm rollout/drain boyunca koordinasyon |
 | Atlanan rota veya hata başarı gibi dönebiliyordu | Kendi rota hatası başarısız; bilinen mevcut domain'in doğrulanmış rotası korunur |
-| Yarım veya takılan HTTP gövdesi sağlıklı sayılabiliyordu | Tamamlanmış, en fazla 4 KiB gövde ve deadline zorunlu |
+| Yarım veya takılan HTTP gövdesi sağlıklı sayılabiliyordu | En fazla 4 KiB okunur; hata, takılma veya sınır altında kesilme başarısız, sınıra hatasız ulaşan gövde sağlıklı |
 | Veritabanı hatası silme işleminde aktif sürüm yok gibi yorumlanıyordu | Beklenmeyen lookup hatasında sıfır executor işlemi |
 | Başarısız audit isteği eski yeşili bırakabiliyordu | Eski doğrulama temizlenir; zaman ve bayatlık görünür |
 | UTF-8 parçası, yanlış JSON şekli, erken işlem timeout'u | Akış decoder, sonuç doğrulama ve bağlantı dahil zaman bütçesi |

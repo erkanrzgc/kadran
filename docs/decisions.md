@@ -10945,8 +10945,11 @@ tutulur; farklı uygulamalar birbirini beklemez. Reconciler yüklemeleri de sır
 Kendi rotası atlanan dağıtım başarı değildir. Başarısız/atlanan rota için mevcut
 doğrulanmış aynı-domain rota korunur; domain değiştirilmişse eski adın sahipliği
 kanıtlanmaz. Proxy onarımı yalnız domain kümesini değil upstream'i de karşılaştırır.
-Probe en fazla 4096 bayt tamamlanmış gövde kabul eder; yarım, takılan veya büyük
-gövde başarısızdır. ActiveDeployment veritabanı hatası silmeyi yetkilendirmez.
+Probe gövdeden en fazla 4096 bayt okur; sınıra hatasız ulaşan gövde (4 KB'tan büyük
+HTML ana sayfası dahil) sağlıklıdır, kalanı okunmadan bağlantı kapanır. Okuma
+hatası, takılma veya sınırın altında kesilen gövde başarısızdır (ilk sürümde
+"büyük gövde başarısız" yazıyordu; bu varsayılan `/` yolunda her büyük ana
+sayfayı sağlıksız yapıyordu, düzeltildi). ActiveDeployment veritabanı hatası silmeyi yetkilendirmez.
 Gerçek SQLite/API/rollout, kuyruk iptali ve gövde sınır testleri Windows/Linux
 `go test -race -count=1 ./...` içinde geçti.
 

@@ -24,8 +24,9 @@ type Prober interface {
 
 // probeBodyLimit, yanıt gövdesinden okunacak en fazla bayt.
 //
-// Sağlık yanıtı en fazla bu boyutta ve tamamlanmış olmalı. Bir ek bayt
-// okunarak sınırda tamamlanan yanıt ile daha büyük/sonsuz gövde ayrılır.
+// Gövdenin bu kadarı okunur; daha büyük gövde (HTML ana sayfası gibi)
+// sağlıksız SAYILMAZ, sınıra ulaşınca okuma durur ve bağlantı kapanır.
+// Sınırın altında kesilen ya da takılan gövde ise sağlıksızdır.
 const probeBodyLimit = 4 << 10
 
 // DefaultProbeTimeout, tek bir yoklamanın toplam süre sınırı.
@@ -105,14 +106,14 @@ func (p *HTTPProber) Probe(ctx context.Context, ip string, port uint32, path str
 	if resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("health probe returned %d (%s%s)", resp.StatusCode, u.Host, path)
 	}
-	// Reading one byte beyond the accepted limit distinguishes a completed
-	// response from a body that stalls or truncates exactly at the limit.
-	n, err := io.Copy(io.Discard, io.LimitReader(resp.Body, probeBodyLimit+1))
-	if err != nil {
+	// En fazla probeBodyLimit bayt okunur. Sınıra HATASIZ ulaşan gövde
+	// sağlıklıdır (ör. 4 KB'tan büyük bir HTML ana sayfası): kalanı
+	// okunmadan bağlantı kapanır, sınırsız boşaltma yok. Başarısızlık
+	// yalnız okuma hatası, takılma (istemci zaman aşımı) ya da sınırın
+	// ALTINDA, Content-Length dolmadan kesilen gövdedir; net/http bunu
+	// io.ErrUnexpectedEOF olarak döndürür.
+	if _, err := io.Copy(io.Discard, io.LimitReader(resp.Body, probeBodyLimit)); err != nil {
 		return fmt.Errorf("health response body failed (%s): %w", u.Host, err)
-	}
-	if n > probeBodyLimit {
-		return fmt.Errorf("health response body exceeds %d bytes (%s)", probeBodyLimit, u.Host)
 	}
 	return nil
 }

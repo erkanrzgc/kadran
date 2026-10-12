@@ -84,6 +84,10 @@ jobs:
       - name: Kurulum betiği yardımcıları
         run: bash scripts/check-install-sh.sh
 
+      # Göçte aracı soketi kadrand'dan ÖNCE kurulur (B2/I4).
+      - name: Göç sırası (aracı soketi)
+        run: bash scripts/check-install-order.sh
+
       # authorized_keys ve .ssh kadran-client olarak yazılıyor (K-139).
       # Bunu ölçen bölüm gerçek bir kullanıcı ve setpriv ister; root'suz
       # koşu onu atlıyor. Burada ZORUNLU: root yoksa adım kırmızı.

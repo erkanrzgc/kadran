@@ -69,9 +69,14 @@ func TestCanceledQueuedProxyRequestCannotMutate(t *testing.T) {
 		handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/routes", strings.NewReader(goodRoutes)).WithContext(ctx))
 		close(second)
 	}()
+	// İptal edilen sıradaki istek kapıyı BEKLEMEDEN dönmeli: ilk istek
+	// hâlâ kapıyı tutarken (release kapalı değil) ikincisi bitmiş olmalı.
+	// Yalnızca "Load çağrılmadı" demek, bekleyip sonra iptal fark eden
+	// bir gerçeklemeyi de geçirirdi (B2).
 	select {
 	case <-second:
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(2 * time.Second):
+		t.Error("canceled queued request kept waiting for the gate")
 	}
 	close(a.release)
 	<-done

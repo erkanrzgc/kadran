@@ -275,10 +275,14 @@ func verifyApplied(want, live *Config) error {
 // Vekil izleyicisinin tetikleyicisi (K-055'in ikinci yarısı, K-112):
 // Caddy yeniden başlayınca rotasız açılıyor ve kadrand bunu görmezse
 // siteler kapalı kalıyor. Bilerek TEK YÖNLÜ: fazla rotalar ve upstream
-// farkları burada görünmez. Uzlaştırma sağlıksız bir uygulamayı atlıyor
-// ve canlıdaki eski rotası iyileştirme bitene kadar duruyor; iki yönlü
-// bir tetik (verifyApplied gibi) o rotayı silip gözetmenin davranışını
-// değiştirirdi.
+// farkları burada görünmez.
+//
+// ⚠ Bu işlev artık onarımın TETİĞİ DEĞİL. deploy.Reconciler.Repair yüklemeye
+// Matches (iki yönlü) ile karar veriyor; fazla/yabancı rota ve farklı
+// upstream de yeniden yüklemeyle düzeltiliyor. Atlanan uygulamanın canlı
+// rotası ise Repair'de önce taşınıyor (LiveUpstreams), yani iki yönlü karşılaştırma
+// onu silmiyor. MissingHosts yalnızca "rotasını tamamen kaybetmiş alan
+// adları" günlüğü ve RepairResult.Missing içindir.
 func MissingHosts(want, live *Config) []string {
 	liveRoutes := routesByHost(live)
 	var missing []string

@@ -49,6 +49,9 @@ func FixedConfig(set RouteSet) (*Config, error) {
 			if err != nil || addr.Zone() != "" || !netip.MustParsePrefix("172.16.0.0/12").Contains(addr) {
 				return nil, fmt.Errorf("upstream must be a Docker IPv4 address in 172.16.0.0/12")
 			}
+			if isDockerNetworkInfrastructure(addr) {
+				return nil, fmt.Errorf("upstream must be a container address, not a Docker network, gateway or broadcast address")
+			}
 			dial, err := NewUpstream(u.IP, u.Port)
 			if err != nil {
 				return nil, err
@@ -62,6 +65,24 @@ func FixedConfig(set RouteSet) (*Config, error) {
 		routes = append(routes, AppRoute{AppID: fmt.Sprintf("%04d", i), Domain: r.Domain, Upstreams: upstreams})
 	}
 	return BuildConfig(BuildOptions{Admin: Admin{Listen: "fd/3", Origins: []string{"localhost"}}, Routes: routes})
+}
+
+// isDockerNetworkInfrastructure, Docker köprü ağının ağ adresini (x.y.0.0),
+// ağ geçidini (x.y.0.1 = HOST'un kendisi) ve yayın adresini (x.y.255.255)
+// tanır. Docker'ın varsayılan havuzu /16 bloklara bölünüyor; bu üç adres hiçbir
+// zaman konteynere verilmez, yani upstream olmaları yalnızca ele geçmiş bir
+// kadrand'ın Caddy'yi host'a yönlendirmesine yarar (B2/I6).
+//
+// Bilinçli sınır: yalnızca /16 granülünü bilir. Daha küçük özel havuzların
+// (ör. /24) ağ geçidi x.y.z.1 burada yakalanmaz; o, "hangi alt ağlar geçerli"
+// ürün kararına bağlı (bkz. SECURITY.md).
+func isDockerNetworkInfrastructure(addr netip.Addr) bool {
+	if !addr.Is4() {
+		return false
+	}
+	b := addr.As4()
+	low := uint16(b[2])<<8 | uint16(b[3])
+	return low == 0 || low == 1 || low == 0xFFFF
 }
 
 // ValidDomain, vekilin kabul ettiği alan adı kuralının TEK tanımıdır.

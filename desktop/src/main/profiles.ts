@@ -15,7 +15,8 @@
  * dürüst.
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rename, rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 
 /** Profil, kayıtlı bir bağlantı hedefidir. */
@@ -66,10 +67,28 @@ export async function loadProfiles(
   }
 }
 
-/** saveProfiles, profilleri diske yazar. */
+/** Dosya işlemleri; testte yarıda kesilen yazımı taklit etmek için değiştirilebilir. */
+export interface FileOps {
+  writeFile(path: string, data: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+  rm(path: string): Promise<void>;
+}
+
+const realOps: FileOps = {
+  writeFile: (path, data) => writeFile(path, data, "utf8"),
+  rename,
+  rm: (path) => rm(path, { force: true }),
+};
+
+/**
+ * saveProfiles, profilleri diske ATOMİK yazar: aynı dizindeki geçici dosyaya
+ * yazıp `rename` ile yerine koyar. Yazım yarıda kesilirse (disk dolu, süreç
+ * ölümü) eski profil dosyası sağlam kalır; hata durumunda geçici dosya silinir.
+ */
 export async function saveProfiles(
   userDataDir: string,
   profiles: unknown,
+  ops: FileOps = realOps,
 ): Promise<Profile[]> {
   if (!Array.isArray(profiles)) {
     throw new Error("profiles must be a list");
@@ -81,7 +100,14 @@ export async function saveProfiles(
 
   const path = profilesPath(userDataDir);
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify(clean, null, 2) + "\n", "utf8");
+  const temp = `${path}.${randomBytes(6).toString("hex")}.tmp`;
+  try {
+    await ops.writeFile(temp, JSON.stringify(clean, null, 2) + "\n");
+    await ops.rename(temp, path);
+  } catch (err) {
+    await ops.rm(temp).catch(() => undefined);
+    throw err;
+  }
   return clean;
 }
 

@@ -1,8 +1,10 @@
 <div align="center">
 
-<img src="docs/assets/kadran-logo.png" alt="Kadran — yıldız benekli segmente torus logosu" width="220" />
-
-# KΛDRΛN
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/kadran-wordmark.svg" />
+  <source media="(prefers-color-scheme: light)" srcset="docs/assets/kadran-wordmark-dark.svg" />
+  <img src="docs/assets/kadran-wordmark-dark.svg" alt="KΛDRΛN" width="360" />
+</picture>
 
 ### Self-hosted Git deployments, with a control panel that never runs as root.
 

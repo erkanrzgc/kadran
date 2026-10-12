@@ -40,6 +40,12 @@ FILES=(
     src/renderer/lib/serial.ts
     src/renderer/lib/profile-store.ts
     src/renderer/lib/audit-view.ts
+    src/renderer/lib/verification-state.ts
+    src/main/management-core.ts
+    src/main/management-ipc.ts
+    src/main/management-results.ts
+    src/main/management-confirmation.ts
+    src/main/management-payload.ts
 )
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -48,7 +54,9 @@ restore() { for f in "${FILES[@]}"; do cp "$(bak "$f")" "$f"; done; }
 trap restore EXIT
 
 compiles() { npx tsc --noEmit >/dev/null 2>&1 && npx tsc --noEmit -p tsconfig.renderer.json >/dev/null 2>&1; }
-tests_pass() { node --test "test/*.test.ts" >/dev/null 2>&1; }
+# Test başına süre sınırı: bir mutant testi ASIP bırakırsa (bekleyen bir
+# söz hiç çözülmezse) ölçüm saatlerce takılmasın; asılı test kırmızıdır.
+tests_pass() { node --test --test-timeout=120000 "test/*.test.ts" >/dev/null 2>&1; }
 
 fail=0
 
@@ -164,6 +172,39 @@ mutate_in src/renderer/lib/audit-view.ts "yükleme hatası 'kayıt yok' gösteri
     "s=s.replace('if (failed) return \"audit.load_failed\";','void failed;',1)"
 mutate_in src/main/ipc-validate.ts "'-' ile başlayan hedef kabul ediliyor" \
     "s=s.replace('trimmed.startsWith(\"-\")','trimmed.startsWith(\"--\")',1)"
+
+echo "== Yönetim yüzeyi (ana süreç onayı) =="
+# Her durum değiştiren kanalın onay çağrısı AYRI ayrı silinir: biri unutulursa
+# öbürlerinin testi onu örtemez (son inceleme C1).
+for kind in 'create|{ kind: \"create\", target, spec }' \
+            'update|{ kind: \"update\", target, app: app_id, update }' \
+            'deploy|{ kind: \"deploy\", target, app: app_id, ref }' \
+            'delete|{ kind: \"delete\", target, app: app_id }' \
+            'rollback|{ kind: \"rollback\", target, app: app_id }' \
+            'backup|{ kind: \"backup\", target }'; do
+    name="${kind%%|*}"
+    arg="${kind#*|}"
+    mutate_in src/main/management-core.ts "$name işleminin yerel onayı silinmiş" \
+        "s=s.replace('if (!(await confirm(event, $arg))) return cancelled();','void 0;',1)"
+done
+mutate_in src/main/management-core.ts "iptal düğmesi onay sayılıyor" \
+    "s=s.replace('return response === CONFIRM_BUTTON;','return true;',1)"
+mutate_in src/main/management-core.ts "fake@test koşulu gevşetilmiş (her hedefte atlanıyor)" \
+    "s=s.replace('if (deps.isFixture && request.target === \"fake@test\") return true;','if (deps.isFixture) return true;',1)"
+mutate_in src/main/management-ipc.ts "requireConfirmation her şeyi kabul ediyor" \
+    "s=s.replace('if (value !== appId)','if (false)',1)"
+mutate_in src/main/management-ipc.ts "kapı devre dışı (aynı işi iki kez başlatır)" \
+    "s=s.replace('if (active.has(key)) throw new Error(\"an operation for this app is already running\");','void key;',1)"
+mutate_in src/main/management-results.ts "validateManagementResult her şeyi geçiriyor" \
+    "s=s.replace('if (!valid)','if (false)',1)"
+mutate_in src/renderer/lib/verification-state.ts "başarısız doğrulama kırık zincir kanıtını siliyor" \
+    "s=s.replace('? previous : null','? null : null',1)"
+mutate_in src/main/management-confirmation.ts "update kutusuna env DEĞERİ giriyor" \
+    "s=s.replace('Object.keys(record(u.env))','Object.entries(record(u.env)).map(([k, v]) => k + \"=\" + String(v))',1)"
+mutate_in src/main/management-payload.ts "yasak bağlama kökü /dev kabul ediliyor" \
+    "s=s.replace('[\"/proc\", \"/sys\", \"/dev\"]','[\"/proc\", \"/sys\"]',1)"
+mutate_in src/main/ipc-validate.ts "hedefte biçim karakteri (bidi) kabul ediliyor" \
+    "s=s.replace('[\\\\p{Cc}\\\\p{Cf}]','[\\\\p{Cc}]',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

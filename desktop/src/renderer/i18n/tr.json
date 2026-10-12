@@ -303,5 +303,6 @@
   "form.invalid_env_remove": "Kaldırmak için benzersiz değişken adları kullanın; aynı adı ayrıca değiştirmeyin.",
   "brand.logo": "Kadran yazı logosu",
   "operation.deleted": "{app} silindi: {containers} konteyner, {releases} sürüm ve {deployments} aktivasyon kaydı kaldırıldı.",
+  "operation.cancelled": "Vazgeçildi. Hiçbir şey değiştirilmedi.",
   "operation.volumes_kept": "Diskte korunan hacim verisi: {names}"
 }

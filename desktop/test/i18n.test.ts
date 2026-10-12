@@ -11,6 +11,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { placeholders, translate } from "../src/renderer/lib/i18n.ts";
+import { DIALOG_TEXT, dialogText } from "../src/shared/dialog-text.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const i18nDir = join(here, "..", "src", "renderer", "i18n");
@@ -111,4 +112,32 @@ test("translate: yer tutucu, çoğul, yedek dil, bilinmeyen anahtar", () => {
   assert.equal(translate(tr, en, "only_en"), "fallback");
   assert.equal(translate(tr, en, "yok.boyle"), "yok.boyle");
   assert.equal(translate(tr, en, "hello"), "Selam {name}");
+});
+
+/**
+ * Ana süreçteki yerel onay kutusu metinleri (src/shared/dialog-text.ts) da
+ * aynı kurallara tabi. İki dilde aynı değer yalnız dilden bağımsız anahtarlarda.
+ */
+const DIALOG_SAME_IN_BOTH = new Set(["title", "line.dockerfile"]);
+
+test("onay kutusu kataloğu: iki dilde aynı anahtarlar ve yer tutucular", () => {
+  const { en, tr } = DIALOG_TEXT;
+  assert.deepEqual(Object.keys(tr).sort(), Object.keys(en).sort());
+  for (const [key, value] of Object.entries(en)) {
+    assert.deepEqual(placeholders(tr[key as keyof typeof tr]), placeholders(value), `yer tutucu farkı: ${key}`);
+  }
+});
+
+test("onay kutusu kataloğu: İngilizcede Türkçe harf yok, iki dilde aynı değer yalnız açık listede", () => {
+  const { en, tr } = DIALOG_TEXT;
+  for (const [key, value] of Object.entries(en)) assert.doesNotMatch(value, /[çğıöşüÇĞİÖŞÜ]/, `Türkçe metin: ${key} = ${value}`);
+  const keys = Object.keys(en) as (keyof typeof en)[];
+  const same = keys.filter((k) => en[k] === tr[k]);
+  assert.deepEqual(same.filter((k) => !DIALOG_SAME_IN_BOTH.has(k)), [], "çevrilmemiş ya da öbür dile sızmış kutu metni");
+  assert.deepEqual([...DIALOG_SAME_IN_BOTH].filter((k) => en[k as keyof typeof en] !== tr[k as keyof typeof tr]), [], "DIALOG_SAME_IN_BOTH'ta artık farklı olan anahtar var");
+});
+
+test("onay kutusu: yer tutucular tek geçişte dolar, değerin içindeki {…} yeniden işlenmez", () => {
+  assert.equal(dialogText("en", "message.deploy", { app: "{app}" }), "Deploy {app}?");
+  assert.equal(dialogText("tr", "message.deploy", { app: "blog" }), "blog dağıtılsın mı?");
 });

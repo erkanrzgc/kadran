@@ -10,6 +10,13 @@ test("typed management rejects valid JSON with wrong nested shapes", () => {
     ["backups.create", { backup: null, volumes_excluded: true }],
   ] as const) assert.throws(() => validateManagementResult(method, value), /invalid/);
 });
+test("typed cancellation passes only in its exact shape", () => {
+  const cancelled = { cancelled: true };
+  assert.equal(validateManagementResult("apps.deploy", cancelled), cancelled);
+  for (const value of [{ cancelled: true, extra: 1 }, { cancelled: false }, { cancelled: "true" }, [], null, {}]) {
+    assert.throws(() => validateManagementResult("apps.deploy", value), /invalid/);
+  }
+});
 test("empty resources and bounded textual logs have truthful valid shapes", () => {
   const empty = { apps: [] };
   assert.equal(validateManagementResult("apps.list", empty), empty);

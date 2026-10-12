@@ -1,3 +1,5 @@
+import { isCancelled } from "../shared/management.ts";
+
 /** Validate the fields the renderer consumes, rather than treating TypeScript as a runtime check. */
 type ObjectValue = Record<string, unknown>;
 const object = (v: unknown): v is ObjectValue => !!v && typeof v === "object" && !Array.isArray(v);
@@ -22,6 +24,8 @@ const alarm = (v: unknown) => object(v) && texts(v, ["id", "kind", "target", "se
 const backup = (v: unknown) => object(v) && text(v.path) && u64(v.bytes) && u64(v.taken_unix);
 
 export function validateManagementResult(method: string, value: unknown): unknown {
+  // Tipli iptal sonucu (yerel onay reddedildi): başka alan taşımayan tam biçim.
+  if (isCancelled(value)) return value;
   let valid = false;
   if (object(value)) {
     switch (method) {

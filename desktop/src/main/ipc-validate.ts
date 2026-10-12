@@ -13,6 +13,9 @@ export function requireTarget(value: unknown): string {
   if (typeof value !== "string" || value.trim() === "") throw new Error("target is empty");
   if (value.length > MAX_TARGET) throw new Error("target is too long");
   const trimmed = value.trim();
+  // Denetim (\p{Cc}) ve biçim (\p{Cf}, bidi dahil) karakterleri yerel onay kutusunda
+  // "Server:" satırını yanıltabilir; ssh hedefinde zaten anlamsızlar.
+  if (/[\p{Cc}\p{Cf}]/u.test(trimmed)) throw new Error("target must not contain control or invisible characters");
   // ssh seçeneği olarak okunur (-oProxyCommand=…): savunma derinliği, Go tarafı da reddeder.
   if (trimmed.startsWith("-")) throw new Error('target must not start with "-"');
   return trimmed;

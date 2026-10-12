@@ -30,6 +30,7 @@ function BackupList({ target }: { target: string }) {
   };
   return <div className="screen" data-testid="screen-backups"><header className="stage-head resource-head"><div><p className="eyebrow">{t("backups.eyebrow")}</p><h1 className="title">{t("backups.title")}</h1><p className="meta">{t("backups.subtitle")}</p></div><button type="button" className="btn btn-primary" disabled={operation.pending} onClick={() => void create()} data-testid="backup-create">{operation.pending ? t("operation.running") : t("backups.create")}</button></header>
     <p className="scope-banner glass" data-testid="backups-scope">{t("backups.volumes_excluded")}</p>
+    {operation.notice ? <p className="scope-note" role="status" data-testid="operation-notice">{operation.notice}</p> : null}
     {operation.error ? <p className="operation-message is-bad" role="alert" data-testid="backup-error">{operation.error}</p> : null}
     {created?.backup ? <section className="panel glass" role="status" data-testid="backup-result"><p className="is-ok">{t("backups.created")}</p><p className="mono operation-message">{created.backup.path}</p>{created.volumes_excluded ? <p className="scope-note">{t("backups.volumes_excluded")}</p> : null}</section> : null}
     <section className="panel glass"><div className="panel-head"><h2 className="section-title">{t("backups.saved")}</h2><button type="button" className="btn btn-ghost" disabled={query.loading || operation.pending} onClick={() => void query.reload()}>{t("status.refresh")}</button></div>

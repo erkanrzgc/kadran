@@ -20,6 +20,14 @@ test("hedef: '-' ile başlayan reddedilir (kırpmadan sonra), içinde '-' olan g
   assert.equal(requireTarget("a-b@c"), "a-b@c");
 });
 
+test("hedef: denetim ve biçim karakterleri (bidi dahil) reddedilir, kırpılan uçlar sorun değil", () => {
+  for (const bad of ["a\nb@host", "a\u0000b", "a\u202ec@host", "a\u200bb", "a\u2066b", "a\u0085b", "a\u007fb"]) {
+    assert.throws(() => requireTarget(bad), /control or invisible/, JSON.stringify(bad));
+  }
+  assert.equal(requireTarget("  user@host\n"), "user@host");
+  assert.equal(requireTarget("kadran-client@ünlü.example"), "kadran-client@ünlü.example");
+});
+
 test("toUint: negatif, sonsuz ve sayı olmayan → varsayılan; kesir aşağı", () => {
   assert.equal(toUint(-1, 7), 7);
   assert.equal(toUint(Number.POSITIVE_INFINITY, 7), 7);

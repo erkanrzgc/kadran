@@ -1,3 +1,5 @@
+import { BRANCH_PATTERN, validateAppUpdate, validateCreateSpec } from "./management-payload.ts";
+
 /** Narrow, bounded management inputs. Server/executor remain policy authorities. */
 const CREATE_FIELDS = ["app_id", "git_host", "git_owner", "git_repo", "git_branch", "dockerfile_path", "build_args", "container_port", "replicas", "health_path", "domain", "limits", "env", "volumes"];
 const UPDATE_FIELDS = ["domain", "git_branch", "health_path", "replicas", "env", "env_remove", "volumes", "volume_remove"];
@@ -10,7 +12,7 @@ export function requireConfirmation(appId: string, value: unknown): void {
   if (value !== appId) throw new Error("confirmation must match the app ID exactly");
 }
 export function requireRef(value: unknown): string {
-  if (typeof value !== "string" || (value !== "" && !/^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$/.test(value))) throw new Error("invalid branch, tag or full commit");
+  if (typeof value !== "string" || (value !== "" && !BRANCH_PATTERN.test(value))) throw new Error("invalid branch, tag or full commit");
   return value;
 }
 export function requireTail(value: unknown): number {
@@ -24,7 +26,10 @@ export function requireAppPayload(value: unknown, mode: "create" | "update"): Re
   const encoded = JSON.stringify(value);
   if (Buffer.byteLength(encoded, "utf8") > 512 * 1024) throw new Error("app payload is too large");
   const copy = JSON.parse(encoded) as Record<string, unknown>;
-  if (mode === "create") requireAppId(copy.app_id);
+  if (mode === "create") {
+    requireAppId(copy.app_id);
+    validateCreateSpec(copy);
+  } else validateAppUpdate(copy);
   return copy;
 }
 /** Keep buttons, repeated IPC and native dialogs from starting the same action twice. */

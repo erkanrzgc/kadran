@@ -4,6 +4,7 @@
  */
 
 import type { Appearance, WindowMode } from "../shared/appearance.ts";
+import type { Cancellable } from "../shared/management.ts";
 import type { AuditListPayload, StatusPayload, VerifyPayload, VersionPayload } from "./lib/types.ts";
 import type { AppSpec, AppUpdate, AppsListPayload, AppGetPayload, AppWritePayload, AppDeletePayload, RollbackPayload, DeployPayload, LogsPayload, AlarmsPayload, BackupsPayload, BackupCreatePayload } from "./lib/types.ts";
 
@@ -28,15 +29,15 @@ export interface KadranBridge {
   auditVerify(target: string): Promise<VerifyPayload>;
   appsList(target: string): Promise<AppsListPayload>;
   appGet(target: string, appId: string): Promise<AppGetPayload>;
-  appCreate(target: string, spec: AppSpec): Promise<AppWritePayload>;
-  appUpdate(target: string, appId: string, update: AppUpdate): Promise<AppWritePayload>;
-  appDelete(target: string, appId: string, confirmation: string): Promise<AppDeletePayload>;
-  appDeploy(target: string, appId: string, ref: string): Promise<DeployPayload>;
-  appRollback(target: string, appId: string, confirmation: string): Promise<RollbackPayload>;
+  appCreate(target: string, spec: AppSpec): Promise<Cancellable<AppWritePayload>>;
+  appUpdate(target: string, appId: string, update: AppUpdate): Promise<Cancellable<AppWritePayload>>;
+  appDelete(target: string, appId: string, confirmation: string): Promise<Cancellable<AppDeletePayload>>;
+  appDeploy(target: string, appId: string, ref: string): Promise<Cancellable<DeployPayload>>;
+  appRollback(target: string, appId: string, confirmation: string): Promise<Cancellable<RollbackPayload>>;
   appLogs(target: string, appId: string, tail: number): Promise<LogsPayload>;
   alarmsList(target: string): Promise<AlarmsPayload>;
   backupsList(target: string): Promise<BackupsPayload>;
-  backupCreate(target: string): Promise<BackupCreatePayload>;
+  backupCreate(target: string): Promise<Cancellable<BackupCreatePayload>>;
   loadProfiles(): Promise<Profile[]>;
   saveProfiles(profiles: Profile[]): Promise<Profile[]>;
   loadAppearance(): Promise<AppearanceBundle>;

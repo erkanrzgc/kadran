@@ -195,6 +195,14 @@ mutate_in src/main/management-ipc.ts "requireConfirmation her şeyi kabul ediyor
     "s=s.replace('if (value !== appId)','if (false)',1)"
 mutate_in src/main/management-ipc.ts "kapı devre dışı (aynı işi iki kez başlatır)" \
     "s=s.replace('if (active.has(key)) throw new Error(\"an operation for this app is already running\");','void key;',1)"
+# IPC süresi sidecar'ınkinden kısaysa masaüstü önce vazgeçer, kapı iş
+# sunucuda sürerken serbest kalır ve ikinci bir geri alma başlatılabilir.
+mutate_in src/main/management-core.ts "geri alma/silme IPC süresi sidecar'dan kısa (eski 2 dk)" \
+    "s=s.replace('const LIFECYCLE_TIMEOUT_MS = 4 * 60_000 + SIDECAR_MARGIN_MS;','const LIFECYCLE_TIMEOUT_MS = 2 * 60_000;',1)"
+mutate_in src/main/management-core.ts "IPC payı sıfır (sidecar ile aynı anda düşer)" \
+    "s=s.replace('const SIDECAR_MARGIN_MS = 60_000;','const SIDECAR_MARGIN_MS = 0;',1)"
+mutate_in src/main/management-core.ts "geri alma okuma süresiyle çağrılıyor" \
+    "s=s.replace('return invoke(\"apps.rollback\", target, { app_id, confirmation }, LIFECYCLE_TIMEOUT_MS);','return invoke(\"apps.rollback\", target, { app_id, confirmation });',1)"
 mutate_in src/main/management-results.ts "validateManagementResult her şeyi geçiriyor" \
     "s=s.replace('if (!valid)','if (false)',1)"
 mutate_in src/renderer/lib/verification-state.ts "başarısız doğrulama kırık zincir kanıtını siliyor" \

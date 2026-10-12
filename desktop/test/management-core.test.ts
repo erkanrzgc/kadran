@@ -5,7 +5,10 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 import type { Language } from "../src/shared/appearance.ts";
 import { CHANNELS } from "../src/shared/channels.ts";
@@ -276,11 +279,40 @@ test("kapı: aynı hedef+uygulama için ikinci eşzamanlı çağrı reddedilir; 
   assert.equal(h.calls.length, 2);
 });
 
-test("zaman aşımı onaydan sonra başlar: kutu beklerken sidecar çağrısı yok, çağrı sürelerini taşır", async () => {
+/**
+ * Sidecar'ın yöntem başına süresi Go kaynağından okunur (iki dilde iki
+ * sabit; biri değişince öbürü sessizce eskimesin). Okunamazsa test düşer.
+ */
+const SIDECAR_SOURCE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../cmd/kadran/sidecar_management.go"), "utf8");
+
+function goDurationMs(expr: string): number {
+  const match = /^(\d+) \* time\.(Minute|Second)$/.exec(expr.trim());
+  assert.ok(match, `Go süresi okunamadı: ${expr}`);
+  return Number(match[1]) * (match[2] === "Minute" ? 60_000 : 1_000);
+}
+
+function sidecarTimeoutMs(method: string): number {
+  const escaped = method.replace(".", "\\.");
+  const match = new RegExp(`case [^\\n]*"${escaped}"[^\\n]*:\\s*\\n\\s*timeout = ([^\\n]+)`).exec(SIDECAR_SOURCE);
+  assert.ok(match, `sidecar'da ${method} süresi bulunamadı`);
+  const expr = match[1].trim();
+  if (!/^[A-Za-z]\w*$/.test(expr)) return goDurationMs(expr);
+  const constant = new RegExp(`const ${expr} = ([^\\n]+)`).exec(SIDECAR_SOURCE);
+  assert.ok(constant, `sidecar'da ${expr} sabiti bulunamadı`);
+  return goDurationMs(constant[1]);
+}
+
+test("IPC süresi sidecar'ınkinden UZUN: önce sidecar düşer, kapı iş sürerken serbest kalmaz", async () => {
   const h = harness();
   await h.invoke(CHANNELS.appDeploy, TARGET, "blog", "main");
+  await h.invoke(CHANNELS.appDelete, TARGET, "blog", "blog");
+  await h.invoke(CHANNELS.appRollback, TARGET, "blog", "blog");
   await h.invoke(CHANNELS.backupCreate, TARGET);
-  assert.deepEqual(h.calls.map((c) => c.timeoutMs), [11 * 60_000, 2 * 60_000]);
+  assert.deepEqual(h.calls.map((c) => c.method), ["apps.deploy", "apps.delete", "apps.rollback", "backups.create"]);
+  for (const call of h.calls) {
+    const sidecar = sidecarTimeoutMs(call.method);
+    assert.ok(call.timeoutMs > sidecar, `${call.method}: IPC ${call.timeoutMs} ms, sidecar ${sidecar} ms`);
+  }
 });
 
 test("sidecar'ın geçersiz yanıtı yine reddedilir", async () => {

@@ -85,3 +85,23 @@ func TestUpgradeClosesLegacyRawAdminConnections(t *testing.T) {
 		}
 	}
 }
+
+// kadrand.service Requires=kadran-proxy.socket. Göçte ters_vekil_*
+// kadrand'dan sonraya ertelendiği için aracı soketi kadrand'ın ilk yeniden
+// başlatmasından ÖNCE ayrıca hazırlanmalı (B2/I4).
+func TestMigrationPreparesBrokerSocketBeforeRestartingDaemon(t *testing.T) {
+	script, err := installScript.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(script)
+	call := strings.Index(text, "\n    vekil_araci_onhazirla\n")
+	restart := strings.Index(text, "\nsystemctl restart kadrand.service\n")
+	if call < 0 || restart < 0 || call >= restart {
+		t.Fatalf("broker preparation must precede the daemon restart (call=%d restart=%d)", call, restart)
+	}
+	fn := between(text, "vekil_araci_onhazirla() {", "\n}\n")
+	if strings.Contains(fn, "systemctl start kadran-proxy.service") {
+		t.Error("broker service must not start before the old proxy releases the ports")
+	}
+}

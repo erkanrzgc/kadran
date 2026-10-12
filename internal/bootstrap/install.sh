@@ -435,6 +435,63 @@ say "volume root hardened ($vol_opts)"
 # deploy/systemd/kadran-caddy.service'in başında. Kurulan her şey depodan
 # geliyor: birim, soket, tmpfiles kuralı ve yol açıcı yapılandırma.
 
+# ── Tipli vekil aracısı (kadran-proxy) ───────────────────────────────
+#
+# kadrand.service `Requires=kadran-proxy.socket` taşıyor: aracının kullanıcısı,
+# tmpfiles dizini, birim dosyaları ve SOKETİ kadrand başlamadan ÖNCE hazır
+# olmalı. Taze kurulum ve yükseltmede ters_vekil_kur bunu zaten yapıyor. Göçte
+# (K-136) ters_vekil_* kasten kadrand'dan SONRAYA ertelenir (eski vekil :80/:443'ü
+# tutuyor); bu yüzden kadrand'ın göçteki ilk yeniden başlatması, birim yokken
+# `Requires=` yüzünden başlamıyordu (yarım göç, B2/I4). Aşağıdaki üç parça iki
+# yoldan da ortak çağrılıyor; göçte kadrand'dan önce vekil_araci_onhazirla koşar.
+
+vekil_araci_kullanicisi() {
+    getent group kadran-proxy >/dev/null || groupadd --system kadran-proxy
+    if ! id -u kadran-proxy >/dev/null 2>&1; then
+        useradd --system --gid kadran-proxy --home-dir /nonexistent \
+            --no-create-home --shell "$NOLOGIN" --comment "Kadran proxy capability broker" kadran-proxy
+    fi
+    for forbidden_group in kadran kadran-client docker; do
+        if id -nG kadran-proxy | tr ' ' '\n' | grep -qx "$forbidden_group"; then
+            die "kadran-proxy must not belong to $forbidden_group"
+        fi
+    done
+    if id -nG kadran | tr ' ' '\n' | grep -qx kadran-proxy; then
+        die "kadran must not belong to the raw-admin kadran-proxy group"
+    fi
+}
+
+vekil_araci_tmpfiles() {
+    install -m 0644 -o root -g root "$STAGE/kadran-proxy-tmpfiles.conf" \
+        /etc/tmpfiles.d/kadran-proxy.conf
+    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-proxy.conf
+}
+
+vekil_araci_birimleri() {
+    install -m 0644 -o root -g root "$STAGE/kadran-proxy.service" \
+        /etc/systemd/system/kadran-proxy.service
+    install -m 0644 -o root -g root "$STAGE/kadran-proxy.socket" \
+        /etc/systemd/system/kadran-proxy.socket
+    systemctl daemon-reload
+}
+
+# vekil_araci_onhazirla — YALNIZ göçte, kadrand yeniden başlamadan önce.
+#
+# Aracının kullanıcısını, tmpfiles dizinini, birimlerini kurar ve SOKETİNİ
+# açar. Aracı SERVİSİ başlatılmaz: `Requires=kadran-caddy.service` taşıyor ve
+# eski vekil portları tutarken yeni Caddy'yi çekmek göçü bozardı. Yeni
+# kadran-caddy kullanıcısı da henüz yok (goc_vekil panely-caddy'yi yeniden
+# adlandırır), yani servis başlatılmaya kalkışsa bile açıkça düşer; kadrand
+# bağlanamazsa vekil izleyicisi (K-055) vekil gelince yeniden dener.
+vekil_araci_onhazirla() {
+    step "Proxy broker socket (before the control plane restarts)"
+    vekil_araci_kullanicisi
+    vekil_araci_tmpfiles
+    vekil_araci_birimleri
+    systemctl enable kadran-proxy.socket
+    systemctl restart kadran-proxy.socket
+}
+
 # ters_vekil_hazirla / ters_vekil_baslat — ters vekili kurar ya da yükseltir.
 #
 # İki parça çünkü göçte (K-136) arada eski vekil duruyor: ESKİ vekil siteyi
@@ -484,11 +541,7 @@ build/caddy/main.go — the K-050 boundary is VOID."
         /etc/systemd/system/kadran-caddy.service
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-admin.socket" \
         /etc/systemd/system/kadran-caddy-admin.socket
-    install -m 0644 -o root -g root "$STAGE/kadran-proxy.service" \
-        /etc/systemd/system/kadran-proxy.service
-    install -m 0644 -o root -g root "$STAGE/kadran-proxy.socket" \
-        /etc/systemd/system/kadran-proxy.socket
-    systemctl daemon-reload
+    vekil_araci_birimleri
 
     # ── :80/:443'ü başkası tutuyor mu? ──────────────────────────────────
     #
@@ -517,19 +570,7 @@ kadran-caddy cannot bind them. To continue:
 }
 
 ters_vekil_baslat() {
-    getent group kadran-proxy >/dev/null || groupadd --system kadran-proxy
-    if ! id -u kadran-proxy >/dev/null 2>&1; then
-        useradd --system --gid kadran-proxy --home-dir /nonexistent \
-            --no-create-home --shell "$NOLOGIN" --comment "Kadran proxy capability broker" kadran-proxy
-    fi
-    for forbidden_group in kadran kadran-client docker; do
-        if id -nG kadran-proxy | tr ' ' '\n' | grep -qx "$forbidden_group"; then
-            die "kadran-proxy must not belong to $forbidden_group"
-        fi
-    done
-    if id -nG kadran | tr ' ' '\n' | grep -qx kadran-proxy; then
-        die "kadran must not belong to the raw-admin kadran-proxy group"
-    fi
+    vekil_araci_kullanicisi
     getent group kadran-caddy >/dev/null || groupadd --system kadran-caddy
 
     if ! id -u kadran-caddy >/dev/null 2>&1; then
@@ -555,9 +596,7 @@ To fix:  gpasswd -d kadran-caddy kadran"
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
         /etc/tmpfiles.d/kadran-caddy.conf
     systemd-tmpfiles --create /etc/tmpfiles.d/kadran-caddy.conf
-    install -m 0644 -o root -g root "$STAGE/kadran-proxy-tmpfiles.conf" \
-        /etc/tmpfiles.d/kadran-proxy.conf
-    systemd-tmpfiles --create /etc/tmpfiles.d/kadran-proxy.conf
+    vekil_araci_tmpfiles
 
     # Yeniden kurulumda HİÇBİR ŞEY değişmediyse ters vekile dokunulmuyor.
     # Taze sunucu testinde (K-112) ikinci kurulum onu koşulsuz yeniden
@@ -700,6 +739,9 @@ step "Services"
 # Göçte executor BAŞLAMADAN: depo beyaz listesi eskisiyle aynı mı (K-136).
 if [ "$GOC" -eq 1 ]; then
     goc_izinli_depo_dogrula
+    # kadrand `Requires=kadran-proxy.socket`: soket, kadrand yeniden
+    # başlamadan ÖNCE var olmalı (B2/I4).
+    vekil_araci_onhazirla
 fi
 
 systemctl enable kadran-exec.service kadrand.service

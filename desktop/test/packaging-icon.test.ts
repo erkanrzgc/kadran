@@ -40,17 +40,30 @@ test("Windows icon contains all standard sizes as valid alpha PNG frames", () =>
     }
     // For the first pixel of the first RGBA row, every PNG predictor is zero.
     const decoded = inflateSync(Buffer.concat(chunks));
-    assert.equal(decoded[4], 0, "Original transparent corner must remain transparent");
+    assert.equal(decoded[4], 0, "Transparent icon corner must remain transparent");
   }
   assert.deepEqual(sizes, [16, 24, 32, 48, 64, 128, 256]);
 });
 
-test("icon provenance binds the original logo and generated ICO bytes", () => {
+test("icon provenance binds the outlined K master, native PNG, and generated ICO bytes", () => {
   const path = asset("../assets/icon-provenance.json");
-  assert.ok(existsSync(path), "Original logo conversion provenance is missing");
+  assert.ok(existsSync(path), "Native icon provenance is missing");
   const manifest = JSON.parse(readFileSync(path, "utf8"));
-  assert.equal(hash(readFileSync(asset("../public/kadran-logo.png"))), manifest.source_sha256);
+  assert.equal(manifest.source, "../public/kadran-icon.png");
+  assert.equal(manifest.master, "kadran-icon.svg");
+  const master = readFileSync(asset("../assets/kadran-icon.svg"));
+  assert.equal(hash(master), manifest.master_sha256);
+  const source = readFileSync(asset("../public/kadran-icon.png"));
+  assert.equal(hash(source), manifest.source_sha256);
   assert.equal(hash(readFileSync(ico)), manifest.ico_sha256);
-  assert.equal(manifest.source, "../public/kadran-logo.png");
-  assert.equal(manifest.transform, "RGBA format conversion and LANCZOS resizing only; original source unchanged");
+  assert.equal(source.readUInt32BE(16), 256);
+  assert.equal(source.readUInt32BE(20), 256);
+  assert.equal(source[25], 6, "Native source must retain RGBA transparency");
+  assert.equal(manifest.font, "Bahnschrift Light SemiCondensed");
+  assert.deepEqual(manifest.font_axes, { wght: 300, wdth: 87.5 });
+  assert.equal(manifest.glyph, "K");
+  assert.equal(manifest.fill, "#5B96BA");
+  assert.equal(manifest.transform, "RGBA format conversion and LANCZOS resizing only; native source PNG unchanged");
+  assert.equal((master.toString("utf8").match(/<path\b/g) ?? []).length, 1, "Native icon must contain one outlined glyph");
+  assert.ok(!/<(?:text|image)\b/.test(master.toString("utf8")), "Icon must not require a runtime font or image");
 });

@@ -1,5 +1,6 @@
 import { bridge } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
+import { BrandWordmark } from "./BrandWordmark.tsx";
 
 /**
  * Pencerenin başlık çubuğu. Sürükleme alanı CSS'te (-webkit-app-region).
@@ -11,8 +12,7 @@ export function Titlebar() {
   return (
     <header className={mac ? "titlebar is-mac" : "titlebar"}>
       <div className="tb-brand">
-        <img className="brand-logo" src="./kadran-logo.png" alt={t("brand.logo")} data-testid="brand-logo" />
-        <span className="wordmark">KΛDRΛN</span>
+        <BrandWordmark label={t("brand.logo")} />
       </div>
       <div className="tb-drag" />
       {mac ? null : (

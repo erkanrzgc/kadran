@@ -301,7 +301,7 @@
   "form.env_remove": "Remove environment variables",
   "form.env_remove_hint": "One existing name per line. A missing replacement does not remove an existing variable.",
   "form.invalid_env_remove": "Use unique variable names to remove; do not also replace the same name.",
-  "brand.logo": "Kadran emblem",
+  "brand.logo": "Kadran wordmark",
   "operation.deleted": "Deleted {app}: {containers} containers, {releases} releases and {deployments} activation records removed.",
   "operation.volumes_kept": "Volume data retained on disk: {names}"
 }

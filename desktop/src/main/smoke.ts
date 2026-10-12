@@ -138,10 +138,25 @@ async function screenshot(win: BrowserWindow, name: string): Promise<void> {
   console.log(`UI evidence: ${path}`);
 }
 
+async function checkWordmark(win: BrowserWindow): Promise<string> {
+  const mark = await evaluate<{ readable: boolean; color: string; fill: string; duplicate: boolean }>(win, `(() => {
+    const svg = ${q('[data-testid="brand-logo"]')};
+    if (!(svg instanceof SVGSVGElement)) return { readable: false, color: '', fill: '', duplicate: false };
+    const rect = svg.getBoundingClientRect();
+    const geometry = svg.getBBox();
+    return { readable: rect.width >= 100 && rect.height >= 20 && geometry.width > 0 && geometry.height > 0,
+      color: getComputedStyle(svg).color, fill: getComputedStyle(svg.querySelector('path')).fill,
+      duplicate: Boolean(document.querySelector('.tb-brand img, .tb-brand .wordmark')) };
+  })()`);
+  expect(mark.readable && !mark.duplicate, "selected wordmark is missing, too small or duplicated");
+  expect(mark.fill === mark.color, `wordmark did not follow foreground color (${mark.fill}, ${mark.color})`);
+  return mark.color;
+}
+
 async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
-  await waitFor(win, `${q('[data-testid="brand-logo"]')}?.naturalWidth === 1254`, "original logo image");
+  const darkWordmarkColor = await checkWordmark(win);
   const glass = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backdropFilter`);
   expect(glass.includes("blur"), `glass surfaces have no real backdrop blur (${glass}); ${await evaluate<string>(win, "JSON.stringify({spaced:CSS.supports('backdrop-filter','blur(24px) saturate(135%)'),minified:CSS.supports('backdrop-filter','blur(24px)saturate(135%)'),rules:[...document.styleSheets].flatMap(s=>[...s.cssRules]).filter(r=>r.selectorText==='.glass').map(r=>r.cssText)})")}`);
   await screenshot(win, "apps-dark-1180x780");
@@ -189,7 +204,8 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   expect(!(await text(win, '[data-testid="app-existing-env"]')).includes("OLD"), "explicit environment removal was not applied");
 
   win.setSize(760, 520);
-  await waitFor(win, "window.innerWidth <= 760", "minimum window size");
+  // Windows rounds a transparent window by one CSS pixel at fractional DPI.
+  await waitFor(win, "Math.abs(window.innerWidth - 760) <= 1", "minimum window size");
   await noHorizontalOverflow(win, "configuration at 760x520");
   await evaluate(win, `${q('[data-testid="app-form"]')}.scrollIntoView({block:'start'})`);
   await screenshot(win, "configuration-dark-760x520");
@@ -264,6 +280,7 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await screenshot(win, "settings-dark-760x520");
   await click(win, '[data-testid="tone-light"]');
   await waitFor(win, "document.documentElement.dataset.tone === 'light'", "light appearance");
+  expect((await checkWordmark(win)) !== darkWordmarkColor, "light theme retained the dark theme wordmark color");
   await click(win, '[data-testid="server-fake@test"]');
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "light application list");
@@ -396,6 +413,7 @@ export async function runSmokeTest(win: BrowserWindow): Promise<void> {
       problems.push(`bridge surface differs: ${JSON.stringify(surface)} != ${JSON.stringify(EXPECTED_BRIDGE)}`);
     }
     if (!(await waitForRoot(win))) problems.push("React root did not render");
+    else await checkWordmark(win);
 
     // Renderer Node'a ERİŞEMEMELİ; erişebiliyorsa ayrıcalık ayrımı
     // istemci tarafından delinmiş olur.

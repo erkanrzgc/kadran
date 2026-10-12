@@ -301,7 +301,7 @@
   "form.env_remove": "Ortam değişkenlerini kaldır",
   "form.env_remove_hint": "Her satıra mevcut bir ad yazın. Değiştirme alanında yer almaması mevcut değişkeni kaldırmaz.",
   "form.invalid_env_remove": "Kaldırmak için benzersiz değişken adları kullanın; aynı adı ayrıca değiştirmeyin.",
-  "brand.logo": "Kadran amblemi",
+  "brand.logo": "Kadran yazı logosu",
   "operation.deleted": "{app} silindi: {containers} konteyner, {releases} sürüm ve {deployments} aktivasyon kaydı kaldırıldı.",
   "operation.volumes_kept": "Diskte korunan hacim verisi: {names}"
 }

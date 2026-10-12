@@ -1,6 +1,5 @@
 /* Glass remains translucent in Clear, Acrylic and Vibrancy. Solid is an explicit user preference. */
-.brand-logo { width: 32px; height: 32px; object-fit: contain; filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.55)); }
-:root[data-tone="light"] .brand-logo { filter: invert(1); }
+.brand-logo { display: block; width: 112px; height: 24px; flex: none; color: var(--fg); }
 .rail, .stage, .log-output, .operation-dialog { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
 :root[data-tone="light"] .rail, :root[data-tone="light"] .stage, :root[data-tone="light"] .log-output, :root[data-tone="light"] .operation-dialog { scrollbar-color: rgba(17, 20, 26, 0.2) transparent; }
 ::-webkit-scrollbar { width: 7px; height: 7px; }

@@ -136,7 +136,7 @@ if (!app.requestSingleInstanceLock()) {
 
     registerHandlers();
     const appearance = await loadAppearance(userData(), platformInfo, warn);
-    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-logo.png") });
+    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-icon.png") });
     const win = host.open(appearance.mode);
     if (SMOKE_TEST) void runSmokeTest(win);
 

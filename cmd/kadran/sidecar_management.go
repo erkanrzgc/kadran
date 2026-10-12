@@ -20,6 +20,22 @@ import (
 
 const maxDesktopOutput = 512 << 10
 
+// lifecycleTimeout, geri alma ve silmenin istemci süresi. İş sunucuda
+// önce uygulamanın kuyruğuna girer, sonra çalışır. Kuyruktayken dolan
+// süre işi temiz iptal eder (koordinatör iptale dayanıklı); ÇALIŞIRKEN
+// dolan süre ise geri almayı boşaltmanın ortasında kesebilir. Bu yüzden
+// sunucunun en kötü çalışma süresinden büyük olmalı:
+//
+//	sağlık kapısı            90 sn  (deploy.DefaultGate.Timeout)
+//	boşaltma + durdurma      20 sn  (deploy.DefaultDrain: Window + Grace)
+//	mühür                    10 sn  (api sealTimeout)
+//	konteyner kurma/silme   ~60 sn  (Docker'a bağlı pay)
+//	                       ≈ 3 dk;  kısa bir kuyruk beklemesi için +1 dk
+//
+// Sunucu sabitleri istemciye içe aktarılmıyor (istemci ikilisine sunucu
+// kodu girmesin); biri değişirse bu hesap da güncellenmeli.
+const lifecycleTimeout = 4 * time.Minute
+
 var desktopAppID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 var desktopRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$`)
 
@@ -121,7 +137,9 @@ func (s *sidecar) dispatchManagement(ctx context.Context, req rpcRequest) (any, 
 	switch req.Method {
 	case "apps.deploy":
 		timeout = 10 * time.Minute
-	case "apps.rollback", "apps.delete", "backups.create":
+	case "apps.rollback", "apps.delete":
+		timeout = lifecycleTimeout
+	case "backups.create":
 		timeout = 90 * time.Second
 	}
 	return s.withConnTimeout(ctx, req.Params, timeout, func(ctx context.Context, conn *client.Client) (any, error) {

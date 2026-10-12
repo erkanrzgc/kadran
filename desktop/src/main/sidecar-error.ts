@@ -33,7 +33,7 @@ const GITHUB_TOKEN = /gh[pousr]_[A-Za-z0-9_]+/g;
 /** Bağlantı adreslerindeki kimlik bilgisi ve GitHub jetonları silinir. */
 export function redactSecrets(text: string): string {
   return text
-    .replace(/(?!)/g, `x-access-token:${REDACTED}@`)
+    .replace(X_ACCESS_TOKEN, `x-access-token:${REDACTED}@`)
     .replace(URL_USERINFO, `$1${REDACTED}@`)
     .replace(GITHUB_PAT, REDACTED)
     .replace(GITHUB_TOKEN, REDACTED);

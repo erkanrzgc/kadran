@@ -97,7 +97,10 @@ function AppDetail({ target, appId, onBack, onDeleted }: { target: string; appId
   const update = async (draft: AppDraft) => {
     if (!spec) return;
     setMessage(null);
-    const result = await operation.run(() => bridge.appUpdate(target, appId, editableUpdate(draft, spec)));
+    // Değişen alan yoksa sunucuya boş güncelleme gitmez (sunucu onu reddeder).
+    const changes = editableUpdate(draft, spec);
+    if (!changes) { setMessage({ key: "operation.no_changes" }); return; }
+    const result = await operation.run(() => bridge.appUpdate(target, appId, changes));
     if (!result) return;
     setMessage({ key: "operation.saved", detail: [result.proxy_detail, result.env_detail, result.volume_detail].filter(Boolean).join("\n") });
     await query.reload();

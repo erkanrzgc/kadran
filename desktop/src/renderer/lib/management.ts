@@ -28,18 +28,40 @@ function parseEnv(text: string): Record<string, string> | null {
   return env;
 }
 
+// Hacim kuralları sunucunun internal/api/volumevalidate.go dosyasıyla BİREBİR aynıdır
+// (ne daha gevşek ne daha sıkı); ana süreçteki doğrulayıcı da aynı kuralı taşır.
+const VOLUME_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
+const MAX_VOLUMES = 16;
+const MAX_MOUNT_PATH = 4096;
+const FORBIDDEN_MOUNT_ROOTS = ["/proc", "/sys", "/dev"];
+const utf8Length = (value: string) => new TextEncoder().encode(value).length;
+
+/** Mutlak bir yol için Go path.Clean(p) === p: "//", "." ve ".." parçaları ile sondaki "/" yok. */
+function isCleanMountPath(p: string): boolean {
+  if (p === "/") return true;
+  return p.startsWith("/") && !p.endsWith("/") && !p.slice(1).split("/").some((part) => part === "" || part === "." || part === "..");
+}
+
+function validMountPath(p: string): boolean {
+  if (p === "" || utf8Length(p) > MAX_MOUNT_PATH || !p.startsWith("/") || !isCleanMountPath(p) || p === "/") return false;
+  return !FORBIDDEN_MOUNT_ROOTS.some((root) => p === root || p.startsWith(root + "/"));
+}
+
+const mountsOverlap = (a: string, b: string) => a === b || a.startsWith(b + "/") || b.startsWith(a + "/");
+
 function parseVolumes(text: string): AppSpec["volumes"] | null {
   const volumes: AppSpec["volumes"] = [];
   for (const line of lines(text)) {
-    const match = line.trim().match(/^([a-z0-9][a-z0-9-]{0,63})=(\/[^\s:]*)(:ro)?$/);
-    if (!match) return null;
-    const name = match[1]!;
-    const path = match[2]!;
-    if (path === "/" || path.endsWith("/") || path.includes("//") || /(?:^|\/)\.{1,2}(?:\/|$)/.test(path) || /^\/(proc|sys|dev)(\/|$)/.test(path)) return null;
-    if (volumes.some((v) => v.name === name || v.mount_path === path || v.mount_path.startsWith(path + "/") || path.startsWith(v.mount_path + "/"))) return null;
-    volumes.push({ name, mount_path: path, read_only: !!match[3] });
+    const separator = line.indexOf("=");
+    const name = line.slice(0, separator).trim();
+    let path = line.slice(separator + 1).trim();
+    const readOnly = path.endsWith(":ro");
+    if (readOnly) path = path.slice(0, -3);
+    if (separator < 1 || !VOLUME_NAME.test(name) || !validMountPath(path)) return null;
+    if (volumes.some((v) => v.name === name || mountsOverlap(v.mount_path, path))) return null;
+    volumes.push({ name, mount_path: path, read_only: readOnly });
   }
-  return volumes;
+  return volumes.length > MAX_VOLUMES ? null : volumes;
 }
 
 export function validateAppDraft(draft: AppDraft, update = false): string | null {
@@ -65,11 +87,34 @@ export function draftToSpec(draft: AppDraft): AppSpec {
   return { app_id: draft.appId, git_host: draft.gitHost, git_owner: draft.gitOwner, git_repo: draft.gitRepo, git_branch: draft.gitBranch, dockerfile_path: draft.dockerfilePath, container_port: Number(draft.containerPort), replicas: Number(draft.replicas), health_path: draft.healthPath, domain: draft.domain, limits: { memory_bytes: String(Number(draft.memoryMiB) * 1024 ** 2), cpu_millis: Number(draft.cpuMillis), blkio_weight: Number(draft.blkioWeight) }, build_args: {}, env: parseEnv(draft.envText)!, volumes: parseVolumes(draft.volumesText)! };
 }
 
-export function editableUpdate(draft: AppDraft, original: AppSpec): AppUpdate {
+/**
+ * Yalnız DEĞİŞEN alanları gönderir. Sunucu env ve hacimleri ada göre birleştirir
+ * (proto3 map/repeated varlık taşımaz), bu yüzden değişmeyen alanı yeniden
+ * göndermek arada başka yerden (CLI) yapılmış değişikliği geri alırdı.
+ * Hiçbir şey değişmediyse null döner: boş güncelleme sunucuda reddedilir.
+ */
+export function editableUpdate(draft: AppDraft, original: AppSpec): AppUpdate | null {
   const error = validateAppDraft(draft, true);
   if (error) throw new Error(error);
-  const volumes = parseVolumes(draft.volumesText)!;
-  return { domain: draft.domain, git_branch: draft.gitBranch, health_path: draft.healthPath, replicas: Number(draft.replicas), env: parseEnv(draft.envText)!, env_remove: lines(draft.envRemoveText).map((line) => line.trim()), volumes, volume_remove: original.volumes.filter((v) => !volumes.some((n) => n.name === v.name)).map((v) => v.name) };
+  const update: AppUpdate = {};
+  if (draft.domain !== original.domain) update.domain = draft.domain;
+  if (draft.gitBranch !== original.git_branch) update.git_branch = draft.gitBranch;
+  if (draft.healthPath !== original.health_path) update.health_path = draft.healthPath;
+  if (Number(draft.replicas) !== original.replicas) update.replicas = Number(draft.replicas);
+  // Özgün env değerleri sunucuda gizli (yalnız adlar); yazılan her satır bilinçli bir değişikliktir.
+  const env = parseEnv(draft.envText)!;
+  if (Object.keys(env).length > 0) update.env = env;
+  const envRemove = lines(draft.envRemoveText).map((line) => line.trim());
+  if (envRemove.length > 0) update.env_remove = envRemove;
+  // Hacim metni düzenlenmediyse hacimlere hiç dokunulmaz (ro/yol bilgisi yeniden gönderilmez).
+  if (draft.volumesText !== specToDraft(original).volumesText) {
+    const next = parseVolumes(draft.volumesText)!;
+    const changed = next.filter((v) => !original.volumes.some((o) => o.name === v.name && o.mount_path === v.mount_path && o.read_only === v.read_only));
+    const removed = original.volumes.filter((o) => !next.some((v) => v.name === o.name)).map((o) => o.name);
+    if (changed.length > 0) update.volumes = changed;
+    if (removed.length > 0) update.volume_remove = removed;
+  }
+  return Object.keys(update).length === 0 ? null : update;
 }
 
 export function confirmationMatches(appId: string, value: string): boolean { return appId !== "" && value === appId; }

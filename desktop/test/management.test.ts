@@ -28,9 +28,9 @@ test("editing leaves valid immutable source and exact non-MiB resource limits un
   original.replicas = 64;
   const draft = { ...specToDraft(original), domain: "new.example.com" };
   assert.equal(validateAppDraft(draft, true), null);
-  const update = editableUpdate(draft, original);
+  const update = editableUpdate(draft, original)!;
   assert.equal(update.domain, "new.example.com");
-  assert.equal(update.replicas, 64);
+  assert.equal(Object.hasOwn(update, "replicas"), false); // değişmeyen alan gönderilmez
   assert.equal(Object.hasOwn(update, "limits"), false);
   assert.equal(original.limits.memory_bytes, "100000001");
 });
@@ -50,17 +50,18 @@ test("form preserves explicit empty environment values and rejects duplicate or 
 test("updates express removals while preserving immutable source, port and limits", () => {
   const original = draftToSpec({ ...validDraft(), envText: "OLD=x\nMODE=old", volumesText: "data=/data" });
   const next = { ...validDraft(), domain: "", envText: "MODE=new", envRemoveText: "OLD", volumesText: "" };
-  assert.deepEqual(editableUpdate(next, original), { domain: "", git_branch: "main", health_path: "/healthz", replicas: 1, env: { MODE: "new" }, env_remove: ["OLD"], volumes: [], volume_remove: ["data"] });
+  assert.deepEqual(editableUpdate(next, original), { env: { MODE: "new" }, env_remove: ["OLD"], volume_remove: ["data"] });
+  // Alan adı da kaldırılıyorsa boş değer açıkça gönderilir.
+  assert.deepEqual(editableUpdate({ ...next, domain: "" }, { ...original, domain: "a.example.com" })?.domain, "");
 });
 
 test("redacted environment names remain unchanged until explicit replacement or removal", () => {
   const original = draftToSpec(validDraft());
   original.env = { SECRET: "", MODE: "" }; // Actual API returns names only.
   const draft = specToDraft(original);
-  const domainOnly = editableUpdate({ ...draft, domain: "new.example.com" }, original);
-  assert.deepEqual(domainOnly.env, {});
-  assert.deepEqual(domainOnly.env_remove, []);
-  const replacement = editableUpdate({ ...draft, envText: "MODE=", envRemoveText: "SECRET" }, original);
+  const domainOnly = editableUpdate({ ...draft, domain: "new.example.com" }, original)!;
+  assert.deepEqual(domainOnly, { domain: "new.example.com" });
+  const replacement = editableUpdate({ ...draft, envText: "MODE=", envRemoveText: "SECRET" }, original)!;
   assert.deepEqual(replacement.env, { MODE: "" });
   assert.deepEqual(replacement.env_remove, ["SECRET"]);
   assert.equal(validateAppDraft({ ...draft, envText: "MODE=", envRemoveText: "MODE" }), "form.invalid_env_remove");
@@ -95,4 +96,39 @@ test("newer reads win when an earlier request settles last", async () => {
   await scope.run(async () => "latest");
   finish("obsolete");
   assert.deepEqual(await old, { status: "discarded" });
+});
+
+function specWith(volumes: Array<{ name: string; mount_path: string; read_only: boolean }>) {
+  return { ...draftToSpec({ ...validDraft(), domain: "a.example.com" }), volumes };
+}
+
+test("hiçbir şey değişmediyse güncelleme gönderilmez", () => {
+  const original = specWith([{ name: "data", mount_path: "/data", read_only: true }]);
+  assert.equal(editableUpdate(specToDraft(original), original), null);
+});
+
+test("hacim metni düzenlenmediyse volumes ve volume_remove hiç gönderilmez", () => {
+  const original = specWith([{ name: "data", mount_path: "/data", read_only: true }]);
+  const update = editableUpdate({ ...specToDraft(original), replicas: "2" }, original)!;
+  assert.deepEqual(update, { replicas: 2 });
+});
+
+test("hacim düzenlenince yalnız eklenen/değişenler ve kaldırılanlar gider", () => {
+  const original = specWith([{ name: "keep", mount_path: "/keep", read_only: false }, { name: "ro", mount_path: "/ro", read_only: false }, { name: "gone", mount_path: "/gone", read_only: false }]);
+  const draft = { ...specToDraft(original), volumesText: "keep=/keep\nro=/ro:ro\nnew=/new" };
+  assert.deepEqual(editableUpdate(draft, original), {
+    volumes: [{ name: "ro", mount_path: "/ro", read_only: true }, { name: "new", mount_path: "/new", read_only: false }],
+    volume_remove: ["gone"],
+  });
+});
+
+test("yalnız boşluk satırı eklemek hacimlerde değişiklik sayılmaz", () => {
+  const original = specWith([{ name: "data", mount_path: "/data", read_only: false }]);
+  assert.equal(editableUpdate({ ...specToDraft(original), volumesText: "data=/data\n\n" }, original), null);
+});
+
+test("yalnız değişen skalerler gider", () => {
+  const original = specWith([]);
+  const draft = { ...specToDraft(original), gitBranch: "dev", healthPath: "/ready" };
+  assert.deepEqual(editableUpdate(draft, original), { git_branch: "dev", health_path: "/ready" });
 });

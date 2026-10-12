@@ -235,6 +235,7 @@
   "operation.rolled_back": "Trafik {from} sürümünden {to} sürümüne taşındı.",
   "operation.recreated": "Konteynerler saklanan imajdan yeniden oluşturuldu.",
   "operation.saved": "Yapılandırma kaydedildi.",
+  "operation.no_changes": "Kaydedilecek değişiklik yok.",
   "operation.build_output": "Derleme çıktısını oku",
   "resource.loading": "Güncel sunucu verisi yükleniyor…",
   "release.RELEASE_STATUS_UNSPECIFIED": "Derleme durumu bilinmiyor",

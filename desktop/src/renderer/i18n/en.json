@@ -235,6 +235,7 @@
   "operation.rolled_back": "Traffic moved from {from} to {to}.",
   "operation.recreated": "Containers were recreated from the retained image.",
   "operation.saved": "Configuration saved.",
+  "operation.no_changes": "No changes to save.",
   "operation.build_output": "Read build output",
   "resource.loading": "Loading current server data…",
   "release.RELEASE_STATUS_UNSPECIFIED": "Unknown build state",

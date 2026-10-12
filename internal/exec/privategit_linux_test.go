@@ -18,6 +18,11 @@ import (
 
 func TestPrivateGitFileOwnershipAndPermissions(t *testing.T) {
 	if os.Geteuid() != 0 {
+		// Bağımlılığın garanti olduğu ortamda (CI'ın sudo adımı) atlamak
+		// yasak: değişken set iken test düşer, sessizce geçmez.
+		if os.Getenv("KADRAN_TEST_REQUIRE_ROOT") == "1" {
+			t.Fatal("root ownership check requires root (KADRAN_TEST_REQUIRE_ROOT=1)")
+		}
 		t.Skip("root ownership check needs root")
 	}
 	dir, err := os.MkdirTemp("/root", "kadran-credential-test-")

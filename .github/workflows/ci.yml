@@ -406,6 +406,8 @@ jobs:
         run: |
           go test -race -count=1 ./internal/proxydrv ./internal/proxyguard ./internal/bootstrap
           sudo env "PATH=$PATH" KADRAN_TEST_PROXY_PERMISSIONS=1 go test -count=1 -run TestUnixPermissionsSeparateRawTypedAndExecutorSockets ./internal/proxyguard
+          # Kimlik bilgisi dosyası sahiplik/izin testi root ister; root'suz koşuda atlanır, burada ZORUNLU.
+          sudo env "PATH=$PATH" KADRAN_TEST_REQUIRE_ROOT=1 go test -count=1 -run TestPrivateGitFileOwnershipAndPermissions ./internal/exec
           (cd build/caddy && go test -race -count=1 ./...)
 
       # Ayrıcalıklı yüzey ne kadar büyürse "en az yetki" o kadar

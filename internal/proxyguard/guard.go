@@ -100,12 +100,21 @@ func fail(w http.ResponseWriter, status int, message string) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
+// maxJSONDepth, kabul edilen JSON belgesinin en fazla iç içe derinliği.
+// Gerçek vekil yapılandırması ~10 düzeydir; 64 bol bol yeter.
+const maxJSONDepth = 64
+
 // Go's JSON decoder normally accepts duplicate keys. Reject them as well as
 // trailing documents so each security-relevant value has one interpretation.
 func uniqueJSON(body []byte) error {
 	d := json.NewDecoder(bytes.NewReader(body))
-	var value func() error
-	value = func() error {
+	var value func(depth int) error
+	value = func(depth int) error {
+		// Özyineleme derinliği sınırlı: kötü niyetli iç içe bir belge
+		// yığını tüketemez.
+		if depth > maxJSONDepth {
+			return fmt.Errorf("proxy JSON is nested too deeply")
+		}
 		token, err := d.Token()
 		if err != nil {
 			return fmt.Errorf("invalid proxy JSON")
@@ -127,13 +136,13 @@ func uniqueJSON(body []byte) error {
 					return fmt.Errorf("duplicate or invalid proxy JSON field")
 				}
 				seen[name] = true
-				if err := value(); err != nil {
+				if err := value(depth + 1); err != nil {
 					return err
 				}
 			}
 		case '[':
 			for d.More() {
-				if err := value(); err != nil {
+				if err := value(depth + 1); err != nil {
 					return err
 				}
 			}
@@ -143,7 +152,7 @@ func uniqueJSON(body []byte) error {
 		_, err = d.Token()
 		return err
 	}
-	if err := value(); err != nil {
+	if err := value(1); err != nil {
 		return err
 	}
 	if _, err := d.Token(); err != io.EOF {

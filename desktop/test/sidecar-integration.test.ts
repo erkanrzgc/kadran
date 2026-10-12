@@ -9,7 +9,9 @@
  * Sahte sürece karşı geçen bir istemci, gerçeğine karşı hâlâ bozuk
  * olabilir — Go tarafında tam olarak bu sınıf bir hata çıkmıştı (K-012).
  *
- * Binary yoksa test ATLANIYOR, uydurma bir başarı üretmiyor. Üretmek için:
+ * Binary yoksa test ATLANIYOR (yerelde), uydurma bir başarı üretmiyor. Ama
+ * garanti ortamda (CI) KADRAN_REQUIRE_SIDECAR=1 verilir: o zaman ikili yoksa
+ * test atlamaz, DÜŞER. Üretmek için:
  *
  *   go build -o bin/kadran.exe ./cmd/kadran     (Windows)
  *   go build -o bin/kadran ./cmd/kadran         (Linux/macOS)
@@ -24,6 +26,7 @@ import { fileURLToPath } from "node:url";
 
 import { SidecarClient } from "../src/shared/sidecar-client.ts";
 import type { SidecarProcess } from "../src/shared/sidecar-client.ts";
+import { sidecarErrorText } from "../src/main/sidecar-error.ts";
 import { resolveSidecarCommand } from "../src/main/spawn-sidecar.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -31,8 +34,14 @@ const repoRoot = resolve(here, "..", "..");
 
 const command = resolveSidecarCommand({ isPackaged: false, repoRoot });
 const binaryExists = existsSync(command.command);
+// Garanti ortamda atlama yasak: ikili yoksa kırmızı.
+const binaryRequired = process.env.KADRAN_REQUIRE_SIDECAR === "1";
 
-describe("gerçek sidecar süreci", { skip: binaryExists ? false : "kadran binary'si yok — `go build -o bin/kadran.exe ./cmd/kadran`" }, () => {
+describe("gerçek sidecar süreci", { skip: binaryExists || binaryRequired ? false : "kadran binary'si yok — `go build -o bin/kadran.exe ./cmd/kadran`" }, () => {
+  test("garanti ortamda kadran ikilisi mevcut (atlama yok)", () => {
+    if (binaryRequired) assert.ok(binaryExists, `KADRAN_REQUIRE_SIDECAR=1 ama ikili yok: ${command.command}`);
+  });
+
   function newClient() {
     return new SidecarClient(
       () =>
@@ -99,9 +108,12 @@ describe("gerçek sidecar süreci", { skip: binaryExists ? false : "kadran binar
         .call("status", { target: "unix:///olmayan/kadran-test.sock" })
         .then(
           () => null,
-          (e) => e as { message: string },
+          (e) => e,
         );
       assert.ok(err, "ulaşılamayan hedef için hata bekleniyordu");
+      // Gerçek sebep (data) arıtılmış metinde görünmeli, yalnız "call failed" değil.
+      const text = sidecarErrorText(err);
+      assert.match(text, /^could not connect: .{5,}/, text);
 
       // Süreç hâlâ ayakta olmalı: bir hata oturumu bitirmemeli.
       const after = await client.call<{ protocol: number }>("version");

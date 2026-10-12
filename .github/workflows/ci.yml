@@ -467,8 +467,21 @@ jobs:
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
+      # Gerçek sidecar: sahte süreçle geçen istemci gerçeğine karşı bozuk
+      # olabilir (K-012) ve hata biçimi (message + data) yalnız gerçek
+      # ikiliyle sınanır. protobuf kodu depoda yok, kurulum adımı üretir.
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+      - name: Gerçek sidecar'ı derle
+        working-directory: .
+        run: go build -o bin/kadran ./cmd/kadran
       - run: npm run typecheck
+      # KADRAN_REQUIRE_SIDECAR=1: ikili yoksa entegrasyon testi ATLAMAZ, düşer.
       - run: npm test
+        env:
+          KADRAN_REQUIRE_SIDECAR: "1"
       - run: npm run build
       - run: npm run test:built
       - name: Çalışma zamanı bağımlılık zafiyetleri
@@ -505,6 +518,16 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
         working-directory: desktop
+      - name: Gerçek sidecar'ı derle
+        run: go build -o bin/kadran.exe ./cmd/kadran
+      - name: Tip denetimi (iki tsconfig)
+        working-directory: desktop
+        run: npm run typecheck
+      - name: Birim ve entegrasyon testleri
+        working-directory: desktop
+        env:
+          KADRAN_REQUIRE_SIDECAR: "1"
+        run: npm test
       - run: npm run build
         working-directory: desktop
       - name: Uçtan uca (sahte sidecar)

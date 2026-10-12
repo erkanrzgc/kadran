@@ -10,7 +10,7 @@ width, height = art[3:5]
 viewbox = f"0 0 {width + 12:g} {height + 12:g}"
 for folder in [ROOT / "docs/assets", ROOT / "desktop/public"]:
     folder.mkdir(parents=True, exist_ok=True)
-    for suffix, color in [("", "#EDF1F5"), ("-dark", "#18232E")]:
+    for suffix, color in [("", "#EDF1F5"), ("-dark", "#000000")]:
         shapes = helpers["group"](art, 6, 6, color=color)
         svg = f'<svg xmlns="http://www.w3.org/2000/svg" width="2344" height="560" viewBox="{viewbox}" role="img" aria-labelledby="title"><title id="title">KΛDRΛN</title>{shapes}</svg>\n'
         (folder / f"kadran-wordmark{suffix}.svg").write_text(svg, encoding="utf-8")

@@ -153,6 +153,34 @@ async function checkWordmark(win: BrowserWindow): Promise<string> {
   return mark.color;
 }
 
+async function checkBrandContrast(win: BrowserWindow): Promise<void> {
+  const snapshot = await evaluate<{ tone: string | undefined; tint: string; accent: string }>(win,
+    `({ tone: document.documentElement.dataset.tone, tint: document.documentElement.style.getPropertyValue('--tint'), accent: document.documentElement.style.getPropertyValue('--acc') })`);
+  try {
+    for (const tone of ["dark", "light"]) {
+      await evaluate(win, `document.documentElement.dataset.tone = '${tone}'; document.documentElement.style.setProperty('--tint', '0')`);
+      for (const accent of ["125, 211, 252", "255, 176, 32", "126, 224, 138", "236, 235, 230"]) {
+        await evaluate(win, `document.documentElement.style.setProperty('--acc', '${accent}')`);
+        const ink = await checkWordmark(win);
+        expect(ink === (tone === "light" ? "rgb(0, 0, 0)" : "rgb(237, 241, 245)"), `${tone} wordmark changed with accent: ${ink}`);
+        const background = await evaluate<string>(win, "getComputedStyle(document.querySelector('.titlebar')).backgroundColor");
+        const rgba = background.match(/[\d.]+/g)?.map(Number);
+        expect(rgba?.length === 4 && rgba[3]! >= 0.7 && rgba[3]! < 1, `titlebar lost its translucent contrast guard: ${background}`);
+        const luminance = (rgb: number[]): number => rgb.map((v) => v / 255).map((v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i]!, 0);
+        const fg = luminance(tone === "light" ? [0, 0, 0] : [237, 241, 245]);
+        for (const wallpaper of [0, 255]) {
+          const bg = luminance(rgba!.slice(0, 3).map((v) => v * rgba![3]! + wallpaper * (1 - rgba![3]!)));
+          const contrast = (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+          expect(contrast >= 4.5, `${tone} wordmark contrast at zero tint is only ${contrast.toFixed(2)}:1`);
+        }
+      }
+    }
+    console.log("wordmark contrast passed: both tones, four accents, zero tint, black/white backdrops");
+  } finally {
+    await evaluate(win, `(() => { const root = document.documentElement; const saved = ${JSON.stringify(snapshot)}; if (saved.tone) root.dataset.tone = saved.tone; else delete root.dataset.tone; for (const [name, value] of [['--tint', saved.tint], ['--acc', saved.accent]]) { if (value) root.style.setProperty(name, value); else root.style.removeProperty(name); } })()`);
+  }
+}
+
 async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
@@ -413,7 +441,7 @@ export async function runSmokeTest(win: BrowserWindow): Promise<void> {
       problems.push(`bridge surface differs: ${JSON.stringify(surface)} != ${JSON.stringify(EXPECTED_BRIDGE)}`);
     }
     if (!(await waitForRoot(win))) problems.push("React root did not render");
-    else await checkWordmark(win);
+    else await checkBrandContrast(win);
 
     // Renderer Node'a ERİŞEMEMELİ; erişebiliyorsa ayrıcalık ayrımı
     // istemci tarafından delinmiş olur.

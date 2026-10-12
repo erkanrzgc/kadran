@@ -22,6 +22,22 @@ PNG'ler 2344 × 560 RGBA'dır. İki renk sürümünün alfa geometrisi aynıdır
 alfa aralığı 0–255, dört köşe tam saydamdır. SVG'lerde arka plan yoktur.
 README `picture` öğesiyle sayfa temasına uygun SVG'yi seçer.
 
+Tema görünürlüğü: açık temada logo tam siyah (`#000000`), koyu temada
+açık renk (`#EDF1F5`) kullanır. Logo rengi vurgu, parlama ve arayüz fontu
+ayarlarından bağımsızdır. Başlığın %70 opak cam zemini, Clear modunda pencere
+renk tonu sıfırken de duvar kâğıdı üzerinde kontrastı korur; tam opak bir
+zemin eklenmez. Ayrı PNG/SVG varlıkları arka plansız kalır.
+
+Siyah SVG, GitHub README için de
+[`7579a5b`](https://github.com/erkanrzgc/kadran/commit/7579a5b192aa139d4a709b9ee75aec7852fc958d)
+ile güncellendi. Gerçek Electron CSS ölçümlerinden hesaplanan en kötü
+kontrast koyu temada beyaz masaüstü üzerinde 6,30:1, açık temada siyah
+masaüstü üzerinde 9,35:1. Smoke iki ton ve dört mevcut vurgu rengini
+`tint=0` ile kontrol eder; test değişiklikleri kaydedilmez ve sonunda
+geri alınır. Bu oranlar CSS bileşimi hesabıdır; harici duvar kâğıdı
+ekran görüntüsü ölçümü değildir. Clear yolculuğu gerçek renderer ve
+saydam piksel kontrolleriyle ayrıca geçti.
+
 GitHub `main` dalında yalnız README başlığı ve iki SVG yayımlandı:
 [logo değişikliği](https://github.com/erkanrzgc/kadran/compare/138b7ccccca66ce1250c349f88664c4818581d93...512884d284a4989c6f045090d23db26401da98f5).
 Genel ürün kodu veya başka çalışma ağacı değişikliği GitHub'a aktarılmadı.

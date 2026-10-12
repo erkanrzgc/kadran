@@ -10,6 +10,7 @@
   --tone: 14, 16, 22;
   --glass: 255, 255, 255;
   --fg: #f2f4f8;
+  --brand-ink: #edf1f5;
   --fg-dim: rgba(242, 244, 248, 0.62);
   --fg-faint: rgba(242, 244, 248, 0.4);
   --line: rgba(255, 255, 255, 0.08);
@@ -29,6 +30,7 @@
 :root[data-tone="light"] {
   --tone: 246, 247, 250;
   --fg: #11141a;
+  --brand-ink: #000000;
   --fg-dim: rgba(17, 20, 26, 0.62);
   --fg-faint: rgba(17, 20, 26, 0.42);
   --line: rgba(17, 20, 26, 0.1);

@@ -185,6 +185,16 @@ func rewritePrivateArchive(ctx context.Context, r io.Reader, w io.Writer, limits
 			return errors.New("private Git archive is corrupt or exceeds expanded limit")
 		}
 		count++
+		// `git archive` ve codeload ilk kayıt olarak pax genel başlığı
+		// (`pax_global_header`, typeflag 'g') yazar. Yalnız bu tür atlanır:
+		// içeriği uygulanmaz, bağlama yazılmaz, kök mantığına katılmaz.
+		// Symlink, hardlink, aygıt vb. aşağıda reddedilmeye devam eder.
+		if h.Typeflag == tar.TypeXGlobalHeader {
+			if count > limits.entries {
+				return errors.New("unsafe or oversized private Git archive entry")
+			}
+			continue
+		}
 		name := strings.TrimSuffix(h.Name, "/")
 		first, relative, _ := strings.Cut(name, "/")
 		if count > limits.entries || path.IsAbs(name) || path.Clean(name) != name || strings.ContainsAny(name, "\\:") || first == "." || first == ".." || (h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeDir) || h.Size < 0 || h.Size > limits.expanded {

@@ -5,7 +5,31 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### Added
+
+- **Typed proxy broker (K-143).** The daemon can submit validated routes through
+  `kadran-proxy`; it can no longer send arbitrary JSON to Caddy's raw admin socket.
+- **Desktop resource management and original Kadran logo (K-145).** Applications,
+  configuration, deployments, rollback, bounded logs, alarms, backups and audit
+  details are available in the glass interface, including the 760×520 window.
+- **Private GitHub archives (K-146).** An opt-in executor credential file scopes
+  access to configured repositories. Credentials never enter Docker build URLs,
+  renderer state or deployment records. See `docs/guides/private-git.md`.
+
+- **New desktop app (K-142).** A glass window — Clear, Acrylic, Mica or Vibrancy, with
+  the desktop showing through — and Appearance settings you tune yourself: tint, panel
+  glass, edge highlight, hover glow, accent, theme, interface and code fonts (any
+  installed font; JetBrains Mono ships with the app). Status gets an overview strip with
+  live sparklines, a health pill and a server switcher; Audit gets ranges, filters, an
+  outcome bar and "load older". English by default, Turkish in Settings.
+- **The desktop app asks for no permissions** except the installed-font list. Before
+  this release Electron granted every permission request.
+
 ### Changed
+
+- **Patched build dependencies (K-147).** Both modules and CI require Go 1.26.9;
+  the separate proxy module uses Caddy 2.11.7. Reachable dependency findings were
+  removed; one unused module-level OpenPGP advisory remains in the module graph.
 
 - **The CLI speaks English (K-141).** Help, usage errors, tables, status labels and every
   message the CLI produces itself are English, including `bootstrap`'s own steps and the
@@ -28,6 +52,54 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   English details; records written before the upgrade keep theirs, since the chain is
   append-only. Still Turkish: the server's journal lines (`journalctl -u kadrand`), alarm
   and Telegram texts, and the database's own trigger messages.
+
+### Fixed
+
+- **Concurrent lifecycle operations (K-144).** Deploy, rollback, configuration,
+  deletion, pruning and automatic healing share a cancellable per-application queue.
+  Skipped target routes and failed proxy loads cannot report successful deployment.
+  Current validated routes for skipped existing domains are retained. Health probes
+  reject truncated or stalled response bodies; at most 4 KiB of the body is read, and a body that reaches that limit without error is healthy (the connection is closed without draining the rest).
+- **Deletion fails closed (K-144).** Database errors while looking up the active
+  deployment no longer authorize container deletion.
+- **Desktop protocol and stale state (K-145).** UTF-8 is decoded across chunks;
+  management results are shape-checked; deploy needs a matching success event;
+  connection setup counts toward the operation deadline. Failed or expired audit
+  verification clears a previous green result, and stale health cannot remain green.
+- **Secret configuration edits (K-145).** An untouched secret placeholder does not
+  overwrite the stored secret; replacement and removal require explicit input.
+- **Every desktop change asks first (K-148).** Create, change, deploy, rollback,
+  delete and backup each show a native confirmation in the main process. Cancel is
+  the default, and only one dialog can be open at a time. The dialog names the
+  server and shows what will change. Environment variables and build arguments show
+  names only, never values. Long values are cut in the middle so the host of
+  `user@host` stays visible. Invisible and look-alike characters are shown as escapes.
+- **The desktop no longer gives up before the server (K-148).** Deploy, rollback,
+  delete and backup wait one minute longer than the sidecar does. Before, the
+  desktop could time out while a rollback was still running on the server and let
+  you start it a second time.
+- **Desktop errors show the real reason (K-148).** Instead of only `call failed`,
+  the desktop shows the server's reason, with tokens and credentials removed. An
+  update sends only the fields you changed. Profiles are written atomically.
+- **Migration starts the proxy broker before the daemon (K-148).** Upgrading to the
+  typed broker could restart `kadrand` before the broker's socket existed.
+- **The proxy broker refuses network, gateway and broadcast addresses (K-148).**
+  A compromised daemon could point a route at the host through the Docker gateway.
+- **One domain rule (K-148).** The API and the proxy now validate domains with the
+  same function. An app whose stored domain the proxy rejects is skipped instead of
+  blocking every route. ⚠ If such an app exists from an older version, it loses its
+  live route at the next reconcile and shows as skipped: fix its domain with
+  `kadran app update -domain <name> <app> <target>`.
+- **Private Git archives with a pax global header are accepted (K-148).**
+- **The private Git drop-in blocks cloud metadata (K-148).** The documented
+  `kadran-exec` drop-in now denies link-local addresses, including
+  169.254.169.254. If you already use it, add the `IPAddressDeny=` line from
+  `docs/guides/private-git.md`. Measure DNS first: on GCP the resolver can be the
+  metadata address.
+
+- **Desktop "recent audit records" showed the oldest records.** It asked for the first
+  50 records after sequence 0; once a chain had more than 50 records, new ones never
+  appeared. It now reads the latest sequence first.
 
 ## v0.5.1 — 2026-10-05
 

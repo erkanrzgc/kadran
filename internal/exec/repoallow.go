@@ -8,9 +8,9 @@ import "strings"
 //
 // # Neden var?
 //
-// Özel depoları derleyebilmek için hostta bir git kimlik bilgisi duruyor
-// ve dockerd onu kullanıyor (ölçüldü: dockerd root'un credential
-// helper'ına danışıyor, bkz. K-056). Kimlik bilgisi RPC'den GEÇMİYOR —
+// K-057, dockerd'nin host credential helper'ını kullanmadığını gösterdi.
+// K-146'da özel depolar root executor'ın sabit GitHub archive isteğiyle
+// okunuyor. Kimlik bilgisi RPC'den GEÇMİYOR —
 // bu iyi — ama bir bedeli var: token'ın erişebildiği HER depo, Kadran'ın
 // de erişebildiği depo hâline geliyor.
 //

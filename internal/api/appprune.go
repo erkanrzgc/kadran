@@ -75,6 +75,12 @@ func (s *Server) PruneApp(
 				"'all apps', each app is pruned on its own", appID))
 	}
 
+	release, err := s.acquireApp(ctx, appID)
+	if err != nil {
+		return nil, s.completed(ctx, action, tgt, params, err)
+	}
+	defer release()
+
 	keep, err := keepSet(ctx, s.store, appID)
 	if err != nil {
 		// ⚠ FAIL-CLOSED. Aktif sürüm bilinemiyorsa hiçbir şey silinmiyor.

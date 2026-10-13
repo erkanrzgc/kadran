@@ -13,9 +13,11 @@ import (
 	"time"
 )
 
-// Client, Caddy'nin admin API'sine bağlanır.
+// Client connects to the typed proxy broker. NewAdmin is reserved for the
+// isolated broker process, whose identity can reach Caddy's raw admin socket.
 type Client struct {
-	http *http.Client
+	http  *http.Client
+	admin bool
 }
 
 const (
@@ -58,12 +60,20 @@ func New(socketPath string) *Client {
 	}}
 }
 
+// NewAdmin is for the separate broker process. The daemon's Unix permissions
+// prohibit connecting to this raw admin socket, even after compromise.
+func NewAdmin(socketPath string) *Client {
+	c := New(socketPath)
+	c.admin = true
+	return c
+}
+
 // Load, yapılandırmayı yükler ve YÜKLENDİĞİNİ DOĞRULAR.
 //
 // ── Neden geri okuma ────────────────────────────────────────────────
 //
 // `POST /load`'ın 200 dönmesi, canlı yapılandırmanın gönderdiğimiz şey
-// olduğunu KANITLAMAZ. Admin soketine `kadran` (veya root) olarak çalışan
+// olduğunu KANITLAMAZ. Admin soketine root olarak çalışan
 // başka bir süreç de yazabilir ve kontrol düzlemi bunu göremez; o zaman
 // SQLite'taki "gerçeğin kaynağı", canlı olmayan bir şeyi tarif eder.
 //
@@ -71,6 +81,31 @@ func New(socketPath string) *Client {
 // `aux` karesi → `image_id` → `DeploySucceeded` → ve burada
 // "istediğim durumu geri okudum". Hiçbiri "hata almadım" demiyor.
 func (c *Client) Load(ctx context.Context, cfg *Config) error {
+	if !c.admin {
+		set, err := SafeRoutes(cfg)
+		if err != nil {
+			return fmt.Errorf("proxy broker: %w", err)
+		}
+		body, err := json.Marshal(set)
+		if err != nil {
+			return err
+		}
+		if len(body) > MaxRouteRequest {
+			return fmt.Errorf("proxy broker: route request too large")
+		}
+		raw, err := c.do(ctx, http.MethodPost, "/v1/routes", body)
+		if err != nil {
+			return err
+		}
+		live, err := decodeRoutes(raw)
+		if err != nil {
+			return err
+		}
+		if verificationErr := verifyApplied(cfg, live); verificationErr != nil {
+			return fmt.Errorf("proxy broker: loaded config NOT FOUND live: %w", verificationErr)
+		}
+		return nil
+	}
 	body, err := json.Marshal(cfg)
 	if err != nil {
 		return fmt.Errorf("caddy: could not encode the config: %w", err)
@@ -92,6 +127,13 @@ func (c *Client) Load(ctx context.Context, cfg *Config) error {
 
 // Current, canlı yapılandırmayı okur.
 func (c *Client) Current(ctx context.Context) (*Config, error) {
+	if !c.admin {
+		raw, err := c.do(ctx, http.MethodGet, "/v1/routes", nil)
+		if err != nil {
+			return nil, err
+		}
+		return decodeRoutes(raw)
+	}
 	raw, err := c.do(ctx, http.MethodGet, "/config/", nil)
 	if err != nil {
 		return nil, err
@@ -106,6 +148,19 @@ func (c *Client) Current(ctx context.Context) (*Config, error) {
 		return nil, fmt.Errorf("caddy: could not decode the live config: %w", err)
 	}
 	return &cfg, nil
+}
+
+func decodeRoutes(raw []byte) (*Config, error) {
+	var set RouteSet
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&set); err != nil {
+		return nil, fmt.Errorf("proxy broker: invalid route response: %w", err)
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return nil, fmt.Errorf("proxy broker: trailing response data")
+	}
+	return FixedConfig(set)
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body []byte) ([]byte, error) {
@@ -220,10 +275,14 @@ func verifyApplied(want, live *Config) error {
 // Vekil izleyicisinin tetikleyicisi (K-055'in ikinci yarısı, K-112):
 // Caddy yeniden başlayınca rotasız açılıyor ve kadrand bunu görmezse
 // siteler kapalı kalıyor. Bilerek TEK YÖNLÜ: fazla rotalar ve upstream
-// farkları burada görünmez. Uzlaştırma sağlıksız bir uygulamayı atlıyor
-// ve canlıdaki eski rotası iyileştirme bitene kadar duruyor; iki yönlü
-// bir tetik (verifyApplied gibi) o rotayı silip gözetmenin davranışını
-// değiştirirdi.
+// farkları burada görünmez.
+//
+// ⚠ Bu işlev artık onarımın TETİĞİ DEĞİL. deploy.Reconciler.Repair yüklemeye
+// Matches (iki yönlü) ile karar veriyor; fazla/yabancı rota ve farklı
+// upstream de yeniden yüklemeyle düzeltiliyor. Atlanan uygulamanın canlı
+// rotası ise Repair'de önce taşınıyor (LiveUpstreams), yani iki yönlü karşılaştırma
+// onu silmiyor. MissingHosts yalnızca "rotasını tamamen kaybetmiş alan
+// adları" günlüğü ve RepairResult.Missing içindir.
 func MissingHosts(want, live *Config) []string {
 	liveRoutes := routesByHost(live)
 	var missing []string

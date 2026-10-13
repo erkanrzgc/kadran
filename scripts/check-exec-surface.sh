@@ -124,7 +124,13 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # bağlantı. Sınır kasanın kodunu getiren commit'te değişti.
 #
 # Çıktı HER ZAMAN iki sayıyı da basar; ham sayı gizlenmiyor.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2600}"
+# K-146: private Git is an explicit addition to the root trust boundary.
+# Measured before changing this gate: 2876 code lines / 4884 raw, from
+# 2581 code lines. Fixed GitHub requests, credential ownership checks and
+# bounded archive validation run here so tokens never enter the daemon,
+# Docker URL or renderer. The import-graph measurement stays unchanged.
+# Default network access stays AF_UNIX; private Git needs an opt-in unit.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2900}"
 
 fail=0
 note_failure() {

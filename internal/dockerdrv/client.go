@@ -217,7 +217,10 @@ func (e *apiError) Error() string {
 // çağıranın sorumluluğudur.
 func (c *Client) do(ctx context.Context, method, path string, q url.Values, body any) (*http.Response, error) {
 	var rdr io.Reader
-	if body != nil {
+	contentType := "application/json"
+	if raw, ok := body.(io.Reader); ok {
+		rdr, contentType = raw, "application/x-tar"
+	} else if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("docker: could not encode the request: %w", err)
@@ -240,7 +243,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		return nil, fmt.Errorf("docker: could not build the request: %w", err)
 	}
 	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", contentType)
 	}
 
 	resp, err := c.http.Do(req)

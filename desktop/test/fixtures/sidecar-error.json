@@ -1,0 +1,12 @@
+{
+  "call": {
+    "code": -32603,
+    "message": "call failed",
+    "data": "rpc error: code = Unavailable desc = connection reset by peer"
+  },
+  "connect": {
+    "code": -32603,
+    "message": "could not connect",
+    "data": "client: empty host name in target"
+  }
+}

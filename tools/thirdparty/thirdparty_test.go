@@ -209,17 +209,35 @@ func TestShippedTargetsMatchTheBuildScripts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(release), "SERVER_BINARIES=(kadrand kadran-exec kadran-connect kadran-vault)") {
-		t.Fatal("build-release.sh'in sunucu ikili listesi değişti — targets'ı güncelleyin")
+	const key = "SERVER_BINARIES=("
+	i := strings.Index(string(release), key)
+	if i < 0 {
+		t.Fatal("build-release.sh'te SERVER_BINARIES yok")
 	}
-	names := map[string]bool{}
+	rest := string(release)[i+len(key):]
+	end := strings.IndexByte(rest, ')')
+	if end < 0 {
+		t.Fatal("build-release.sh'te SERVER_BINARIES kapanmıyor")
+	}
+	names := map[string]target{}
 	for _, tg := range targets {
-		names[tg.Name] = true
-	}
-	for _, n := range []string{"kadran", "kadrand", "kadran-exec", "kadran-connect", "kadran-vault", "kadran-caddy"} {
-		if !names[n] {
-			t.Errorf("%s taranmıyor", n)
+		if _, duplicate := names[tg.Name]; duplicate {
+			t.Errorf("%s iki kez taranıyor", tg.Name)
 		}
+		names[tg.Name] = tg
+	}
+	for _, n := range append(strings.Fields(rest[:end]), "kadran-caddy") {
+		tg, ok := names[n]
+		if !ok {
+			t.Errorf("%s taranmıyor", n)
+			continue
+		}
+		if !reflect.DeepEqual(tg.Platforms, serverPlatforms) {
+			t.Errorf("%s sunucu platformları: %q", n, tg.Platforms)
+		}
+	}
+	if _, ok := names["kadran"]; !ok {
+		t.Error("kadran taranmıyor")
 	}
 }
 

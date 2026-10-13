@@ -19,8 +19,23 @@ export const CHANNELS = {
   status: "kadran:status",
   auditList: "kadran:audit-list",
   auditVerify: "kadran:audit-verify",
+  appsList: "kadran:apps-list",
+  appGet: "kadran:app-get",
+  appCreate: "kadran:app-create",
+  appUpdate: "kadran:app-update",
+  appDelete: "kadran:app-delete",
+  appDeploy: "kadran:app-deploy",
+  appRollback: "kadran:app-rollback",
+  appLogs: "kadran:app-logs",
+  alarmsList: "kadran:alarms-list",
+  backupsList: "kadran:backups-list",
+  backupCreate: "kadran:backup-create",
   loadProfiles: "kadran:profiles-load",
   saveProfiles: "kadran:profiles-save",
+  loadAppearance: "kadran:appearance-load",
+  saveAppearance: "kadran:appearance-save",
+  windowControl: "kadran:window",
+  copyText: "kadran:copy",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

@@ -2140,6 +2140,10 @@ yasak, ve şimdi bu.
 
 ## K-050 — Caddy'ye panelyd konuşur; yetkinin sınırı BINARY'de çizildi
 
+> ⚠ K-143 ile yerine geçildi: daemon artık Caddy'nin ham admin soketine
+> konuşmuyor; ayrı kullanıcıdaki tipli `kadran-proxy` aracısı sabit
+> yapılandırmayı üretiyor. Aşağısı tarihsel kayıttır.
+
 Dilim 4b'nin ilk sorusu "Caddy admin soketine kim konuşuyor"du. İki aday
 vardı: panelyd doğrudan (bütçe maliyeti yok) veya executor üzerinden
 (şema beyaz listesi, ama bütçeyi kesin aşar — 2497/2500).
@@ -10617,8 +10621,9 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 ## K-141 — CLI İngilizce
 
 **Tarih:** 5 Ekim 2026
-**Durum:** 1. AŞAMA PR #8 (CI 10/10, mutasyon 27/27), 2. AŞAMA PR #9 (`fa4f77a`)
-birleşti. 3. AŞAMA KOD BİTTİ (dal `cli-ingilizce-3`). 4–5. aşamalar sırada.
+**Durum:** 1. aşama PR #8 (CI 10/10, mutasyon 27/27), 2. aşama PR #9 (`fa4f77a`),
+3. aşama PR #10 (`1f1c028`) birleşti; 4. aşama K-142 ile (masaüstü, dal
+`masaustu-temel`); 5. aşama sırada.
 
 ### Neden
 
@@ -10801,3 +10806,299 @@ Kanıt: Debian 13 konteyneri, CI taklidi (uid 1001, parolasız sudo,
 - `check-exec-surface` 2581/2600.
 - 27 mutasyon betiğinin hepsinde "Bütün mutasyonlar yakalandı"; UYGULANAMADI ya da KIRMIZI
   OLMADI yok.
+
+### 4. aşama: masaüstü
+
+Masaüstü yeniden yazıldı (K-142). Arayüzün metni `src/renderer/i18n/en.json`
+(varsayılan) ve `tr.json`'da. Kullanıcıya ulaşan ana süreç hataları (sidecar
+istemcisi, profiller, IPC doğrulaması) İngilizce; konsol tanılamaları Türkçe kaldı.
+
+Korumalar:
+
+- `test/i18n.test.ts`: iki dosyanın anahtarları ve yer tutucuları aynı, İngilizcede
+  Türkçe harf yok, koddaki her `t("…")` anahtarı var, iki dilde aynı değer yalnız
+  dilden bağımsız anahtarlarda.
+- `test/no-raw-text.test.ts`: JSX'te çeviri dışı görünür metin yok (TypeScript AST).
+- `test/errors-english.test.ts`: `new …Error(…)` iletileri İngilizce.
+
+Hepsi KIRMIZI ölçüldü; mutasyon betiği iki dil mutantını yakalıyor.
+
+Bu aşamanın kararı K-141'in "yalnız İngilizce" kuralını masaüstü için değiştirdi;
+gerekçe K-142'de.
+
+## K-142 — Masaüstü: cam tasarım, React, izinler, dil seçimi
+
+**Tarih:** 7 Ekim 2026
+**Durum:** 1. PARÇA KOD BİTTİ (dal `masaustu-temel`). Tasarım: `docs/specs/2026-10-07-masaustu-temel-design.md`.
+
+### Neden
+
+Kullanıcı masaüstünü baştan istedi: pencere cam gibi (arkadaki masaüstü görünür),
+ayarları kendisi yapabilecek, CLI'ın yaptığı her şeyi yapabilecek. İş dört parçaya
+bölündü; bu kayıt 1. parçayı (temel + cam tasarım) kapsar.
+
+### Karar
+
+- **Electron kalıyor.** Liquid glass'ın kenar kırılması webde yalnız Chromium'da var
+  (SVG yer değiştirme süzgeci + backdrop-filter). Tauri/Wails sistemin web motorunu
+  kullanır; macOS ve Linux'ta kırılma olmaz. Bedel: paket büyük. Ölçüldü:
+  `desktop/dist/Kadran-win32-x64` 376 MB; bu açılmış klasör, kurulum paketi ya da
+  sıkıştırma henüz yok.
+- **React + Vite + Motion,** mevcut kabuğun içinde. Güvenlik duruşu (sandbox,
+  contextIsolation, CSP, dar köprü) ve sidecar istemcisi korundu.
+- **Pencere modları:**
+  - Windows 11: Clear (transparent) / Acrylic / Mica (backgroundMaterial) / Solid.
+  - macOS: Vibrancy.
+  - Linux: Clear ve Solid.
+  - Clear ↔ diğerleri pencereyi yeniden kurar; saydamlık sonradan açılıp kapanamıyor.
+- **İzinler kapandı.** Bugüne kadar Electron her izni veriyordu. Artık yalnız KONTROL
+  işleyicisinde `local-fonts` açık. Ölçüldü: Chromium yazı tipi listesini bu adla ve
+  kontrol kanalından soruyor; reddedilince boş liste dönüyor. Pano izni yok; kopyalama
+  ana süreçte (`copyText`).
+- **Dil seçimi (K-141'in "dil seçimi yok" kararı masaüstü için değişti).** Kullanıcı
+  istedi; varsayılan İngilizce, Türkçe Settings'te. Test matrisi büyümüyor: `en` ve `tr`
+  anahtar eşitliği ve İngilizcede Türkçe harf yokluğu birim testinde. CLI ve sunucu
+  İngilizce kalır; sunucudan gelen hata Türkçe arayüzde de İngilizce görünür.
+- **Coolify'ın düzeninden** üst çubuk, Overview şeridi, Live refresh, altı çizili bölüm
+  başlıkları ve sonuç çubuğu alındı. Kod, logo ve marka rengi alınmadı (Apache-2.0;
+  kullanıcı izin aldığını söyledi).
+
+### Ölçülen bir hata
+
+Eski arayüz "son denetim kayıtları" diye `after_seq = 0, limit = 50` istiyordu. Sunucu
+`after_seq`'i hariç tutup artan sırada döndüğü için ekranda EN ESKİ 50 kayıt vardı;
+zincir 50'yi geçince yeni kayıtlar hiç görünmüyordu. Yeni arayüz önce `latest_seq`'i
+okuyor. Hem birim testi hem uçtan uca yolculuk `latest_seq = 1284` → 1284…1275 ölçüyor.
+Mutant `afterSeq: 0` iki yerde de yakalanıyor.
+
+### Uygulama sırasında ölçülen hatalar
+
+İncelemelerin bulduğu ve denetleyicinin düzelttiği hatalar. Her biri birim testiyle
+düzeltildi. Sürüm maddesi dışındakilerin `scripts/mutate-desktop.sh`'te mutantı var;
+sürüm damgası denetimi elle KIRMIZI ölçüldü (`-X` yolu bozulunca `dist.mjs` durdu),
+`versionLabel` yalnız birim testli.
+
+- Bozuk `latest_seq` (null, "abc", "-1"…) ve zincir başını içermeyen en yeni sayfa
+  "zincirde kayıt yok" gösteriyordu. `parseLatestSeq` (yalnız tam ondalık dize, güvenli
+  tamsayı) ve `newestPageIntact` eklendi; ikisi de hata olarak gösterilir.
+- Yükleme hatası "kayıt yok" diye görünüyordu. `failed` durumu ve `auditPlaceholderKey`
+  (Status önizlemesi ile Audit ekranı ortak) eklendi.
+- Bağlantı kopunca üst çubuk "Healthy", ekran "Connected" kalıyordu. `stale` bayrağı
+  eklendi. İlke: bayat veri iyi haber taşımaz (healthy/unknown → attention); kötü haber
+  (tampering, broken install, executor unreachable) kalır (`healthOf`, `statusMetaKeys`).
+- Aynı sunucuya üst üste binen status/verify isteklerinde geç gelen eski cevap yenisini
+  eziyordu; eski VALID yeni INVALID'i gizleyebilirdi. Hedef başına single-flight eklendi
+  (`lib/single-flight.ts`). Takılan istek kilitlemez: sidecar istemcisi her isteği 35 sn
+  ile sınırlar.
+- Profil listesi okunmadan bağlanınca kayıtlı sunucular silinebiliyordu; eşzamanlı
+  yazmalar birbirini eziyordu. `lib/profile-store.ts` (diskten okumadan yazmaz, okuma
+  hatasında yazmaz, sıralı) ve `lib/serial.ts` eklendi.
+- Paketteki sidecar sürümsüz ("dev") derleniyordu ve arayüz CI etiketinin başına bir "v"
+  daha ekleyip "vv0.5.1" yazacaktı. `dist.mjs` artık `build-linux.sh` ile aynı `-X`
+  damgasını veriyor, derlemeden sonra sidecar'a sürüm soruyor ve "dev"de duruyor;
+  `versionLabel` eklendi.
+- Türkçe harf denetimi "Ayarlar" gibi harfsiz Türkçeyi kaçırıyordu (mutasyon betiği
+  yakaladı). İki dilde aynı değer artık yalnız 9 dilden bağımsız anahtarda
+  (`SAME_IN_BOTH`) kabul ediliyor.
+
+### Kanıt
+
+Hepsi bu kayıt yazılırken koşuldu (Windows 11, Node 24, Electron 43.7.8):
+
+- `npm run typecheck` temiz. `npm test`: 147 test, 147 geçti, 0 kalan.
+- `npm run test:built`: 4 test, 4 geçti.
+- `npm run e2e`: `duman testi GEÇTİ: yolculuk tamam (sahte sidecar)`. Yolculuk Electron'u
+  duman kipinde sahte sidecar'a karşı açar: yazı tipi listesi boş değil; zincir
+  rozetleri; önizleme 1284…1275; denetim sayfası 1284…1235, "Load older" sonrası 1185;
+  sonuç çubuğu dolu; bozuk `latest_seq` hata gösteriyor; bağlantı kopunca ekran bayat
+  ve üst çubuk "Attention required"; ikon animasyonları CSP ihlali üretmiyor; Türkçe
+  arayüzde İngilizce sunucu hatası tam metinle görünüyor.
+- `bash scripts/mutate-desktop.sh`: 26 mutantın 26'sı "yakalandı", sonda "Bütün
+  mutasyonlar yakalandı".
+- `go test ./cmd/kadran -run TestSidecarFixtures -count=1`: ok.
+- Paket (`desktop/dist/Kadran-win32-x64`, 376 MB, açılmış klasör): `Kadran.exe`,
+  `resources/kadran.exe` (sidecar), `resources/THIRD_PARTY_NOTICES.txt` ve
+  `resources/app.asar`. `app.asar` yalnız `package.json` ve `out/` taşıyor;
+  `node_modules` girdisi 0.
+- CI'ya eklenenler: "Masaüstü (ubuntu)" ve "Masaüstü (windows)" işleri; mutasyon işine
+  Node kuruldu ve betik tabanı 28'e çıktı. CI sonuçları ilk push'u bekliyor, henüz
+  ölçülmedi.
+
+### Kapsam dışı
+
+2–4. parçalar; logo (grafik tasarımcı); kurulum sihirbazı, imza, otomatik güncelleme;
+macOS ve Linux'ta görsel doğrulama.
+
+## K-143 — Ham Caddy admin yerine tipli proxy broker (2026-10-11)
+
+Dosya servis modüllerini çıkarmak tek başına dosya okuma sınırı değildi:
+`static_response` dosya placeholder'ı ile sentetik dosyanın içeriği okunabiliyordu.
+Daemon'un ham admin yetkisi kaldırıldı. Ayrı kullanıcıdaki `kadran-proxy` yalnız
+boyut sınırlı, bilinmeyen alanları reddeden rota DTO'larından sabit Caddy ayarını
+üretir. Domain, Docker IPv4 adresi ve port doğrulanır; keyfi JSON kabul edilmez.
+Unix soket izinleri, systemd kısıtları, bootstrap ve paketleme birlikte değişti.
+Yükseltme açık eski bağlantıları da kapatır; kısa bakım kesintisi mümkündür.
+Bu sınır IP'nin gerçek container sahipliğini kanıtlamaz. Kanıt: Unix/numerik UID
+erişim testleri, Caddy dosya okuma regresyonu ve altı broker mutasyonunun yakalanması.
+
+> ⚠ Düzeltme (K-148): o altı mutant `mutate-proxyadmin.sh`'ındı ve admin
+> istemcisini bozuyordu, aracının politikasını DEĞİL. Aracı politikası
+> (`FixedConfig`, `SafeRoutes`, JSON sınırları) `scripts/mutate-proxyguard.sh`
+> ile ölçüldü: 21/21.
+
+## K-144 — Uygulama yaşam döngüsünü birlikte sırala (2026-10-11)
+
+API deploy/rollback/update/delete/prune ile sağlık gözetmeninin heal işlemi aynı
+iptal edilebilir uygulama kuyruğunu paylaşır. Kilit rollout/drain sonuna kadar
+tutulur; farklı uygulamalar birbirini beklemez. Reconciler yüklemeleri de sıralar.
+Kendi rotası atlanan dağıtım başarı değildir. Başarısız/atlanan rota için mevcut
+doğrulanmış aynı-domain rota korunur; domain değiştirilmişse eski adın sahipliği
+kanıtlanmaz. Proxy onarımı yalnız domain kümesini değil upstream'i de karşılaştırır.
+Probe gövdeden en fazla 4096 bayt okur; sınıra hatasız ulaşan gövde (4 KB'tan büyük
+HTML ana sayfası dahil) sağlıklıdır, kalanı okunmadan bağlantı kapanır. Okuma
+hatası, takılma veya sınırın altında kesilen gövde başarısızdır (ilk sürümde
+"büyük gövde başarısız" yazıyordu; bu varsayılan `/` yolunda her büyük ana
+sayfayı sağlıksız yapıyordu, düzeltildi). ActiveDeployment veritabanı hatası silmeyi yetkilendirmez.
+Gerçek SQLite/API/rollout, kuyruk iptali ve gövde sınır testleri Windows/Linux
+`go test -race -count=1 ./...` içinde geçti.
+
+## K-145 — Dar masaüstü yönetim köprüsü ve cam kaynak görünümü (2026-10-11)
+
+On bir yönetim yöntemi mevcut gRPC API'sine bağlandı. Serbest kabuk/RPC eklenmedi.
+Deploy eşleşen Accepted/Succeeded olayı ve tamamlanan akış gerektirir. Logs UTF-8
+snapshot'ı 512 KiB ile sınırlı; JSON şekilleri ve yöntem girdileri kontrol edilir.
+SSH bağlantı kurulumu işlem zaman bütçesine dahildir. UTF-8 chunk decoder,
+başarısız doğrulamada eski yeşilin temizlenmesi ve beş dakikalık geçerlilik eklendi.
+Silme/rollback tam uygulama adı ve ana süreçte varsayılanı iptal olan TR/EN onayı
+gerektirir. Dokunulmayan ENV yer tutucusu sırrı ezmez.
+
+Kaynak navigasyonu, uygulama sekmeleri, log/alarm/yedek/audit ayrıntıları gerçek
+Clear pencere saydamlığıyla sunulur. 760×520 taşma ve koyu/açık TR/EN yolculuğu
+gerçek Electron'da sentetik sidecar ile ölçüldü. 168 masaüstü testi, dört derlenmiş
+çıktı testi ve 26 mutasyon geçti. Kullanıcının torus PNG'si değiştirilmeden
+README ve uygulamaya eklendi; ICO yalnız aynı görselin boyutlandırılmış sürümleri.
+
+> ⚠ Güncelleme (K-148): yerel onay artık yalnız silme/geri almada değil, durum
+> değiştiren BÜTÜN kanallarda (oluşturma, değiştirme, dağıtım, yedek dahil)
+> ana süreçte isteniyor. Masaüstü test ve mutant sayıları K-148'de.
+Canlı sunucu yolculuğu, macOS/Linux görsel kontrolü, imza ve otomatik güncelleme
+bu kanıtın kapsamı dışında kalır.
+
+## K-146 — Sınırlı özel GitHub arşivi ve açık yetkili kod bütçesi (2026-10-11)
+
+Executor opt-in root/0600 credential dosyasından allowlist repo token'ını okur.
+Sabit GitHub API → doğrulanan tek codeload yönlendirmesiyle tam SHA arşivi alır;
+Bearer token Docker URL'sine, daemon'a veya audit'e girmez. 128 MiB sıkıştırılmış,
+512 MiB açılmış, 100000 girdi ve iki dakika sınırı vardır. Traversal, link, özel
+dosya, yinelenen/multiple-root girdiler reddedilir; geçici dosya temizlenir.
+Unix Docker HTTP testinde gerçek arşiv akışı sentetik token ile sınandı.
+Gerçek özel repo/token kullanılmadı; branch çözümü hâlâ istemcidedir. Özel erişim
+network systemd drop-in gerektirir, varsayılan executor AF_UNIX sınırı korunur.
+
+Yetkili import graph aynı 11 pakette kaldı; ölçülen kod 2581 → 2876 satıra çıktı.
+2600 sınırı gizlice aşılmadı: arşiv doğrulaması nedeniyle açıkça 2900'e yükseltildi.
+Bu büyüme güvenlik maliyetidir; yeni token kaynakları veya genel HTTP fetch API'si
+eklemek ayrı tasarım ve bütçe değerlendirmesi gerektirir.
+
+## K-147 — Kullanılan bağımlılık bulgularını kapat (2026-10-11)
+
+Go 1.26.5 ile tarama ana modülde 17, Caddy modülünde 26 erişilebilir bulgu
+gösterdi. İki modül ve CI Go 1.26.9'a taşındı; Caddy 2.11.7'ye yükseltildi,
+ilgili transitif yamalar ve go.sum güncellendi. CEL'i eski Caddy'de tek başına
+yükseltmek API uyumsuzluğu üretti; uyumlu Caddy patch sürümüyle birlikte yükseltildi.
+Son `govulncheck ./...` iki modülde de 0 erişilebilir ve 0 import edilen paket
+bulgusu gösteriyor. Her birinde modül grafiğinde kullanım dışı OpenPGP
+`GO-2026-5932` notu kalıyor; sıfır modül bulgusu iddiası yok.
+Caddy yarış testleri ve 151 modülün lisans toplama kontrolü geçti.
+
+## K-148 — Son incelemenin düzeltmeleri; Windows'ta mutasyon ölçümü (2026-10-13)
+
+K-142–K-147'nin iki son incelemesi (A: masaüstü, B: sunucu) kritik ve önemli
+bulgular çıkardı. Hepsi `masaustu-temel` dalında düzeltildi. CI bu dalda henüz
+HİÇ koşmadı; aşağıdaki kanıt Windows'ta yereldir.
+
+**Sunucu.**
+- Sağlık yoklaması en fazla 4 KiB okur; sınıra hatasız ulaşan büyük gövde
+  sağlıklıdır. Önceki hâl büyük HTML ana sayfalarını sağlıksız sayıyordu.
+- Özel Git arşivinde pax genel başlığı (`g`) atlanır.
+- Alan adı kuralının tek tanımı `proxydrv.ValidDomain`; API ve vekil aynı
+  işlevi kullanır. Uzlaştırma geçersiz alan adlı uygulamayı bütün rota
+  kümesini düşürmek yerine atlar (`Skipped`, sebebiyle). ⚠ Böyle eski bir
+  kayıt varsa uygulama sonraki uzlaştırmada canlı rotasını kaybeder.
+- Aracının JSON derinlik sınırı 64. Sidecar'da geri alma/silme süresi 4 dk.
+- Göçte aracının kullanıcısı, tmpfiles'ı, birimleri ve soketi kadrand yeniden
+  başlamadan ÖNCE kurulur; yarım göç kapandı (`scripts/check-install-order.sh`).
+- Aracı her /16 bloğun ağ adresini, ağ geçidini (host) ve yayın adresini
+  upstream olarak reddeder.
+- Özel Git rehberindeki drop-in link-local'i ve bulut meta veri adresini
+  kapatır. GCP'de çözümleyici 169.254.169.254 olabilir; rehber önce ölçmeyi
+  söylüyor.
+
+**Masaüstü.**
+- Durum değiştiren her kanalda sıra: doğrula → kapı → ana süreçte yerel onay
+  (varsayılan Vazgeç) → sidecar. Aynı anda tek onay kutusu açılır.
+- IPC süresi, sidecar'ın aynı yöntem için kullandığı süreden 1 dk uzun. Test
+  değerleri Go kaynağından okur. Önce masaüstü vazgeçseydi kapı serbest kalır
+  ve sunucuda süren geri alma ikinci kez başlatılabilirdi.
+- Sidecar hatasının gerçek sebebi arıtılıp her kanalda gösterilir.
+- Güncelleme yalnız değişen alanları gönderir. Skaler alanda null reddedilir:
+  sunucu "verilmedi" sayıyordu, kutu "yok" gösteriyordu.
+- Sidecar'ın `{cancelled:true}` yanıtı iptal sayılmaz; iptali yalnız yerel kutu
+  üretir.
+- Kutudaki değerler önce kaçışlanır, sonra ortadan kesilir; `user@host`'un
+  host'u görünür kalır. Oluşturma kutusu kopya sayısını, sınırları ve build
+  argümanlarının yalnız adlarını gösterir. Sayılar doğrulayıcının kabul ettiği
+  iki biçimden (JSON sayısı, onluk metin) kanonik değere çevrilir.
+- Profil dosyası geçici dosya + rename ile atomik yazılır.
+
+**Mutasyon düzeneği (Windows).** `mutate-heal/appdelete/supervisor.sh` mutantı
+`newline='\n'` olmadan yazıyordu. Windows'ta TextIOWrapper satır sonu
+çevirisini metnin `replace` yöntemiyle yapıyor; bu, TEK eşleşme kapısını
+tetikledi ("722 KEZ ESLESTI") ve dosyayı boşaltılmış bıraktı. Ayrıca koşu
+sürerken aynı ağaçta `git status` mutantlı dosyayı okuyor; Python yazmak
+için açınca Windows kilidi sahte "UYGULANAMADI" üretiyor. Sonuçlar her betik
+tek başına, başka iş yokken koşularak alındı.
+
+| Kontrol (Windows, `masaustu-temel`) | Sonuç |
+|---|---|
+| `go build`, `go vet`, `go test -count=1 ./...`; `build/caddy` | Geçti |
+| `gofmt -l`, `check-exec-surface.sh`, `check-install-order.sh` | Temiz / geçti |
+| Masaüstü `npm test` (gerçek sidecar zorunlu), iki `tsc` yapılandırması | 276/276, atlanan 0; temiz |
+| Masaüstü `npm run build`, `test:built`, `npm run e2e` (Electron, sahte sidecar) | Geçti; 4/4; duman yolculuğu tamam |
+| `mutate-desktop.sh` | 63/63 tam koşu + 3 yeni mutant tek tek yakalandı |
+| heal, appdelete, appshow, prune, supervisor | 6/6, 6/6, 8/8, 10/10, 9/9 |
+| proxywatch, proxyguard (yeni), watchdog | 16/16, 21/21, 27/27 |
+| alarm, env, scaledown, volumes | 20/20, 17/17, 12/12, 26/26 |
+| install (göç sırası) | 7/7 |
+| goc, proxyadmin, install tam küme | İğneler uygulandı ve derlendi (ölçüm stub'lı kuru deneme) |
+
+**Windows'ta ölçülemeyenler, CI'da (PR #11, Linux) ölçüldü:**
+- Mutasyon işi: 29 betiğin 29'u yeşil. Windows'ta ölçülemeyen
+  `mutate-proxyadmin.sh`, goc ve install tam küme (K-139'un root mutantları
+  dahil, `KADRAN_TEST_REAL_SUDO=1`), bootstrapssh (dd, flock, umask, özet) ve
+  kasa (`kasacoz_test.go`, gerçek sqlite3 ve age) da geçti. `mutate-desktop.sh`
+  66/66.
+- `go test -race -count=1 ./...` ubuntu, ubuntu arm64 ve Windows'ta geçti;
+  gerçek kadrand ile uçtan uca ve güvenlik değişmezleri işleri yeşil.
+- Masaüstü (windows): tip denetimi, gerçek sidecar'lı testler, build, Electron
+  duman yolculuğu ve imzasız paket geçti.
+- İlk koşunun üç kırmızısı kod hatası değildi: ikon manifestindeki SVG hash'i
+  Windows'taki CRLF çalışma kopyasından hesaplanmıştı (`.gitattributes eol=lf`),
+  bir testte kontrolsüz tür dönüşümü vardı (errcheck), CI Electron 43'ün ikilisi
+  inmeden `chrome-sandbox` ayarlıyordu (Electron 43'te postinstall yok).
+
+**Bilinen sınır.** Tek onay kutusu bayrağı kutu sonuçlanınca kalkar. macOS'ta
+pencere kapanınca uygulama açık kalıyor (`window-all-closed`); kutunun sözü
+orada hiç sonuçlanmazsa bütün yönetim kanalları yeniden başlatmaya kadar
+"another confirmation is open" der. Windows/Linux'ta pencere kapanınca uygulama
+kapanıyor. macOS bu dalda doğrulanmadı.
+
+**Ürün kararları (13 Eki, kullanıcı).**
+- Aracının upstream havuzu `172.16.0.0/12` olarak kalıyor. Bulut VPC aralıkları
+  ve /16'dan küçük özel Docker alt ağlarının ağ geçidi açık; risk `SECURITY.md`'de
+  belgeli. "Yalnız root'un yapılandırdığı alt ağlar" kısıtı, `daemon.json`'da
+  adres havuzunu sabitleme yükümlülüğüyle (bkz. yukarıda "192.168.0.0/16 KASTEN
+  açılmadı") birlikte ayrı bir iş olarak yapılacak.
+- Özel Git drop-in'inde RFC1918/CGNAT açık kalıyor: kendi barındırılan bir Git
+  sunucusu özel ağda olabilir. Kapalı olanlar link-local ve bulut meta veri
+  adresi.

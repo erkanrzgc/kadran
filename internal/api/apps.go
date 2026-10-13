@@ -27,6 +27,12 @@ func (s *Server) CreateApp(
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 
+	release, err := s.acquireApp(ctx, spec.GetAppId())
+	if err != nil {
+		return nil, s.completed(ctx, action, tgt, params, err)
+	}
+	defer release()
+
 	app, opErr := s.store.CreateApp(ctx, appFromProto(spec))
 	if err := s.completed(ctx, action, tgt, params, opErr); err != nil {
 		return nil, appError(err)

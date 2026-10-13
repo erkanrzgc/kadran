@@ -33,12 +33,13 @@ import (
 // UnimplementedKadranServiceServer kasıtlı olarak GÖMÜLMEZ; gerekçe için
 // docs/decisions.md K-011'e bakın.
 type Server struct {
-	store      *store.Store
-	exec       Executor
-	rollout    Rollout
-	reconciler Reconciler
-	startedAt  time.Time
-	runAsUser  string
+	store       *store.Store
+	exec        Executor
+	rollout     Rollout
+	reconciler  Reconciler
+	coordinator *deploy.Coordinator
+	startedAt   time.Time
+	runAsUser   string
 }
 
 // Executor, kadrand'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
@@ -73,6 +74,9 @@ type Executor interface {
 
 // ServerOptions, API sunucusunu yapılandırır.
 type ServerOptions struct {
+	// Coordinator must be shared with health supervision in the daemon.
+	// Nil creates an isolated coordinator for standalone API instances.
+	Coordinator *deploy.Coordinator
 	// Store, kontrol düzlemi veritabanı. Zorunlu.
 	Store *store.Store
 
@@ -137,6 +141,9 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if err := checkNotTypedNil(opts.Reconciler, "proxy reconciler"); err != nil {
 		return nil, err
 	}
+	if opts.Coordinator == nil {
+		opts.Coordinator = deploy.NewCoordinator()
+	}
 
 	// Hangi kullanıcı olarak çalıştığımız durum ekranında gösterilir:
 	// "root" görünüyorsa kurulum bozuk demektir ve bu hemen fark edilmeli.
@@ -146,12 +153,13 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	}
 
 	return &Server{
-		store:      opts.Store,
-		exec:       opts.Executor,
-		rollout:    opts.Rollout,
-		reconciler: opts.Reconciler,
-		startedAt:  time.Now(),
-		runAsUser:  runAs,
+		store:       opts.Store,
+		exec:        opts.Executor,
+		rollout:     opts.Rollout,
+		reconciler:  opts.Reconciler,
+		coordinator: opts.Coordinator,
+		startedAt:   time.Now(),
+		runAsUser:   runAs,
 	}, nil
 }
 

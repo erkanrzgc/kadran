@@ -295,7 +295,7 @@ func newFakeClient(t *testing.T, f *fakeCaddy) *Client {
 	srv.Start()
 	t.Cleanup(func() { srv.Close(); _ = os.Remove(sock) })
 
-	return New(sock)
+	return NewAdmin(sock)
 }
 
 func TestLoadSendsAdminHost(t *testing.T) {

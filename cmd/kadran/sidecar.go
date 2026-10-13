@@ -206,6 +206,8 @@ func (s *sidecar) handleLine(ctx context.Context, line []byte) {
 
 func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError) {
 	switch req.Method {
+	case "apps.list", "apps.get", "apps.create", "apps.update", "apps.delete", "apps.deploy", "apps.rollback", "apps.logs", "alarms.list", "backups.list", "backups.create":
+		return s.dispatchManagement(ctx, req)
 	case "version":
 		return map[string]any{
 			"version":  version.Version,
@@ -274,27 +276,46 @@ func (s *sidecar) withConn(
 	params json.RawMessage,
 	fn func(context.Context, *client.Client) (any, error),
 ) (any, *rpcError) {
+	return s.withConnTimeout(ctx, params, s.callTimeout, fn)
+}
+
+func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, timeout time.Duration, fn func(context.Context, *client.Client) (any, error)) (any, *rpcError) {
 	var p targetParams
 	if err := decodeParams(params, &p); err != nil {
 		return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	conn, err := s.connFor(ctx, p.Target)
 	if err != nil {
-		return nil, &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
+		return nil, connectFailure(err)
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, s.callTimeout)
-	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return nil, &rpcError{Code: codeInternalError, Message: "call timed out before execution", Data: err.Error()}
+	}
 
 	result, err := fn(ctx, conn)
 	if err != nil {
 		if shouldDropConnection(err) {
 			s.closeTarget(p.Target)
 		}
-		return nil, &rpcError{Code: codeInternalError, Message: "call failed", Data: err.Error()}
+		return nil, callFailure(err)
 	}
 	return result, nil
+}
+
+// connectFailure ve callFailure, masaüstüne giden hata biçiminin TEK
+// kaynağıdır: `message` sabit bir sınıf adı, gerçek sebep `data`'dadır.
+// Masaüstü ikisini birleştirip gösterir; biçim desktop/test/fixtures/
+// sidecar-error.json altın dosyasıyla sabitlenir (sidecar_error_test.go).
+func connectFailure(err error) *rpcError {
+	return &rpcError{Code: codeInternalError, Message: "could not connect", Data: err.Error()}
+}
+
+func callFailure(err error) *rpcError {
+	return &rpcError{Code: codeInternalError, Message: "call failed", Data: err.Error()}
 }
 
 // shouldDropConnection, hatanın önbellekteki bağlantıyı düşürmeyi

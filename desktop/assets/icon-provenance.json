@@ -1,0 +1,25 @@
+{
+  "master": "kadran-icon.svg",
+  "master_sha256": "9d4a3be388d306bca6f7ce6207687da301a82579301e70a5e79c8e934ff76a8c",
+  "source": "../public/kadran-icon.png",
+  "source_sha256": "01bb149ee716309d454fe0a7ebde9125372a341e0cef943aa8b9572fad4250fe",
+  "ico_sha256": "6a764efbda44ba0860756cf89d55937ed6871d9be1013010a5c5c8f320cc2723",
+  "sizes": [
+    16,
+    24,
+    32,
+    48,
+    64,
+    128,
+    256
+  ],
+  "encoder": "Pillow 12.2.0 ICO with RGBA PNG frames",
+  "font": "Bahnschrift Light SemiCondensed",
+  "font_axes": {
+    "wght": 300,
+    "wdth": 87.5
+  },
+  "glyph": "K",
+  "fill": "#5B96BA",
+  "transform": "RGBA format conversion and LANCZOS resizing only; native source PNG unchanged"
+}

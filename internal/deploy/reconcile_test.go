@@ -335,3 +335,86 @@ func TestListingFailureSkipsOnlyThatApp(t *testing.T) {
 		t.Errorf("sebep taşınmıyor: %q", res.Skipped["blog"])
 	}
 }
+
+func TestReconcilePreservesSkippedRouteWhileUpdatingHealthyApp(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{live: canliShop(t, "172.19.0.4:3000")}
+	res, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Skipped["shop"] == "" || len(res.Routed) != 1 || res.Routed[0] != "blog" {
+		t.Fatalf("preserved route was incorrectly reported as current success: %+v", res)
+	}
+	loaded := hosts(t, proxy.loaded)
+	if len(loaded["blog.example.com"]) != 1 || len(loaded["shop.example.com"]) != 1 || loaded["shop.example.com"][0] != "172.19.0.4:3000" {
+		t.Fatalf("updating healthy app removed skipped app's route: %v", loaded)
+	}
+}
+
+func TestReconcileDoesNotBlindlyLoadWhenSkippedLiveRouteIsUnreadable(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{currentErr: errors.New("proxy read failed")}
+	if _, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background()); err == nil {
+		t.Fatal("unreadable live route was ignored")
+	}
+	if proxy.calls != 0 {
+		t.Fatal("could not preserve skipped route, but replaced the live config anyway")
+	}
+}
+
+func TestReconcileDoesNotCarryForgedSkippedUpstream(t *testing.T) {
+	deps, reps := ikiUygulama()
+	reps.byApp["shop"] = nil
+	proxy := &fakeProxy{live: canliShop(t, "172.19.0.4:3000")}
+	for _, srv := range proxy.live.Apps.HTTP.Servers {
+		for i := range srv.Routes {
+			for j := range srv.Routes[i].Handle {
+				for k := range srv.Routes[i].Handle[j].Upstreams {
+					srv.Routes[i].Handle[j].Upstreams[k].Dial = "unix//run/docker.sock"
+				}
+			}
+		}
+	}
+	if _, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(hosts(t, proxy.loaded)["shop.example.com"]) != 0 {
+		t.Fatal("forged live upstream was preserved")
+	}
+}
+
+// TestInvalidDomainAppIsSkippedNotFatal: veritabanında vekilin kabul
+// etmeyeceği bir alan adı (IP sabiti, 63+ karakterlik etiket) zaten
+// olabilir. Bu, bütün rota kümesinin yüklenmesini engellememeli; yalnız
+// o uygulama atlandı olarak raporlanır, sağlamlar yüklenir.
+func TestInvalidDomainAppIsSkippedNotFatal(t *testing.T) {
+	longLabel := strings.Repeat("a", 64) + ".example.com"
+	deps := fakeDeployments{
+		{AppID: "blog", ReleaseID: "r2", Domain: "blog.example.com", ContainerPort: 8080, Replicas: 1},
+		{AppID: "ipapp", ReleaseID: "r1", Domain: "203.0.113.5", ContainerPort: 8080, Replicas: 1},
+		{AppID: "longapp", ReleaseID: "r1", Domain: longLabel, ContainerPort: 8080, Replicas: 1},
+	}
+	reps := fakeReplicas{byApp: map[string][]execclient.Replica{
+		"blog":    {running("blog", "r2", 0, "172.18.0.5")},
+		"ipapp":   {running("ipapp", "r1", 0, "172.18.0.6")},
+		"longapp": {running("longapp", "r1", 0, "172.18.0.7")},
+	}}
+	proxy := &fakeProxy{}
+
+	res, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("geçersiz alan adlı uygulama bütün yüklemeyi düşürdü: %v", err)
+	}
+	got := hosts(t, proxy.loaded)
+	if len(got) != 1 || len(got["blog.example.com"]) != 1 {
+		t.Fatalf("yalnız sağlam uygulama yüklenmeliydi: %v", got)
+	}
+	for _, id := range []string{"ipapp", "longapp"} {
+		if res.Skipped[id] == "" {
+			t.Errorf("%s atlandı olarak raporlanmadı: %v", id, res.Skipped)
+		}
+	}
+}

@@ -24,6 +24,8 @@ type Sink func(data []byte, isStderr bool) error
 // sabit, kullanıcı bilgisi yok, fragment 40 haneli sha. Bu alan bir URL
 // "kabul etmiyor", doğrulanmış parçalardan üretilmiş bir URL taşıyor.
 type BuildSpec struct {
+	// ContextTar is a validated local archive. It is exclusive with ContextURL.
+	ContextTar io.Reader
 	AppID      string
 	CommitSHA  string
 	ContextURL string
@@ -84,14 +86,19 @@ type buildFrame struct {
 // o durumda başarısız bir derlemeden sonra ESKİ imaj bulunur ve kontrol
 // yanılırdı. aux karesi BU derlemenin ürettiği kimliktir.
 func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (string, error) {
+	if spec.ContextTar != nil && spec.ContextURL != "" {
+		return "", errors.New("docker: local and remote build contexts are mutually exclusive")
+	}
 	q := url.Values{
-		"remote": {spec.ContextURL},
 		// Etiket İSTEKTEN ALINMAZ; app_id ve sha'dan kurulur.
 		"t": {ImageTag(spec.AppID, spec.CommitSHA)},
 		// Ara konteynerleri her durumda temizle: başarısız derlemeler
 		// sunucuda ölü konteyner bırakmasın.
 		"rm":      {"true"},
 		"forcerm": {"true"},
+	}
+	if spec.ContextTar == nil {
+		q.Set("remote", spec.ContextURL)
 	}
 	if spec.Dockerfile != "" {
 		q.Set("dockerfile", spec.Dockerfile)
@@ -112,7 +119,7 @@ func (c *Client) ImageBuild(ctx context.Context, spec BuildSpec, sink Sink) (str
 		q.Set("buildargs", string(args))
 	}
 
-	resp, err := c.do(ctx, http.MethodPost, "/build", q, nil)
+	resp, err := c.do(ctx, http.MethodPost, "/build", q, spec.ContextTar)
 	if err != nil {
 		return "", err
 	}

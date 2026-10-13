@@ -8,7 +8,7 @@ are treated as first-class work, not as an interruption.
 | Version | Supported |
 |---|---|
 | `main` | ✅ |
-| tagged releases | ❌ — none yet; the project is pre-release |
+| tagged releases through `v0.5.1` | Existing releases; upgrade to a fixed current build for new security changes |
 
 Until a `v1.0.0` tag exists, only `main` receives fixes.
 
@@ -29,7 +29,7 @@ The more of this you can provide, the faster it gets fixed:
 
 - The version or commit SHA you tested
 - Which component is affected — `kadrand`, `kadran-exec`, `kadran-connect`, the CLI,
-  the Electron app, the systemd units, or the bootstrap path
+  `kadran-proxy`, the Electron app, the systemd units, or the bootstrap path
 - A concrete reproduction: exact request, command, or `authorized_keys` line
 - What boundary you believe it crosses (see below)
 - Whether you needed prior access, and at what privilege level
@@ -73,15 +73,37 @@ crosses one of these is in scope and will be treated as high severity:
    `kadran-connect -deploy=<apps>` should reach only `Ping` and `Deploy`, and
    `Deploy` only for those apps. Calling any other RPC, deploying an app outside
    the list, or a malformed line falling back to admin rights is in scope (K-131).
+8. **Escaping the proxy capability broker.** `kadrand` may submit typed domain/IP/port
+   routes to `kadran-proxy`; it cannot reach Caddy's raw admin socket. Arbitrary Caddy
+   handlers, `{file.…}` response bodies, admin/listener changes and Unix/loopback
+   upstreams are outside that capability. Bypassing it is in scope (K-143).
+9. **Leaking private repository credentials.** Opt-in repository credentials belong to
+   the executor's server configuration. They must not enter application definitions,
+   the desktop, daemon database, Docker context, audit records or error messages.
 
 ## Explicitly out of scope
 
 These are known and documented limitations, not undisclosed weaknesses:
 
-- **There is no secret store yet.** Environment variables are stored in the
-  daemon's database (`0600`, owned by `kadran`) and are visible to `docker inspect`
-  on the host. The mitigation is that only the executor can reach Docker. This
-  boundary is documented, not hidden.
+- **Secrets are sealed at rest, and plaintext inside running containers.** Since
+  v0.5.0 environment values are age-sealed to the executor's root-only key before
+  persistence. The daemon cannot decrypt them. `docker inspect` and application
+  processes still see runtime values; backups and pre-migration copies made before
+  sealing can retain plaintext. See the [vault boundary](README.md#secrets-are-sealed-with-the-executors-key).
+- **Proxy routing is an administrative capability.** The broker restricts upstreams
+  to IPv4 addresses in `172.16.0.0/12`, matching the daemon's Docker network sandbox,
+  and rejects the network (`x.y.0.0`), gateway (`x.y.0.1`, the host itself) and
+  broadcast (`x.y.255.255`) address of each `/16` block. Cloud VPC ranges that
+  overlap `172.16.0.0/12` and the gateway of a custom smaller Docker subnet are not
+  excluded. It does not attest that a given IP belongs to a particular container. An
+  authorized or compromised daemon can redirect app traffic within that pool.
+  Module omission alone is insufficient: Caddy's core `static_response` can expand
+  file placeholders; isolation of raw admin and the typed broker provide the boundary.
+- **Application data requires application-aware backup and deployment.** Control
+  database backups exclude volumes. Volume archives read live files; they are not
+  transactional snapshots. Replicas and overlapping releases share named volumes.
+  Use an external database or an application-specific maintenance/backup procedure
+  for single-writer databases; one replica alone does not prevent release overlap.
 - **The two audit chains are not compared with each other.** Each is verified on
   its own, so a compromised `kadrand` that drops records from *its own* chain is
   not detected. Closing this needs the executor to return its record hash
@@ -89,6 +111,9 @@ These are known and documented limitations, not undisclosed weaknesses:
   scope.
 - **Root on the server can do anything.** Kadran defends against a compromised
   *panel*, not against an attacker who already holds root.
+- **Desktop mutation confirmation is an operator safeguard.** Named IPC methods,
+  validation, sandboxing and server-side authorization limit the bridge. Confirmation
+  is not a second authorization factor; destructive actions still have no TOTP gate.
 - **Anyone in the `kadran-client` group can talk to `api.sock`.** That is the
   design; group membership is the authorization boundary and is set up by
   `bootstrap`. Note the two groups are distinct and the distinction is

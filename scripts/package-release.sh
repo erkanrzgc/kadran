@@ -8,7 +8,7 @@
 # ve o lisanslar metinlerinin ikiliyle birlikte verilmesini şart koşuyor.
 #
 # Kullanım (etiketlenmiş, temiz, LF bir klonda; derleme aracı CI'la aynı):
-#   GOTOOLCHAIN=go1.25.13 scripts/package-release.sh <boş çıktı dizini> <sürüm>
+#   GOTOOLCHAIN=go1.26.9 scripts/package-release.sh <boş çıktı dizini> <sürüm>
 #
 # Çıktı:
 #   kadran-<sürüm>-<os>-<arch>[.exe]           iş istasyonu aracı, 5 platform
@@ -65,6 +65,9 @@ for arch in amd64 arm64; do
     tarball="$OUT/kadran-server-$V-linux-$arch.tar"
     # İki adım, çünkü kip tek: ikililer 0755, lisans dosyaları 0644.
     tar "${tarflags[@]}" --mode=0755 -cf "$tarball" "bin/linux-$arch"
+    # Bootstrap needs the unit/configuration assets from the same release as
+    # the binaries, including the new raw-admin permission boundary.
+    tar "${tarflags[@]}" --mode=u=rwX,go=rX -rf "$tarball" deploy/systemd deploy/caddy deploy/notify deploy/offsite
     tar "${tarflags[@]}" --mode=0644 -rf "$tarball" -C "$OUT" LICENSE NOTICE THIRD_PARTY_LICENSES.txt
     gzip -n -9 "$tarball"
 done

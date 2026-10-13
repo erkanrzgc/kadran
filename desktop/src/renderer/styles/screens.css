@@ -1,0 +1,98 @@
+.screen { display: flex; flex-direction: column; gap: 14px; }
+.stage-head { padding: 8px 6px 2px; }
+.eyebrow { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--accent); }
+.title { margin: 4px 0; font-size: 26px; font-weight: var(--w-strong); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.meta { margin: 0; color: var(--fg-dim); font-size: 13px; }
+
+/* Panel ve Coolify tarzı altı çizili bölüm başlığı */
+.panel { padding: 14px 18px; }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.panel-actions { display: flex; align-items: center; gap: 10px; }
+.section-title {
+  margin: 0; font-size: 13px; font-weight: var(--w-strong); color: var(--fg-dim);
+  text-decoration: underline; text-decoration-color: rgba(var(--acc), 0.5); text-underline-offset: 5px;
+}
+.panel-foot { display: flex; justify-content: center; padding-top: 10px; }
+
+/* Canlı yenile anahtarı */
+.live { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-dim); cursor: pointer; }
+.live input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-faint); }
+.live-dot.is-on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.live:focus-within { color: var(--fg); }
+
+/* Overview şeridi */
+.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tile { padding: 6px 14px 4px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.tile + .tile { border-left: 1px solid var(--line); }
+.tile-label { font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--fg-faint); }
+.tile-value { font-size: 18px; font-weight: var(--w-strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sparkline { width: 100%; height: 28px; overflow: visible; }
+.sparkline path { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+
+/* Ayrıntı kartları */
+.cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.card { padding: 16px 18px; }
+.card-title { margin: 0 0 10px; font-size: 13px; font-weight: var(--w-strong); color: var(--fg-dim); }
+.rows { margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
+.row dt { color: var(--fg-faint); }
+.row dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+
+/* Zincirler */
+.chains { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.chain { padding: 14px 18px; }
+.chain-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.chain-name { margin: 0; font-size: 13px; }
+.chain-count { margin: 6px 0 0; font-size: 12px; color: var(--fg-dim); }
+.chain-detail { margin: 6px 0 0; font-size: 11.5px; color: var(--fg-faint); overflow-wrap: anywhere; }
+.chain-note { margin: -4px 6px 0; font-size: 12px; color: var(--fg-faint); line-height: 1.5; }
+
+/* Denetim tablosu */
+.table-wrap { overflow-x: auto; }
+.audit-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.audit-table th { text-align: left; font-weight: var(--w-ui); color: var(--fg-faint); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.audit-table td { padding: 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); font-variant-numeric: tabular-nums; }
+.audit-table tr:last-child td { border-bottom: 0; }
+.fp { font: inherit; color: inherit; background: transparent; border: 0; padding: 0; cursor: copy; text-decoration: underline dotted; }
+.outcome { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; }
+.audit-placeholder { text-align: center; color: var(--fg-faint); padding: 16px 8px; }
+
+/* Sonuç çubuğu */
+.outcomes { display: flex; flex-direction: column; gap: 10px; }
+.outcome-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--fg-dim); }
+.legend { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.legend b { color: var(--fg); font-weight: var(--w-strong); }
+.outcome-track { display: flex; height: 14px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.outcome-seg { display: block; min-width: 3px; }
+.outcome-seg.is-ok { background: var(--ok); }
+.outcome-seg.is-warn { background: var(--warn); }
+.outcome-seg.is-bad { background: var(--bad); }
+.outcome-seg.is-muted { background: var(--muted); }
+
+/* Süzgeçler */
+.filters { justify-content: flex-start; }
+.filter { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-dim); }
+
+/* Settings */
+.settings { padding: 2px 22px; }
+.set-row {
+  display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 28px; align-items: center;
+  padding: 14px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+.settings > .set-row:last-of-type { border-bottom: 0; }
+.set-label strong { display: block; font-size: 13px; font-weight: var(--w-strong); }
+.set-label span { display: block; margin-top: 3px; font-size: 12px; color: var(--fg-faint); }
+.set-ctl { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.set-ctl input[type="range"] { flex: 1; accent-color: var(--accent); }
+.set-ctl output { width: 46px; text-align: right; font-size: 12px; color: var(--fg); }
+.set-ctl .seg { flex: 1; max-width: 460px; }
+.font-row { display: flex; gap: 6px; flex: 1; max-width: 460px; }
+.font-row .sel { flex: 1; }
+.font-row .sel-w { flex: none; width: 92px; }
+.font-note { margin: 0 0 12px; font-size: 11.5px; color: var(--fg-faint); }
+.server-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.server-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.about { font-size: 12px; color: var(--fg-dim); }
+.set-foot { display: flex; padding: 0 4px 8px; }

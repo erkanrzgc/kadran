@@ -75,6 +75,35 @@ function newClient(options = {}) {
   return { proc, client };
 }
 
+test("UTF-8 karakteri süreç parçaları arasında bölünse de korunur", async () => {
+  const { proc, client } = newClient();
+  const response = client.call<string>("version");
+  const wire = Buffer.from('{"jsonrpc":"2.0","id":1,"result":"İstanbul 🧊"}\n');
+  for (const byte of wire) proc.stdout.emit("data", Buffer.from([byte]));
+  assert.equal(await response, "İstanbul 🧊");
+  client.close();
+});
+
+test("JSON null ve yanlış yanıt şekilleri sağlıklı yanıtı bozmaz", async () => {
+  const { proc, client } = newClient();
+  const response = client.call("version");
+  for (const line of ['null', '[]', '42', '{"id":1,"error":"bad"}', '{"id":1}', '{"jsonrpc":"1.0","id":1,"result":false}']) {
+    assert.doesNotThrow(() => proc.emitStdout(line + "\n"));
+  }
+  proc.emitStdout('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}\n');
+  assert.deepEqual(await response, { ok: true });
+  client.close();
+});
+
+test("uzun işlem süresi yalnız seçilen çağrıya uygulanır", async () => {
+  const { proc, client } = newClient({ requestTimeoutMs: 5 });
+  const response = client.call("apps.deploy", {}, { timeoutMs: 200 });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  proc.emitStdout('{"jsonrpc":"2.0","id":1,"result":true}\n');
+  assert.equal(await response, true);
+  client.close();
+});
+
 test("istek JSON-RPC 2.0 biçiminde ve tek satır gider", async () => {
   const { proc, client } = newClient();
 
@@ -236,7 +265,7 @@ test("süre sınırı aşılınca çağrı reddedilir", async () => {
   );
 
   assert.ok(err instanceof SidecarError);
-  assert.match(err.message, /yanıtlanmadı/);
+  assert.match(err.message, /got no answer/);
   // Yanıt geç gelirse çökmemeli: bekleyen kayıt zaten silinmiş olmalı.
   proc.emitStdout(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "geç" }) + "\n");
 
@@ -254,7 +283,7 @@ test("süreç ölünce bekleyen çağrılar reddedilir", async () => {
     (e: unknown) => e as SidecarError,
   );
   assert.ok(err instanceof SidecarError);
-  assert.match(err.message, /sonland/);
+  assert.match(err.message, /exited/);
 
   client.close();
 });

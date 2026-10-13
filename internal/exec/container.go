@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"time"
 
@@ -348,8 +349,9 @@ func (s *Server) ContainerLogs(req *kadranv1.ContainerLogsRequest, stream grpc.S
 // executor yalnızca unix soketine bayt yazıyor (docs/decisions.md K-035).
 //
 // Executor bugün de `RestrictAddressFamilies=AF_UNIX` taşıyor ve öyle
-// kalmalı. kadrand dilim 4c'de AF_INET aldı (sağlık yoklaması) ama
-// yalnızca 172.16.0.0/12'ye; ikisi de GitHub'a ulaşamaz.
+// kalmalı. kadrand yalnız 172.16.0.0/12'ye sağlık yoklaması yapar.
+// Executor varsayılan AF_UNIX kalır; K-146 özel Git opt-in yapılandırması
+// ağ ailesini açar ve yalnız sabit GitHub archive URL'lerini kullanır.
 //
 // Sürücü diliminin devraldığı yükümlülükler:
 //
@@ -379,17 +381,30 @@ func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerS
 	// istemcinin kopması / bağlam iptali. Dördüncüsü sinsi olanıdır —
 	// derleme gerçekten koşmuş, imaj üretilmiş ama kayıt yazılmamış
 	// olabilirdi. Kayıt her dört yolda da yazılsın diye tek çıkış var.
-	imageID, opErr := s.docker.ImageBuild(stream.Context(), dockerdrv.BuildSpec{
+	spec := dockerdrv.BuildSpec{
 		AppID:      rel.GetAppId(),
 		CommitSHA:  req.GetSource().GetCommitSha(),
 		ContextURL: BuildContextURL(req.GetSource()),
 		Dockerfile: req.GetDockerfilePath(),
 		BuildArgs:  req.GetBuildArgs(),
-	}, func(data []byte, isStderr bool) error {
-		// ⚠ Derleme ÇIKTISI istemciye akar ama denetime GİRMEZ: kullanıcının
-		// deposundan gelir ve zincir ekle-sadece'dir.
-		return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
-	})
+	}
+	var imageID string
+	var opErr error
+	if s.privateGit != nil && s.privateGit.hasCredential(req.GetSource()) {
+		var archive *os.File
+		archive, opErr = s.privateGit.Context(stream.Context(), req.GetSource())
+		if opErr == nil {
+			defer closePrivateContext(archive)
+			spec.ContextURL, spec.ContextTar = "", archive
+		}
+	}
+	if opErr == nil {
+		imageID, opErr = s.docker.ImageBuild(stream.Context(), spec, func(data []byte, isStderr bool) error {
+			// ⚠ Derleme ÇIKTISI istemciye akar ama denetime GİRMEZ: kullanıcının
+			// deposundan gelir ve zincir ekle-sadece'dir.
+			return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
+		})
+	}
 
 	// image_id kaydın YANLIŞLANABİLİR olmasını sağlayan alandır: hangi
 	// imajın gerçekten üretildiği sonradan hostta kontrol edilebilir.

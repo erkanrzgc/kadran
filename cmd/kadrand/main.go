@@ -39,7 +39,7 @@ import (
 const (
 	defaultSocket      = "/run/kadran/api.sock"
 	defaultExecSocket  = "/run/kadran-exec/exec.sock"
-	defaultCaddySocket = "/run/kadran-caddy/admin.sock"
+	defaultCaddySocket = "/run/kadran-proxy/proxy.sock"
 	defaultDB          = "/var/lib/kadran/kadran.db"
 	defaultClientGroup = "kadran-client"
 	// defaultVaultRecipient, kasanın AÇIK anahtarı (K-123). root 0644:
@@ -59,7 +59,7 @@ func run() error {
 	var (
 		socketPath  = flag.String("socket", defaultSocket, "unix socket served to clients")
 		execSocket  = flag.String("exec-socket", defaultExecSocket, "executor socket")
-		caddySocket = flag.String("caddy-socket", defaultCaddySocket, "reverse proxy admin socket")
+		caddySocket = flag.String("caddy-socket", defaultCaddySocket, "typed reverse proxy broker socket")
 		dbPath      = flag.String("db", defaultDB, "SQLite database path")
 		clientGroup = flag.String("client-group", defaultClientGroup, "group that may access api.sock")
 		vaultPub    = flag.String("vault-recipient", defaultVaultRecipient, "vault public key file (K-123)")
@@ -197,8 +197,10 @@ func run() error {
 
 	// Uzlaştırıcı hem rollout'a hem API'ye veriliyor: `app update` alan
 	// adı değiştiğinde trafiği DAĞITIM BEKLEMEDEN taşıyabilmeli.
+	coordinator := deploy.NewCoordinator()
 	service, err := api.NewServer(api.ServerOptions{
 		Store: db, Executor: exec, Rollout: rollout, Reconciler: reconciler,
+		Coordinator: coordinator,
 	})
 	if err != nil {
 		return err
@@ -263,6 +265,7 @@ func run() error {
 	beats := liveness.NewRegistry(time.Now)
 
 	supOpts := health.DefaultOptions
+	supOpts.Coordinator = coordinator
 	supOpts.Progress = registerLoop(beats, "gözetmen", supOpts.Interval).Mark
 	supervisor, err := health.New(
 		rollout, db, db, alarms, health.SystemClock(), supOpts)

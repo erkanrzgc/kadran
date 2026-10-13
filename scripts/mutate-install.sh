@@ -44,6 +44,10 @@ elif [ "${KADRAN_TEST_REAL_SUDO:-}" = 1 ]; then
 fi
 
 olc() {
+    bash scripts/check-install-order.sh >/dev/null 2>&1 || return 1
+    # KADRAN_MUTATE_ONLY=order: yalnız göç sırası ölçülür (Windows'ta
+    # check-install-sh.sh'ın bağ/izin bölümleri platform yüzünden kırmızı).
+    [ "${KADRAN_MUTATE_ONLY:-}" = order ] && return 0
     bash scripts/check-install-sh.sh >/dev/null 2>&1 || return 1
     if [ "$KOK_OLCULUR" = 2 ]; then
         sudo -n env KADRAN_TEST_REQUIRE_ROOT=1 bash scripts/check-install-sh.sh >/dev/null 2>&1 || return 1
@@ -101,6 +105,37 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 if ! olc; then
     echo "!! TABAN KIRMIZI: mutasyonsuz kodda denetimler düşüyor — ölçüm YAPILMADI"
     exit 1
+fi
+
+echo "== Göç sırası: aracı soketi kadrand'dan önce (B2/I4) =="
+
+mutate_in "$INST" "göçte aracı önhazırlığı hiç çağrılmıyor" \
+    "s=s.replace('    # başlamadan ÖNCE var olmalı (B2/I4).\n    vekil_araci_onhazirla\n','    # başlamadan ÖNCE var olmalı (B2/I4).\n',1)"
+
+mutate_in "$INST" "göçte aracı önhazırlığı kadrand'dan SONRA çağrılıyor" \
+    "s=s.replace('    # başlamadan ÖNCE var olmalı (B2/I4).\n    vekil_araci_onhazirla\n','    # başlamadan ÖNCE var olmalı (B2/I4).\n',1); s=s.replace('systemctl restart kadran-exec.service\nsystemctl restart kadrand.service\n','systemctl restart kadran-exec.service\nsystemctl restart kadrand.service\nvekil_araci_onhazirla\n',1)"
+
+mutate_in "$INST" "önhazırlık aracı servisini de başlatıyor (eski vekil portları tutarken)" \
+    "s=s.replace('    systemctl restart kadran-proxy.socket\n}','    systemctl restart kadran-proxy.socket\n    systemctl start kadran-proxy.service\n}',1)"
+
+mutate_in "$INST" "önhazırlık soketi başlatmıyor" \
+    "s=s.replace('    systemctl enable kadran-proxy.socket\n    systemctl restart kadran-proxy.socket\n}','    systemctl enable kadran-proxy.socket\n}',1)"
+
+mutate_in "$INST" "önhazırlık tmpfiles dizinini kurmuyor" \
+    "s=s.replace('    vekil_araci_kullanicisi\n    vekil_araci_tmpfiles\n    vekil_araci_birimleri\n    systemctl enable','    vekil_araci_kullanicisi\n    vekil_araci_birimleri\n    systemctl enable',1)"
+
+mutate_in "$INST" "önhazırlıkta birimler tmpfiles'tan önce kuruluyor" \
+    "s=s.replace('    vekil_araci_tmpfiles\n    vekil_araci_birimleri\n    systemctl enable','    vekil_araci_birimleri\n    vekil_araci_tmpfiles\n    systemctl enable',1)"
+
+mutate_in "$INST" "önhazırlıkta broker kullanıcısı kurulmuyor" \
+    "s=s.replace('    vekil_araci_kullanicisi\n    vekil_araci_tmpfiles\n    vekil_araci_birimleri\n    systemctl enable','    vekil_araci_tmpfiles\n    vekil_araci_birimleri\n    systemctl enable',1)"
+
+if [ "${KADRAN_MUTATE_ONLY:-}" = order ]; then
+    restore
+    echo
+    [[ "$fail" -ne 0 ]] && { echo "En az bir mutasyon yakalanmadı."; exit 1; }
+    echo "Bütün mutasyonlar yakalandı."
+    exit 0
 fi
 
 echo "== Güvenlik: kadran-client'ın dizininde bağ denetimi (K-137) =="

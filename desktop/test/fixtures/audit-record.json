@@ -1,0 +1,18 @@
+{
+  "action": "deploy",
+  "actor": {
+    "label": "",
+    "origin": "ssh",
+    "source_ip": "",
+    "ssh_key_fingerprint": "SHA256:4f1c2b7d9e0a11223344556677889900aabbccddeeffa9e2"
+  },
+  "detail": "",
+  "hash": "BAUG",
+  "outcome": "AUDIT_OUTCOME_SUCCESS",
+  "params_json": "",
+  "prev_hash": "AQID",
+  "seq": "1",
+  "source": "AUDIT_SOURCE_DAEMON",
+  "target": "hello",
+  "ts": "2026-10-06T18:42:10Z"
+}

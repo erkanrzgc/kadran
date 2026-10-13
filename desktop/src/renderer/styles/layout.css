@@ -1,0 +1,61 @@
+/* Başlık çubuğu */
+.titlebar { height: 40px; display: flex; align-items: center; padding-left: 16px; -webkit-app-region: drag; flex: none; }
+.titlebar.is-mac { padding-left: 80px; }
+.tb-brand { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.mark { width: 14px; height: 14px; border-radius: 4px; border: 1.5px dashed var(--fg-faint); }
+.wordmark { font-weight: var(--w-strong); letter-spacing: 0.14em; }
+.tb-drag { flex: 1; }
+.tb-controls { display: flex; height: 100%; -webkit-app-region: no-drag; }
+.tb-btn { width: 46px; height: 100%; border: 0; background: transparent; color: var(--fg); display: grid; place-items: center; }
+.tb-btn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.1; }
+.tb-btn:hover { background: rgba(255, 255, 255, calc(0.08 + var(--glow) * 0.1)); }
+.tb-close:hover { background: #c42b1c; color: #fff; }
+
+/* Düzen */
+.body { flex: 1; display: flex; gap: 14px; padding: 4px 14px 14px; min-height: 0; }
+.stage { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 2px 4px 4px; min-width: 0; }
+
+/* Sol panel */
+.rail { width: 260px; flex: none; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+.input-row { display: flex; gap: 6px; }
+.servers { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.server {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; background: transparent; color: var(--fg); font: inherit; font-size: 13px; text-align: left; cursor: pointer;
+}
+.server.is-active { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, var(--edge)); }
+.server-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--fg-faint); flex: none; }
+.dot.is-ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.dot.is-warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+.dot.is-bad { background: var(--bad); box-shadow: 0 0 8px var(--bad); }
+.nav { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); font: inherit; font-size: 13px;
+  color: var(--fg-dim); cursor: pointer; border: 1px solid transparent; background: transparent; text-align: left;
+}
+.nav-item.is-active { color: var(--fg); background: rgba(255, 255, 255, 0.1); }
+.nav-item.is-active .nav-icon { color: var(--accent); }
+.nav-icon { display: grid; place-items: center; }
+.foot { margin-top: auto; font-size: 11px; color: var(--fg-faint); }
+
+/* Üst çubuk (Coolify düzeni) */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 4px 2px; }
+.crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; }
+.crumb-static { color: var(--fg-dim); }
+.crumb-sep { color: var(--fg-faint); }
+.crumb {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 8px; font: inherit; font-size: 13px;
+  color: var(--fg); background: transparent; border: 1px solid transparent; cursor: pointer;
+}
+.topbar-right { display: flex; align-items: center; gap: 10px; }
+.switcher { position: relative; }
+.switcher-menu {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 220px; margin: 0; padding: 6px; list-style: none;
+  background: rgba(var(--tone), 0.95);
+}
+
+/* Boş durum */
+.empty-state { margin: auto; max-width: 420px; text-align: center; padding: 40px 20px; }
+.empty-title { margin: 0 0 8px; font-size: 18px; font-weight: var(--w-strong); }
+.empty-body { margin: 0; font-size: 13px; color: var(--fg-dim); line-height: 1.5; }

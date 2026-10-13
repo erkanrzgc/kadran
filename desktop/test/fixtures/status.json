@@ -1,0 +1,19 @@
+{
+  "daemon_uptime_seconds": "371520",
+  "daemon_version": "0.5.1",
+  "executor_reachable": false,
+  "executor_version": "",
+  "host": {
+    "architecture": "amd64",
+    "cpu_count": 2,
+    "disk_available_bytes": "22000000000",
+    "disk_total_bytes": "40000000000",
+    "docker_version": "28.4.0",
+    "kernel_version": "6.12.48",
+    "memory_available_bytes": "1720000000",
+    "memory_total_bytes": "3970000000",
+    "os": "linux"
+  },
+  "hostname": "kadran-nbg1",
+  "running_as_user": "kadran"
+}

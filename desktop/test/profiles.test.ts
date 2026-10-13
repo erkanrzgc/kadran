@@ -93,3 +93,50 @@ test("bozuk eski dosya taşınmıyor, yeni dizin boş kalıyor", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("yazım yarıda kesilirse eski profil dosyası sağlam kalır, geçici dosya kalmaz", async () => {
+  const { root, current } = await dirs();
+  try {
+    await mkdir(current, { recursive: true });
+    const { saveProfiles } = await import("../src/main/profiles.ts");
+    const eski = [{ name: "eski", target: "kadran-client@a.example" }];
+    await saveProfiles(current, eski);
+    const before = await readFile(join(current, "profiles.json"), "utf8");
+
+    // Geçici dosyaya yarım yazıp hata veren disk: hedef dosyaya dokunulmamalı.
+    const halfWrite = {
+      writeFile: async (path: string) => { await writeFile(path, '[{"name":"yar', "utf8"); throw new Error("disk full"); },
+      rename: async () => { throw new Error("rename çağrılmamalıydı"); },
+      rm: (path: string) => rm(path, { force: true }),
+    };
+    await assert.rejects(saveProfiles(current, [{ name: "yeni", target: "kadran-client@b.example" }], halfWrite), /disk full/);
+    assert.equal(await readFile(join(current, "profiles.json"), "utf8"), before);
+
+    // Yazım tamam ama rename başarısız: yine eski içerik, yine geçici dosya yok.
+    const noRename = {
+      writeFile: (path: string, data: string) => writeFile(path, data, "utf8"),
+      rename: async () => { throw new Error("rename failed"); },
+      rm: (path: string) => rm(path, { force: true }),
+    };
+    await assert.rejects(saveProfiles(current, [{ name: "yeni", target: "kadran-client@b.example" }], noRename), /rename failed/);
+    assert.equal(await readFile(join(current, "profiles.json"), "utf8"), before);
+
+    const { readdir } = await import("node:fs/promises");
+    assert.deepEqual(await readdir(current), ["profiles.json"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("başarılı yazımdan sonra dizinde yalnız profil dosyası var", async () => {
+  const { root, current } = await dirs();
+  try {
+    const { saveProfiles } = await import("../src/main/profiles.ts");
+    const { readdir } = await import("node:fs/promises");
+    await saveProfiles(current, [{ name: "a", target: "kadran-client@a.example" }]);
+    assert.deepEqual(await readdir(current), ["profiles.json"]);
+    assert.deepEqual((await loadProfiles(current)).map((p) => p.name), ["a"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

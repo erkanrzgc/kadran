@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
 	"github.com/erkanrzgc/kadran/internal/proxydrv"
@@ -54,14 +53,14 @@ type Reconciler struct {
 	proxy       Proxy
 	admin       proxydrv.Admin
 
-	// mu, her yüklemeyi (durumu OKUMA + YÜKLEME) tek sıraya koyar.
+	// gate, her yüklemeyi (durumu OKUMA + YÜKLEME) tek sıraya koyar.
 	//
 	// Vekil izleyicisi (Repair) ile bir dağıtımın uzlaştırması aynı anda
 	// koşabiliyor. Kilit olmadan izleyici yapılandırmayı SetActiveRelease'ten
 	// ÖNCEKİ durumdan kurup dağıtımın yüklemesinden SONRA yükleyebilirdi:
 	// trafik, boşaltılmakta olan sürüme geri dönerdi. Kilitle her yükleme,
 	// kendinden önceki yüklemelerden sonra okunmuş durumu taşıyor.
-	mu sync.Mutex
+	gate chan struct{}
 }
 
 // New, uzlaştırıcıyı kurar.
@@ -80,7 +79,7 @@ func New(d Deployments, r Replicas, p Proxy, admin proxydrv.Admin) (*Reconciler,
 			"deploy: the admin block is required — a config loaded without it " +
 				"locks kadrand out of Caddy for good")
 	}
-	return &Reconciler{deployments: d, replicas: r, proxy: p, admin: admin}, nil
+	return &Reconciler{deployments: d, replicas: r, proxy: p, admin: admin, gate: make(chan struct{}, 1)}, nil
 }
 
 // Result, uzlaştırmanın sonucudur.
@@ -106,14 +105,27 @@ type Result struct {
 // Atlananlar sessizce yutulmuyor: Result'ta adlarıyla ve sebepleriyle
 // dönüyorlar ve çağıran bunu günlüğe yazıyor.
 func (rc *Reconciler) Reconcile(ctx context.Context) (Result, error) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
+	if err := rc.acquire(ctx); err != nil {
+		return Result{}, err
+	}
+	defer rc.release()
 
 	p, err := rc.plan(ctx)
 	if err != nil {
 		return p.res, err
 	}
-	cfg, err := rc.build(p.routes)
+	routes := p.routes
+	if len(p.skippedDomains) > 0 {
+		// A skipped new release must not remove the healthy previous route
+		// before rollout reports the failure. Preserve only validated live
+		// upstreams for the app's known domain; it stays reported as skipped.
+		live, err := rc.proxy.Current(ctx)
+		if err != nil {
+			return p.res, fmt.Errorf("deploy: could not preserve skipped live routes: %w", err)
+		}
+		routes = p.carrySkippedRoutes(live)
+	}
+	cfg, err := rc.build(routes)
 	if err != nil {
 		return p.res, err
 	}
@@ -141,8 +153,8 @@ type RepairResult struct {
 	Exact bool
 }
 
-// Repair, ters vekil beklenen bir alan adını KAYBETMİŞSE uzlaştırır; her
-// şey yerindeyse hiçbir şey yüklemez.
+// Repair fixes missing routes, wrong upstreams and unexpected live routes.
+// An exact match requires no load.
 //
 // K-055'in ikinci yarısı: ters vekil `--resume` kullanmıyor, yani yeniden
 // başlayınca rotasız açılıyor. "Açılışta uzlaştır" yapılmıştı, "ters
@@ -152,16 +164,17 @@ type RepairResult struct {
 //
 // ── İyileştirme davranışı DEĞİŞMİYOR ────────────────────────────────
 //
-// Tetik proxydrv.MissingHosts: yalnızca EKSİK alan adı. Uzlaştırma
-// sağlıksız bir uygulamayı atlıyor ve canlıdaki rotası iyileştirme bitene
-// kadar duruyor. Onarım yüklemesi de o rotayı SİLMİYOR: atlanan
+// Uzlaştırma sağlıksız bir uygulamayı atlıyor ve canlıdaki rotası
+// iyileştirme bitene kadar duruyor. Onarım yüklemesi de o rotayı SİLMİYOR: atlanan
 // uygulamanın canlı upstream'leri yüklemeye taşınıyor. İlk hâli yalnızca
 // beklenen rotaları gönderip o rotayı siliyordu; güvenlik incelemesi
 // buldu. Canlıya başkası da yazmış olabileceği için (K-054) taşınan her
 // adres proxydrv.LiveUpstreams'de yeniden doğrulanıyor.
 func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
-	rc.mu.Lock()
-	defer rc.mu.Unlock()
+	if err := rc.acquire(ctx); err != nil {
+		return RepairResult{}, err
+	}
+	defer rc.release()
 
 	p, err := rc.plan(ctx)
 	if err != nil {
@@ -177,29 +190,41 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 		return out, fmt.Errorf("deploy: could not read the live proxy config: %w", err)
 	}
 	out.Missing = proxydrv.MissingHosts(cfg, live)
-	if len(out.Missing) == 0 {
-		// Yükleme yok; canlı İKİ YÖNLÜ birebir mi? İzleyici alarmı
-		// yalnızca öyleyse kapatır (K-112).
-		out.Exact = proxydrv.Matches(cfg, live) == nil
-		return out, nil
-	}
-
-	routes := p.routes
-	for appID, domain := range p.skippedDomains {
-		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
-			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
-		}
-	}
-	if cfg, err = rc.build(routes); err != nil {
+	if cfg, err = rc.build(p.carrySkippedRoutes(live)); err != nil {
 		return out, err
 	}
+	// Compare after carrying the validated last known route of unhealthy
+	// apps, so drift repair cannot remove their routes while healing waits.
+	// This repairs changed upstreams and foreign routes as well as omissions.
+	if proxydrv.Matches(cfg, live) == nil {
+		out.Exact = true
+		return out, nil
+	}
 	if err := rc.proxy.Load(ctx, cfg); err != nil {
-		return out, fmt.Errorf("deploy: could not load the lost routes: %w", err)
+		return out, fmt.Errorf("deploy: could not repair proxy drift: %w", err)
 	}
 	// Load geri okuyarak İKİ YÖNLÜ doğruladı (K-054).
 	out.Exact = true
 	return out, nil
 }
+
+func (rc *Reconciler) acquire(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case rc.gate <- struct{}{}:
+		if err := ctx.Err(); err != nil {
+			rc.release()
+			return err
+		}
+		return nil
+	}
+}
+
+func (rc *Reconciler) release() { <-rc.gate }
 
 // plan, SQLite'taki durumdan rotaları ve atlanan uygulamaları çıkarır.
 type plan struct {
@@ -208,7 +233,20 @@ type plan struct {
 	res            Result
 }
 
-// plan'ı kurar. Çağıran rc.mu'yu tutmalı.
+// Carrying a previous route protects continuity, not the new desired state.
+// Keep Result.Skipped and Result.Routed unchanged so callers still fail an
+// operation whose own current release could not be routed.
+func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
+	routes := p.routes
+	for appID, domain := range p.skippedDomains {
+		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
+			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
+		}
+	}
+	return routes
+}
+
+// plan'ı kurar. Çağıran rc.gate'i tutmalı.
 func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}}}
 
@@ -223,6 +261,16 @@ func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 			// Alan adı olmayan uygulama geçerli: yalnızca iç ağdan
 			// erişilir ve vekilde hiç görünmez. Atlanan DEĞİL, kapsam
 			// dışı.
+			continue
+		}
+
+		// Veritabanında geçersiz alan adlı bir uygulama zaten olabilir
+		// (eski sürümde kabul edilmiş). Bu, proxydrv.FixedConfig'i bütün
+		// rota kümesi için başarısız kılardı; yalnız o uygulama atlanır.
+		// skippedDomains'e KONMUYOR: geçersiz alan adı için canlı rota
+		// taşınmaz.
+		if !proxydrv.ValidDomain(d.Domain) {
+			p.res.Skipped[d.AppID] = fmt.Sprintf("invalid domain %q: the proxy would reject it", d.Domain)
 			continue
 		}
 

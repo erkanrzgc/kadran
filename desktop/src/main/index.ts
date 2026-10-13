@@ -2,52 +2,53 @@
  * Electron ana süreci.
  *
  * `kadran sidecar`'ı çocuk süreç olarak başlatır ve renderer'a yalnızca
- * dar bir salt okunur yüzey açar (bkz. src/preload/index.cjs).
+ * dar bir yüzey açar (bkz. src/preload/index.cjs).
  *
  * # Güvenlik duruşu
  *
  * Sunucu tarafındaki ayrıcalık ayrımını istemci tarafından delmemek için:
- * contextIsolation açık, nodeIntegration kapalı, sandbox açık, uzak
- * içerik yüklenmiyor ve CSP ile satır içi script yasak. Yeni pencere
- * açma ve gezinme engelli — bir bağımlılık ya da kazayla eklenen bağlantı
- * uygulamayı rastgele bir siteye taşıyamaz.
+ * contextIsolation açık, nodeIntegration kapalı, sandbox açık
+ * (window-options.ts), uzak içerik yüklenmiyor, CSP ile satır içi script
+ * yasak, gezinme ve yeni pencere engelli (window.ts) ve izinler kapalı;
+ * yalnız yazı tipi listesine izin var (permissions.ts).
  */
 
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain, session } from "electron";
 import { spawn } from "node:child_process";
+import { release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { defaultAppearance, modesFor, type PlatformInfo } from "../shared/appearance.ts";
+import { CHANNELS } from "../shared/channels.ts";
 import { SidecarClient } from "../shared/sidecar-client.ts";
 import type { SidecarProcess } from "../shared/sidecar-client.ts";
-import { resolveSidecarCommand } from "./spawn-sidecar.ts";
+import { loadAppearance, saveAppearance } from "./appearance.ts";
+import { requireCopyText, requireWindowAction } from "./ipc-validate.ts";
+import { lockDownPermissions } from "./permissions.ts";
+import { registerManagementHandlers } from "./management-handlers.ts";
 import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
-import { CHANNELS } from "../shared/channels.ts";
+import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
+import { registerSidecarReads } from "./sidecar-reads.ts";
+import { resolveSidecarCommand } from "./spawn-sidecar.ts";
+import { createWindowHost, type WindowHost } from "./window.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, "..", "..", "..");
+const preloadPath = join(here, "..", "preload", "index.cjs");
+const rendererIndex = join(here, "..", "renderer", "index.html");
+const platformInfo: PlatformInfo = { platform: process.platform, release: release() };
+const warn = (message: string): void => console.warn("[kadran]", message);
 
-/**
- * Duman testi kipi.
- *
- * Pencereyi gösterme, yüklendiğini ve köprünün yerinde olduğunu doğrula,
- * çık. Bir GUI'nin "açılıyor mu" sorusu ancak çalıştırılarak yanıtlanır;
- * elle bakmak CI'da tekrarlanamaz ve bu projede ölçülmeyen iddia
- * sayılmıyor.
- */
-const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
+// Kullanıcı verisi dizini whenReady'den ÖNCE belirlenmeli.
+if (SMOKE_TEST) prepareSmokeUserData();
 
 let client: SidecarClient | null = null;
+let host: WindowHost | null = null;
 
 function sidecar(): SidecarClient {
   if (client) return client;
-
-  const command = resolveSidecarCommand({
-    isPackaged: app.isPackaged,
-    resourcesPath: process.resourcesPath,
-    repoRoot,
-  });
-
+  const command = resolveSidecarCommand({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, repoRoot });
   client = new SidecarClient(
     () =>
       spawn(command.command, command.args, {
@@ -57,180 +58,49 @@ function sidecar(): SidecarClient {
         // dönüşebilirdi.
         shell: false,
       }) as unknown as SidecarProcess,
-    {
-      onDiagnostic: (line) => console.warn("[sidecar]", line),
-    },
+    { onDiagnostic: (line) => console.warn("[sidecar]", line) },
   );
   return client;
 }
 
-function createWindow(): void {
-  const window = new BrowserWindow({
-    width: 1100,
-    height: 760,
-    minWidth: 720,
-    minHeight: 520,
-    backgroundColor: "#0d1117",
-    title: "Kadran",
-    show: false,
-    webPreferences: {
-      preload: join(here, "..", "preload", "index.cjs"),
-      // Üçü birlikte renderer'ı Node'dan tamamen ayırır. Bunlar
-      // Electron'un varsayılanları ama AÇIKÇA yazılıyorlar: varsayılana
-      // güvenmek, bir sürüm yükseltmesinde sessizce değişebilir.
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webviewTag: false,
-    },
-  });
-
-  // Yalnızca hazır olunca göster: boş beyaz bir pencere yanıp sönmesin.
-  window.once("ready-to-show", () => {
-    if (!SMOKE_TEST) window.show();
-  });
-
-  if (SMOKE_TEST) void runSmokeTest(window);
-
-  // Uygulama İÇİNDE gezinme yok. Bir bağlantıya tıklanırsa kullanıcının
-  // tarayıcısında açılır; uygulama penceresi hiçbir zaman uzak bir
-  // içeriğe dönüşemez.
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https://")) void shell.openExternal(url);
-    return { action: "deny" };
-  });
-  window.webContents.on("will-navigate", (event) => event.preventDefault());
-
-  void window.loadFile(join(here, "..", "renderer", "index.html"));
-}
-
-/**
- * runSmokeTest, pencerenin gerçekten yüklendiğini doğrular ve çıkar.
- *
- * Üç şey sınanıyor:
- *
- *  1. Renderer yükleniyor mu (CSP ihlali ya da eksik dosya yükü keser).
- *  2. Preload köprüsü yerinde mi — `window.kadran` ve beklenen metotlar.
- *     Sandbox açıkken preload'un ESM olması bu adımı sessizce düşürür.
- *  3. Konsola hata düşüyor mu.
- *
- * Çıkış kodu 0 = geçti, 1 = kaldı.
- */
-async function runSmokeTest(window: BrowserWindow): Promise<void> {
-  const problems: string[] = [];
-
-  window.webContents.on("console-message", (_event, level, message) => {
-    // level 3 = error
-    if (level >= 3) problems.push(`konsol hatası: ${message}`);
-  });
-  window.webContents.on("did-fail-load", (_event, code, description) => {
-    problems.push(`sayfa yüklenemedi (${code}): ${description}`);
-  });
-  window.webContents.on("preload-error", (_event, path, error) => {
-    problems.push(`preload hatası (${path}): ${error.message}`);
-  });
-
-  await new Promise<void>((done) => {
-    window.webContents.once("did-finish-load", () => done());
-    setTimeout(() => {
-      problems.push("sayfa 20 saniyede yüklenmedi");
-      done();
-    }, 20_000);
-  });
-
-  // Renderer'ın gördüğü yüzeyi renderer'a sorarak doğruluyoruz: ana
-  // süreçten bakmak preload'un gerçekten çalıştığını kanıtlamazdı.
-  try {
-    const surface = (await window.webContents.executeJavaScript(
-      "Object.keys(window.kadran ?? {}).sort()",
-    )) as string[];
-
-    const expected = [
-      "auditList",
-      "auditVerify",
-      "loadProfiles",
-      "saveProfiles",
-      "status",
-      "version",
-    ];
-    if (JSON.stringify(surface) !== JSON.stringify(expected)) {
-      problems.push(
-        `köprü yüzeyi beklenenden farklı: ${JSON.stringify(surface)} != ${JSON.stringify(expected)}`,
-      );
-    }
-
-    // Renderer Node'a ERİŞEMEMELİ. Erişebiliyorsa contextIsolation ya da
-    // sandbox bir yerde kapanmış demektir ve ürünün ayrıcalık ayrımı
-    // istemci tarafından delinmiş olur.
-    const leaked = (await window.webContents.executeJavaScript(
-      "[typeof require, typeof process, typeof module].join(',')",
-    )) as string;
-    if (leaked !== "undefined,undefined,undefined") {
-      problems.push(`renderer'a Node sızdı: ${leaked}`);
-    }
-  } catch (err) {
-    problems.push(`köprü sorgulanamadı: ${(err as Error).message}`);
-  }
-
-  if (problems.length === 0) {
-    console.log("duman testi GEÇTİ: pencere yüklendi, köprü yerinde, Node sızmıyor");
-    app.exit(0);
-    return;
-  }
-  for (const problem of problems) console.error("duman testi:", problem);
-  app.exit(1);
+function userData(): string {
+  return app.getPath("userData");
 }
 
 // ── IPC işleyicileri ─────────────────────────────────────────────────
 //
-// Her biri renderer'dan gelen girdiyi doğrular. Renderer güvenilmez bir
-// kaynak olarak ele alınıyor — contextIsolation onu Node'dan ayırıyor ama
-// gönderdiği veriyi doğrulamıyor.
-
-function requireTarget(value: unknown): string {
-  if (typeof value !== "string" || value.trim() === "") {
-    throw new Error("hedef boş olamaz");
-  }
-  if (value.length > 500) {
-    throw new Error("hedef çok uzun");
-  }
-  return value.trim();
-}
+// Her biri renderer'dan gelen girdiyi doğrular (ipc-validate.ts).
 
 function registerHandlers(): void {
-  ipcMain.handle(CHANNELS.version, () => sidecar().call("version"));
-
-  ipcMain.handle(CHANNELS.status, (_event, target: unknown) =>
-    sidecar().call("status", { target: requireTarget(target) }),
-  );
-
-  ipcMain.handle(
-    CHANNELS.auditList,
-    (_event, target: unknown, afterSeq: unknown, limit: unknown) =>
-      sidecar().call("audit.list", {
-        target: requireTarget(target),
-        after_seq: toUint(afterSeq, 0),
-        limit: toUint(limit, 50),
-      }),
-  );
-
-  ipcMain.handle(CHANNELS.auditVerify, (_event, target: unknown) =>
-    sidecar().call("audit.verify", { target: requireTarget(target) }),
-  );
-
-  ipcMain.handle(CHANNELS.loadProfiles, () =>
-    loadProfiles(app.getPath("userData"), (msg) => console.warn("[profiller]", msg)),
-  );
-
-  ipcMain.handle(CHANNELS.saveProfiles, (_event, profiles: unknown) =>
-    saveProfiles(app.getPath("userData"), profiles),
-  );
-}
-
-function toUint(value: unknown, fallback: number): number {
-  const n = typeof value === "number" ? value : Number(value);
-  if (!Number.isFinite(n) || n < 0) return fallback;
-  return Math.floor(n);
+  const command = resolveSidecarCommand({ isPackaged: app.isPackaged, resourcesPath: process.resourcesPath, repoRoot });
+  const syntheticFixture = SMOKE_TEST && !app.isPackaged && command.args.some((arg) => resolve(arg) === join(repoRoot, "desktop", "test", "fixtures", "fake-sidecar.mjs"));
+  registerManagementHandlers(sidecar, syntheticFixture, async () => (await loadAppearance(userData(), platformInfo, warn)).language);
+  registerSidecarReads({ handle: (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(event, ...args)), call: (method, params, options) => sidecar().call(method, params, options) });
+  ipcMain.handle(CHANNELS.loadProfiles, () => loadProfiles(userData(), (msg) => console.warn("[profiller]", msg)));
+  ipcMain.handle(CHANNELS.saveProfiles, (_event, profiles: unknown) => saveProfiles(userData(), profiles));
+  ipcMain.handle(CHANNELS.loadAppearance, async () => ({
+    appearance: await loadAppearance(userData(), platformInfo, warn),
+    defaults: defaultAppearance(platformInfo),
+    modes: [...modesFor(platformInfo)],
+  }));
+  ipcMain.handle(CHANNELS.saveAppearance, async (_event, raw: unknown) => {
+    const saved = await saveAppearance(userData(), raw, platformInfo);
+    host?.applyMode(saved.mode);
+    return saved;
+  });
+  ipcMain.handle(CHANNELS.windowControl, (event, action: unknown) => {
+    const what = requireWindowAction(action);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (what === "minimize") win.minimize();
+    else if (what === "maximize") {
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+    } else win.close();
+  });
+  ipcMain.handle(CHANNELS.copyText, (_event, text: unknown) => {
+    clipboard.writeText(requireCopyText(text));
+  });
 }
 
 // ── Yaşam döngüsü ────────────────────────────────────────────────────
@@ -240,28 +110,37 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    const [window] = BrowserWindow.getAllWindows();
-    if (window) {
-      if (window.isMinimized()) window.restore();
-      window.focus();
+    const win = host?.current();
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
     }
   });
 
   void app.whenReady().then(async () => {
-    // Eski adlı uygulamanın (panely-desktop) profilleri, pencere onları
-    // okumadan ÖNCE taşınır (K-136). Hata uygulamayı durdurmaz: en kötü
-    // durumda profiller boş açılır, eski dosya yerinde durur.
-    await migrateLegacyProfiles(
-      app.getPath("userData"),
-      join(app.getPath("appData"), "panely-desktop"),
-      (msg) => console.warn("[profiller]", msg),
-    ).catch((err: unknown) => console.warn("[profiller]", (err as Error).message));
-    registerHandlers();
-    createWindow();
+    lockDownPermissions(session.defaultSession);
 
+    // Eski adlı uygulamanın (panely-desktop) profilleri, pencere onları
+    // okumadan ÖNCE taşınır (K-136). Hata uygulamayı durdurmaz.
+    await migrateLegacyProfiles(userData(), join(app.getPath("appData"), "panely-desktop"), (msg) =>
+      console.warn("[profiller]", msg),
+    ).catch((err: unknown) => console.warn("[profiller]", (err as Error).message));
+
+    registerHandlers();
+    const appearance = await loadAppearance(userData(), platformInfo, warn);
+    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-icon.png") });
+    const win = host.open(appearance.mode);
+    if (SMOKE_TEST) void runSmokeTest(win);
+
+    // Pencere kapalıyken Dock'tan dönüldüğünde kayıtlı mod diskten okunur;
+    // başlangıçta okunan mod Ayarlar'da değişmiş olabilir.
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      if (BrowserWindow.getAllWindows().length > 0) return;
+      void loadAppearance(userData(), platformInfo, warn).then((a) => host?.open(a.mode));
     });
+  }).catch((err: unknown) => {
+    console.error("[kadran] başlatılamadı:", err);
+    app.exit(1);
   });
 
   app.on("window-all-closed", () => {

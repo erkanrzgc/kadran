@@ -3,8 +3,9 @@
 //
 // ── NEDEN STOK CADDY DEĞİL ──────────────────────────────────────────
 //
-// kadrand, Caddy'nin admin soketine doğrudan yazıyor (docs/decisions.md
-// K-050). Bu yetkinin ne anlama geldiği ÖLÇÜLDÜ, varsayılmadı:
+// Kadrand no longer writes to Caddy's raw admin socket. The separate
+// kadran-proxy broker accepts only typed routes and owns that capability.
+// The original raw-admin capability was measured:
 //
 //	POST /load ile şu yapılandırma yüklendi:
 //	  file_server{ root: /var/lib/caddy/.local/share/caddy, browse: {} }
@@ -19,10 +20,10 @@
 // Süreç içinde sınır yok, systemd sertleştirmesi de yardım etmez çünkü
 // Caddy o dizini okuyabilmek zorunda.
 //
-// Bu yüzden sınır ŞEMA/BINARY düzeyine taşındı: dosya servis eden
-// modüller BINARY'DE HİÇ YOK. Doğrulanan değil, TEMSİL EDİLEMEYEN bir
-// yetenek — projenin her yerde kullandığı desen (bkz. exec.proto'da
-// "host yolu kabul EDİLMEZ, hiç alınmaz").
+// Module exclusions reduce surface but do not establish a file-read boundary:
+// Caddy v2.11.4's core static_response expands {file.<path>} too. The regression
+// in security_test.go demonstrates this with a synthetic file. A separate
+// rootless broker and Unix permissions therefore enforce the boundary.
 //
 // ── Neden ayrı bir Go modülü? ───────────────────────────────────────
 //
@@ -42,9 +43,8 @@ import (
 	// ── Çekirdek ────────────────────────────────────────────────────
 	//
 	// caddyhttp; http uygulamasını, yönlendirme eşleştiricilerini ve
-	// `static_response`ı getirir. static_response DOSYA OKUMAZ (gövde
-	// yapılandırmada gömülüdür), bu yüzden güvenli ve Faz 5'in bakım
-	// sayfası için gerekli.
+	// `static_response`ı getirir. It can read files through placeholders;
+	// kadran-proxy cannot emit that handler or an arbitrary response body.
 	_ "github.com/caddyserver/caddy/v2/modules/caddyevents"
 	_ "github.com/caddyserver/caddy/v2/modules/caddyevents/eventsconfig"
 	_ "github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -76,9 +76,8 @@ import (
 
 // ── KASTEN DIŞARIDA BIRAKILANLAR ────────────────────────────────────
 //
-// Bu liste bir "yapılacaklar" değil, bir GÜVENLİK SINIRIDIR. Buraya bir
-// modül eklemek, kadrand'nin yazabildiği yapılandırmanın yapabileceklerini
-// genişletir; eklemeden önce yukarıdaki ölçüm tekrarlanmalıdır.
+// This list reduces the Caddy binary's surface. The authorization boundary is
+// the typed broker, whose accepted input must remain closed when modules change.
 //
 //	caddyhttp/fileserver  — file_server + browse. ÖLÇÜLDÜ: TLS özel
 //	                        anahtarlarını servis edebiliyor. Bu binary'nin

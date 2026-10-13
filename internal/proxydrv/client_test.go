@@ -74,7 +74,7 @@ func adminKur(t *testing.T, a *sahteAdmin) *Client {
 	srv := &http.Server{Handler: a}
 	go func() { _ = srv.Serve(ln) }()
 	t.Cleanup(func() { _ = srv.Close() })
-	return New(sock)
+	return NewAdmin(sock)
 }
 
 func ikiRotaliYapilandirma(t *testing.T, ekstra ...AppRoute) *Config {

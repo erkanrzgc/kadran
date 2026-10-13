@@ -18,18 +18,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # ⚠ YAMA SÜRÜMÜ DAHİL sabitleniyor, "1.25" değil.
-  #
-  # Gerekçe ölçülerek öğrenildi: govulncheck üç stdlib zafiyeti bildirdi
-  # (net/url, crypto/tls, encoding/asn1 — hepsi go1.25.13'te düzeltilmiş)
-  # ve koşu go1.25.12 ile yapılmıştı. "1.25" yazmak setup-go'nun o anki
-  # sürüm listesine güvenmek demek; liste bayatladığında yamalı sürüm
-  # sessizce ALINMAZ ve güvenlik işi, kendi denetlediği şeyin eski hâlini
-  # denetler.
-  #
-  # Bunu yükseltmek artık bilinçli bir hamle: govulncheck kırmızıya
-  # döndüğünde önce buraya bakılacak.
-  GO_VERSION: "1.25.13"
+  # İki go.mod ile aynı yamalı, desteklenen araç zinciri. Go 1.26.9
+  # 2026-10-08 stdlib güvenlik düzeltmelerini içerir; yalnız "1.26"
+  # yazmak setup-go'nun önbellekteki sürüm listesine güvenmek olurdu.
+  # Sürüm geçmişi: https://go.dev/doc/devel/release#go1.26.0
+  GO_VERSION: "1.26.9"
   BUF_VERSION: "1.47.2"
 
 jobs:
@@ -91,6 +84,10 @@ jobs:
       - name: Kurulum betiği yardımcıları
         run: bash scripts/check-install-sh.sh
 
+      # Göçte aracı soketi kadrand'dan ÖNCE kurulur (B2/I4).
+      - name: Göç sırası (aracı soketi)
+        run: bash scripts/check-install-order.sh
+
       # authorized_keys ve .ssh kadran-client olarak yazılıyor (K-139).
       # Bunu ölçen bölüm gerçek bir kullanıcı ve setpriv ister; root'suz
       # koşu onu atlıyor. Burada ZORUNLU: root yoksa adım kırmızı.
@@ -117,11 +114,11 @@ jobs:
       # .golangci.yml de v2 şemasında — üçü tek bir küme.
       #
       # v1.62 neden bırakıldı: yayınlanmış binary'si go1.23 ile derlenmiş
-      # ve golangci-lint kendi Go sürümünü go.mod'un hedefinden (1.25.0)
+      # ve golangci-lint kendi Go sürümünü go.mod'un hedefinden
       # küçük bulunca yapılandırmayı okumadan çıkıyor. Yerelde sorun
       # görünmüyordu çünkü yerel kurulum `go install` ile, yani yerel
-      # araç zinciriyle derlenmişti. v2.12.2'nin linux-amd64 artefaktının
-      # go1.26.2 ile derlendiği indirilip doğrulandı.
+      # araç zinciriyle derlenmişti. v2.12.2'nin linux-amd64 artefaktı
+      # Go 1.26 ile derlenmiştir; modüller de aynı Go ana sürümünü hedefler.
       #
       # Bu adım setup'tan SONRA gelmek zorunda: üretilen protobuf kodu
       # olmadan tip denetimi yapılamaz ve linter anlamsız hatalar verir.
@@ -204,7 +201,7 @@ jobs:
           ldflags="-s -w"
           ldflags="$ldflags -X $mod/internal/version.Version=$version"
           ldflags="$ldflags -X $mod/internal/version.Commit=${GITHUB_SHA::12}"
-          for binary in kadrand kadran-exec kadran-connect kadran-vault kadran; do
+          for binary in kadrand kadran-exec kadran-connect kadran-proxy kadran-vault kadran; do
             go build -trimpath -ldflags "$ldflags" -o "dist/$binary" "./cmd/$binary"
           done
           ls -la dist/
@@ -215,10 +212,9 @@ jobs:
       # atlarında değişebiliyor ve arıza ancak sunucuda kurulum sırasında
       # görülürdü.
       #
-      # ⚠ Bu binary bir GÜVENLİK SINIRI taşıyor: dosya servis eden
-      # modüller kasten dışarıda (docs/decisions.md K-050). Derlemenin
-      # CI'da koşması, o sınırın hâlâ derlenebilir olduğunu garanti eder;
-      # sınırın hâlâ ETKİLİ olduğu ise sunucuda ölçülüyor.
+      # Dosya servis modülleri kasten dışarıda (K-050), ancak çekirdek
+      # placeholder'lar da dosya okuyabilir. Ham admin erişiminin asıl
+      # güvenlik sınırı K-143'ün tipli broker ve Unix izinleridir.
       - name: Ters vekili derle (ayrı modül)
         run: |
           bash scripts/build-caddy.sh "${{ matrix.arch }}" "$PWD/dist/kadran-caddy"
@@ -278,7 +274,7 @@ jobs:
             for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
                      "bin/linux-$arch/kadrand" "bin/linux-$arch/kadran-exec" \
                      "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy" \
-                     "bin/linux-$arch/kadran-vault"; do
+                     "bin/linux-$arch/kadran-proxy" "bin/linux-$arch/kadran-vault"; do
               grep -qxF "$f" <<<"$listed" || { echo "::error::$t içinde $f yok" >&2; exit 1; }
             done
             # Tar'daki lisans dosyası boş ya da yanlış olmamalı: içinden oku.
@@ -410,6 +406,14 @@ jobs:
       - name: Yüzey kontrolünün kendisini sına
         run: bash scripts/check-exec-surface-test.sh
 
+      - name: Typed proxy boundary and raw Caddy capability regression
+        run: |
+          go test -race -count=1 ./internal/proxydrv ./internal/proxyguard ./internal/bootstrap
+          sudo env "PATH=$PATH" KADRAN_TEST_PROXY_PERMISSIONS=1 go test -count=1 -run TestUnixPermissionsSeparateRawTypedAndExecutorSockets ./internal/proxyguard
+          # Kimlik bilgisi dosyası sahiplik/izin testi root ister; root'suz koşuda atlanır, burada ZORUNLU.
+          sudo env "PATH=$PATH" KADRAN_TEST_REQUIRE_ROOT=1 go test -count=1 -run TestPrivateGitFileOwnershipAndPermissions ./internal/exec
+          (cd build/caddy && go test -race -count=1 ./...)
+
       # Ayrıcalıklı yüzey ne kadar büyürse "en az yetki" o kadar
       # anlamsızlaşır. Şemada temsil EDİLEMEYEN bir seçenek, doğrulanan
       # bir seçenekten güçlüdür: kazara kabul edilemez.
@@ -448,6 +452,110 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+          # Kök tarama ayrı Caddy modülüne girmez; onu ayrıca tara.
+          (cd build/caddy && govulncheck ./...)
+
+  # Masaüstü uygulaması (K-142). Bu işe kadar CI masaüstünü HİÇ koşmuyordu:
+  # ne birim testleri ne pencerenin gerçekten açıldığı ölçülüyordu.
+  desktop:
+    name: Masaüstü (ubuntu)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      # Gerçek sidecar: sahte süreçle geçen istemci gerçeğine karşı bozuk
+      # olabilir (K-012) ve hata biçimi (message + data) yalnız gerçek
+      # ikiliyle sınanır. protobuf kodu depoda yok, kurulum adımı üretir.
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+      - name: Gerçek sidecar'ı derle
+        working-directory: .
+        run: go build -o bin/kadran ./cmd/kadran
+      - run: npm run typecheck
+      # KADRAN_REQUIRE_SIDECAR=1: ikili yoksa entegrasyon testi ATLAMAZ, düşer.
+      - run: npm test
+        env:
+          KADRAN_REQUIRE_SIDECAR: "1"
+      - run: npm run build
+      - run: npm run test:built
+      - name: Çalışma zamanı bağımlılık zafiyetleri
+        run: npm audit --omit=dev --audit-level=high
+      # Electron'un Chromium kum havuzu yardımcısı SUID root olmalı;
+      # --no-sandbox ile çalıştırmak ölçtüğümüz şeyi gevşetirdi.
+      # Electron 43'te postinstall yok: ikili ilk `require('electron')` anında
+      # iniyor. chrome-sandbox'a dokunmadan ÖNCE indirme açıkça tetikleniyor.
+      - name: Electron kum havuzu ve sanal ekran
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
+          node node_modules/electron/install.js
+          test -f node_modules/electron/dist/chrome-sandbox
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      - name: Uçtan uca (sahte sidecar)
+        run: xvfb-run -a npm run e2e
+
+  # Çalışma dizini adım başına veriliyor (job düzeyinde `defaults` YOK):
+  # bileşik eylemin adımları depo kökünde koşmak zorunda (buf generate,
+  # find internal/pb), job varsayılanına güvenmek bu belirsizliği taşırdı.
+  desktop-windows:
+    name: Masaüstü (windows)
+    runs-on: windows-latest
+    steps:
+      # Sığ klonda etiket yok: sidecar sürümü `git describe --always`
+      # yüzünden kısa commit özetine düşer (dist.mjs aynı değeri doğrular).
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+        working-directory: desktop
+      - name: Gerçek sidecar'ı derle
+        run: go build -o bin/kadran.exe ./cmd/kadran
+      - name: Tip denetimi (iki tsconfig)
+        working-directory: desktop
+        run: npm run typecheck
+      - name: Birim ve entegrasyon testleri
+        working-directory: desktop
+        env:
+          KADRAN_REQUIRE_SIDECAR: "1"
+        run: npm test
+      - run: npm run build
+        working-directory: desktop
+      - name: Uçtan uca (sahte sidecar)
+        working-directory: desktop
+        run: npm run e2e
+      - name: Paket (imzasız)
+        working-directory: desktop
+        run: npm run dist
+      - name: Paketin içeriği
+        working-directory: desktop
+        shell: bash
+        run: |
+          set -euo pipefail
+          d=dist/Kadran-win32-x64
+          for f in Kadran.exe resources/kadran.exe resources/THIRD_PARTY_NOTICES.txt resources/app.asar; do
+            test -f "$d/$f" || { echo "::error::pakette yok: $f"; exit 1; }
+          done
+          if npx asar list "$d/resources/app.asar" | grep -q node_modules; then
+            echo "::error::app.asar node_modules taşıyor"; exit 1
+          fi
 
   # ══════════════════════════════════════════════════════════════════
   #  Mutasyon: testlerin GERÇEKTEN bir şey koruduğunu sına
@@ -476,6 +584,19 @@ jobs:
         with:
           python-version: '3.x'
 
+      # mutate-desktop.sh birim testlerini node ile koşuyor; Electron
+      # ikilisi gerekmiyor (indirme atlanıyor).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - name: Masaüstü bağımlılıkları
+        working-directory: desktop
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        run: npm ci
+
       # mutate-kasa.sh geri dönüş betiğini gerçek sqlite3 ve age ile ölçüyor.
       - name: Kasa geri dönüş araçları
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
@@ -494,7 +615,7 @@ jobs:
           shopt -s nullglob
           scripts=(scripts/mutate-*.sh)
           echo "bulunan betik: ${#scripts[@]}"
-          if [ "${#scripts[@]}" -lt 12 ]; then
+          if [ "${#scripts[@]}" -lt 28 ]; then
             echo "::error::yalnızca ${#scripts[@]} mutasyon betiği bulundu — glob bozuk ya da betikler silinmiş" >&2
             exit 1
           fi

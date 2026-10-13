@@ -53,7 +53,7 @@ o=s
 $expr
 if s==o:
     sys.exit(9)
-io.open(p,'w',encoding='utf-8').write(s)
+io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 "; then
         echo "  !! MUTASYON UYGULANAMADI: $name — ölçüm YAPILMADI"
         fail=1

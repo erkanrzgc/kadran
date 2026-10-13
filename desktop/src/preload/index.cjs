@@ -8,10 +8,9 @@
  * sınırını istemci tarafından delmek olurdu — kötü bir bağımlılık ya da
  * bir XSS, sidecar'a istediği çağrıyı yaptırabilirdi.
  *
- * Burada yalnızca altı işlem var ve hiçbiri sunucunun durumunu
- * DEĞİŞTİRMİYOR. Faz 1'de durum değiştiren işlemler geldiğinde (dağıtım,
- * geri alma, silme) ayrı bir onay mekanizması gerekecek; o zaman bu
- * yorumun da güncellenmesi gerekiyor.
+ * Yönetim işlemleri de adlandırılmış tipli kanallardır; genel RPC,
+ * kabuk veya dosya erişimi yoktur. Geri alma ve silme ana süreçte
+ * uygulama adı ile doğrulanır; girdi boyutları ayrıca sınırlanır.
  *
  * # Neden CommonJS?
  *
@@ -33,11 +32,37 @@ const CHANNELS = {
   status: "kadran:status",
   auditList: "kadran:audit-list",
   auditVerify: "kadran:audit-verify",
+  appsList: "kadran:apps-list",
+  appGet: "kadran:app-get",
+  appCreate: "kadran:app-create",
+  appUpdate: "kadran:app-update",
+  appDelete: "kadran:app-delete",
+  appDeploy: "kadran:app-deploy",
+  appRollback: "kadran:app-rollback",
+  appLogs: "kadran:app-logs",
+  alarmsList: "kadran:alarms-list",
+  backupsList: "kadran:backups-list",
+  backupCreate: "kadran:backup-create",
   loadProfiles: "kadran:profiles-load",
   saveProfiles: "kadran:profiles-save",
+  loadAppearance: "kadran:appearance-load",
+  saveAppearance: "kadran:appearance-save",
+  windowControl: "kadran:window",
+  copyText: "kadran:copy",
 };
 
 contextBridge.exposeInMainWorld("kadran", {
+  appsList: (target) => ipcRenderer.invoke(CHANNELS.appsList, target),
+  appGet: (target, appId) => ipcRenderer.invoke(CHANNELS.appGet, target, appId),
+  appCreate: (target, spec) => ipcRenderer.invoke(CHANNELS.appCreate, target, spec),
+  appUpdate: (target, appId, update) => ipcRenderer.invoke(CHANNELS.appUpdate, target, appId, update),
+  appDelete: (target, appId, confirmation) => ipcRenderer.invoke(CHANNELS.appDelete, target, appId, confirmation),
+  appDeploy: (target, appId, ref) => ipcRenderer.invoke(CHANNELS.appDeploy, target, appId, ref),
+  appRollback: (target, appId, confirmation) => ipcRenderer.invoke(CHANNELS.appRollback, target, appId, confirmation),
+  appLogs: (target, appId, tail) => ipcRenderer.invoke(CHANNELS.appLogs, target, appId, tail),
+  alarmsList: (target) => ipcRenderer.invoke(CHANNELS.alarmsList, target),
+  backupsList: (target) => ipcRenderer.invoke(CHANNELS.backupsList, target),
+  backupCreate: (target) => ipcRenderer.invoke(CHANNELS.backupCreate, target),
   /** Sidecar'ın sürüm ve protokol bilgisi. Sunucuya dokunmaz. */
   version: () => ipcRenderer.invoke(CHANNELS.version),
 
@@ -62,4 +87,22 @@ contextBridge.exposeInMainWorld("kadran", {
    * hiç girmez — bu yüzden işletim sistemi anahtarlığı kullanılmıyor.
    */
   saveProfiles: (profiles) => ipcRenderer.invoke(CHANNELS.saveProfiles, profiles),
+
+  /** Çalışılan işletim sistemi; başlık çubuğu macOS'ta trafik ışıklarına yer bırakır. */
+  platform: process.platform,
+
+  /** Görünüm ayarları, varsayılanlar ve bu sistemde sunulan modlar. */
+  loadAppearance: () => ipcRenderer.invoke(CHANNELS.loadAppearance),
+
+  /**
+   * Görünümü kaydeder. Ana süreç doğrular; mod değiştiyse pencereyi
+   * yeniden kurabilir (Clear ↔ diğerleri) ya da yerinde değiştirir.
+   */
+  saveAppearance: (appearance) => ipcRenderer.invoke(CHANNELS.saveAppearance, appearance),
+
+  /** Özel başlık çubuğunun düğmeleri: minimize | maximize | close. */
+  windowControl: (action) => ipcRenderer.invoke(CHANNELS.windowControl, action),
+
+  /** Parmak izi gibi kısa bir metni panoya yazar (en fazla 1024 karakter). */
+  copyText: (text) => ipcRenderer.invoke(CHANNELS.copyText, text),
 });

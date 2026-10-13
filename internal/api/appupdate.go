@@ -57,6 +57,12 @@ func (s *Server) UpdateApp(
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 
+	release, err := s.acquireApp(ctx, appID)
+	if err != nil {
+		return nil, s.completed(ctx, action, tgt, params, err)
+	}
+	defer release()
+
 	current, err := s.store.GetApp(ctx, appID)
 	if err != nil {
 		// Var olmayan bir uygulamaya yazma DENEMESİ de zincire girer:
@@ -102,15 +108,15 @@ func (s *Server) UpdateApp(
 	volumesChanged := upd.ChangesVolumes()
 
 	app, opErr := s.store.UpdateApp(ctx, appID, upd)
-	if err := s.completed(ctx, action, tgt, params, opErr); err != nil {
-		return nil, appError(err)
+	if opErr != nil {
+		return nil, appError(s.completed(ctx, action, tgt, params, opErr))
 	}
 
 	resp := &kadranv1.UpdateAppResponse{App: appToProto(app)}
 	if domainMoved || replicasChanged {
 		detail, err := s.moveTraffic(ctx, appID, current.Domain, app.Domain)
 		if err != nil {
-			return nil, err
+			return nil, s.completed(ctx, action, tgt, params, err)
 		}
 		resp.ProxyDetail = detail
 	}
@@ -119,6 +125,9 @@ func (s *Server) UpdateApp(
 	}
 	if volumesChanged {
 		resp.VolumeDetail = volumesNeedRedeploy(appID)
+	}
+	if err := s.completed(ctx, action, tgt, params, nil); err != nil {
+		return nil, err
 	}
 	return resp, nil
 }
@@ -203,12 +212,8 @@ func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (strin
 		return "app REMOVED from the reverse proxy — no longer served on any domain", nil
 	}
 	if why, skipped := res.Skipped[appID]; skipped {
-		// Hata DEĞİL: hiç dağıtılmamış bir uygulamanın ayakta replikası
-		// olmaz ve rota üretilemez. Ama sessiz kalmak, kullanıcının yeni
-		// alan adının canlıda cevap verdiğini sanması demekti.
-		return fmt.Sprintf(
-			"⚠ domain saved but TRAFFIC NOT MOVED (%s) — "+
-				"deploy the app: kadran deploy %s", why, appID), nil
+		return "", status.Errorf(codes.Unavailable,
+			"app definition SAVED but TRAFFIC NOT MOVED (%s) — deploy the app: kadran deploy %s", why, appID)
 	}
 	return fmt.Sprintf("reverse proxy updated — %q now goes to this app", to), nil
 }

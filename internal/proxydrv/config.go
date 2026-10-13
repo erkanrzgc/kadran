@@ -24,8 +24,9 @@ import (
 // ⚠ `Handler` serbest bir map DEĞİL. Serbest olsaydı, çağıran istediği
 // Caddy modülünü ve seçeneğini yazabilirdi — oysa bu paketin var olma
 // sebeplerinden biri, üretilebilecek yapılandırmayı KAPALI bir kümeye
-// hapsetmek. (İkinci savunma katmanı binary'nin kendisi: dosya servis
-// eden modüller kadran-caddy'de hiç yok, bkz. K-050.)
+// hapsetmek. The separate proxyguard broker enforces this outside kadrand;
+// Caddy's core still supports file placeholders, so module exclusions alone
+// must never be treated as an authorization boundary.
 
 // Config, Caddy'ye yüklenen kök nesnedir.
 type Config struct {
@@ -142,8 +143,11 @@ func NewUpstream(ip string, port uint32) (Upstream, error) {
 		return Upstream{}, fmt.Errorf(
 			"upstream address must be an IP (%q) — names, schemes or socket paths are not accepted", ip)
 	}
-	if addr.IsUnspecified() {
-		return Upstream{}, fmt.Errorf("upstream address must not be unspecified (%q)", ip)
+	if addr.Is4In6() {
+		addr = addr.Unmap()
+	}
+	if !addr.IsGlobalUnicast() || addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.Zone() != "" {
+		return Upstream{}, fmt.Errorf("upstream address must be a non-loopback unicast IP (%q)", ip)
 	}
 	if port == 0 || port > 65535 {
 		return Upstream{}, fmt.Errorf("upstream port must be between 1 and 65535 (%d)", port)

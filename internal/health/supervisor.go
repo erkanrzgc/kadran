@@ -18,6 +18,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/alarm"
 	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/deploy"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
 
@@ -111,6 +112,8 @@ func (systemClock) Sleep(ctx context.Context, d time.Duration) error {
 
 // Options, gözetmenin davranışını belirler.
 type Options struct {
+	// Coordinator is shared with API lifecycle mutations in the daemon.
+	Coordinator *deploy.Coordinator
 	// Interval, ölçümler arası bekleme.
 	Interval time.Duration
 	// FailuresBeforeHeal, iyileştirmeden önce kaç ARDIŞIK başarısız
@@ -177,12 +180,13 @@ type appState struct {
 
 // Supervisor, aktif dağıtımları yoklar ve çökenleri ayağa kaldırır.
 type Supervisor struct {
-	healer Healer
-	store  Deployments
-	audit  Auditor
-	alarms Alarms
-	clock  Clock
-	opts   Options
+	coordinator *deploy.Coordinator
+	healer      Healer
+	store       Deployments
+	audit       Auditor
+	alarms      Alarms
+	clock       Clock
+	opts        Options
 
 	// state, uygulama kimliğinden duruma. Yalnızca Run/Cycle'ın
 	// goroutine'inden okunuyor ve yazılıyor.
@@ -206,8 +210,12 @@ func New(
 	if o.HealsBeforeAlarm <= 0 {
 		return nil, errors.New("health: alarm threshold must not be zero")
 	}
+	if o.Coordinator == nil {
+		o.Coordinator = deploy.NewCoordinator()
+	}
 	return &Supervisor{
-		healer: h, store: d, audit: a, alarms: al, clock: c, opts: o,
+		coordinator: o.Coordinator,
+		healer:      h, store: d, audit: a, alarms: al, clock: c, opts: o,
 		state: map[string]*appState{},
 	}, nil
 }
@@ -347,6 +355,17 @@ func (s *Supervisor) markHealthy(ctx context.Context, appID string, st *appState
 
 // heal, iyileştirmeyi dener ve geri çekilmeyi ilerletir.
 func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment, st *appState) {
+	// A build can hold the app for minutes. Limit this cycle's queue wait so
+	// unrelated apps and the supervisor watchdog keep making progress.
+	waitCtx, cancel := context.WithTimeout(ctx, s.opts.Interval)
+	release, err := s.coordinator.Acquire(waitCtx, d.AppID)
+	cancel()
+	if err != nil {
+		slog.Debug("gözetim: uygulama yaşam döngüsü meşgul, iyileştirme ertelendi", "uygulama", d.AppID, "hata", err)
+		return
+	}
+	defer release()
+
 	// ── YARIŞ KORUMASI ──────────────────────────────────────────────
 	//
 	// Aktif sürüm, tur başında okunduktan sonra değişmiş olabilir: aynı
@@ -358,6 +377,18 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 		slog.Info("gözetim: aktif sürüm değişti, iyileştirme atlandı",
 			"uygulama", d.AppID, "beklenen", d.ReleaseID, "guncel", cur.ReleaseID)
 		delete(s.state, d.AppID)
+		return
+	}
+
+	// App updates can have changed scale, environment or health path while
+	// we waited. Read the definition and readiness again under ownership.
+	app, err = s.store.GetApp(ctx, d.AppID)
+	if err != nil {
+		slog.Warn("gözetim: güncel uygulama okunamadı", "uygulama", d.AppID, "hata", err)
+		return
+	}
+	if ready, _ := s.healer.Check(ctx, app, d.ReleaseID); ready >= app.Replicas {
+		s.markHealthy(ctx, d.AppID, st)
 		return
 	}
 

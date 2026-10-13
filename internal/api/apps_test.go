@@ -96,6 +96,10 @@ func TestCreateAppValidation(t *testing.T) {
 			s.BuildArgs = map[string]string{"OK": "a\x00b"}
 		}},
 		{"şemalı domain", func(s *kadranv1.AppSpec) { s.Domain = "https://x.com" }},
+		{"IP sabiti domain", func(s *kadranv1.AppSpec) { s.Domain = "203.0.113.5" }},
+		{"63 karakterden uzun etiket", func(s *kadranv1.AppSpec) {
+			s.Domain = strings.Repeat("a", 64) + ".example.com"
+		}},
 	}
 
 	for _, tc := range cases {

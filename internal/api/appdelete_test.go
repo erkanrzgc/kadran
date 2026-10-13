@@ -10,6 +10,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/execclient"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
@@ -179,6 +180,57 @@ func TestDeleteRefusesLiveApp(t *testing.T) {
 	}
 	if _, err := db.GetApp(ctx, "blog"); err != nil {
 		t.Errorf("reddedilen silme kaydı bozdu: %v", err)
+	}
+}
+
+// A failed live-release query must never authorize container deletion. Rename
+// just the deployments table so GetApp and audit storage still work, while the
+// actual Store lookup fails with a database error rather than ErrNoDeployment.
+func TestDeleteRefusesActiveDeploymentLookupFailure(t *testing.T) {
+	exec := &fakeExec{}
+	srv, db := newDeleteServer(t, exec)
+	rel := seedDeletableApp(t, db, "blog")
+	ctx := context.Background()
+	if err := db.SetActiveRelease(ctx, "blog", rel.ID); err != nil {
+		t.Fatal(err)
+	}
+	exec.replicas = []execclient.Replica{replica("blog", rel.ID, 0)}
+	if _, err := db.DB().ExecContext(ctx, `ALTER TABLE deployments RENAME TO unavailable_deployments`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ActiveDeployment(ctx, "blog"); err == nil || errors.Is(err, store.ErrNoDeployment) {
+		t.Fatalf("fixture did not produce a live-release query failure: %v", err)
+	}
+
+	_, err := srv.DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: "blog"})
+	if status.Code(err) != codes.Internal {
+		t.Errorf("lookup failure code = %s, want Internal: %v", status.Code(err), err)
+	}
+	if len(exec.stopCalls) != 0 || len(exec.rmCalls) != 0 || len(exec.replicas) != 1 {
+		t.Errorf("failed lookup mutated live containers: stop=%v remove=%v replicas=%v", exec.stopCalls, exec.rmCalls, exec.replicas)
+	}
+	if _, err := db.GetApp(ctx, "blog"); err != nil {
+		t.Errorf("failed lookup removed the app: %v", err)
+	}
+	records, err := db.ListAudit(ctx, 0, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var failed bool
+	for _, record := range records {
+		if record.Action == "app.delete" {
+			failed = record.Outcome == audit.OutcomeFailure
+		}
+	}
+	if !failed {
+		t.Error("live-release lookup failure was not audited as failure")
+	}
+	if _, err := db.DB().ExecContext(ctx, `ALTER TABLE unavailable_deployments RENAME TO deployments`); err != nil {
+		t.Fatal(err)
+	}
+	active, err := db.ActiveDeployment(ctx, "blog")
+	if err != nil || active.ReleaseID != rel.ID {
+		t.Fatalf("live release changed despite failed lookup: %+v, %v", active, err)
 	}
 }
 

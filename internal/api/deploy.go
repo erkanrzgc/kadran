@@ -2,13 +2,11 @@ package api
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
 	"google.golang.org/grpc"
 
-	"github.com/erkanrzgc/kadran/internal/deploy"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
@@ -70,6 +68,11 @@ func (s *Server) Deploy(
 	if err := validateCommitSHA(req.GetCommitSha()); err != nil {
 		return s.denied(ctx, action, tgt, params, err)
 	}
+	release, err := s.acquireApp(ctx, appID)
+	if err != nil {
+		return s.completed(ctx, action, tgt, params, err)
+	}
+	defer release()
 
 	app, err := s.store.GetApp(ctx, appID)
 	if err != nil {
@@ -136,16 +139,16 @@ func (s *Server) Deploy(
 	// kalır ve istemci hata alır.
 	rel.CommitSHA = req.GetCommitSha()
 	if err := s.rollout.Run(ctx, app, rel); err != nil {
-		var skipped deploy.SkippedError
-		if !errors.As(err, &skipped) {
+		skipped, warningOnly := unrelatedSkippedRoutes(err, app.ID)
+		if !warningOnly {
 			return s.completed(ctx, action, tgt, params, err)
 		}
 		// Bu sürüm canlıya ÇIKTI; rotalanamayan BAŞKA uygulamalar var.
 		// Dağıtımı başarısız saymak yanlış olurdu ama sessiz kalmak da:
 		// operatörün bunu görmesi gerekiyor.
 		slog.Warn("dağıtım tamamlandı ama bazı uygulamalar rotalanamadı",
-			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Result.Error())
-		params["skipped_routes"] = skipped.Result.Error()
+			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Error())
+		params["skipped_routes"] = skipped.Error()
 	}
 
 	if err := stream.Send(&kadranv1.DeployResponse{

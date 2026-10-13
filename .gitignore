@@ -45,3 +45,7 @@ desktop/out/
 # wrangler yerel durumu ve gizli degerleri; hesaba ozel.
 .wrangler/
 .dev.vars
+
+# --- Electron paketleme çıktısı ---
+desktop/dist/
+desktop/build/

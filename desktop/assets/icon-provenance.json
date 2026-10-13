@@ -1,6 +1,6 @@
 {
   "master": "kadran-icon.svg",
-  "master_sha256": "4aae6e3be61bb3408f003137ad5edd1da3c0e234d287fe186d029ac5e05c78ae",
+  "master_sha256": "9d4a3be388d306bca6f7ce6207687da301a82579301e70a5e79c8e934ff76a8c",
   "source": "../public/kadran-icon.png",
   "source_sha256": "01bb149ee716309d454fe0a7ebde9125372a341e0cef943aa8b9572fad4250fe",
   "ico_sha256": "6a764efbda44ba0860756cf89d55937ed6871d9be1013010a5c5c8f320cc2723",

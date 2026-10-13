@@ -46,14 +46,24 @@ const BACKUP_TIMEOUT_MS = 90_000 + SIDECAR_MARGIN_MS;
 
 export function createManagementHandlers(deps: ManagementDeps): void {
   const gate = createManagementGate();
+  // Kapı (hedef, uygulama) başına; bu bayrak ise BÜTÜN kanallarda aynı anda tek
+  // yerel kutu bırakır. Ele geçmiş bir renderer farklı uygulama adlarıyla kutu
+  // yağdırıp kullanıcıyı onay yorgunluğuna itemesin.
+  let dialogOpen = false;
   const invoke = (method: string, target: unknown, params: Record<string, unknown> = {}, timeoutMs = READ_TIMEOUT_MS) =>
     callForUi(deps.call, method, { target: requireTarget(target), ...params }, { timeoutMs }).then((value) => validateManagementResult(method, value));
   const confirm = async (event: unknown, request: ConfirmRequest): Promise<boolean> => {
     // Yalnızca paketlenmemiş yerel sahte düzenekte ve yalnız fake@test hedefinde atlanır.
     if (deps.isFixture && request.target === "fake@test") return true;
-    const options = managementConfirmation(await deps.language(), request);
-    const { response } = await deps.showDialog(event, options);
-    return response === CONFIRM_BUTTON;
+    if (dialogOpen) throw new Error("another confirmation is open; answer it first");
+    dialogOpen = true;
+    try {
+      const options = managementConfirmation(await deps.language(), request);
+      const { response } = await deps.showDialog(event, options);
+      return response === CONFIRM_BUTTON;
+    } finally {
+      dialogOpen = false;
+    }
   };
 
   deps.handle(CHANNELS.appsList, (_e, target) => invoke("apps.list", target));

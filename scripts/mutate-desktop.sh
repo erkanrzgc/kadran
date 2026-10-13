@@ -195,6 +195,8 @@ mutate_in src/main/management-core.ts "fake@test koşulu gevşetilmiş (her hede
     "s=s.replace('if (deps.isFixture && request.target === \"fake@test\") return true;','if (deps.isFixture) return true;',1)"
 mutate_in src/main/management-ipc.ts "requireConfirmation her şeyi kabul ediyor" \
     "s=s.replace('if (value !== appId)','if (false)',1)"
+mutate_in src/main/management-core.ts "tek kutu sınırı devre dışı (kutu yağmuru)" \
+    "s=s.replace('if (dialogOpen) throw','if (dialogOpen && false) throw',1)"
 mutate_in src/main/management-ipc.ts "kapı devre dışı (aynı işi iki kez başlatır)" \
     "s=s.replace('if (active.has(key)) throw new Error(\"an operation for this app is already running\");','void key;',1)"
 # IPC süresi sidecar'ınkinden kısaysa masaüstü önce vazgeçer, kapı iş
@@ -207,10 +209,27 @@ mutate_in src/main/management-core.ts "geri alma okuma süresiyle çağrılıyor
     "s=s.replace('return invoke(\"apps.rollback\", target, { app_id, confirmation }, LIFECYCLE_TIMEOUT_MS);','return invoke(\"apps.rollback\", target, { app_id, confirmation });',1)"
 mutate_in src/main/management-results.ts "validateManagementResult her şeyi geçiriyor" \
     "s=s.replace('if (!valid)','if (false)',1)"
+mutate_in src/main/management-payload.ts "update'te null skaler geçiyor (kutu ile sunucu farklı anlar)" \
+    "s=s.replace('if (nullKey !== undefined) throw','if (nullKey === \"never\") throw',1)"
+# Sidecar'ın iptal taklidi: sunucuda koşmuş iş "vazgeçildi" diye gösterilir.
+mutate_in src/main/management-results.ts "sidecar'ın {cancelled:true} yanıtı iptal sayılıyor" \
+    "s=s.replace('  let valid = false;','  if (JSON.stringify(value) === JSON.stringify({ cancelled: true })) return value;\n  let valid = false;',1)"
 mutate_in src/renderer/lib/verification-state.ts "başarısız doğrulama kırık zincir kanıtını siliyor" \
     "s=s.replace('? previous : null','? null : null',1)"
 mutate_in src/main/management-confirmation.ts "update kutusuna env DEĞERİ giriyor" \
     "s=s.replace('Object.keys(record(u.env))','Object.entries(record(u.env)).map(([k, v]) => k + \"=\" + String(v))',1)"
+mutate_in src/main/management-confirmation.ts "oluşturma kutusunda kopya sayısı yok" \
+    "s=s.replace('lines.push(text(\"line.replicas\", { count: safe(String(s.replicas ?? \"\")) }));','void 0;',1)"
+mutate_in src/main/management-confirmation.ts "oluşturma kutusunda kaynak sınırları yok" \
+    "s=s.replace('lines.push(text(\"line.limits\",','void (text(\"line.limits\",',1)"
+mutate_in src/main/management-confirmation.ts "oluşturma kutusuna derleme argümanı DEĞERİ giriyor" \
+    "s=s.replace('Object.keys(record(s.build_args))','Object.entries(record(s.build_args)).map(([k, v]) => k + \"=\" + String(v))',1)"
+mutate_in src/main/management-confirmation.ts "kutuda uzun değer baştan kesiliyor (host gizlenir)" \
+    "s=s.replace('return \`\${head}…\${tail}\`;','return \`\${head}…\`;',1)"
+mutate_in src/main/management-confirmation.ts "kesme kaçışsız uzunluğu sayıyor (değer ~6 kat büyür)" \
+    "s=s.replace('head.length + parts[i]!.length <= half','i < half',1)"
+mutate_in src/main/management-confirmation.ts "U+2000 üstü görünmezler kaçışlanmıyor (bidi, U+2028, U+3000)" \
+    "s=s.replace('(INVISIBLE.test(ch) ?','(INVISIBLE.test(ch) && ch.codePointAt(0)! < 0x2000 ?',1)"
 mutate_in src/main/management-payload.ts "yasak bağlama kökü /dev kabul ediliyor" \
     "s=s.replace('[\"/proc\", \"/sys\", \"/dev\"]','[\"/proc\", \"/sys\"]',1)"
 mutate_in src/main/ipc-validate.ts "hedefte biçim karakteri (bidi) kabul ediliyor" \

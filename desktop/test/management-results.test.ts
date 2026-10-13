@@ -10,11 +10,12 @@ test("typed management rejects valid JSON with wrong nested shapes", () => {
     ["backups.create", { backup: null, volumes_excluded: true }],
   ] as const) assert.throws(() => validateManagementResult(method, value), /invalid/);
 });
-test("typed cancellation passes only in its exact shape", () => {
-  const cancelled = { cancelled: true };
-  assert.equal(validateManagementResult("apps.deploy", cancelled), cancelled);
-  for (const value of [{ cancelled: true, extra: 1 }, { cancelled: false }, { cancelled: "true" }, [], null, {}]) {
-    assert.throws(() => validateManagementResult("apps.deploy", value), /invalid/);
+test("a sidecar reply shaped like cancellation never passes (only the local dialog cancels)", () => {
+  const methods = ["apps.list", "apps.get", "apps.create", "apps.update", "apps.deploy", "apps.logs", "apps.rollback", "apps.delete", "alarms.list", "backups.list", "backups.create"];
+  for (const method of methods) {
+    for (const value of [{ cancelled: true }, { cancelled: true, extra: 1 }, { cancelled: false }, [], null, {}]) {
+      assert.throws(() => validateManagementResult(method, value), /invalid/, `${method} ${JSON.stringify(value)}`);
+    }
   }
 });
 test("empty resources and bounded textual logs have truthful valid shapes", () => {

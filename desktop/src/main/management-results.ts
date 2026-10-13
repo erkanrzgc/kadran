@@ -1,5 +1,3 @@
-import { isCancelled } from "../shared/management.ts";
-
 /** Validate the fields the renderer consumes, rather than treating TypeScript as a runtime check. */
 type ObjectValue = Record<string, unknown>;
 const object = (v: unknown): v is ObjectValue => !!v && typeof v === "object" && !Array.isArray(v);
@@ -23,9 +21,13 @@ const release = (v: unknown) => object(v) && texts(v, ["release_id", "app_id", "
 const alarm = (v: unknown) => object(v) && texts(v, ["id", "kind", "target", "severity", "detail"]) && u64(v.since_unix);
 const backup = (v: unknown) => object(v) && text(v.path) && u64(v.bytes) && u64(v.taken_unix);
 
+/**
+ * Yalnız SİDECAR yanıtını doğrular. Tipli iptal burada geçmez: iptali yalnız
+ * ana süreçteki yerel onay üretir (management-core). Sidecar'ın
+ * `{cancelled:true}` yanıtı kabul edilseydi, sunucuda koşmuş bir işlem
+ * "vazgeçildi, hiçbir şey değişmedi" diye gösterilirdi.
+ */
 export function validateManagementResult(method: string, value: unknown): unknown {
-  // Tipli iptal sonucu (yerel onay reddedildi): başka alan taşımayan tam biçim.
-  if (isCancelled(value)) return value;
   let valid = false;
   if (object(value)) {
     switch (method) {

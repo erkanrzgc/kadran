@@ -33,6 +33,7 @@ const UINT32_MAX = 4294967295;
 const UINT64_MAX = 18446744073709551615n;
 
 const CREATE_ONLY_KEYS = ["app_id", "git_host", "git_owner", "git_repo", "dockerfile_path", "build_args", "container_port", "limits"];
+const UPDATE_SCALARS = ["domain", "git_branch", "health_path", "replicas"];
 
 const bad = (message: string) => new Error(message);
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -201,10 +202,14 @@ export function validateCreateSpec(spec: Obj): void {
 /** apps.update yükü: yalnız verilen alanlar; sunucu birleşik tanımı ayrıca doğrular. */
 export function validateAppUpdate(update: Obj): void {
   if (CREATE_ONLY_KEYS.some((key) => key in update)) throw bad("unknown app field");
-  if (update.domain !== undefined && update.domain !== null) checkDomain(update.domain, "domain");
-  if (update.git_branch !== undefined && update.git_branch !== null) checkBranch(update.git_branch);
-  if (update.health_path !== undefined && update.health_path !== null) checkHealthPath(update.health_path);
-  if (update.replicas !== undefined && update.replicas !== null) uint(update.replicas, "replicas", 1, MAX_REPLICAS);
+  // Sunucu null'u "verilmedi" sayar, onay kutusu ise "boş değer" gösterirdi
+  // (domain: null → "alan adı kaldırılıyor"). Anlam ayrılmasın diye reddedilir.
+  const nullKey = UPDATE_SCALARS.find((key) => update[key] === null);
+  if (nullKey !== undefined) throw bad(`${nullKey} must not be null`);
+  if (update.domain !== undefined) checkDomain(update.domain, "domain");
+  if (update.git_branch !== undefined) checkBranch(update.git_branch);
+  if (update.health_path !== undefined) checkHealthPath(update.health_path);
+  if (update.replicas !== undefined) uint(update.replicas, "replicas", 1, MAX_REPLICAS);
   const env = checkEnv(update.env);
   const volumeNames = checkVolumes(update.volumes);
   checkNameList(update.env_remove, "env_remove", BUILD_ARG_NAME, (name) => Object.hasOwn(env, name));

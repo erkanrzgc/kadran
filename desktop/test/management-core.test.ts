@@ -51,7 +51,7 @@ function validSpec(): Record<string, unknown> {
   };
 }
 
-interface Options { isFixture?: boolean; response?: number; language?: Language; failWith?: unknown }
+interface Options { isFixture?: boolean; response?: number; language?: Language; failWith?: unknown; sidecarReply?: unknown }
 
 function harness(options: Options = {}) {
   const handlers = new Map<string, (event: unknown, ...args: unknown[]) => unknown>();
@@ -63,7 +63,7 @@ function harness(options: Options = {}) {
     call: async (method, params, opts) => {
       calls.push({ method, params: params ?? {}, timeoutMs: opts?.timeoutMs ?? 0 });
       if (options.failWith !== undefined) throw options.failWith;
-      return RESULTS[method];
+      return "sidecarReply" in options ? options.sidecarReply : RESULTS[method];
     },
     showDialog: async (_event, dialogOptions) => {
       dialogs.push(dialogOptions);
@@ -117,6 +117,13 @@ for (const [name, method, args] of MUTATING) {
     assert.equal(dialog.cancelId, 0);
     assert.equal(dialog.buttons[0], "Cancel");
     assert.ok(dialog.detail.includes(`Server: ${TARGET}`));
+  });
+
+  test(`${name}: onaydan sonra sidecar'ın {cancelled:true} yanıtı iptal sayılmaz, hata olur`, async () => {
+    // İş sunucuda koşmuş olabilir; "Vazgeçildi, hiçbir şey değişmedi" demek yalan olurdu.
+    const h = harness({ response: 1, sidecarReply: { cancelled: true } });
+    await assert.rejects(h.invoke(channel, ...args), /invalid/);
+    assert.equal(h.calls.length, 1);
   });
 
   test(`${name}: Türkçe dilde kutu Türkçe`, async () => {
@@ -260,6 +267,15 @@ test("geçersiz iç içe alan: kutu da sidecar da çağrılmaz", async () => {
   assert.equal(h.calls.length, 0);
 });
 
+test("update: skaler alanda null reddedilir — kutu 'alan adı kaldırılıyor' derken sunucu 'değişiklik yok' anlardı", async () => {
+  const h = harness();
+  for (const key of ["domain", "git_branch", "health_path", "replicas"]) {
+    await assert.rejects(h.invoke(CHANNELS.appUpdate, TARGET, "blog", { [key]: null }), /must not be null/, key);
+  }
+  assert.equal(h.dialogs.length, 0);
+  assert.equal(h.calls.length, 0);
+});
+
 test("kapı: aynı hedef+uygulama için ikinci eşzamanlı çağrı reddedilir; kutu bir kez gösterilir; sonra serbest kalır", async () => {
   const h = harness({ response: 1 });
   h.state.release = () => {};
@@ -281,6 +297,27 @@ test("kapı: aynı hedef+uygulama için ikinci eşzamanlı çağrı reddedilir; 
   assert.equal(h.calls.length, 1);
   h.state.release = null;
   await h.invoke(CHANNELS.appDeploy, TARGET, "blog", "main");
+  assert.equal(h.calls.length, 2);
+});
+
+test("onay kutusu tek: başka uygulama/hedef için ikinci kutu açılmaz (kutu yağmuru, onay yorgunluğu)", async () => {
+  const h = harness({ response: 1 });
+  h.state.release = () => {};
+  const first = h.invoke(CHANNELS.appDeploy, TARGET, "blog", "main");
+  await new Promise((resolve) => setImmediate(resolve));
+  const outcome = (p: Promise<unknown>) => p.then(() => "settled", (error: unknown) => String(error));
+  const otherApp = outcome(h.invoke(CHANNELS.appDeploy, TARGET, "shop", "main"));
+  const otherTarget = outcome(h.invoke(CHANNELS.backupCreate, "kadran-client@198.51.100.9"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(h.dialogs.length, 1, "bir kutu açıkken ikincisi açılmamalı");
+  assert.match(await otherApp, /another confirmation is open/);
+  assert.match(await otherTarget, /another confirmation is open/);
+  h.state.release();
+  await first;
+  // Reddedilen çağrı kendi uygulamasının kapısını da bırakmış olmalı.
+  h.state.release = null;
+  await h.invoke(CHANNELS.appDeploy, TARGET, "shop", "main");
+  assert.equal(h.dialogs.length, 2);
   assert.equal(h.calls.length, 2);
 });
 

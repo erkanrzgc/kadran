@@ -32,11 +32,36 @@ export interface ConfirmationOptions {
 const MAX_VALUE_CHARS = 200;
 const MAX_LIST_ITEMS = 10;
 
-/** Denetim ve biçim karakterlerini (bidi dahil) görünür kaçışa çevirir; uzunu keser. */
+/** Denetim, biçim (bidi dahil), satır/paragraf ayırıcı ve düz boşluk dışındaki boşluklar. */
+const INVISIBLE = /^(?:[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|(?! )\p{Zs})$/u;
+
+/**
+ * Görünmez karakterleri görünür kaçışa çevirir, SONRA uzunu ORTADAN keser.
+ * Önce kesilseydi 200 karakter kaçışla ~1200'e büyürdü; baştan kesilseydi
+ * `user@host` hedefinin host'u (kuyruk) kutuda görünmezdi.
+ */
 function safe(value: unknown): string {
   const text = typeof value === "string" ? value : "";
-  const shown = text.length > MAX_VALUE_CHARS ? text.slice(0, MAX_VALUE_CHARS) + "…" : text;
-  return shown.replace(/[\p{Cc}\p{Cf}]/gu, (ch) => "\\u" + ch.codePointAt(0)!.toString(16).padStart(4, "0"));
+  const parts = Array.from(text, (ch) => (INVISIBLE.test(ch) ? "\\u" + ch.codePointAt(0)!.toString(16).padStart(4, "0") : ch));
+  const whole = parts.join("");
+  if (whole.length <= MAX_VALUE_CHARS) return whole;
+  const half = Math.floor(MAX_VALUE_CHARS / 2);
+  let head = "";
+  let i = 0;
+  while (i < parts.length && head.length + parts[i]!.length <= half) head += parts[i++];
+  let tail = "";
+  for (let j = parts.length - 1; j >= i && tail.length + parts[j]!.length <= half; j--) tail = parts[j] + tail;
+  return `${head}…${tail}`;
+}
+
+const MIB = 1024n * 1024n;
+
+/** Bayt sayısı (u64 metni) → MiB'e tam bölünüyorsa "8192 MiB", değilse yuvarlamadan bayt. */
+function memory(value: unknown): string {
+  const text = typeof value === "string" ? value : "";
+  if (!/^\d{1,20}$/.test(text)) return safe(text);
+  const bytes = BigInt(text);
+  return bytes > 0n && bytes % MIB === 0n ? `${bytes / MIB} MiB` : `${bytes} B`;
 }
 
 const record = (v: unknown): Obj => (typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Obj) : {});
@@ -68,10 +93,18 @@ export function managementConfirmation(language: Language, request: ConfirmReque
       const s = request.spec;
       lines.push(text("line.source", { host: safe(s.git_host), owner: safe(s.git_owner), repo: safe(s.git_repo) }), text("line.branch", { branch: safe(s.git_branch) }));
       lines.push(s.domain ? text("line.domain", { domain: safe(s.domain) }) : text("line.no_domain"), text("line.port", { port: String(s.container_port) }));
+      // Kopya sayısı ve sınırlar kaynak tüketimini belirler: 64 kopya ya da
+      // dev bir bellek sınırı kutuda görünmeden onaylanmasın.
+      lines.push(text("line.replicas", { count: safe(String(s.replicas ?? "")) }));
+      lines.push(s.health_path ? text("line.health", { path: safe(s.health_path) }) : text("line.health_none"));
+      const limits = record(s.limits);
+      lines.push(text("line.limits", { memory: memory(limits.memory_bytes), cpu: safe(String(limits.cpu_millis ?? "")), io: safe(String(limits.blkio_weight ?? "")) }));
       if (s.dockerfile_path) lines.push(text("line.dockerfile", { path: safe(s.dockerfile_path) }));
       lines.push(...volumeLines(text, list(s.volumes)));
       const keys = Object.keys(record(s.env));
       if (keys.length > 0) lines.push(text("line.env_set", { keys: names(keys) }));
+      const buildArgs = Object.keys(record(s.build_args));
+      if (buildArgs.length > 0) lines.push(text("line.build_args", { keys: names(buildArgs) }));
       break;
     }
     case "update": {

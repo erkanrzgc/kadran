@@ -11122,3 +11122,8 @@ Yükümlülükler başka yerlerde zaten karşılanıyor:
 
 `package-release.sh` ve CI'ın paket içerik denetimi NOTICE'u artık beklemiyor.
 v0.6.0 ve öncesinin yayın dosyaları NOTICE'u taşımaya devam ediyor.
+
+Not (2026-10-14, kullanıcı kararı): README'deki bileşen listesi gereksiz bulundu
+ve kaldırıldı; License bölümü lisansı ve iki üçüncü taraf dosyasını anıyor. Lisans
+metinleri paketlerde ve uygulamada olduğu için yükümlülük değişmiyor. CONTRIBUTING:
+Apache-2.0 kodu NOTICE ile gelirse kökte yeniden bir NOTICE açılır.

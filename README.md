@@ -116,7 +116,7 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
 | **Git → container deploys** | Builds a commit's `Dockerfile`. Public Git by default; opt-in [private GitHub archives](docs/guides/private-git.md) use root-only credentials and an explicit repository allowlist |
 | **Blue-green releases** | Traffic moves only after the new release answers its HTTP health check |
 | **Rollback** | Back to the previous release without rebuilding: ~18 s end to end, 55 of 55 probes returned `200` during the switch |
-| **Automatic HTTPS** | Let's Encrypt through a custom Caddy build with no file server compiled in. Atomic config reloads. A restarted or crashed proxy gets its routes back within 10 s (measured: 3 s after a restart, 7 s after a crash) |
+| **Automatic HTTPS** | Let's Encrypt through a custom Caddy build with no file server compiled in. Atomic config reloads. A restarted or crashed proxy gets its routes back within 10 s (measured before the typed proxy broker of K-143: 3 s after a restart, 7 s after a crash; not yet re-measured with the broker) |
 | **Live logs** | `kadran logs -f <app>`; container logs are capped at 3 × 10 MiB |
 | **Health supervisor** | Restarts failed releases with backoff and works without a connected client. After a reboot the apps come back on their own (sites answer ~19 s after the kernel boots) |
 | **Hang detection** | If the daemon's loops stall or its database pool runs dry, it stops pinging systemd's watchdog (`WatchdogSec=60s`); systemd restarts it and a goroutine dump lands in the journal. Measured under real systemd in CI (K-115) |
@@ -297,7 +297,7 @@ place** (K-136):
 ```
 ┌─ WORKSTATION ─────────────────┐        ┌─ SERVER ──────────────────────────────────────┐
 │                               │        │                                               │
-│  Electron GUI (read-only)     │        │  kadrand            user: kadran              │
+│  Electron GUI (local confirm) │        │  kadrand            user: kadran              │
 │      ↕ stdio JSON-RPC         │        │    • business logic, supervisor, SQLite       │
 │  kadran (Go CLI / sidecar) ───┼──SSH───┼──► • api.sock (0660, group kadran-client)     │
 │                               │        │    • CANNOT reach Docker, no network access   │
@@ -602,9 +602,12 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   on a writable volume needs an external database or a controlled maintenance
   procedure; one replica alone does not remove overlap. The desktop displays this
   boundary when configuring volumes.
-- **Desktop management has explicit limits.** Logs are bounded snapshots, build output
-  is shown after completion, and deletion is permitted only for apps without an active
-  release. Restore, pruning and advanced integrations remain documented CLI/admin flows.
+- **Desktop management has explicit limits.** Every state-changing action (create,
+  change, deploy, rollback, delete, backup) asks for a native confirmation in the main
+  process that defaults to Cancel, one dialog at a time. Logs are bounded snapshots,
+  build output is shown after completion, and deletion is permitted only for apps
+  without an active release. Restore, pruning and advanced integrations remain
+  documented CLI/admin flows.
 - **Some messages are still in Turkish.** The CLI, the install output and the errors the
   server sends back are English. The desktop app is English by default and can switch to
   Turkish. The server's journal lines and alarm texts are being translated.

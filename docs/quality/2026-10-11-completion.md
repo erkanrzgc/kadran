@@ -39,7 +39,7 @@ ICO üretimi ve lisans/provenance [desktop/assets](../../desktop/assets/README.m
 | `npm run typecheck`, build, `npm run test:built` | Geçti; 4/4 derlenmiş çıktı testi |
 | `npm audit` | 0 bulgu |
 | `scripts/mutate-desktop.sh` | 26/26 mutant yakalandı |
-| Proxy broker mutasyonları | 6/6 mutant yakalandı |
+| `scripts/mutate-proxyadmin.sh` (admin istemcisi, Linux) | 6/6 mutant yakalandı. ⚠ Bunlar aracının politikasını bozmuyordu; aracı politikası K-148'de `mutate-proxyguard.sh` ile 21/21 |
 | Tracked shell `bash -n` | 53 betik geçti |
 | Bildirim, offsite, install/root, göç ve executor yüzeyi kontrolleri | Geçti |
 | Gerçek Electron, sentetik sidecar; Solid ve Clear yönetim yolculuğu | Başarı/hata akışları ve 760×520 taşma kontrolü geçti |
@@ -63,6 +63,15 @@ README/SECURITY/CHANGELOG aynı uygulanmış davranışı anlatır.
 GitHub main'e yalnız kullanıcının ayrıca istediği logo/README değişikliği
 `138b7ccccca66ce1250c349f88664c4818581d93` olarak gönderildi. Genel geliştirme
 paketi bu çalışma kapsamında yereldir; canlı sunucu yükseltilmedi.
+
+## 13 Ekim eki: son inceleme düzeltmeleri
+
+Bu kaydın kapsadığı işin iki son incelemesi kritik ve önemli bulgular çıkardı;
+hepsi `masaustu-temel` dalında düzeltildi. Ayrıntı ve güncel kanıt
+[K-148](../decisions.md)'de: masaüstü `npm test` 276/276, `mutate-desktop.sh`
+63/63 tam koşu + 3 tek tek, Go mutasyon betikleri Windows'ta tek tek yeşil.
+Yukarıdaki sayılar 11 Ekim'in kaydıdır. CI bu dalda henüz koşmadı;
+Windows'ta ölçülemeyen betikler K-148'de listeli.
 
 ## Doğrulama sınırı
 

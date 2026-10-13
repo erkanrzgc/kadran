@@ -2140,6 +2140,10 @@ yasak, ve şimdi bu.
 
 ## K-050 — Caddy'ye panelyd konuşur; yetkinin sınırı BINARY'de çizildi
 
+> ⚠ K-143 ile yerine geçildi: daemon artık Caddy'nin ham admin soketine
+> konuşmuyor; ayrı kullanıcıdaki tipli `kadran-proxy` aracısı sabit
+> yapılandırmayı üretiyor. Aşağısı tarihsel kayıttır.
+
 Dilim 4b'nin ilk sorusu "Caddy admin soketine kim konuşuyor"du. İki aday
 vardı: panelyd doğrudan (bütçe maliyeti yok) veya executor üzerinden
 (şema beyaz listesi, ama bütçeyi kesin aşar — 2497/2500).
@@ -10937,6 +10941,11 @@ Yükseltme açık eski bağlantıları da kapatır; kısa bakım kesintisi mümk
 Bu sınır IP'nin gerçek container sahipliğini kanıtlamaz. Kanıt: Unix/numerik UID
 erişim testleri, Caddy dosya okuma regresyonu ve altı broker mutasyonunun yakalanması.
 
+> ⚠ Düzeltme (K-148): o altı mutant `mutate-proxyadmin.sh`'ındı ve admin
+> istemcisini bozuyordu, aracının politikasını DEĞİL. Aracı politikası
+> (`FixedConfig`, `SafeRoutes`, JSON sınırları) `scripts/mutate-proxyguard.sh`
+> ile ölçüldü: 21/21.
+
 ## K-144 — Uygulama yaşam döngüsünü birlikte sırala (2026-10-11)
 
 API deploy/rollback/update/delete/prune ile sağlık gözetmeninin heal işlemi aynı
@@ -10968,6 +10977,10 @@ Clear pencere saydamlığıyla sunulur. 760×520 taşma ve koyu/açık TR/EN yol
 gerçek Electron'da sentetik sidecar ile ölçüldü. 168 masaüstü testi, dört derlenmiş
 çıktı testi ve 26 mutasyon geçti. Kullanıcının torus PNG'si değiştirilmeden
 README ve uygulamaya eklendi; ICO yalnız aynı görselin boyutlandırılmış sürümleri.
+
+> ⚠ Güncelleme (K-148): yerel onay artık yalnız silme/geri almada değil, durum
+> değiştiren BÜTÜN kanallarda (oluşturma, değiştirme, dağıtım, yedek dahil)
+> ana süreçte isteniyor. Masaüstü test ve mutant sayıları K-148'de.
 Canlı sunucu yolculuğu, macOS/Linux görsel kontrolü, imza ve otomatik güncelleme
 bu kanıtın kapsamı dışında kalır.
 
@@ -10997,3 +11010,81 @@ Son `govulncheck ./...` iki modülde de 0 erişilebilir ve 0 import edilen paket
 bulgusu gösteriyor. Her birinde modül grafiğinde kullanım dışı OpenPGP
 `GO-2026-5932` notu kalıyor; sıfır modül bulgusu iddiası yok.
 Caddy yarış testleri ve 151 modülün lisans toplama kontrolü geçti.
+
+## K-148 — Son incelemenin düzeltmeleri; Windows'ta mutasyon ölçümü (2026-10-13)
+
+K-142–K-147'nin iki son incelemesi (A: masaüstü, B: sunucu) kritik ve önemli
+bulgular çıkardı. Hepsi `masaustu-temel` dalında düzeltildi. CI bu dalda henüz
+HİÇ koşmadı; aşağıdaki kanıt Windows'ta yereldir.
+
+**Sunucu.**
+- Sağlık yoklaması en fazla 4 KiB okur; sınıra hatasız ulaşan büyük gövde
+  sağlıklıdır. Önceki hâl büyük HTML ana sayfalarını sağlıksız sayıyordu.
+- Özel Git arşivinde pax genel başlığı (`g`) atlanır.
+- Alan adı kuralının tek tanımı `proxydrv.ValidDomain`; API ve vekil aynı
+  işlevi kullanır. Uzlaştırma geçersiz alan adlı uygulamayı bütün rota
+  kümesini düşürmek yerine atlar (`Skipped`, sebebiyle). ⚠ Böyle eski bir
+  kayıt varsa uygulama sonraki uzlaştırmada canlı rotasını kaybeder.
+- Aracının JSON derinlik sınırı 64. Sidecar'da geri alma/silme süresi 4 dk.
+- Göçte aracının kullanıcısı, tmpfiles'ı, birimleri ve soketi kadrand yeniden
+  başlamadan ÖNCE kurulur; yarım göç kapandı (`scripts/check-install-order.sh`).
+- Aracı her /16 bloğun ağ adresini, ağ geçidini (host) ve yayın adresini
+  upstream olarak reddeder.
+- Özel Git rehberindeki drop-in link-local'i ve bulut meta veri adresini
+  kapatır. GCP'de çözümleyici 169.254.169.254 olabilir; rehber önce ölçmeyi
+  söylüyor.
+
+**Masaüstü.**
+- Durum değiştiren her kanalda sıra: doğrula → kapı → ana süreçte yerel onay
+  (varsayılan Vazgeç) → sidecar. Aynı anda tek onay kutusu açılır.
+- IPC süresi, sidecar'ın aynı yöntem için kullandığı süreden 1 dk uzun. Test
+  değerleri Go kaynağından okur. Önce masaüstü vazgeçseydi kapı serbest kalır
+  ve sunucuda süren geri alma ikinci kez başlatılabilirdi.
+- Sidecar hatasının gerçek sebebi arıtılıp her kanalda gösterilir.
+- Güncelleme yalnız değişen alanları gönderir. Skaler alanda null reddedilir:
+  sunucu "verilmedi" sayıyordu, kutu "yok" gösteriyordu.
+- Sidecar'ın `{cancelled:true}` yanıtı iptal sayılmaz; iptali yalnız yerel kutu
+  üretir.
+- Kutudaki değerler önce kaçışlanır, sonra ortadan kesilir; `user@host`'un
+  host'u görünür kalır. Oluşturma kutusu kopya sayısını, sınırları ve build
+  argümanlarının yalnız adlarını gösterir. Sayılar doğrulayıcının kabul ettiği
+  iki biçimden (JSON sayısı, onluk metin) kanonik değere çevrilir.
+- Profil dosyası geçici dosya + rename ile atomik yazılır.
+
+**Mutasyon düzeneği (Windows).** `mutate-heal/appdelete/supervisor.sh` mutantı
+`newline='\n'` olmadan yazıyordu. Windows'ta TextIOWrapper satır sonu
+çevirisini metnin `replace` yöntemiyle yapıyor; bu, TEK eşleşme kapısını
+tetikledi ("722 KEZ ESLESTI") ve dosyayı boşaltılmış bıraktı. Ayrıca koşu
+sürerken aynı ağaçta `git status` mutantlı dosyayı okuyor; Python yazmak
+için açınca Windows kilidi sahte "UYGULANAMADI" üretiyor. Sonuçlar her betik
+tek başına, başka iş yokken koşularak alındı.
+
+| Kontrol (Windows, `masaustu-temel`) | Sonuç |
+|---|---|
+| `go build`, `go vet`, `go test -count=1 ./...`; `build/caddy` | Geçti |
+| `gofmt -l`, `check-exec-surface.sh`, `check-install-order.sh` | Temiz / geçti |
+| Masaüstü `npm test`, iki `tsc` yapılandırması | 276/276; temiz |
+| `mutate-desktop.sh` | 63/63 tam koşu + 3 yeni mutant tek tek yakalandı |
+| heal, appdelete, appshow, prune, supervisor | 6/6, 6/6, 8/8, 10/10, 9/9 |
+| proxywatch, proxyguard (yeni), watchdog | 16/16, 21/21, 27/27 |
+| alarm, env, scaledown, volumes | 20/20, 17/17, 12/12, 26/26 |
+| install (göç sırası) | 7/7 |
+| goc, proxyadmin, install tam küme | İğneler uygulandı ve derlendi (ölçüm stub'lı kuru deneme) |
+
+**Windows'ta ölçülmedi, CI'a kaldı:**
+- `mutate-proxyadmin.sh`: yalnız Linux.
+- goc ve install tam küme: taban `check-goc-sh`/`check-install-sh` bağ ve izin
+  bölümlerinde kırmızı. B2 öncesindeki f353b4b'de de aynı ✗'ler var.
+- bootstrapssh'in 7 mutantı (dd, flock, umask, özet): yalnız
+  `upload_linux_test.go` yakalar.
+- kasa'nın 5 mutantı: `kasacoz_test.go` Windows'ta atlanıyor; anahtar izni
+  denetimi Windows'ta kapalı.
+- K-139'un üç root mutantı, `go test -race` ve Linux'a özel testler.
+
+**Ürün kararı bekleyen.** Aracının upstream havuzu `172.16.0.0/12`. Bulut VPC
+aralıkları ve /16'dan küçük özel Docker alt ağlarının ağ geçidi açık. Ya
+yalnız root'un yapılandırdığı alt ağlar kabul edilir, ya da risk
+`SECURITY.md`'de belgeli kalır (bugünkü hâl). `daemon.json`'da adres havuzunu
+sabitleme yükümlülüğü (bkz. yukarıda "192.168.0.0/16 KASTEN açılmadı") hâlâ
+açık. Özel Git drop-in'inde RFC1918/CGNAT kapatılmadı; kendi barındırılan Git
+sunucusu özel ağda olabilir.

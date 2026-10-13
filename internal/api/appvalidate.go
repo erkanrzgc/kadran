@@ -31,7 +31,9 @@ import (
 // Daemon yalnızca "bu bir host adına benziyor mu" der.
 
 var (
-	appIDPattern    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+	appIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
+	// hostPattern yalnız git host'u içindir. Uygulama alan adının TEK kuralı
+	// proxydrv.ValidDomain'dedir: API ile vekil aynı işlevi kullanır.
 	hostPattern     = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$`)
 	pathSegPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$`)
 	fullSHAPattern  = regexp.MustCompile(`^[0-9a-f]{40}$`)

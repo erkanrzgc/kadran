@@ -19,7 +19,7 @@ Uygulama ayrıntısında canlı sürüm ile derleme durumu ayrı gösterilir. �
 
 **Deploy / Dağıt** dal, etiket veya tam 40 haneli küçük harf commit kabul eder. Dal çözümü bu bilgisayarda yapılır; sunucuya sabit commit gider. Özel depoda tam commit kullan. İşlem sırasında düğmeler kilitlenir; çıktı en fazla 512 KiB tutulur. Zaman aşımı kesin geri alma anlamına gelmez: yeniden dağıtmadan önce geçmişi yenile. **Rollback / Geri al** önceki aktif sürüme döner; keyfi bir eski sürüm seçimi desteklenmez.
 
-Dağıtım, geri alma ve silme penceresinde uygulamanın adını birebir yaz. Geri alma ve silme ayrıca ana süreçte yerel onay ister. Canlı sürümü olan uygulama silinemez. Silme kalıcı hacim verisini silmez; hacimlerin sunucuda kaldığını sonuç belirtir.
+Dağıtım, geri alma ve silme penceresinde uygulamanın adını birebir yaz. Durum değiştiren HER işlem (oluşturma, değiştirme, dağıtım, geri alma, silme, yedek) ayrıca ana süreçte yerel onay ister; varsayılan düğme Vazgeç'tir ve aynı anda tek onay kutusu açılır. Kutu sunucuyu, uygulamayı ve neyin değişeceğini gösterir; ortam değişkenlerinin ve build argümanlarının yalnız adları görünür, değerleri asla. Kutuda vazgeçersen işlem penceresi kapanır ve ekranda "vazgeçildi" iletisi kalır. Canlı sürümü olan uygulama silinemez. Silme kalıcı hacim verisini silmez; hacimlerin sunucuda kaldığını sonuç belirtir.
 
 ## Yapılandırma ve veri
 

@@ -68,6 +68,37 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   verification clears a previous green result, and stale health cannot remain green.
 - **Secret configuration edits (K-145).** An untouched secret placeholder does not
   overwrite the stored secret; replacement and removal require explicit input.
+- **Every desktop change asks first (K-148).** Create, change, deploy, rollback,
+  delete and backup each show a native confirmation in the main process. Cancel is
+  the default, and only one dialog can be open at a time. The dialog names the
+  server and shows what will change. Environment variables and build arguments show
+  names only, never values. Long values are cut in the middle so the host of
+  `user@host` stays visible. Invisible and look-alike characters are shown as escapes.
+- **The desktop no longer gives up before the server (K-148).** Deploy, rollback,
+  delete and backup wait one minute longer than the sidecar does. Before, the
+  desktop could time out while a rollback was still running on the server and let
+  you start it a second time.
+- **Desktop errors show the real reason (K-148).** Instead of only `call failed`,
+  the desktop shows the server's reason, with tokens and credentials removed. An
+  update sends only the fields you changed. Profiles are written atomically.
+- **Larger health-check pages count as healthy (K-148).** A body that reaches the
+  4 KiB read limit without error is healthy. Large HTML home pages failed the
+  check before.
+- **Migration starts the proxy broker before the daemon (K-148).** Upgrading to the
+  typed broker could restart `kadrand` before the broker's socket existed.
+- **The proxy broker refuses network, gateway and broadcast addresses (K-148).**
+  A compromised daemon could point a route at the host through the Docker gateway.
+- **One domain rule (K-148).** The API and the proxy now validate domains with the
+  same function. An app whose stored domain the proxy rejects is skipped instead of
+  blocking every route. ⚠ If such an app exists from an older version, it loses its
+  live route at the next reconcile and shows as skipped: fix its domain with
+  `kadran app update -domain <name> <app> <target>`.
+- **Private Git archives with a pax global header are accepted (K-148).**
+- **The private Git drop-in blocks cloud metadata (K-148).** The documented
+  `kadran-exec` drop-in now denies link-local addresses, including
+  169.254.169.254. If you already use it, add the `IPAddressDeny=` line from
+  `docs/guides/private-git.md`. Measure DNS first: on GCP the resolver can be the
+  metadata address.
 
 - **Desktop "recent audit records" showed the oldest records.** It asked for the first
   50 records after sequence 0; once a chain had more than 50 records, new ones never

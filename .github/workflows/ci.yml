@@ -271,7 +271,7 @@ jobs:
           for arch in amd64 arm64; do
             t="kadran-server-ci-${GITHUB_SHA::12}-linux-$arch.tar.gz"
             listed="$(tar -tzf "$t" | sort)"
-            for f in LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
+            for f in LICENSE THIRD_PARTY_LICENSES.txt \
                      "bin/linux-$arch/kadrand" "bin/linux-$arch/kadran-exec" \
                      "bin/linux-$arch/kadran-connect" "bin/linux-$arch/kadran-caddy" \
                      "bin/linux-$arch/kadran-proxy" "bin/linux-$arch/kadran-vault"; do

@@ -11102,3 +11102,23 @@ kapanıyor. macOS bu dalda doğrulanmadı.
 - Özel Git drop-in'inde RFC1918/CGNAT açık kalıyor: kendi barındırılan bir Git
   sunucusu özel ağda olabilir. Kapalı olanlar link-local ve bulut meta veri
   adresi.
+
+## K-149 — Kökteki NOTICE dosyası kaldırıldı (2026-10-14)
+
+Kullanıcı kararı. Apache-2.0'ın 4(d) maddesi yalnız NOTICE dosyası taşıyan bir
+işin türevlerini bağlar; projenin kendi kodu için NOTICE zorunlu değil. Dosyada
+iki şey vardı: proje telif satırı ve masaüstünün gömdüğü bileşenlerin listesi.
+Yükümlülükler başka yerlerde zaten karşılanıyor:
+
+- Go modüllerinin (ör. gRPC) kendi NOTICE metinleri `tools/thirdparty` ile
+  `THIRD_PARTY_LICENSES.txt`'e kopyalanıyor (K-132); paketler bunu taşımaya
+  devam ediyor.
+- Masaüstünün ikon, font ve çalışma zamanı paketlerinin lisans metinleri
+  uygulamanın `THIRD_PARTY_NOTICES.txt`'inde. Telif satırı oraya doğrudan
+  yazılıyor (`desktop/scripts/notices.mjs`).
+- Bileşen listesi README'nin License bölümüne taşındı. CONTRIBUTING, başka bir
+  Apache-2.0 projesinden kod alınırsa onun NOTICE metninin oraya eklenmesini
+  istiyor.
+
+`package-release.sh` ve CI'ın paket içerik denetimi NOTICE'u artık beklemiyor.
+v0.6.0 ve öncesinin yayın dosyaları NOTICE'u taşımaya devam ediyor.

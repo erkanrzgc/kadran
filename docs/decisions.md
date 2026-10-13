@@ -11072,15 +11072,20 @@ tek başına, başka iş yokken koşularak alındı.
 | install (göç sırası) | 7/7 |
 | goc, proxyadmin, install tam küme | İğneler uygulandı ve derlendi (ölçüm stub'lı kuru deneme) |
 
-**Windows'ta ölçülmedi, CI'a kaldı:**
-- `mutate-proxyadmin.sh`: yalnız Linux.
-- goc ve install tam küme: taban `check-goc-sh`/`check-install-sh` bağ ve izin
-  bölümlerinde kırmızı. B2 öncesindeki f353b4b'de de aynı ✗'ler var.
-- bootstrapssh'in 7 mutantı (dd, flock, umask, özet): yalnız
-  `upload_linux_test.go` yakalar.
-- kasa'nın 5 mutantı: `kasacoz_test.go` Windows'ta atlanıyor; anahtar izni
-  denetimi Windows'ta kapalı.
-- K-139'un üç root mutantı, `go test -race` ve Linux'a özel testler.
+**Windows'ta ölçülemeyenler, CI'da (PR #11, Linux) ölçüldü:**
+- Mutasyon işi: 29 betiğin 29'u yeşil. Windows'ta ölçülemeyen
+  `mutate-proxyadmin.sh`, goc ve install tam küme (K-139'un root mutantları
+  dahil, `KADRAN_TEST_REAL_SUDO=1`), bootstrapssh (dd, flock, umask, özet) ve
+  kasa (`kasacoz_test.go`, gerçek sqlite3 ve age) da geçti. `mutate-desktop.sh`
+  66/66.
+- `go test -race -count=1 ./...` ubuntu, ubuntu arm64 ve Windows'ta geçti;
+  gerçek kadrand ile uçtan uca ve güvenlik değişmezleri işleri yeşil.
+- Masaüstü (windows): tip denetimi, gerçek sidecar'lı testler, build, Electron
+  duman yolculuğu ve imzasız paket geçti.
+- İlk koşunun üç kırmızısı kod hatası değildi: ikon manifestindeki SVG hash'i
+  Windows'taki CRLF çalışma kopyasından hesaplanmıştı (`.gitattributes eol=lf`),
+  bir testte kontrolsüz tür dönüşümü vardı (errcheck), CI Electron 43'ün ikilisi
+  inmeden `chrome-sandbox` ayarlıyordu (Electron 43'te postinstall yok).
 
 **Bilinen sınır.** Tek onay kutusu bayrağı kutu sonuçlanınca kalkar. macOS'ta
 pencere kapanınca uygulama açık kalıyor (`window-all-closed`); kutunun sözü
@@ -11088,10 +11093,12 @@ orada hiç sonuçlanmazsa bütün yönetim kanalları yeniden başlatmaya kadar
 "another confirmation is open" der. Windows/Linux'ta pencere kapanınca uygulama
 kapanıyor. macOS bu dalda doğrulanmadı.
 
-**Ürün kararı bekleyen.** Aracının upstream havuzu `172.16.0.0/12`. Bulut VPC
-aralıkları ve /16'dan küçük özel Docker alt ağlarının ağ geçidi açık. Ya
-yalnız root'un yapılandırdığı alt ağlar kabul edilir, ya da risk
-`SECURITY.md`'de belgeli kalır (bugünkü hâl). `daemon.json`'da adres havuzunu
-sabitleme yükümlülüğü (bkz. yukarıda "192.168.0.0/16 KASTEN açılmadı") hâlâ
-açık. Özel Git drop-in'inde RFC1918/CGNAT kapatılmadı; kendi barındırılan Git
-sunucusu özel ağda olabilir.
+**Ürün kararları (13 Eki, kullanıcı).**
+- Aracının upstream havuzu `172.16.0.0/12` olarak kalıyor. Bulut VPC aralıkları
+  ve /16'dan küçük özel Docker alt ağlarının ağ geçidi açık; risk `SECURITY.md`'de
+  belgeli. "Yalnız root'un yapılandırdığı alt ağlar" kısıtı, `daemon.json`'da
+  adres havuzunu sabitleme yükümlülüğüyle (bkz. yukarıda "192.168.0.0/16 KASTEN
+  açılmadı") birlikte ayrı bir iş olarak yapılacak.
+- Özel Git drop-in'inde RFC1918/CGNAT açık kalıyor: kendi barındırılan bir Git
+  sunucusu özel ağda olabilir. Kapalı olanlar link-local ve bulut meta veri
+  adresi.

@@ -81,9 +81,6 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 - **Desktop errors show the real reason (K-148).** Instead of only `call failed`,
   the desktop shows the server's reason, with tokens and credentials removed. An
   update sends only the fields you changed. Profiles are written atomically.
-- **Larger health-check pages count as healthy (K-148).** A body that reaches the
-  4 KiB read limit without error is healthy. Large HTML home pages failed the
-  check before.
 - **Migration starts the proxy broker before the daemon (K-148).** Upgrading to the
   typed broker could restart `kadrand` before the broker's socket existed.
 - **The proxy broker refuses network, gateway and broadcast addresses (K-148).**

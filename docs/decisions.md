@@ -11081,6 +11081,12 @@ tek başına, başka iş yokken koşularak alındı.
   denetimi Windows'ta kapalı.
 - K-139'un üç root mutantı, `go test -race` ve Linux'a özel testler.
 
+**Bilinen sınır.** Tek onay kutusu bayrağı kutu sonuçlanınca kalkar. macOS'ta
+pencere kapanınca uygulama açık kalıyor (`window-all-closed`); kutunun sözü
+orada hiç sonuçlanmazsa bütün yönetim kanalları yeniden başlatmaya kadar
+"another confirmation is open" der. Windows/Linux'ta pencere kapanınca uygulama
+kapanıyor. macOS bu dalda doğrulanmadı.
+
 **Ürün kararı bekleyen.** Aracının upstream havuzu `172.16.0.0/12`. Bulut VPC
 aralıkları ve /16'dan küçük özel Docker alt ağlarının ağ geçidi açık. Ya
 yalnız root'un yapılandırdığı alt ağlar kabul edilir, ya da risk

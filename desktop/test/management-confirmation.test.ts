@@ -87,10 +87,24 @@ test("escaping happens before truncation: a value of invisible characters stays 
   const out = managementConfirmation("en", { kind: "deploy", target: "user@host", app: "blog", ref: cp(0x202e).repeat(500) });
   const line = out.detail.split("\n").find((l) => l.startsWith("Ref: "))!;
   assert.ok(line.length <= "Ref: ".length + 201, `line is ${line.length} characters`);
-  // Her kaçış tam olmalı: "…" iki yanında yalnız eksiksiz ‮ dizileri.
+  // Her kaçış tam olmalı: "…" iki yanında yalnız eksiksiz U+202E kaçış dizileri.
   for (const side of line.slice("Ref: ".length).split("…")) {
     assert.equal(side.split(`${BACKSLASH}u202e`).join(""), "", `an escape sequence was cut: ${side.slice(-8)}`);
   }
+});
+
+test("blank-looking letters, combining marks and unassigned code points are shown as escapes", () => {
+  // Hedef yalnız Cc/Cf'yi reddeder: U+3164 ile host'u boş gösteren bir hedef kutuda görünmeli.
+  const target = `user@${cp(0x3164)}${cp(0x2800)}${cp(0x115f)}e${cp(0x301)}${cp(0xe000)}${cp(0x378)}`;
+  const out = managementConfirmation("en", { kind: "backup", target });
+  const esc = (hex: string) => `${BACKSLASH}u${hex}`;
+  const want = `user@${esc("3164")}${esc("2800")}${esc("115f")}e${esc("0301")}${esc("e000")}${esc("0378")}`;
+  assert.ok(out.detail.startsWith(`Server: ${want}`), out.detail);
+});
+
+test("a literal ellipsis inside a value is escaped, so only real truncation shows …", () => {
+  const out = managementConfirmation("en", { kind: "backup", target: `user@a${cp(0x2026)}b` });
+  assert.ok(out.detail.startsWith(`Server: user@a${BACKSLASH}u2026b`), out.detail);
 });
 
 test("line and paragraph separators and unusual spaces are shown as escapes", () => {

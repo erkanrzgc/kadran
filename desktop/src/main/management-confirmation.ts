@@ -32,8 +32,13 @@ export interface ConfirmationOptions {
 const MAX_VALUE_CHARS = 200;
 const MAX_LIST_ITEMS = 10;
 
-/** Denetim, biçim (bidi dahil), satır/paragraf ayırıcı ve düz boşluk dışındaki boşluklar. */
-const INVISIBLE = /^(?:[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]|(?! )\p{Zs})$/u;
+/**
+ * Kutuda görünür kaçışa çevrilenler: denetim, biçim (bidi dahil), vekil, özel
+ * kullanım, atanmamış, birleşik işaret, satır/paragraf ayırıcı, düz boşluk
+ * dışındaki boşluklar, boş görünen harfler (Hangul dolgu, Braille boşluğu) ve
+ * değerin içindeki "…" (yalnız gerçek kesme "…" göstersin).
+ */
+const INVISIBLE = /^(?:[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{M}\p{Zl}\p{Zp}\u115f\u1160\u3164\uffa0\u2800\u2026]|(?! )\p{Zs})$/u;
 
 /**
  * Görünmez karakterleri görünür kaçışa çevirir, SONRA uzunu ORTADAN keser.

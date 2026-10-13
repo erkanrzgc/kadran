@@ -232,6 +232,13 @@ mutate_in src/main/management-confirmation.ts "kesme kaçışsız uzunluğu say�
     "s=s.replace('head.length + parts[i]!.length <= half','i < half',1)"
 mutate_in src/main/management-confirmation.ts "U+2000 üstü görünmezler kaçışlanmıyor (bidi, U+2028, U+3000)" \
     "s=s.replace('(INVISIBLE.test(ch) ?','(INVISIBLE.test(ch) && ch.codePointAt(0)! < 0x2000 ?',1)"
+# İğnelerdeki ters bölü chr(92) ile kuruluyor: kabuk/Python kaçış katmanlarına takılmasın.
+mutate_in src/main/management-confirmation.ts "birleşik işaretler kaçışlanmıyor" \
+    "s=s.replace(chr(92)+'p{M}','',1)"
+mutate_in src/main/management-confirmation.ts "boş görünen Hangul dolgusu kaçışlanmıyor" \
+    "s=s.replace(chr(92)+'u3164','',1)"
+mutate_in src/main/management-confirmation.ts "değerdeki … kaçışlanmıyor (sahte kesme)" \
+    "s=s.replace(chr(92)+'u2026','',1)"
 mutate_in src/main/management-payload.ts "yasak bağlama kökü /dev kabul ediliyor" \
     "s=s.replace('[\"/proc\", \"/sys\", \"/dev\"]','[\"/proc\", \"/sys\"]',1)"
 mutate_in src/main/ipc-validate.ts "hedefte biçim karakteri (bidi) kabul ediliyor" \

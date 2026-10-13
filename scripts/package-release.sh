@@ -3,7 +3,7 @@
 #
 # K-132'de depoya alındı: önceden yalnız yerel bir betikti; yayın paketleri
 # hiç lisans dosyası taşımıyordu (ölçüldü: v0.2.0'ın sunucu tar'ında yalnız
-# dört ikili). Artık her pakette LICENSE, NOTICE ve THIRD_PARTY_LICENSES.txt
+# dört ikili). Artık her pakette LICENSE ve THIRD_PARTY_LICENSES.txt
 # var: ikililer Caddy ve gRPC (Apache-2.0), SQLite ve protobuf (BSD) gömüyor
 # ve o lisanslar metinlerinin ikiliyle birlikte verilmesini şart koşuyor.
 #
@@ -13,7 +13,7 @@
 # Çıktı:
 #   kadran-<sürüm>-<os>-<arch>[.exe]           iş istasyonu aracı, 5 platform
 #   kadran-server-<sürüm>-linux-<arch>.tar.gz  sunucu ikilileri + lisanslar
-#   LICENSE, NOTICE, THIRD_PARTY_LICENSES.txt   tek başına ikililer için
+#   LICENSE, THIRD_PARTY_LICENSES.txt           tek başına ikililer için
 #   SHA256SUMS
 #
 # Paket DETERMİNİSTİK: ad sırası, sabit zaman (commit'in), sabit sahip ve
@@ -57,7 +57,7 @@ for t in $CLIENT_PLATFORMS; do
 done
 
 go run ./tools/thirdparty -o "$OUT/THIRD_PARTY_LICENSES.txt"
-cp LICENSE NOTICE "$OUT/"
+cp LICENSE "$OUT/"
 
 mtime="@$(git log -1 --format=%ct)"
 tarflags=(--sort=name --mtime="$mtime" --owner=0 --group=0 --numeric-owner)
@@ -68,7 +68,7 @@ for arch in amd64 arm64; do
     # Bootstrap needs the unit/configuration assets from the same release as
     # the binaries, including the new raw-admin permission boundary.
     tar "${tarflags[@]}" --mode=u=rwX,go=rX -rf "$tarball" deploy/systemd deploy/caddy deploy/notify deploy/offsite
-    tar "${tarflags[@]}" --mode=0644 -rf "$tarball" -C "$OUT" LICENSE NOTICE THIRD_PARTY_LICENSES.txt
+    tar "${tarflags[@]}" --mode=0644 -rf "$tarball" -C "$OUT" LICENSE THIRD_PARTY_LICENSES.txt
     gzip -n -9 "$tarball"
 done
 

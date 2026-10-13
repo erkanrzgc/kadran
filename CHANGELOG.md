@@ -3,6 +3,16 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Changed
+
+- **No `NOTICE` file (K-149).** Release packages carry `LICENSE` and
+  `THIRD_PARTY_LICENSES.txt`; the latter already reproduces the `NOTICE` files of the Go
+  modules compiled in. The desktop app's bundled icons, font and runtime packages are
+  listed in the README's License section, and their license texts ship in the app as
+  `THIRD_PARTY_NOTICES.txt`.
+
 ## v0.6.0 — 2026-10-14
 
 Desktop management and a typed proxy broker (K-142–K-148). Upgrading with `bootstrap`

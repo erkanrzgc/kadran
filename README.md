@@ -710,8 +710,16 @@ lot. You can also [support it on Ko-fi](https://ko-fi.com/erkanrzgc).
 
 ## License
 
-[Apache License 2.0](LICENSE) © [erkanrzgc](https://github.com/erkanrzgc). See [NOTICE](NOTICE).
+[Apache License 2.0](LICENSE) © 2026 [erkanrzgc](https://github.com/erkanrzgc).
 Releases up to and including v0.2.0 were published under the MIT License and stay MIT
 (K-132). Releases after v0.2.0 carry `THIRD_PARTY_LICENSES.txt`: the license of every module
 compiled into the shipped binaries, including the Go standard library and, for
-`kadran-caddy`, Caddy.
+`kadran-caddy`, Caddy. It also reproduces the `NOTICE` files those modules ship.
+
+The desktop app bundles animated icons from [pqoqubbw/icons](https://github.com/pqoqubbw/icons)
+(MIT), drawn from [Lucide](https://lucide.dev) (ISC); JetBrains Mono (SIL Open Font License
+1.1); and React, React DOM, scheduler, Motion (MIT) and tslib (0BSD). Their license texts are
+in [`desktop/src/renderer/icons/LICENSE`](desktop/src/renderer/icons/LICENSE),
+[`desktop/src/renderer/fonts/OFL.txt`](desktop/src/renderer/fonts/OFL.txt) and, in the
+packaged app, `THIRD_PARTY_NOTICES.txt`. Releases up to v0.6.0 also carried a `NOTICE` file
+with this list; it was removed in favor of this section.

@@ -1,5 +1,5 @@
 /**
- * build/THIRD_PARTY_NOTICES.txt'i üretir: Kadran'ın lisansı ve NOTICE'u,
+ * build/THIRD_PARTY_NOTICES.txt'i üretir: Kadran'ın telif satırı ve lisansı,
  * arayüze gömülen her çalışma zamanı paketinin lisans metni, kopyalanan
  * ikonlar (MIT + ISC) ve JetBrains Mono (OFL). Paketlenmiş uygulamanın
  * resources/ dizinine konur. Electron'un kendi lisanslarını (LICENSE,
@@ -25,7 +25,7 @@ async function licenseText(dir) {
 
 const lock = JSON.parse(await readFile(join(desktop, "package-lock.json"), "utf8"));
 const sections = [
-  `KΛDRΛN (Kadran) — Apache-2.0\n\n${(await readFile(join(repo, "LICENSE"), "utf8")).trim()}\n\n${(await readFile(join(repo, "NOTICE"), "utf8")).trim()}`,
+  `KΛDRΛN (Kadran) — Apache-2.0\nCopyright 2026 erkanrzgc\n\n${(await readFile(join(repo, "LICENSE"), "utf8")).trim()}`,
 ];
 for (const [path, p] of Object.entries(lock.packages)) {
   if (path === "" || p.dev || p.devOptional) continue;

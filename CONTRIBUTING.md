@@ -120,5 +120,6 @@ you cannot license this way, for example code copied from a project under an
 incompatible license.
 
 If you bring in code from another Apache-2.0 project, keep its copyright notice
-in the file and say where it came from in the pull request: its `NOTICE`, if it
-has one, may have to be carried into ours.
+in the file and say where it came from in the pull request: its `NOTICE` text, if
+it has one, must travel with it. Kadran has no `NOTICE` file of its own; add the
+text to the License section of the README.

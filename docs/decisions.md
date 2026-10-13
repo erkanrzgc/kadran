@@ -11063,7 +11063,8 @@ tek başına, başka iş yokken koşularak alındı.
 |---|---|
 | `go build`, `go vet`, `go test -count=1 ./...`; `build/caddy` | Geçti |
 | `gofmt -l`, `check-exec-surface.sh`, `check-install-order.sh` | Temiz / geçti |
-| Masaüstü `npm test`, iki `tsc` yapılandırması | 276/276; temiz |
+| Masaüstü `npm test` (gerçek sidecar zorunlu), iki `tsc` yapılandırması | 276/276, atlanan 0; temiz |
+| Masaüstü `npm run build`, `test:built`, `npm run e2e` (Electron, sahte sidecar) | Geçti; 4/4; duman yolculuğu tamam |
 | `mutate-desktop.sh` | 63/63 tam koşu + 3 yeni mutant tek tek yakalandı |
 | heal, appdelete, appshow, prune, supervisor | 6/6, 6/6, 8/8, 10/10, 9/9 |
 | proxywatch, proxyguard (yeni), watchdog | 16/16, 21/21, 27/27 |

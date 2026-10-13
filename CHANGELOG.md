@@ -3,7 +3,14 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.6.0 — 2026-10-14
+
+Desktop management and a typed proxy broker (K-142–K-148). Upgrading with `bootstrap`
+installs the `kadran-proxy` broker and takes the daemon off Caddy's raw admin socket. The
+reverse proxy binary and its units change, so the proxy restarts: plan a short maintenance
+window. Before upgrading, run the checks in the [upgrade guide](docs/guides/quality-upgrade.md):
+app domains, Docker address pools and, if you use it, the private-Git drop-in. Building
+from source needs Go 1.26.9.
 
 ### Added
 

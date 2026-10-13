@@ -9,7 +9,8 @@ import { createRequestScope } from "../lib/management.ts";
  * Durum değiştiren yönetim işlemleri. Ana süreçteki yerel onay kutusunda
  * vazgeçilirse sonuç hata DEĞİL tipli iptaldir (`{ cancelled: true }`):
  * burada TEK yerde işlenir. `run` null döner, nötr bir durum iletisi
- * (`notice`) kalır; ekranlar iptali başarı gibi işlemez.
+ * (`notice`) kalır; ekranlar iptali başarı gibi işlemez. `onCancelled`
+ * ekranın kendi modalını kapatması içindir: ileti modalda değil ekranda.
  */
 export function useManagementOperation() {
   const t = useT();
@@ -19,7 +20,7 @@ export function useManagementOperation() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   useEffect(() => () => scope.invalidate(), [scope]);
-  const run = useCallback(async <T,>(work: () => Promise<T | ManagementCancelled>): Promise<T | null> => {
+  const run = useCallback(async <T,>(work: () => Promise<T | ManagementCancelled>, onCancelled?: () => void): Promise<T | null> => {
     if (busy.current) return null;
     busy.current = true;
     setPending(true);
@@ -30,7 +31,7 @@ export function useManagementOperation() {
     busy.current = false;
     setPending(false);
     if (result.status === "error") { setError(errorText(result.error)); return null; }
-    if (isCancelled(result.value)) { setNotice(t("operation.cancelled")); return null; }
+    if (isCancelled(result.value)) { setNotice(t("operation.cancelled")); onCancelled?.(); return null; }
     return result.value;
   }, [scope, t]);
   return { pending, error, notice, run, clearError: () => { setError(null); setNotice(null); } };

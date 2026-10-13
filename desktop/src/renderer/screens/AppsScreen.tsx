@@ -67,6 +67,8 @@ function AppDetail({ target, appId, onBack, onDeleted }: { target: string; appId
   const operation = useManagementOperation();
   const spec = query.data?.app?.spec;
   const active = query.data?.active_release_id;
+  // Yerel kutuda vazgeçilince modal kapanır; "vazgeçildi" iletisi ekranda kalır.
+  const closeDialog = () => setAction(null);
   const execute = async (ref: string, confirmation: string) => {
     if (!action || !query.data || !spec) return;
     setMessage(null);
@@ -77,16 +79,16 @@ function AppDetail({ target, appId, onBack, onDeleted }: { target: string; appId
         if (isCancelled(value)) return value;
         if (!value.release_id || !value.image_id) throw new Error(t("operation.no_success"));
         return value;
-      });
+      }, closeDialog);
       if (!result) return;
       setMessage({ key: "operation.deployed", params: { release: result.release_id }, output: result.output, truncated: result.truncated });
     } else if (performed === "rollback") {
-      const result = await operation.run(() => bridge.appRollback(target, appId, confirmation));
+      const result = await operation.run(() => bridge.appRollback(target, appId, confirmation), closeDialog);
       if (!result) return;
       setMessage({ key: "operation.rolled_back", params: { from: result.from_release_id, to: result.to_release_id }, detail: result.recreated ? t("operation.recreated") : undefined });
     } else {
       if (!canDeleteApp(query.data)) return;
-      const result = await operation.run(() => bridge.appDelete(target, appId, confirmation));
+      const result = await operation.run(() => bridge.appDelete(target, appId, confirmation), closeDialog);
       if (!result) return;
       onDeleted(result);
       return;
@@ -123,7 +125,7 @@ function AppDetail({ target, appId, onBack, onDeleted }: { target: string; appId
           {query.data.releases.map((release) => <details className="release-row" key={release.release_id} data-testid={`release-${release.release_id}`}><summary><span className="mono">{release.release_id}</span><span className="release-commit mono">{release.commit_sha.slice(0, 12)}</span><span className={`badge is-${release.status === "RELEASE_STATUS_FAILED" ? "bad" : release.status === "RELEASE_STATUS_BUILT" ? "ok" : "warn"}`}>{t(`release.${release.status}`)}</span>{active === release.release_id ? <span className="pill is-ok">{t("apps.live")}</span> : null}</summary><dl className="rows"><div className="row"><dt>{t("release.commit")}</dt><dd className="mono">{release.commit_sha}</dd></div><div className="row"><dt>{t("release.image")}</dt><dd className="mono">{release.image_id || t("release.no_image")}</dd></div><div className="row"><dt>{t("release.started")}</dt><dd>{formatTime(release.started_at, language)}</dd></div><div className="row"><dt>{t("release.finished")}</dt><dd>{formatTime(release.finished_at, language)}</dd></div><div className="row"><dt>{t("release.detail")}</dt><dd className="operation-message">{release.detail || "—"}</dd></div></dl></details>)}
         </div></section> : tab === "logs" ? <AppLogs target={target} appId={appId} /> : <section className="panel glass"><h2 className="section-title">{t("apps.tab_configuration")}</h2><AppForm original={spec} pending={operation.pending} error={operation.error} onSave={(draft) => void update(draft)} /><div className="danger-zone"><h3>{t("apps.delete_title")}</h3><p className="scope-note">{active === undefined ? t("apps.delete_unknown") : active ? t("apps.delete_live") : t("apps.delete_scope")}</p><button type="button" className="btn btn-danger" disabled={!canDeleteApp(query.data) || operation.pending} onClick={() => { operation.clearError(); setAction("delete"); }} data-testid="app-delete">{t("action.delete")}</button></div></section>}
       </> : null}
-      {action && spec ? <OperationDialog action={action} appId={appId} branch={spec.git_branch} pending={operation.pending} error={operation.error} notice={operation.notice} onConfirm={(ref, confirmation) => void execute(ref, confirmation)} onClose={() => setAction(null)} /> : null}
+      {action && spec ? <OperationDialog action={action} appId={appId} branch={spec.git_branch} pending={operation.pending} error={operation.error} onConfirm={(ref, confirmation) => void execute(ref, confirmation)} onClose={() => setAction(null)} /> : null}
     </div>
   );
 }

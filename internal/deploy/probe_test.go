@@ -156,7 +156,12 @@ func TestProbeSlowBodyTimesOut(t *testing.T) {
 		w.Header().Set("Content-Length", "100")
 		w.WriteHeader(200)
 		_, _ = w.Write([]byte("bir"))
-		w.(http.Flusher).Flush()
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			t.Error("test response writer cannot flush")
+			return
+		}
+		flusher.Flush()
 		select {
 		case <-release:
 		case <-r.Context().Done():

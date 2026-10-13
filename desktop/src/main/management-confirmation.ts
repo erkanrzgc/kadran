@@ -56,11 +56,22 @@ function safe(value: unknown): string {
 
 const MIB = 1024n * 1024n;
 
-/** Bayt sayısı (u64 metni) → MiB'e tam bölünüyorsa "8192 MiB", değilse yuvarlamadan bayt. */
+/**
+ * Doğrulayıcının kabul ettiği İKİ sayı biçimi (JSON sayısı ya da onluk metin,
+ * protojson gibi) kanonik değere çevrilir. Kutu yalnız birini tanısaydı öbür
+ * biçimde gelen değer boş/farklı görünür, onaylanan ile gönderilen ayrışırdı.
+ */
+function decimal(value: unknown): bigint | null {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);
+  if (typeof value === "string" && /^\d{1,20}$/.test(value)) return BigInt(value);
+  return null;
+}
+const count = (value: unknown): string => decimal(value)?.toString() ?? safe(String(value ?? ""));
+
+/** Bayt sayısı → MiB'e tam bölünüyorsa "8192 MiB", değilse yuvarlamadan bayt. */
 function memory(value: unknown): string {
-  const text = typeof value === "string" ? value : "";
-  if (!/^\d{1,20}$/.test(text)) return safe(text);
-  const bytes = BigInt(text);
+  const bytes = decimal(value);
+  if (bytes === null) return safe(String(value ?? ""));
   return bytes > 0n && bytes % MIB === 0n ? `${bytes / MIB} MiB` : `${bytes} B`;
 }
 
@@ -92,13 +103,13 @@ export function managementConfirmation(language: Language, request: ConfirmReque
     case "create": {
       const s = request.spec;
       lines.push(text("line.source", { host: safe(s.git_host), owner: safe(s.git_owner), repo: safe(s.git_repo) }), text("line.branch", { branch: safe(s.git_branch) }));
-      lines.push(s.domain ? text("line.domain", { domain: safe(s.domain) }) : text("line.no_domain"), text("line.port", { port: String(s.container_port) }));
+      lines.push(s.domain ? text("line.domain", { domain: safe(s.domain) }) : text("line.no_domain"), text("line.port", { port: count(s.container_port) }));
       // Kopya sayısı ve sınırlar kaynak tüketimini belirler: 64 kopya ya da
       // dev bir bellek sınırı kutuda görünmeden onaylanmasın.
-      lines.push(text("line.replicas", { count: safe(String(s.replicas ?? "")) }));
+      lines.push(text("line.replicas", { count: count(s.replicas) }));
       lines.push(s.health_path ? text("line.health", { path: safe(s.health_path) }) : text("line.health_none"));
       const limits = record(s.limits);
-      lines.push(text("line.limits", { memory: memory(limits.memory_bytes), cpu: safe(String(limits.cpu_millis ?? "")), io: safe(String(limits.blkio_weight ?? "")) }));
+      lines.push(text("line.limits", { memory: memory(limits.memory_bytes), cpu: count(limits.cpu_millis), io: count(limits.blkio_weight) }));
       if (s.dockerfile_path) lines.push(text("line.dockerfile", { path: safe(s.dockerfile_path) }));
       lines.push(...volumeLines(text, list(s.volumes)));
       const keys = Object.keys(record(s.env));
@@ -112,7 +123,7 @@ export function managementConfirmation(language: Language, request: ConfirmReque
       if (u.domain !== undefined) lines.push(u.domain ? text("line.domain", { domain: safe(u.domain) }) : text("line.no_domain"));
       if (u.git_branch !== undefined) lines.push(text("line.branch", { branch: safe(u.git_branch) }));
       if (u.health_path !== undefined) lines.push(u.health_path ? text("line.health", { path: safe(u.health_path) }) : text("line.health_none"));
-      if (u.replicas !== undefined) lines.push(text("line.replicas", { count: String(u.replicas) }));
+      if (u.replicas !== undefined) lines.push(text("line.replicas", { count: count(u.replicas) }));
       const setKeys = Object.keys(record(u.env));
       if (setKeys.length > 0) lines.push(text("line.env_set", { keys: names(setKeys) }));
       const removedEnv = list(u.env_remove).map(String);

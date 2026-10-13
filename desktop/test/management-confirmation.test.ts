@@ -60,6 +60,17 @@ test("create dialog shows replicas, limits, health path and build-argument NAMES
   assert.equal(bare.includes("Build arguments"), false);
 });
 
+test("create dialog shows the limit the validator accepted, in every accepted form (JSON number or decimal text)", () => {
+  // Doğrulayıcı (uint64Positive) bellek sınırını JSON sayısı olarak da kabul eder;
+  // kutu onu boş gösterirse onaylanan ile gönderilen ayrışır.
+  const base = { app_id: "blog", git_host: "github.com", git_owner: "a", git_repo: "b", git_branch: "main", container_port: 3000, replicas: 1 };
+  const asNumber = managementConfirmation("en", { kind: "create", target: "user@host", spec: { ...base, limits: { memory_bytes: 9007199254740991, cpu_millis: "0100", blkio_weight: 10 } } }).detail;
+  assert.ok(asNumber.includes("Limits: memory 9007199254740991 B, CPU 100 millicores, I/O weight 10"), asNumber);
+  const asText = managementConfirmation("en", { kind: "create", target: "user@host", spec: { ...base, replicas: "064", limits: { memory_bytes: "1048576", cpu_millis: 1, blkio_weight: 10 } } }).detail;
+  assert.ok(asText.includes("Limits: memory 1 MiB, CPU 1 millicores"), asText);
+  assert.ok(asText.includes("Replicas: 64"), asText);
+});
+
 const cp = (...points: number[]) => String.fromCodePoint(...points);
 const BACKSLASH = "\\";
 

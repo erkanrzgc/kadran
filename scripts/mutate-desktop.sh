@@ -219,7 +219,9 @@ mutate_in src/renderer/lib/verification-state.ts "başarısız doğrulama kırı
 mutate_in src/main/management-confirmation.ts "update kutusuna env DEĞERİ giriyor" \
     "s=s.replace('Object.keys(record(u.env))','Object.entries(record(u.env)).map(([k, v]) => k + \"=\" + String(v))',1)"
 mutate_in src/main/management-confirmation.ts "oluşturma kutusunda kopya sayısı yok" \
-    "s=s.replace('lines.push(text(\"line.replicas\", { count: safe(String(s.replicas ?? \"\")) }));','void 0;',1)"
+    "s=s.replace('lines.push(text(\"line.replicas\", { count: count(s.replicas) }));','void 0;',1)"
+mutate_in src/main/management-confirmation.ts "kutu JSON sayısı biçimindeki sınırı boş gösteriyor (onaylanan ≠ gönderilen)" \
+    "s=s.replace('if (typeof value === \"number\" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);','void 0;',1)"
 mutate_in src/main/management-confirmation.ts "oluşturma kutusunda kaynak sınırları yok" \
     "s=s.replace('lines.push(text(\"line.limits\",','void (text(\"line.limits\",',1)"
 mutate_in src/main/management-confirmation.ts "oluşturma kutusuna derleme argümanı DEĞERİ giriyor" \

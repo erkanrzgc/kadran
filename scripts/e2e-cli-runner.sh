@@ -199,7 +199,7 @@ contains "kapsam içi dağıtım işleyiciye ulaştı" "build starting" "$out"
 lacks "kapsam içi: yetki reddi yok" "outside this key's scope" "$out"
 lacks "kapsam içi: rol reddi yok" "this key can only deploy" "$out"
 
-contains "ret kadrand günlüğünde" 'msg="permission denied"' "$(cat "$LOG")"
+contains "ret kadrand günlüğünde" 'msg="authorization denied"' "$(cat "$LOG")"
 contains "günlükte rol" "role=deploy" "$(cat "$LOG")"
 # Hangi anahtarın denediği: parmak izi gerçekten taşınıyor mu (K-134;
 # canlıda 56 kaydın 0'ında yoktu).

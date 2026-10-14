@@ -11,7 +11,7 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   kadran-exec's log messages and field names, the systemd status line, alarm details, the
   alarm sender's Telegram messages and the heartbeat Worker's messages. If you search the
   journal for the old Turkish text, update the search: `yetki reddedildi` is now
-  `permission denied`, `rol=` is `role=`, `anahtar=` is `key=`, `uygulama=` is `app=`,
+  `authorization denied`, `rol=` is `role=`, `anahtar=` is `key=`, `uygulama=` is `app=`,
   `hata=` is `error=`. The `ALARM` line carries `state=opened|escalated|closed`,
   `severity=critical|warning`, `target=` and `detail=`. The sender still reads lines that
   were written with the old keys just before an upgrade. Watchdog loops are named

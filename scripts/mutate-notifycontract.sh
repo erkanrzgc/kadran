@@ -96,6 +96,9 @@ echo "== Go tarafı değişiyor =="
 mutate "alan adı değişti (detail → details)" "$SINK" \
     "s=s.replace('\"detail\", ev.Alarm.Detail)','\"details\", ev.Alarm.Detail)',1)"
 
+mutate "journal'a depodaki ciddiyet (kritik) yazılıyor" "$SINK" \
+    "s=s.replace('\t\treturn \"critical\"','\t\treturn \"kritik\"',1)"
+
 mutate "kritik ERROR yerine WARN" "$SINK" \
     "s=s.replace('\t\tslog.Error(\"ALARM\", args...)','\t\tslog.Warn(\"ALARM\", args...)',1)"
 

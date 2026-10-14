@@ -73,7 +73,7 @@ func authorize(ctx context.Context, method string) (connproto.Identity, scopeChe
 // Günlük satırı burada, önleyici zincirinin sırasına bağlı değil: akış
 // RPC'leri günlük önleyicisinden geçmiyor ve ret sessiz kalmamalı (K-095).
 func deny(id connproto.Identity, method, why string) error {
-	slog.Warn("permission denied",
+	slog.Warn("authorization denied",
 		"method", method, "role", id.Role, "scope", id.Apps,
 		"key", orUnknown(id.Fingerprint), "source_ip", orUnknown(id.SourceIP))
 	return status.Errorf(codes.PermissionDenied, "%s (%s)", why, method)

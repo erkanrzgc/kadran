@@ -11155,12 +11155,16 @@ döngü adları (`registerLoop`), eski istisna listesindeki üç dize.
   henüz gönderilmemiş satırlar kaybolmasın. `check-notify-format.sh`'a eski biçim için
   dört örnek eklendi.
 - `check-notify-format.sh` ↔ `logsink_test.go`: örnekler bayt düzeyinde; ikisi birlikte.
-- E2E: `e2e-cli-runner.sh` (`msg="permission denied"`, `role=deploy`, `key=SHA256:`),
+- E2E: `e2e-cli-runner.sh` (`msg="authorization denied"`, `role=deploy`, `key=SHA256:`),
   `e2e-watchdog.sh` (`watched_loops=supervisor,proxy-watch,disk,backup`,
   `ping_interval=`, `watchdog enabled`).
 - Mutasyon iğneleri: `mutate-notifycontract.sh` (3), `mutate-supervisor.sh` (1),
   `mutate-watchdog.sh` (1).
-- Testler: `authz_test.go`, `credentials_test.go` artık `connection refused` arıyor.
+- Testler: `authz_test.go`, `credentials_test.go` artık tam `msg="api.sock caller rejected"`
+  arıyor. İki ileti bilerek `permission denied` / `connection refused` DEĞİL: ikisi de
+  işletim sistemi hata metni (EACCES, ECONNREFUSED). K-070'teki ağ çitinin imzası
+  `permission denied`; journal'da yetki reddiyle karışırdı ve eski Türkçe metin gibi
+  tekil bir arama dizesi kalmazdı.
 
 Negatif iddia taraması (bkz. "Çeviri negatif testleri öldürür"): eski metni `!Contains`
 ya da `! grep` ile arayan test yok. Eski metni taşıyan test satırları ya tanı mesajı
@@ -11187,7 +11191,7 @@ döngü adı).
 **Ölçüm.** `go vet ./...`, `go test -count=1 ./...` (hepsi yeşil), `golangci-lint` değişen
 paketlerde 0 bulgu, `check-notify-format.sh` 11 ALARM örneği dahil yeşil, Worker
 `node --test` 20/20, ayrıcalıklı yüzey 2882/2900 (değişmedi: her çeviri kendi satırında).
-Değişen dosyalara dokunan sekiz mutasyon betiği tek tek, başka iş yokken koşuldu: watchdog, authz, alarm, notifycontract, supervisor, proxywatch, backup, domaincheck. Sekizi de "bütün mutasyonlar yakalandı"; UYGULANAMADI ve derlenmeyen mutant 0. Güncellenen beş iğne kendi mutantını uyguladı (iğne eski metne baksaydı UYGULANAMADI düşerdi).
+Değişen dosyalara dokunan sekiz mutasyon betiği tek tek, başka iş yokken koşuldu: watchdog, authz, alarm, notifycontract, supervisor, proxywatch, backup, domaincheck. Sekizi de "bütün mutasyonlar yakalandı"; UYGULANAMADI ve derlenmeyen mutant 0. Güncellenen beş iğne kendi mutantını uyguladı (iğne eski metne baksaydı UYGULANAMADI düşerdi). `logSeverity` için yeni bir mutant (`critical` yerine depodaki `kritik`) `mutate-notifycontract.sh`'a eklendi ve yakalandı (6/6).
 
 **Canlıya etkisi.** Sunucular bir sonraki sürümle yükseltilince journal İngilizce olur.
 `journalctl -u kadrand | grep` ile eski Türkçe metni arayan bir operatör aramasını

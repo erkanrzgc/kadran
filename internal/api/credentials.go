@@ -77,7 +77,7 @@ type callerCreds struct {
 func (c *callerCreds) ServerHandshake(raw net.Conn) (net.Conn, credentials.AuthInfo, error) {
 	conn, info, err := c.handshake(raw)
 	if err != nil {
-		slog.Warn("api.sock connection refused", "reason", err)
+		slog.Warn("api.sock caller rejected", "reason", err)
 	}
 	return conn, info, err
 }

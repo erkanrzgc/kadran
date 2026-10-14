@@ -374,6 +374,9 @@ func TestUpdateAppAuditRecordsOnlyTheNamedFields(t *testing.T) {
 	}
 	if rec == nil {
 		t.Fatal("app.update zincire hiç yazılmadı")
+		// t.Fatal dönmez; ama CI'daki staticcheck önbellekli koşuda bunu
+		// her zaman bilmiyor (SA5011, PR #13). return çözümlemeyi açık eder.
+		return
 	}
 	if rec.Outcome != audit.OutcomeSuccess {
 		t.Errorf("sonuç = %v", rec.Outcome)

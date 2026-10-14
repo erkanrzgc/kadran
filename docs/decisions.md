@@ -11133,6 +11133,8 @@ Apache-2.0 kodu NOTICE ile gelirse kökte yeniden bir NOTICE açılır.
 
 ## K-150 — Journal ve alarm metni İngilizce, Docker adres havuzu sabit, CI belgede mutasyonu atlar (2026-10-14)
 
+**Durum:** PR #13 (`f73f27a`) birleşti; v0.7.0 ile yayında.
+
 Kullanıcı 14 Ekim'de açık işlerden "hepsini yap" dedi. Bu kayıt üçünü kapatıyor:
 K-141'in 5. aşaması, CI'daki mutasyon süresi ve K-070'in adres havuzu yükümlülüğü.
 Masaüstü onay/iptal akışının elle denemesi kullanıcıyla yapılacak.

@@ -3,7 +3,15 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.7.0 — 2026-10-15
+
+English server texts and a pinned Docker address pool (K-149, K-150). The protocol is
+unchanged (3), so v0.6.x clients keep working. Upgrading with `bootstrap` writes
+`/etc/docker/daemon.json` when the server has none. On a server that already runs
+containers it takes effect at the next dockerd restart; run
+`sudo systemctl restart docker` in a maintenance window, because it stops running
+containers briefly. If you search the journal or forward it elsewhere, read the text
+changes below first. Building from source needs Go 1.26.9.
 
 ### Changed
 

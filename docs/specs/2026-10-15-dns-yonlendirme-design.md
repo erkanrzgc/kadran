@@ -26,6 +26,8 @@ Başarı ölçütleri:
 5. Sunucunun kaydıyla birlikte başka adres de dönen karışık küme durdurulur ve silinecek
    kayıtlar adıyla söylenir.
 6. Hiçbir firmanın API anahtarı istenmez (kullanıcı kararı: "yönlendir + doğrula").
+7. `kadran domain check` domainin hangi firmadan alındığını (RDAP) da söyler; alındığı yer
+   DNS'in olduğu yerden farklıysa kaydın nerede değişeceğini açıkça yazar.
 
 ## Kapsam dışı
 
@@ -82,6 +84,18 @@ Cloudflare aralığı ama NS başka firmada (Porkbun, Hostinger park sayfaları 
             registrar's parking page: replace it with the record below
 ```
 
+Kayıt firması (yalnız `kadran domain check`, RDAP):
+
+```
+  Registrar Name.com, Inc. (accredited registrar; resellers such as Vercel sell through one)
+            the DNS is at Vercel: change the record there
+```
+
+RDAP akredite kayıt firmasını verir, alışverişin yapıldığı dükkanı değil: 15 Ekim'de
+erkanrzgc.dev (Vercel'den alındı) için cevap `Name.com, Inc.` döndü. Bu yüzden metin "aldığın
+yer" demez; asıl yönlendirme her zaman DNS'in olduğu yerdir. `.tr` IANA önyükleme dosyasında
+yok (15 Ekim'de bakıldı), orada satır çıkmaz.
+
 Tanınmayan firma: aynı blok, "At Vercel" satırı yerine genel tarif ("your DNS host's control
 panel → DNS / Zone editor"), NS adları gösterilir.
 
@@ -96,6 +110,7 @@ basar. Sunucu tarafı değişmiyor; protokol 3 kalır.
 | `providers.go` | NS son eki → firma tablosu (~50 firma, aşağıda). Her girdide: ad, panel yolu, varsa CLI komutu, firmaya özel uyarı, resmi yardım sayfası. NS'ler iki farklı firmaya bölünmüşse ya da hiçbiri eşleşmezse genel tarif. |
 | `authoritative.go` | Bölgenin NS'lerinin **hepsine** doğrudan A/AAAA sorar (`golang.org/x/net/dns/dnsmessage`, UDP; kesilirse TCP). Cevap ancak AA (yetkili) bayrağı taşıyorsa sayılır: bayraksız cevap, 53. portu araya giren bir ISS önbelleğinden gelmiş olabilir (Türk ISS'lerinde yaygın) ve "yetkili ulaşılamadı" sayılır. Cevabı ve TTL'yi döndürür. `x/net` zaten dolaylı bağımlılık; yeni modül yok. |
 | `cloudflare.go` | Cloudflare'in yayımladığı IPv4/IPv6 aralıkları (sabit liste, kaynağı yorumda). A/AAAA bu aralıktaysa NS'ye göre ya "proxied" ya da "Cloudflare'de barınan sayfa". |
+| `rdap.go` | Yalnız `domain check` için kayıt firması: IANA'nın RDAP önyükleme dosyasından (`https://data.iana.org/rdap/dns.json`) uzantının kayıt otoritesi bulunur, onun RDAP sunucusuna `domain/<ad>` sorulur, `registrar` rolündeki varlığın adı (vCard `fn`) alınır. Üçüncü taraf yönlendirici (rdap.org) kullanılmaz. RDAP'ı olmayan uzantıda (ör. `.tr`) ya da hata/zaman aşımında satır basılmaz; hiçbir zaman engellemez. |
 | `domaincheck.go` | `Check` yukarıdakileri birleştirir; `Report`'a alanlar eklenir: `Zone`, `NameServers`, `Provider`, `RecordName`, `Authoritative` (adresler + TTL), `CNAME`, `Proxied`, `Fix` (eklenecek ve silinecek kayıtlar). |
 
 Karar kuralları (bugünküler korunur; 3, 5, 6, 7 ve 8 yeni):
@@ -240,6 +255,11 @@ Firma adımları kısa tutulur (1–2 satır + `Guide:` bağlantısı); ayrınt�
 
 ## Hata ve güvenlik
 
+- RDAP: yalnız HTTPS; https olmayan yönlendirme izlenmez; cevap en çok 1 MiB okunur; istek
+  başına 5 sn. Kayıt otoritesine domain adı gider (zaten herkese açık bilgi); IANA dosyasının
+  isteğinde domain adı yok. Firma adı güvenilmez metindir: basılabilir karakterlere indirilir,
+  uzunluğu sınırlanır. `app create/update` RDAP sorgusu yapmaz.
+
 - DNS'ten gelen metin (NS adları) güvenilmez veridir: basılmadan önce `[a-z0-9.-]` dışı
   karakterler atılır, uzunluk sınırlanır. Terminale kaçış dizisi basılamaz.
 - Yetkili sorgu yalnız 53/udp ve 53/tcp; NS'nin adresi sistem çözümleyicisinden alınır.
@@ -251,6 +271,11 @@ Firma adımları kısa tutulur (1–2 satır + `Guide:` bağlantısı); ayrınt�
 - Sunucu tarafına, kadrand'ın ağ kısıtına ve vekil aracısına hiçbir değişiklik yok.
 
 ## Test
+
+- `rdap_test.go`: `httptest` sunucusuyla önyükleme + RDAP cevabı → firma adı; uzantı
+  önyüklemede yok → satır yok; `registrar` varlığı yok → satır yok; büyük cevap 1 MiB'te
+  kesilir; https olmayan yönlendirme izlenmez; adı kaçış dizisi içeren firma temizlenir;
+  kayıt firması ile DNS firması aynı/farklı metni.
 
 - `providers_test.go`: tablodaki her NS son eki için test (tablodan üretilir, yeni girdi testsiz kalamaz); her girdinin yardım bağlantısı `https://` ile başlar; büyük/küçük harf ve sondaki nokta;
   iki firmaya bölünmüş NS → genel tarif; benzer ama farklı son ek (`notvercel-dns.com.evil`)

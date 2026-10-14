@@ -558,6 +558,55 @@ jobs:
           fi
 
   # ══════════════════════════════════════════════════════════════════
+  #  Değişiklik türü: yalnız belge mi?
+  # ══════════════════════════════════════════════════════════════════
+  #
+  # Mutasyon işi ~45 dk sürüyor ve belge değişikliğinde ölçtüğü hiçbir şey
+  # değişmiyor (betikler yalnız kod ve test mutasyonu yapar). Bu iş, değişen
+  # dosyaların HEPSİ belge izin listesindeyse `code=false` verir; mutasyon
+  # yalnız o durumda atlanır.
+  #
+  # ⚠ Varsayılan KOŞMAK. İzin listesi dar (`*.md`, `docs/`) ve dışındaki her
+  # dosya — ci.yml, betikler, deploy/, desktop/, go.mod — işi koşturur.
+  # Fark alınamazsa (yeni dal, sıfır SHA, eksik commit, elle tetikleme) de
+  # koşar: belirsizlik atlama sebebi değil. Belgeyi okuyan testler
+  # (privategit_guide_test.go) test işinde zaten koşuyor.
+  changes:
+    name: Değişiklik türü
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -uo pipefail
+          code=true
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;;
+          esac
+          if [ -n "$base" ] && ! [[ "$base" =~ ^0+$ ]] \
+             && files="$(git diff --name-only "$base" "$HEAD_SHA")" && [ -n "$files" ]; then
+            echo "değişen dosyalar:"; printf '  %s\n' $files
+            if ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then
+              code=false
+            fi
+          else
+            echo "fark alınamadı ya da boş (olay $EVENT, taban '${base}') — mutasyon koşar"
+          fi
+          echo "code=$code"
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+  # ══════════════════════════════════════════════════════════════════
   #  Mutasyon: testlerin GERÇEKTEN bir şey koruduğunu sına
   # ══════════════════════════════════════════════════════════════════
   #
@@ -570,6 +619,8 @@ jobs:
   # bir betiğin unutulmasına davetiye olurdu — tam da bu işi doğuran hata.
   mutation:
     name: Mutasyon (testler gerçekten koruyor mu)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

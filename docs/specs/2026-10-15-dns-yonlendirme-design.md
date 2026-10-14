@@ -15,7 +15,7 @@ gerçekten sunucuyu gösterdiğini doğrulamalı.
 Başarı ölçütleri:
 
 1. Yanlış ya da eksik DNS'te `kadran app create/update -domain` ve `kadran domain check`,
-   DNS barındırıcısını adıyla, eklenecek kaydı (`A @ 46.225.95.35` biçiminde) ve firmaya özel
+   DNS barındırıcısını adıyla, eklenecek kaydı (`A @ 203.0.113.10` biçiminde) ve firmaya özel
    adımı basar. Tanınmayan firmada genel tarif basar.
 2. Cloudflare'in proxy'li (turuncu bulut) kaydı "başka yeri gösteriyor" diye değil, sebebi ve
    çözümüyle raporlanır.
@@ -42,11 +42,11 @@ Başarı ölçütleri:
 Yanlış DNS, firma tanınıyor (`app update -domain` hatası ve `domain check` aynı bloğu basar):
 
 ```
-✗ DNS       the A record points at 64.29.17.65, 216.198.79.65, the server is 46.225.95.35
+✗ DNS       the A record points at 198.51.100.7, 198.51.100.8, the server is 203.0.113.10
   DNS host  Vercel (ns1.vercel-dns.com, ns2.vercel-dns.com)
   Set this record and delete other A, AAAA, ALIAS or CNAME records for the same name:
-      A   @   46.225.95.35
-  At Vercel: vercel dns add erkanrzgc.dev @ A 46.225.95.35
+      A   @   203.0.113.10
+  At Vercel: vercel dns add erkanrzgc.dev @ A 203.0.113.10
              or Dashboard → Domains → erkanrzgc.dev → DNS Records → Add
   If the domain is assigned to a Vercel project, remove it from the project as well.
   Guide: <Vercel'in resmi DNS kaydı yardım sayfası>
@@ -55,16 +55,16 @@ Yanlış DNS, firma tanınıyor (`app update -domain` hatası ve `domain check` 
 Sunucu kaydı eklenmiş ama eski kayıt da duruyor (bugün bu GEÇİYOR, artık durur):
 
 ```
-✗ DNS       the A records are 46.225.95.35 (server) and 64.29.17.65, 216.198.79.65:
+✗ DNS       the A records are 203.0.113.10 (server) and 198.51.100.7, 198.51.100.8:
             visitors and Let's Encrypt reach the other addresses part of the time
-  Delete these records for "@": A/ALIAS → 64.29.17.65, 216.198.79.65
+  Delete these records for "@": A/ALIAS → 198.51.100.7, 198.51.100.8
 ```
 
 Kayıt firmada doğru, önbellek eski:
 
 ```
-! DNS       your DNS host (Vercel) already answers 46.225.95.35; this machine still sees
-            64.29.17.65 from its cache (the new record's TTL is 600 s, the old cache time is
+! DNS       your DNS host (Vercel) already answers 203.0.113.10; this machine still sees
+            198.51.100.7 from its cache (the new record's TTL is 600 s, the old cache time is
             unknown). Let's Encrypt usually sees the new record; to be sure, wait with
             kadran domain check -wait 10m. Continuing.
 ```

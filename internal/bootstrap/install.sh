@@ -255,7 +255,8 @@ case "$DOCKER_HAVUZU" in
         else
             say "pinned to 172.16.0.0/12 in /etc/docker/daemon.json; applies after dockerd restarts"
         fi ;;
-    var)  say "/etc/docker/daemon.json already sets default-address-pools; left as is" ;;
+    var)  say "/etc/docker/daemon.json already sets default-address-pools; left as is"
+          say "its base must be inside 172.16.0.0/12, or new deploys stop" ;;
     elle) say "/etc/docker/daemon.json exists without default-address-pools; left as is" ;;
 esac
 

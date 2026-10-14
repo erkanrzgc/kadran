@@ -2972,6 +2972,8 @@ dağıtım kapıda durur — sessiz değil, görünür bir arıza.
 
 ⚠ **Yükümlülük:** dockerd'nin adres havuzu `daemon.json` ile bu aralığa
 sabitlenmeli. Yapılmadı; sınıra dayanmak bugün için uzak ama kalıcı çözüm bu.
+(K-150 ile yapıldı: bootstrap dosya yoksa yazıyor, executor havuz dışı ağı
+reddediyor.)
 
 ### Ölçüm — çit gerçekten ısırıyor mu?
 

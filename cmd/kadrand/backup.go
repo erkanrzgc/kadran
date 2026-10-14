@@ -49,8 +49,8 @@ func runBackupScheduler(
 	every time.Duration, beat *liveness.Beat,
 ) {
 	if every <= 0 {
-		slog.Warn("zamanlı yedekleme KAPALI",
-			"sebep", "--backup-interval 0 verildi")
+		slog.Warn("scheduled backup DISABLED",
+			"reason", "--backup-interval 0 was given")
 		return
 	}
 
@@ -102,8 +102,8 @@ func takeBackup(ctx context.Context, db *store.Store, am *alarm.Manager) {
 	start := time.Now()
 	snap, err := db.Snapshot(ctx)
 	if err != nil {
-		slog.Error("YEDEK ALINAMADI — geri dönüş penceresi eskiyor",
-			"hata", err)
+		slog.Error("BACKUP FAILED — the rollback window is getting stale",
+			"error", err)
 		// Yedeksiz kalmak KRİTİK: bu, geri dönüş yolunun kendisinin
 		// kaybolması demek ve fark edilmesi en geç olan arıza türü —
 		// ancak geri yüklemeye ihtiyaç duyulduğu gün anlaşılır.
@@ -116,7 +116,7 @@ func takeBackup(ctx context.Context, db *store.Store, am *alarm.Manager) {
 			// Hata METNİ yazılmıyor: dosya yolu ve disk durumu
 			// taşıyabilir, alarm ayrıntısı ise denetim zincirine de
 			// düşüyor ve zincir ekle-sadece.
-			Detail: "zamanlı yedek alınamıyor — geri dönüş yolu YOK",
+			Detail: "scheduled backup is failing — there is NO recovery path",
 		})
 		return
 	}
@@ -126,8 +126,8 @@ func takeBackup(ctx context.Context, db *store.Store, am *alarm.Manager) {
 	// Alanlar TEK TEK yazılıyor. İlk hâli struct'ı olduğu gibi
 	// veriyordu ve journal'da `dosya="{Path:... Bytes:... Taken:...}"`
 	// diye tek bir kalabalık alan çıkıyordu — gerçek sunucuda görüldü.
-	slog.Info("yedek alındı",
-		"dosya", snap.Path, "bayt", snap.Bytes, "sure", time.Since(start))
+	slog.Info("backup taken",
+		"file", snap.Path, "bytes", snap.Bytes, "duration", time.Since(start))
 }
 
 // runRestore, bir yedeği veritabanının yerine koyar ve süreci sonlandırır.

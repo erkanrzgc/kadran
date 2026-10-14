@@ -130,7 +130,19 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # bounded archive validation run here so tokens never enter the daemon,
 # Docker URL or renderer. The import-graph measurement stays unchanged.
 # Default network access stays AF_UNIX; private Git needs an opt-in unit.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2900}"
+#
+# ── 2900 → 2925: uygulama ağının alt ağ denetimi (K-150), kullanıcı kararı ──
+#
+# Ölçüm önce: 2882 → 2916 (+34). Executor ağı oluşturduktan sonra alt ağını
+# okuyor; 172.16.0.0/12 dışındaysa (Docker'ın havuzu 192.168'e geçtiğinde)
+# dağıtımı durduruyor ve kendi oluşturduğu ağı siliyor. Küçültme seçenekleri
+# DENENDİ: (1) denetimi kadrand'ye taşımak — kadrand Docker'a erişemiyor,
+# alt ağı yine executor okuyup proto ile döndürmek, silmek için de yeni bir RPC
+# gerekirdi: yüzey küçülmez, iki tarafa yayılır. (2) Denetimsiz bırakıp yalnız
+# daemon.json yazmak (bootstrap, K-150) — operatörün kendi daemon.json'u varsa
+# havuz sabitlenmiyor ve sessiz bozulma geri geliyor. Yanıt tipi adsız yapı,
+# alan etiketsiz: +40'tan +34'e indi.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2925}"
 
 fail=0
 note_failure() {

@@ -65,7 +65,7 @@ func TestRejectedCallerIsLogged(t *testing.T) {
 	}
 
 	cikti := buf.String()
-	if !strings.Contains(cikti, "reddedildi") {
+	if !strings.Contains(cikti, `msg="api.sock caller rejected"`) {
 		t.Fatalf("ret günlüğe yazılmadı — operatör sunucu tarafında hiçbir iz bulamaz:\n%q", cikti)
 	}
 	for _, alan := range []string{"uid=0", "gid=0", "pid=4242"} {

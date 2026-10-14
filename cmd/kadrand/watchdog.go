@@ -67,20 +67,20 @@ const watchdogReportEvery = time.Hour
 func startWatchdog(ctx context.Context, beats *liveness.Registry, db liveness.Pinger) {
 	every, err := liveness.Interval(os.Getenv, os.Getpid())
 	if err != nil {
-		slog.Error("watchdog yapılandırması okunamadı — ping ATILMAYACAK, systemd kadrand'yi yeniden başlatacak",
-			"hata", err)
+		slog.Error("watchdog configuration could not be read — NO pings will be sent, systemd will restart kadrand",
+			"error", err)
 		return
 	}
 	if every == 0 {
-		slog.Info("watchdog kapalı: systemd WatchdogSec vermedi")
+		slog.Info("watchdog disabled: systemd did not set WatchdogSec")
 		return
 	}
 
 	// Açılış günlüğündeki bu liste, main'in bir döngüye damga vermeyi
 	// unutmadığının tek kanıtı (Beat.Mark nil'de sessiz).
-	slog.Info("watchdog açık",
-		"ping_araligi", every,
-		"izlenen_donguler", strings.Join(beats.Names(), ","))
+	slog.Info("watchdog enabled",
+		"ping_interval", every,
+		"watched_loops", strings.Join(beats.Names(), ","))
 
 	w := &liveness.Watchdog{
 		Beats:        beats,

@@ -1,51 +1,57 @@
-# Alarm teslimatı (Telegram)
+# Alarm delivery (Telegram)
 
-kadrand alarmları tespit ediyor ama dışarı gönderemiyor: `IPAddressDeny=any`
-taşıyor, kasıtlı. Bu birim alarmları kadrand'nin journal'ından okuyup
-Telegram'a iletir. Çekirdek servisler (kadrand, kadran-exec, kadran-caddy)
-çökerse ya da durursa onu da bildirir. Ayrıntı ve ölçümler:
-`docs/decisions.md`, K-108 ve K-110.
+kadrand detects alarms but cannot send them anywhere: it runs with
+`IPAddressDeny=any`, on purpose. This unit reads the alarms from kadrand's
+journal and forwards them to Telegram. It also reports when a core service
+(kadrand, kadran-exec, kadran-caddy) crashes or stops. Details and
+measurements: `docs/decisions.md`, K-108 and K-110.
 
-## Ne gönderilir
+## What gets sent
 
-| olay | kaynak |
+| event | source |
 |---|---|
-| 🔴 KRİTİK / 🟡 UYARI açıldı | kadrand `msg=ALARM durum=acildi` |
-| 🔴 KÖTÜLEŞTİ | `durum=tirmandi` |
-| ✅ DÜZELDİ | `durum=kapandi` |
-| 🔴 BİRİM BAŞARISIZ | `OnFailure=` — şu an `kadran-offsite.service` |
-| 🟠 ÇÖKTÜ | çekirdek servis çöktü (systemd'nin "Failed with result" olayı) |
-| 🔴 ÇÖKME DÖNGÜSÜ | bir sonraki kontrolde de çökmüş; döngü sürdükçe yeni mesaj YOK |
-| 🔴 ÇALIŞMIYOR | iki kontrol üst üste süreci yok (`exit 0`, `stop`, vazgeçildi) |
-| ✅ TOPARLANDI / YENİDEN ÇALIŞIYOR | çöküş ya da duruş bitti |
+| 🔴 CRITICAL / 🟡 WARNING opened | kadrand `msg=ALARM state=opened` |
+| 🔴 WORSE | `state=escalated` |
+| ✅ RESOLVED | `state=closed` |
+| 🔴 UNIT FAILED | `OnFailure=` — currently `kadran-offsite.service` |
+| 🟠 CRASHED | a core service crashed (systemd's "Failed with result" event) |
+| 🔴 CRASH LOOP | still crashing at the next check; no new message while the loop lasts |
+| 🔴 NOT RUNNING | no process for two checks in a row (`exit 0`, `stop`, gave up) |
+| ✅ RECOVERED / RUNNING AGAIN | the crash or the stop is over |
 
-Gecikme en fazla ~1 dakika. Gönderim başarısız olursa olay KAYBOLMAZ;
-bir sonraki koşuda yeniden denenir.
+Delay is at most ~1 minute. If sending fails, the event is NOT lost; the
+next run tries again.
 
-Servis mesajları yalnızca systemd'nin alanlarını taşır (sonuç: `signal`,
-`exit-code`, `oom-kill`…). Servisin kendi çıktısı, ör. bir panik mesajı,
-Telegram'a gönderilmez.
+Alarm lines written before K-150 used Turkish keys (`durum=acildi` and so
+on). The sender still reads them, so events written just before an upgrade
+are delivered too.
 
-## Güvenlik modeli
+Service messages carry only systemd's fields (result: `signal`,
+`exit-code`, `oom-kill`…). The service's own output, such as a panic
+message, is not sent to Telegram.
 
-- Gönderici `kadran` DEĞİL, her koşuda geçici bir kullanıcı (`DynamicUser`).
-- Anahtar dosyası `0600 root:root`. systemd onu root olarak okuyup yalnızca
-  bu birime verir (`LoadCredential`). **kadrand anahtarı okuyamaz**; ele
-  geçirilse bile sizin adınıza mesaj atamaz.
-- Ağ: yalnızca dışarı. Yerel ağ kapalı, tek istisna DNS çözücüsü (K-107).
-- ⚠ Gönderici bütün sistem journal'ını okuyabilir (`systemd-journal`
-  grubu). Bilinçli bir denge; gerekçe birim dosyasında.
+## Security model
 
-## Kurulum
+- The sender is NOT `kadran`; it is a temporary user for each run
+  (`DynamicUser`).
+- The token file is `0600 root:root`. systemd reads it as root and hands it
+  only to this unit (`LoadCredential`). **kadrand cannot read the token**;
+  even a compromised kadrand cannot send messages in your name.
+- Network: outbound only. The local network is closed, with the DNS resolver
+  as the only exception (K-107).
+- ⚠ The sender can read the whole system journal (`systemd-journal` group).
+  A deliberate trade-off; the reasoning is in the unit file.
 
-### 1. Bot oluştur (Telegram'da)
+## Setup
 
-1. Telegram'da **@BotFather**'a yaz → `/newbot` → ad ver.
-2. Verdiği anahtarı (`123456789:ABC…`) kopyala. **Kimseyle paylaşma.**
-3. Yeni botuna Telegram'dan herhangi bir mesaj yaz (ör. `merhaba`).
-   Bot, sana ancak sen ona önce yazdıysan mesaj atabilir.
+### 1. Create a bot (in Telegram)
 
-### 2. Anahtarı sunucuya yaz (root)
+1. Message **@BotFather** in Telegram → `/newbot` → give it a name.
+2. Copy the token it gives you (`123456789:ABC…`). **Do not share it.**
+3. Send your new bot any message from Telegram (for example `hello`).
+   A bot can only message you after you have written to it first.
+
+### 2. Put the token on the server (root)
 
 ```bash
 sudo install -m 0600 -o root -g root /dev/null /etc/kadran/notify.conf
@@ -57,40 +63,45 @@ TELEGRAM_TOKEN=123456789:ABC…
 TELEGRAM_CHAT_ID=
 ```
 
-### 3. Sohbet kimliğini bul
+### 3. Find the chat id
 
 ```bash
 sudo /usr/local/lib/kadran/notify/kadran-notify.sh sohbet-bul
 ```
 
-Çıkan `sohbet kimliği: 123456789` sayısını `TELEGRAM_CHAT_ID=` satırına yaz.
+Put the number from `chat id: 123456789` on the `TELEGRAM_CHAT_ID=` line.
 
-### 4. Dene — gerçek birimle
+### 4. Test it — with the real unit
 
 ```bash
-sudo systemctl start kadran-notify-failure@deneme.service
+sudo systemctl start kadran-notify-failure@test.service
 ```
 
-Telegram'a "BİRİM BAŞARISIZ — deneme" mesajı gelmeli. Bu, gerçek birimin
-kısıtlarıyla (geçici kullanıcı, kimlik bilgisi, ağ) uçtan uca denemedir.
+A "UNIT FAILED — test" message should arrive in Telegram. This is an
+end-to-end test under the real unit's restrictions (temporary user,
+credential, network).
 
-### 5. Aç
+### 5. Turn it on
 
 ```bash
 sudo systemctl enable --now kadran-notify.timer
 ```
 
-İlk koşu imleci "şimdi"ye koyar; kurulumdan önceki alarmlar gönderilmez.
+The first run sets the cursor to "now"; alarms from before the setup are not
+sent.
 
-## Bilinen sınırlar
+## Known limits
 
-- **Göndericinin kendisi düşerse** sunucuda bunu yakalayacak bir şey yok.
-  Dış nabız kontrolü ([`deploy/nabiz`](../nabiz/README.md), K-109) 15
-  dakika nabız alamazsa haber verir.
-- **Askıda kalma yakalanmaz.** Çekirdek birimlerde `WatchdogSec` yok;
-  kilitlenen bir kadrand'nin süreci durur ama yaşar, "çalışıyor" görünür.
-- Bakım için bir çekirdek servisi iki dakikadan uzun durdurmak da
-  "🔴 ÇALIŞMIYOR" mesajı üretir. Bu doğru: servis gerçekten çalışmıyor.
-- Bu kurulum `kadran bootstrap` tarafından yapılmıyor (uzak yedek gibi).
-  Kurulduktan sonra `bootstrap` (v0.5.0'dan) betiği ve birimleri her
-  yükseltmede yeniler; zamanlayıcının açık/kapalı durumuna dokunmaz (K-138).
+- **If the sender itself goes down**, nothing on the server catches it. The
+  external heartbeat check ([`deploy/nabiz`](../nabiz/README.md), K-109)
+  reports when it has heard nothing for 15 minutes.
+- **A hang is caught only in kadrand.** kadrand has `WatchdogSec` (K-115) and
+  systemd restarts it when it stops reporting liveness; that restart is sent
+  as 🟠 CRASHED (`watchdog`). kadran-exec and kadran-caddy have no watchdog:
+  a hung process keeps running and looks "running".
+- Stopping a core service for maintenance for more than two minutes also
+  produces a "🔴 NOT RUNNING" message. That is correct: the service really is
+  not running.
+- `kadran bootstrap` does not set this up (like the off-site backup). Once it
+  is installed, `bootstrap` (since v0.5.0) refreshes the script and the units
+  on every upgrade and leaves the timer's enabled/disabled state alone (K-138).

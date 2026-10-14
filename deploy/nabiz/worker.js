@@ -27,11 +27,11 @@ export default {
   async fetch(istek, env) {
     const url = new URL(istek.url);
     if (istek.method !== "POST" || url.pathname !== "/ping") {
-      return new Response("bulunamadı\n", { status: 404 });
+      return new Response("not found\n", { status: 404 });
     }
     if (!env.PING_TOKEN) {
       // Yapılandırılmamış bir Worker her ping'i kabul etmemeli.
-      return new Response("yapılandırılmamış\n", { status: 503 });
+      return new Response("not configured\n", { status: 503 });
     }
     const gelen = istek.headers.get("Authorization") ?? "";
     if (!(await sabitZamanEsit(gelen, `Bearer ${env.PING_TOKEN}`))) {
@@ -47,7 +47,7 @@ export default {
     const durum = await env.NABIZ.get(KV_DURUM);
     const esikMs = Number(env.ESIK_DAKIKA) * 60_000;
     if (!Number.isFinite(esikMs) || esikMs <= 0) {
-      throw new Error(`ESIK_DAKIKA geçersiz: ${env.ESIK_DAKIKA}`);
+      throw new Error(`invalid ESIK_DAKIKA: ${env.ESIK_DAKIKA}`);
     }
 
     const simdi = Date.now();
@@ -78,7 +78,7 @@ async function telegram(env, metin) {
   );
   if (!yanit.ok) {
     // Anahtar URL'de; hata iletisine URL KONMUYOR.
-    throw new Error(`Telegram gönderimi başarısız: http ${yanit.status}`);
+    throw new Error(`Telegram send failed: http ${yanit.status}`);
   }
 }
 

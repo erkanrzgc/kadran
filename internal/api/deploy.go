@@ -146,8 +146,8 @@ func (s *Server) Deploy(
 		// Bu sürüm canlıya ÇIKTI; rotalanamayan BAŞKA uygulamalar var.
 		// Dağıtımı başarısız saymak yanlış olurdu ama sessiz kalmak da:
 		// operatörün bunu görmesi gerekiyor.
-		slog.Warn("dağıtım tamamlandı ama bazı uygulamalar rotalanamadı",
-			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Error())
+		slog.Warn("deploy finished but some apps could not be routed",
+			"app", app.ID, "release", rel.ID, "detail", skipped.Error())
 		params["skipped_routes"] = skipped.Error()
 	}
 
@@ -211,8 +211,8 @@ func (s *Server) sealFailed(ctx context.Context, rel store.Release, detail strin
 		// döndürmek asıl sebebi gizlerdi. Ama sessiz kalmak da olmaz:
 		// sürüm BUILDING'de asılı kalmış demektir ve operatörün bunu
 		// görmesi gerekir.
-		slog.Error("sürüm başarısız olarak mühürlenemedi — BUILDING'de asılı kaldı",
-			"uygulama", rel.AppID, "surum", rel.ID, "hata", err)
+		slog.Error("release could not be marked failed — stuck in BUILDING",
+			"app", rel.AppID, "release", rel.ID, "error", err)
 	}
 }
 

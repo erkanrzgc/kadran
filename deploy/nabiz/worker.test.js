@@ -83,7 +83,7 @@ test("nabız eskiyse zamanlanmış kontrol ALARM gönderir ve durumu yazar", asy
   const kv = sahteKV({ son_nabiz: String(Date.now() - 20 * 60_000), durum: "var" });
   await worker.scheduled({}, env(kv));
   assert.equal(gonderilen.length, 1);
-  assert.match(gonderilen[0].govde.text, /NABIZ YOK — kadran-test/);
+  assert.match(gonderilen[0].govde.text, /NO HEARTBEAT — kadran-test/);
   assert.equal(gonderilen[0].govde.chat_id, "42");
   assert.equal(kv.veri.get("durum"), "yok");
 });
@@ -94,7 +94,7 @@ test("nabız eskiyse zamanlanmış kontrol ALARM gönderir ve durumu yazar", asy
 test("Telegram başarısızsa durum yazılmaz, sonraki kontrol yeniden dener", async () => {
   const kv = sahteKV({ son_nabiz: String(Date.now() - 20 * 60_000), durum: "var" });
   telegramCalisiyor = false;
-  await assert.rejects(worker.scheduled({}, env(kv)), /Telegram gönderimi başarısız/);
+  await assert.rejects(worker.scheduled({}, env(kv)), /Telegram send failed/);
   assert.equal(kv.veri.get("durum"), "var", "durum yazıldı — alarm yutulurdu");
 
   telegramCalisiyor = true;

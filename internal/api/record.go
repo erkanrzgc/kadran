@@ -63,8 +63,8 @@ func (s *Server) recordAction(
 	// bağlantıyı keserek kaydı engelleyebiliyor" bir denetim günlüğü
 	// için kabul edilemez.
 	if _, err := s.store.AppendAudit(context.WithoutCancel(ctx), rec); err != nil {
-		slog.Error("denetim kaydı yazılamadı",
-			"eylem", action, "hedef", target, "hata", err)
+		slog.Error("audit record could not be written",
+			"action", action, "target", target, "error", err)
 		return status.Errorf(codes.Internal, "could not write the audit record: %v", err)
 	}
 	return nil

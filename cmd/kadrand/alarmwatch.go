@@ -48,7 +48,7 @@ func watchDisk(
 	every time.Duration, beat *liveness.Beat,
 ) {
 	if every <= 0 {
-		slog.Warn("disk alarmı KAPALI", "sebep", "--disk-check-interval 0")
+		slog.Warn("disk alarm DISABLED", "reason", "--disk-check-interval 0")
 		return
 	}
 
@@ -81,8 +81,8 @@ func checkDisk(ctx context.Context, exec *execclient.Client, am *alarm.Manager) 
 		// birincisini ikincisi gibi bildirmek, yanlış alarmın tanımı
 		// olurdu. Ulaşılamayan executor zaten kendi başına görünür
 		// (durum ekranı ve journal).
-		slog.Warn("disk ölçülemedi — alarm durumu DEĞİŞTİRİLMEDİ",
-			"hata", err)
+		slog.Warn("disk could not be measured — alarm state left UNCHANGED",
+			"error", err)
 		return
 	}
 
@@ -91,7 +91,7 @@ func checkDisk(ctx context.Context, exec *execclient.Client, am *alarm.Manager) 
 	if total == 0 {
 		// Sıfır toplam, bölme hatası demek. Ölçüm yok sayılıyor;
 		// yukarıdaki gerekçenin aynısı.
-		slog.Warn("disk toplamı sıfır okundu — alarm durumu DEĞİŞTİRİLMEDİ")
+		slog.Warn("disk total read as zero — alarm state left UNCHANGED")
 		return
 	}
 	free := float64(avail) / float64(total)
@@ -150,7 +150,7 @@ func diskAlarm(severity string, free float64, avail, total uint64) store.Alarm {
 		Target:   "host",
 		Severity: severity,
 		Since:    time.Now(),
-		Detail: fmt.Sprintf("disk %%%.1f boş (%s / %s)",
+		Detail: fmt.Sprintf("disk %.1f%% free (%s / %s)",
 			free*100, humanBytes(avail), humanBytes(total)),
 	}
 }
@@ -212,7 +212,7 @@ func recordProxyAlarm(
 		// `problem` metni bizim ürettiğimiz sabit bir açıklama
 		// (reconcileAtStartup döndürüyor), kullanıcı verisi değil —
 		// bu yüzden ayrıntıya yazılabiliyor.
-		Detail: "açılışta ters vekil uzlaştırılamadı, TRAFİK AKMIYOR: " +
+		Detail: "reverse proxy could not be reconciled at startup, NO TRAFFIC IS FLOWING: " +
 			problem,
 	})
 }

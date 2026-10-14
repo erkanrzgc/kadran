@@ -93,8 +93,11 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 
 echo "== Go tarafı değişiyor =="
 
-mutate "alan adı değişti (ayrinti → detay)" "$SINK" \
-    "s=s.replace('\"ayrinti\", ev.Alarm.Detail)','\"detay\", ev.Alarm.Detail)',1)"
+mutate "alan adı değişti (detail → details)" "$SINK" \
+    "s=s.replace('\"detail\", ev.Alarm.Detail)','\"details\", ev.Alarm.Detail)',1)"
+
+mutate "journal'a depodaki ciddiyet (kritik) yazılıyor" "$SINK" \
+    "s=s.replace('\t\treturn \"critical\"','\t\treturn \"kritik\"',1)"
 
 mutate "kritik ERROR yerine WARN" "$SINK" \
     "s=s.replace('\t\tslog.Error(\"ALARM\", args...)','\t\tslog.Warn(\"ALARM\", args...)',1)"
@@ -106,13 +109,13 @@ mutate "kapanış da ciddiyet taşıyor" "$SINK" \
 # BAYT düzeyinde katı: örnekler "canlıdan birebir" olmalı, sıra değişince
 # örnekler de güncellenir. Bu mutant o katılığı ölçüyor, teslimatı değil.
 mutate "alan sırası değişti (bilerek katı)" "$SINK" \
-    "s=s.replace('\t\t\"alarm\", ev.Alarm.ID,\n\t\t\"durum\", string(ev.State),','\t\t\"durum\", string(ev.State),\n\t\t\"alarm\", ev.Alarm.ID,',1)"
+    "s=s.replace('\t\t\"alarm\", ev.Alarm.ID,\n\t\t\"state\", string(ev.State),','\t\t\"state\", string(ev.State),\n\t\t\"alarm\", ev.Alarm.ID,',1)"
 
 echo "== Betik örneği kayıyor =="
 
 # Kontrol grubu: sözleşme TEK yönlü olsaydı bu yeşil kalırdı.
 mutate "betikteki örnek elle değişti" "$FIX" \
-    "s=s.replace('durum=acildi ciddiyet=kritik hedef=kadran.db','durum=acildi ciddiyet=KRITIK hedef=kadran.db',1)"
+    "s=s.replace('state=opened severity=critical target=kadran.db','state=opened severity=CRITICAL target=kadran.db',1)"
 
 restore
 if [[ $fail -ne 0 ]]; then

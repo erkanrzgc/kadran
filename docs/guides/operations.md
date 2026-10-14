@@ -26,3 +26,25 @@ Veritabanı dosyaları uygulama çalışırken değişebilir. `pg_dump` veya SQL
 Proxy onarımında `kadran-proxy.socket/service` de gerekir. Ham Caddy soketini daemon grubuna açmak bir onarım yöntemi değildir. Docker ağ havuzunun `172.16.0.0/12` sınırına uygun olduğunu kontrol et. Broker dışarı dial edemez; Caddy uygulama trafiği ve ACME bağlantılarını kurar.
 
 Kontrol veritabanını geri yüklemeden önce daemon'u durdur, mevcut dosyanın ve gerekli anahtarların güvenli kopyasını al; sürüme uygun README/backup kurtarma adımlarını uygula. Docker'daki durum ile veritabanındaki geçmişi birlikte doğrula. Bu yükseltmede canlı kurtarma denemesi yapılmış sayılmaz.
+
+## Docker adres havuzu
+
+Uygulama ağları `172.16.0.0/12` içinde olmalı: kadrand sağlık yoklamasını yalnız oraya yapabiliyor, vekil aracısı yalnız oradan upstream kabul ediyor. Docker'ın varsayılan havuzu yaklaşık 15 ağdan sonra `192.168.0.0/16`'ya geçer. Executor ağı oluşturduktan sonra alt ağını okur; havuz dışındaysa kendi oluşturduğu ağı siler ve dağıtım `got subnet … outside 172.16.0.0/12` hatasıyla durur. Önceden var olan ağa dokunmaz (K-150).
+
+`kadran bootstrap`, `/etc/docker/daemon.json` yoksa havuzu sabitleyen dosyayı yazar:
+
+```json
+{
+  "default-address-pools": [
+    {"base": "172.16.0.0/12", "size": 16}
+  ]
+}
+```
+
+dockerd bu ayarı yalnız yeniden başlarken okur. Sunucuda hiç konteyner yoksa bootstrap dockerd'yi hemen yeniden başlatır. Varsa dokunmaz ve kurulumun sonunda uyarır: yeniden başlatma çalışan konteynerleri kısa bir süre durdurur. Bakım penceresinde:
+
+```bash
+sudo systemctl restart docker
+```
+
+`daemon.json` zaten varsa bootstrap onu değiştirmez. İçinde `default-address-pools` yoksa yukarıdaki anahtarı kendin ekle ve dockerd'yi yeniden başlat. Ayar yalnız yeni ağlara uygulanır; var olan ağların alt ağı değişmez. Ağ başına `/24` veren bir havuz da çalışır, ama aracının ağ geçidi kuralı `/16` varsayıyor ([SECURITY.md](../../SECURITY.md)).

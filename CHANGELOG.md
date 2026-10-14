@@ -7,6 +7,29 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ### Changed
 
+- **Docker's address pool is pinned (K-150).** When `/etc/docker/daemon.json` does not exist,
+  `kadran bootstrap` writes it with `default-address-pools` set to `172.16.0.0/12`, `/16` per
+  network. dockerd reads it only on restart: on a server with no containers bootstrap
+  restarts dockerd; otherwise it warns and leaves the restart to you, because running
+  containers stop briefly. An existing `daemon.json` is never changed. The executor also
+  checks each app network's subnet and stops the deploy when it falls outside
+  `172.16.0.0/12` (Docker's default pool moves to `192.168.0.0/16` after about 15 networks).
+  Before, such a deploy failed later on the health probe and the proxy. See the
+  [operations guide](docs/guides/operations.md#docker-adres-havuzu).
+- **Server journal, alarm and Telegram texts are English (K-150).** This covers kadrand's and
+  kadran-exec's log messages and field names, the systemd status line, alarm details, the
+  alarm sender's Telegram messages and the heartbeat Worker's messages. If you search the
+  journal for the old Turkish text, update the search: `yetki reddedildi` is now
+  `authorization denied`, `rol=` is `role=`, `anahtar=` is `key=`, `uygulama=` is `app=`,
+  `hata=` is `error=`. The `ALARM` line carries `state=opened|escalated|closed`,
+  `severity=critical|warning`, `target=` and `detail=`. The sender still reads lines that
+  were written with the old keys just before an upgrade. Watchdog loops are named
+  `supervisor`, `proxy-watch`, `disk` and `backup`. Alarms already stored keep their
+  Turkish detail. A heartbeat Worker you deployed earlier keeps its old texts until you
+  run `npx wrangler deploy` again.
+- **CI skips the mutation job when only documentation changed (K-150).** A change that
+  touches nothing but `*.md` files and `docs/` no longer waits ~45 minutes for mutation
+  testing. Any other file, or a diff CI cannot compute, still runs it.
 - **No `NOTICE` file (K-149).** Release packages carry `LICENSE` and
   `THIRD_PARTY_LICENSES.txt`; the latter already reproduces the `NOTICE` files of the Go
   modules compiled in. The desktop app's bundled icons, font and runtime packages have

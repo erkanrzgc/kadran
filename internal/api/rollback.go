@@ -90,8 +90,8 @@ func (s *Server) Rollback(
 		// Bu sürüm canlıya ÇIKTI; rotalanamayan BAŞKA uygulamalar var.
 		// Geri almayı başarısız saymak yanlış olurdu ama sessiz kalmak da:
 		// operatörün bunu görmesi gerekiyor.
-		slog.Warn("geri alma tamamlandı ama bazı uygulamalar rotalanamadı",
-			"uygulama", app.ID, "surum", rel.ID, "ayrinti", skipped.Error())
+		slog.Warn("rollback finished but some apps could not be routed",
+			"app", app.ID, "release", rel.ID, "detail", skipped.Error())
 		params["skipped_routes"] = skipped.Error()
 	}
 

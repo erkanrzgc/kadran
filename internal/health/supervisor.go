@@ -227,13 +227,13 @@ func New(
 // açılışın normal geçiş anını "çökmüş" diye okuyup gereksiz bir
 // iyileştirme tetiklerdik.
 func (s *Supervisor) Run(ctx context.Context) error {
-	slog.Info("sağlık gözetmeni başladı",
-		"aralik", s.opts.Interval,
-		"esik", s.opts.FailuresBeforeHeal)
+	slog.Info("health supervisor started",
+		"interval", s.opts.Interval,
+		"threshold", s.opts.FailuresBeforeHeal)
 
 	for {
 		if err := s.clock.Sleep(ctx, s.opts.Interval); err != nil {
-			slog.Info("sağlık gözetmeni durdu")
+			slog.Info("health supervisor stopped")
 			return ctx.Err()
 		}
 		s.Cycle(ctx)
@@ -252,7 +252,7 @@ func (s *Supervisor) Cycle(ctx context.Context) {
 
 	deps, err := s.store.ActiveDeployments(ctx)
 	if err != nil {
-		slog.Warn("gözetim: aktif dağıtımlar okunamadı", "hata", err)
+		slog.Warn("supervision: active deployments could not be read", "error", err)
 		return
 	}
 
@@ -285,7 +285,7 @@ func (s *Supervisor) visit(ctx context.Context, d store.Deployment) {
 
 	app, err := s.store.GetApp(ctx, d.AppID)
 	if err != nil {
-		slog.Warn("gözetim: uygulama okunamadı", "uygulama", d.AppID, "hata", err)
+		slog.Warn("supervision: app could not be read", "app", d.AppID, "error", err)
 		return
 	}
 
@@ -301,7 +301,7 @@ func (s *Supervisor) visit(ctx context.Context, d store.Deployment) {
 	}
 	if !st.unhealthy {
 		st.unhealthy = true
-		slog.Warn("uygulama sağlıksız", "uygulama", d.AppID, "sebep", why)
+		slog.Warn("app unhealthy", "app", d.AppID, "reason", why)
 		s.record(ctx, "app.unhealthy", d, audit.OutcomeFailure,
 			fmt.Sprintf(`{"ready":%d,"replicas":%d,"why":%q}`, ready, app.Replicas, why))
 	}
@@ -331,7 +331,7 @@ func (s *Supervisor) stateFor(d store.Deployment) *appState {
 // okunamaz hâle getirirdi.
 func (s *Supervisor) markHealthy(ctx context.Context, appID string, st *appState) {
 	if st.unhealthy {
-		slog.Info("uygulama iyileşti", "uygulama", appID, "deneme", st.heals)
+		slog.Info("app recovered", "app", appID, "attempt", st.heals)
 		s.record(ctx, "app.healed",
 			store.Deployment{AppID: appID, ReleaseID: st.releaseID},
 			audit.OutcomeSuccess, fmt.Sprintf(`{"attempts":%d}`, st.heals))
@@ -361,7 +361,7 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 	release, err := s.coordinator.Acquire(waitCtx, d.AppID)
 	cancel()
 	if err != nil {
-		slog.Debug("gözetim: uygulama yaşam döngüsü meşgul, iyileştirme ertelendi", "uygulama", d.AppID, "hata", err)
+		slog.Debug("supervision: app lifecycle busy, repair postponed", "app", d.AppID, "error", err)
 		return
 	}
 	defer release()
@@ -374,8 +374,8 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 	// ayağa kaldırır ve boşaltmayla yarışırdık.
 	cur, err := s.store.ActiveDeployment(ctx, d.AppID)
 	if err != nil || cur.ReleaseID != d.ReleaseID {
-		slog.Info("gözetim: aktif sürüm değişti, iyileştirme atlandı",
-			"uygulama", d.AppID, "beklenen", d.ReleaseID, "guncel", cur.ReleaseID)
+		slog.Info("supervision: active release changed, repair skipped",
+			"app", d.AppID, "expected", d.ReleaseID, "current", cur.ReleaseID)
 		delete(s.state, d.AppID)
 		return
 	}
@@ -384,7 +384,7 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 	// we waited. Read the definition and readiness again under ownership.
 	app, err = s.store.GetApp(ctx, d.AppID)
 	if err != nil {
-		slog.Warn("gözetim: güncel uygulama okunamadı", "uygulama", d.AppID, "hata", err)
+		slog.Warn("supervision: current app could not be read", "app", d.AppID, "error", err)
 		return
 	}
 	if ready, _ := s.healer.Check(ctx, app, d.ReleaseID); ready >= app.Replicas {
@@ -394,7 +394,7 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 
 	rel, err := s.store.GetRelease(ctx, d.AppID, d.ReleaseID)
 	if err != nil {
-		slog.Warn("gözetim: sürüm okunamadı", "uygulama", d.AppID, "hata", err)
+		slog.Warn("supervision: release could not be read", "app", d.AppID, "error", err)
 		return
 	}
 
@@ -407,8 +407,8 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 
 	recreated, healErr := s.healer.Heal(ctx, app, rel)
 	if healErr != nil {
-		slog.Warn("iyileştirme başarısız", "uygulama", d.AppID,
-			"deneme", st.heals, "sonraki", st.nextHealAt, "hata", healErr)
+		slog.Warn("repair failed", "app", d.AppID,
+			"attempt", st.heals, "next", st.nextHealAt, "error", healErr)
 		s.record(ctx, "app.heal", d, audit.OutcomeFailure,
 			fmt.Sprintf(`{"attempt":%d,"error":%q}`, st.heals, healErr.Error()))
 
@@ -432,14 +432,14 @@ func (s *Supervisor) heal(ctx context.Context, app store.App, d store.Deployment
 				// Derleme/çalıştırma hatası kullanıcının deposundan
 				// gelen metin taşıyabilir (K-053'ün aynı gerekçesi).
 				Detail: fmt.Sprintf(
-					"%d ardışık iyileştirme başarısız — gözetmen "+
-						"uygulamayı ayağa kaldıramıyor", st.heals),
+					"%d consecutive repairs failed — the supervisor "+
+						"cannot bring the app back up", st.heals),
 			})
 		}
 		return
 	}
-	slog.Info("iyileştirme uygulandı", "uygulama", d.AppID,
-		"deneme", st.heals, "yeniden_kuruldu", recreated)
+	slog.Info("repair applied", "app", d.AppID,
+		"attempt", st.heals, "recreated", recreated)
 	s.record(ctx, "app.heal", d, audit.OutcomeSuccess,
 		fmt.Sprintf(`{"attempt":%d,"recreated":%t}`, st.heals, recreated))
 }
@@ -474,6 +474,6 @@ func (s *Supervisor) record(
 		Source:     audit.SourceDaemon,
 	}
 	if _, err := s.audit.AppendAudit(ctx, rec); err != nil {
-		slog.Error("gözetim denetim kaydı yazılamadı", "eylem", action, "hata", err)
+		slog.Error("supervision audit record could not be written", "action", action, "error", err)
 	}
 }

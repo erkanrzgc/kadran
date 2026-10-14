@@ -150,7 +150,7 @@ mutate "veritabanı yoklaması yok sayılıyor" "$L" "$LIV" \
     "s=s.replace('\tif err := w.DB.PingContext(probe); err != nil {','\tif err := w.DB.PingContext(probe); err != nil && len(w.Beats.Names()) < 0 {',1)"
 
 mutate "hata varken de ping atılıyor" "$L" "$LIV" \
-    "s=s.replace('\t\t\t\"sebep\", err)\n\t\treturn\n\t}','\t\t\t\"sebep\", err)\n\t}',1)"
+    "s=s.replace('\t\t\t\"reason\", err)\n\t\treturn\n\t}','\t\t\t\"reason\", err)\n\t}',1)"
 
 mutate "yoklamanın kendi sınırı yok" "$L" "$LIV" \
     "s=s.replace('\tprobe, cancel := context.WithTimeout(ctx, w.ProbeTimeout)','\tprobe, cancel := context.WithCancel(ctx)',1)"

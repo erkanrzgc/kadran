@@ -2972,6 +2972,8 @@ dağıtım kapıda durur — sessiz değil, görünür bir arıza.
 
 ⚠ **Yükümlülük:** dockerd'nin adres havuzu `daemon.json` ile bu aralığa
 sabitlenmeli. Yapılmadı; sınıra dayanmak bugün için uzak ama kalıcı çözüm bu.
+(K-150 ile yapıldı: bootstrap dosya yoksa yazıyor, executor havuz dışı ağı
+reddediyor.)
 
 ### Ölçüm — çit gerçekten ısırıyor mu?
 
@@ -10623,7 +10625,8 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 **Tarih:** 5 Ekim 2026
 **Durum:** 1. aşama PR #8 (CI 10/10, mutasyon 27/27), 2. aşama PR #9 (`fa4f77a`),
 3. aşama PR #10 (`1f1c028`) birleşti; 4. aşama K-142 ile (masaüstü, dal
-`masaustu-temel`); 5. aşama sırada.
+`masaustu-temel`); 5. aşama K-150 ile (journal, alarm, Telegram; kullanıcı
+14 Ekim'de "hepsini yap" dedi).
 
 ### Neden
 
@@ -11127,3 +11130,140 @@ Not (2026-10-14, kullanıcı kararı): README'deki bileşen listesi gereksiz bul
 ve kaldırıldı; License bölümü lisansı ve iki üçüncü taraf dosyasını anıyor. Lisans
 metinleri paketlerde ve uygulamada olduğu için yükümlülük değişmiyor. CONTRIBUTING:
 Apache-2.0 kodu NOTICE ile gelirse kökte yeniden bir NOTICE açılır.
+
+## K-150 — Journal ve alarm metni İngilizce, Docker adres havuzu sabit, CI belgede mutasyonu atlar (2026-10-14)
+
+Kullanıcı 14 Ekim'de açık işlerden "hepsini yap" dedi. Bu kayıt üçünü kapatıyor:
+K-141'in 5. aşaması, CI'daki mutasyon süresi ve K-070'in adres havuzu yükümlülüğü.
+Masaüstü onay/iptal akışının elle denemesi kullanıcıyla yapılacak.
+
+### 1. Journal, alarm ve Telegram metni (K-141, 5. aşama)
+
+**Kapsam envanterle çıkarıldı, tahminle değil.** `TestServerErrorsAreEnglish`'in
+`isJournalOnly` mantığı (slog çağrısı, `sdnotify.Status`, `store.Alarm{Detail}`) ayrı bir
+AST taramasında çalıştırıldı: 16 dosyada 169 dize sabiti. Çeviri satır kapsamlıydı:
+her dize yalnız envanterdeki satırında ve tam bir kez eşleşerek değişti (161 dize; kalan
+8'i `ALARM`, ayırıcılar ve bayrak adı gibi değişmeyenler). Envanterin göremediği yerler
+elle yapıldı: `LogSink`'in ve istek önleyicisinin `[]any` içinde kurduğu alan adları,
+döngü adları (`registerLoop`), eski istisna listesindeki üç dize.
+
+**Sözleşme taraması.** Eski metne bakan her yer bulundu ve aynı değişiklikte güncellendi:
+
+- ALARM satırı ↔ `kadran-notify.sh`: alanlar `state`/`severity`/`target`/`detail`,
+  geçişler `opened`/`escalated`/`closed`. Depodaki ciddiyet `kritik`/`uyari` kalıyor
+  (uygulanmış göçlere bağlı, K-141); journal'a `logSeverity` ile `critical`/`warning`
+  yazılıyor. Gönderici eski anahtarları da okuyor: yükseltmeden hemen önce yazılmış ama
+  henüz gönderilmemiş satırlar kaybolmasın. `check-notify-format.sh`'a eski biçim için
+  dört örnek eklendi.
+- `check-notify-format.sh` ↔ `logsink_test.go`: örnekler bayt düzeyinde; ikisi birlikte.
+- E2E: `e2e-cli-runner.sh` (`msg="authorization denied"`, `role=deploy`, `key=SHA256:`),
+  `e2e-watchdog.sh` (`watched_loops=supervisor,proxy-watch,disk,backup`,
+  `ping_interval=`, `watchdog enabled`).
+- Mutasyon iğneleri: `mutate-notifycontract.sh` (3), `mutate-supervisor.sh` (1),
+  `mutate-watchdog.sh` (1).
+- Testler: `authz_test.go`, `credentials_test.go` artık tam `msg="api.sock caller rejected"`
+  arıyor. İki ileti bilerek `permission denied` / `connection refused` DEĞİL: ikisi de
+  işletim sistemi hata metni (EACCES, ECONNREFUSED). K-070'teki ağ çitinin imzası
+  `permission denied`; journal'da yetki reddiyle karışırdı ve eski Türkçe metin gibi
+  tekil bir arama dizesi kalmazdı.
+
+Negatif iddia taraması (bkz. "Çeviri negatif testleri öldürür"): eski metni `!Contains`
+ya da `! grep` ile arayan test yok. Eski metni taşıyan test satırları ya tanı mesajı
+(`t.Fatalf("iyileştirme başarısız: %v")`) ya da keyfi test verisi (liveness testlerinde
+döngü adı).
+
+**Değişmeyenler (bilerek).**
+- Gönderici betiğin kip adları (`izle`, `hata`, `dene`, `sohbet-bul`): birim
+  dosyalarıyla sözleşme.
+- Göndericinin durum dosyasındaki değerler (`saglam`, `coktu`, `dongu`, `calismiyor`) ve
+  Worker'ın KV'sindeki `durum` (`var`/`yok`/`hic`): canlıda saklanan durum; değişseydi
+  yükseltmeden sonraki ilk tur bunları "bilinmeyen" okurdu.
+- Worker'ın ortam değişkeni adları (`ESIK_DAKIKA`…): `wrangler.jsonc` ile sözleşme.
+- Saklanmış alarmların Türkçe ayrıntısı.
+- Kod yorumları (K-141 kuralı).
+
+**Koruma.** `TestServerErrorsAreEnglish`'in journal istisnası (`isJournalOnly`,
+`journalOnlyLiterals`) kaldırıldı; artık istisna listesi yok. `cmd/kadran-proxy` ve
+`internal/proxyguard` paket listesine, `kadran-notify.sh` betik listesine girdi. KIRMIZI
+ölçüldü: `backup.go`'daki `"backup taken"` geçici olarak `"yedek alındı"` yapılınca test
+`backup.go:129: Türkçe metin` ile düştü; geri alındı. Koruma yalnız Türkçe harfe bakıyor;
+`hata`, `sebep` gibi ASCII sözcükleri envanterin yeniden taranması yakaladı (kalan yok).
+
+**Ölçüm.** `go vet ./...`, `go test -count=1 ./...` (hepsi yeşil), `golangci-lint` değişen
+paketlerde 0 bulgu, `check-notify-format.sh` 11 ALARM örneği dahil yeşil, Worker
+`node --test` 20/20, ayrıcalıklı yüzey 2882/2900 (değişmedi: her çeviri kendi satırında).
+Değişen dosyalara dokunan sekiz mutasyon betiği tek tek, başka iş yokken koşuldu: watchdog, authz, alarm, notifycontract, supervisor, proxywatch, backup, domaincheck. Sekizi de "bütün mutasyonlar yakalandı"; UYGULANAMADI ve derlenmeyen mutant 0. Güncellenen beş iğne kendi mutantını uyguladı (iğne eski metne baksaydı UYGULANAMADI düşerdi). `logSeverity` için yeni bir mutant (`critical` yerine depodaki `kritik`) `mutate-notifycontract.sh`'a eklendi ve yakalandı (6/6).
+
+**Canlıya etkisi.** Sunucular bir sonraki sürümle yükseltilince journal İngilizce olur.
+`journalctl -u kadrand | grep` ile eski Türkçe metni arayan bir operatör aramasını
+güncellemeli (CHANGELOG). Cloudflare'daki Worker yeniden `wrangler deploy` edilene kadar
+eski metinle yazar.
+
+### 2. CI: belge değişikliğinde mutasyon atlanır
+
+Mutasyon işi ~45-55 dk sürüyor ve NOTICE/README gibi yalnız belge değişikliklerinde de
+koşuyordu (PR #12: 54 dk). Yeni `changes` işi değişen dosyalara bakar; mutasyon işi
+`needs: changes` ve `if: needs.changes.outputs.code == 'true'` taşır.
+
+- **Varsayılan koşmak.** İzin listesi dar: `*.md` ve `docs/`. Başka her dosya (ci.yml,
+  betikler, deploy/, desktop/, go.mod) işi koşturur.
+- **Belirsizlik atlama sebebi değil.** Fark alınamazsa (yeni dal, sıfır SHA, eksik commit,
+  elle tetikleme) iş koşar.
+- Taban: PR'da `pull_request.base.sha`, push'ta `event.before`; `fetch-depth: 0`.
+- Belgeyi okuyan test (`privategit_guide_test.go`) test işinde zaten koşuyor; belge
+  değişikliği onu kırarsa test işi düşer.
+- Atlanan iş GitHub'da "skipped" görünür; main dalı korumalı değil, gerekli kontrol yok.
+
+Ölçüm: betik gerçek commit çiftleriyle sınandı: yalnız belge (c06f6c6→aa1726b) `false`,
+kod içeren (989eb73→c06f6c6) `true`, sıfır SHA `true`, PR yalnız belge `false`, elle
+tetikleme `true`, bilinmeyen taban `true`. `actionlint` (1.7.7) temiz.
+
+### 3. Docker adres havuzu (K-070'in yükümlülüğü)
+
+K-070 "dockerd'nin adres havuzu `daemon.json` ile sabitlenmeli; yapılmadı" diyordu. Docker'ın
+varsayılan havuzu 172.17–172.31'i (~15 ağ) tüketince 192.168.0.0/16'ya geçer. kadrand
+yalnız 172.16.0.0/12'ye yoklama yapabiliyor (`IPAddressAllow`), aracı yalnız oradan upstream
+kabul ediyor (K-143): o ağdaki uygulama dağıtılamıyordu, hata sağlık kapısında ve aracıda
+dolaylı çıkıyordu.
+
+İki seçenek kullanıcıya sunuldu; kullanıcı ikisini birden seçti (A+B):
+
+- **A — bootstrap `daemon.json` yazar.** `install.sh`'taki `docker_havuzu_sabitle` dosya
+  YOKSA `{"default-address-pools":[{"base":"172.16.0.0/12","size":16}]}` yazar (0644,
+  geçici dosya + `mv`). VARSA dokunmaz: JSON'u kabukta birleştirmek operatörün ayarını
+  bozabilirdi; anahtar yoksa kurulum sonunda uyarır. Kırık bağ da var olan dosya sayılır
+  (hedefine yazılmaz). `default-address-pools` yeniden yüklenebilen ayarlardan değil (Docker
+  belgesindeki reload listesinde yok); dockerd ancak yeniden başlarken okur. Hiç konteyner
+  yoksa (taze sunucu) kurulum dockerd'yi yeniden başlatıp yanıt vermesini bekliyor; varsa
+  çalışan uygulamaları durdurmamak için operatöre bırakıyor ve uyarıyor. `/16` boyutu
+  aracının ağ geçidi kuralıyla (x.y.0.1) aynı varsayım; `/24` seçilmedi.
+- **B — executor alt ağı denetler.** `dockerdrv.NetworkEnsure` ağı oluşturduktan (ya da 409
+  ile var bulduktan) sonra `GET /networks/{ad}` ile IPAM alt ağlarını okur. Her IPv4 alt ağ
+  172.16.0.0/12 içinde ve en az bir IPv4 alt ağ olmalı; değilse hata
+  (`pin dockerd's default-address-pools`). Bu çağrının oluşturduğu ağ silinir; önceden var
+  olan ağa dokunulmaz (üzerinde konteyner olabilir). `/24` gibi küçük alt ağlar KABUL:
+  operatörün kendi havuzu çalışmaya devam etsin (ağ geçidi kuralının /16 varsayımı
+  SECURITY.md'de, K-148). Açık IPAM ile alt ağı executor seçmedi: Docker'ın host rotası
+  çakışma denetimi açık alt ağda çalışmıyor (ör. AWS varsayılan VPC'si 172.31.0.0/16).
+
+**Ayrıcalıklı yüzey 2900 → 2925.** Ölçüm 2882 → 2916 (+34). Küçültme seçenekleri ve neden
+seçilmedikleri `check-exec-surface.sh`'ta yazılı (denetimi kadrand'ye taşımak yüzeyi iki
+tarafa yayardı; yalnız A, operatörün kendi daemon.json'u olan sunucuda sessiz bozulmayı
+geri bırakırdı).
+
+**Ölçüm.**
+- `go test ./internal/dockerdrv/`: havuz dışı alt ağ reddi + silme, var olan ağın
+  korunması, 13 durumlu kural tablosu (havuzun iki ucu, hemen dışı, havuzdan geniş, IPv6,
+  karışık, bozuk). `TestNetworkEnsurePropagatesRealErrors` yalnız oluşturmayı düşürecek
+  biçimde sıkılaştırıldı: alt ağ sorgusu da düşseydi 409 kuralı bozulduğunda yanlış sebeple
+  yeşil kalırdı.
+- `mutate-netpool.sh` (yeni): 8/8 yakalandı (denetim yok, silme yok, var olanı silme,
+  havuzdan geniş, havuz /11, IPv4 yok, bozuk alt ağ atlanıyor, 409 dışı hata yutuluyor).
+- `check-install-sh.sh`'a 8 denetim (yazım bayt bayt, ikinci koşu, operatörün havuzu,
+  havuzsuz dosya, kırık bağ, kontrol grubu). Windows'ta bağ testleri platform yüzünden
+  kırmızı (mevcut bölümler gibi); WSL Ubuntu 24.04'te hepsi yeşil.
+- `mutate-install.sh`'a 4 mutant; WSL'de (root'suz) koşuldu, 4/4 yakalandı.
+- **Ölçülmedi:** taze sunucuda dockerd'nin yeniden başlatılması ve gerçek bir Docker'ın
+  dosyayı okuyup yeni ağı 172.16/12'den vermesi. Canlı sunucularda dosya henüz yok;
+  bir sonraki sürümle bootstrap yazacak, dockerd'nin yeniden başlatılması her sunucu için
+  ayrı onay.

@@ -82,18 +82,18 @@ func TestLogSinkLinesMatchTheNotifyScriptFixtures(t *testing.T) {
 	}{
 		{"kritik açılış, tırnaklı ayrıntı", Event{State: Opened, Alarm: store.Alarm{
 			ID: "backup_failed:kadran.db", Target: "kadran.db", Severity: store.SeverityCritical,
-			Detail: "zamanlı yedek alınamıyor — geri dönüş yolu YOK"}}},
+			Detail: "scheduled backup is failing — there is NO recovery path"}}},
 		{"uyarı açılış", Event{State: Opened, Alarm: store.Alarm{
 			ID: "disk_low:host", Target: "/", Severity: store.SeverityWarning,
-			Detail: "%9 boş, 3.4 GiB / 38 GiB"}}},
+			Detail: "disk 9.0% free (3.4 GiB / 38 GiB)"}}},
 		{"kapanış", Event{State: Closed, Alarm: store.Alarm{ID: "disk_low:host"}}},
 		{"tırmanma", Event{State: Escalated, Alarm: store.Alarm{
-			ID: "disk_low:host", Target: "host", Severity: store.SeverityCritical, Detail: "%3 boş"}}},
+			ID: "disk_low:host", Target: "host", Severity: store.SeverityCritical, Detail: "disk 3.0% free"}}},
 		{"kaçışlı tırnak", Event{State: Opened, Alarm: store.Alarm{
 			ID: "heal_exhausted:web", Target: "web", Severity: store.SeverityCritical,
-			Detail: `"web" 3 kez kurtarılamadı`}}},
+			Detail: `"web" could not be recovered 3 times`}}},
 		{"tırnaksız tek kelime", Event{State: Opened, Alarm: store.Alarm{
-			ID: "disk_low:host", Target: "host", Severity: store.SeverityWarning, Detail: "dolmak"}}},
+			ID: "disk_low:host", Target: "host", Severity: store.SeverityWarning, Detail: "filling"}}},
 	}
 	for _, d := range durumlar {
 		got := sinkCiktisi(t, d.ev)

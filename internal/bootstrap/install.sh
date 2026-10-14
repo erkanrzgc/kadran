@@ -184,6 +184,32 @@ kisitsiz_satir_sayisi() {
         { grep -cvE "^command=\"$2/kadran-connect( -deploy=[a-z0-9,-]+)?\",restrict " || true; }
 }
 
+# docker_havuzu_sabitle <daemon.json> — dockerd'nin yerel adres havuzunu
+# uygulama ağlarının aralığına sabitler (K-070'in yükümlülüğü, K-150).
+#
+# Docker'ın varsayılan havuzu 172.17–172.31'i tüketince (~15 ağ)
+# 192.168.0.0/16'ya geçer. kadrand yalnız 172.16.0.0/12'ye yoklama yapabiliyor
+# ve vekil aracısı yalnız oradan upstream kabul ediyor: o ağdaki uygulama
+# dağıtılamaz. /16 boyutu aracının ağ geçidi kuralıyla (K-143) aynı varsayım.
+#
+# Dosya YOKSA yazar ve `yazildi` basar. VARSA dokunmaz: JSON'u kabukta
+# birleştirmek operatörün ayarını bozabilirdi. Anahtar varsa `var`, yoksa
+# `elle` basar; çağıran uyarır. Bağ (symlink) da var olan dosya sayılır:
+# hedefine yazılmaz.
+docker_havuzu_sabitle() {
+    local f="$1"
+    if [ -e "$f" ] || [ -L "$f" ]; then
+        if grep -q '"default-address-pools"' "$f" 2>/dev/null; then echo var; else echo elle; fi
+        return 0
+    fi
+    install -d -m 0755 "$(dirname "$f")"
+    printf '%s\n' '{' '  "default-address-pools": [' \
+        '    {"base": "172.16.0.0/12", "size": 16}' '  ]' '}' > "$f.kadran-yeni"
+    chmod 0644 "$f.kadran-yeni"
+    mv -f "$f.kadran-yeni" "$f"
+    echo yazildi
+}
+
 # ── Ön koşullar ──────────────────────────────────────────────────────
 
 step "Prerequisites"
@@ -207,6 +233,32 @@ docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
 NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
 say "system OK ($(uname -m), $( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo unknown ))"
+
+# ── Docker adres havuzu (K-070, K-150) ───────────────────────────────
+#
+# Ayar ancak dockerd yeniden başlayınca geçerli (yeniden yüklenebilen
+# ayarlardan değil). Hiç konteyner yoksa (taze sunucu) hemen yeniden
+# başlatılıyor; varsa çalışan uygulamaları durdurmamak için operatöre
+# bırakılıyor. O zamana kadar executor havuz dışına düşen ağı reddediyor.
+step "Docker address pool"
+DOCKER_HAVUZU=""
+DOCKER_HAVUZU="$(docker_havuzu_sabitle /etc/docker/daemon.json)"
+case "$DOCKER_HAVUZU" in
+    yazildi)
+        if [ -z "$(docker ps -aq)" ]; then
+            systemctl restart docker
+            for _ in $(seq 1 30); do docker version >/dev/null 2>&1 && break; sleep 1; done
+            docker version >/dev/null 2>&1 \
+                || die "Docker did not come back after pinning its address pool — systemctl status docker"
+            DOCKER_HAVUZU=gecerli
+            say "pinned to 172.16.0.0/12, /16 per network; dockerd restarted (no containers yet)"
+        else
+            say "pinned to 172.16.0.0/12 in /etc/docker/daemon.json; applies after dockerd restarts"
+        fi ;;
+    var)  say "/etc/docker/daemon.json already sets default-address-pools; left as is"
+          say "its base must be inside 172.16.0.0/12, or new deploys stop" ;;
+    elle) say "/etc/docker/daemon.json exists without default-address-pools; left as is" ;;
+esac
 
 # ── Eski adlı kurulum (panely → kadran, K-136) ───────────────────────
 #
@@ -1041,6 +1093,16 @@ if [ -n "$duz_kopyalar" ]; then
     printf '\n⚠ These migration copies may hold PLAIN values from before the vault, and the\n'
     printf '  daemon can read them. If your sites work, delete them:\n'
     printf '    sudo rm %s\n' $duz_kopyalar
+fi
+
+if [ "$DOCKER_HAVUZU" = yazildi ]; then
+    printf '\n⚠ /etc/docker/daemon.json now pins the address pool for app networks, but dockerd\n'
+    printf '  reads it only on restart. A restart stops running containers briefly; do it in a\n'
+    printf '  maintenance window: sudo systemctl restart docker\n'
+elif [ "$DOCKER_HAVUZU" = elle ]; then
+    printf '\n⚠ /etc/docker/daemon.json does not set default-address-pools. After ~15 app networks\n'
+    printf '  Docker moves to 192.168.0.0/16 and those deploys stop. Add this key, then restart\n'
+    printf '  dockerd: "default-address-pools": [{"base": "172.16.0.0/12", "size": 16}]\n'
 fi
 
 printf '\nInstall complete.\n'

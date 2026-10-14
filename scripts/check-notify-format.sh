@@ -36,33 +36,50 @@ bekle() {
 echo "== Alarm biçimlendirici =="
 
 bekle "kritik açılış, tırnaklı ayrıntı" \
-    'time=2026-09-17T20:15:02.1Z level=ERROR msg=ALARM alarm=backup_failed:kadran.db durum=acildi ciddiyet=kritik hedef=kadran.db ayrinti="zamanlı yedek alınamıyor — geri dönüş yolu YOK"' \
-    $'🔴 KRİTİK — backup_failed:kadran.db\n   zamanlı yedek alınamıyor — geri dönüş yolu YOK'
+    'time=2026-09-17T20:15:02.1Z level=ERROR msg=ALARM alarm=backup_failed:kadran.db state=opened severity=critical target=kadran.db detail="scheduled backup is failing — there is NO recovery path"' \
+    $'🔴 CRITICAL — backup_failed:kadran.db\n   scheduled backup is failing — there is NO recovery path'
 
 bekle "uyarı açılış, hedef kimlikten farklı" \
-    'time=x level=WARN msg=ALARM alarm=disk_low:host durum=acildi ciddiyet=uyari hedef=/ ayrinti="%9 boş, 3.4 GiB / 38 GiB"' \
-    $'🟡 UYARI — disk_low:host (/)\n   %9 boş, 3.4 GiB / 38 GiB'
+    'time=x level=WARN msg=ALARM alarm=disk_low:host state=opened severity=warning target=/ detail="disk 9.0% free (3.4 GiB / 38 GiB)"' \
+    $'🟡 WARNING — disk_low:host (/)\n   disk 9.0% free (3.4 GiB / 38 GiB)'
 
-bekle "kapanış (canlıdan birebir)" \
-    'time=2026-09-17T20:23:03.729Z level=WARN msg=ALARM alarm=disk_low:host durum=kapandi' \
-    '✅ DÜZELDİ — disk_low:host'
+bekle "kapanış" \
+    'time=2026-09-17T20:23:03.729Z level=WARN msg=ALARM alarm=disk_low:host state=closed' \
+    '✅ RESOLVED — disk_low:host'
 
 bekle "tırmanma" \
-    'time=x level=ERROR msg=ALARM alarm=disk_low:host durum=tirmandi ciddiyet=kritik hedef=host ayrinti="%3 boş"' \
-    $'🔴 KÖTÜLEŞTİ — disk_low:host\n   %3 boş'
+    'time=x level=ERROR msg=ALARM alarm=disk_low:host state=escalated severity=critical target=host detail="disk 3.0% free"' \
+    $'🔴 WORSE — disk_low:host\n   disk 3.0% free'
 
 bekle "ayrıntıda kaçışlı tırnak" \
-    'time=x level=ERROR msg=ALARM alarm=heal_exhausted:web durum=acildi ciddiyet=kritik hedef=web ayrinti="\"web\" 3 kez kurtarılamadı"' \
-    $'🔴 KRİTİK — heal_exhausted:web\n   "web" 3 kez kurtarılamadı'
+    'time=x level=ERROR msg=ALARM alarm=heal_exhausted:web state=opened severity=critical target=web detail="\"web\" could not be recovered 3 times"' \
+    $'🔴 CRITICAL — heal_exhausted:web\n   "web" could not be recovered 3 times'
 
 bekle "tırnaksız tek kelimelik ayrıntı" \
-    'time=x level=WARN msg=ALARM alarm=disk_low:host durum=acildi ciddiyet=uyari hedef=host ayrinti=dolmak' \
-    $'🟡 UYARI — disk_low:host\n   dolmak'
+    'time=x level=WARN msg=ALARM alarm=disk_low:host state=opened severity=warning target=host detail=filling' \
+    $'🟡 WARNING — disk_low:host\n   filling'
 
-# Kontrol grubu: tanınmayan durum sessizce "düzeldi" diye okunmamalı.
 bekle "bilinmeyen durum düzeldi SAYILMAZ" \
-    'time=x level=WARN msg=ALARM alarm=disk_low:host durum=yeni_bir_sey' \
-    '❔ yeni_bir_sey — disk_low:host'
+    'time=x level=WARN msg=ALARM alarm=disk_low:host state=something_new' \
+    '❔ something_new — disk_low:host'
+
+# K-150 öncesi satırlar: yükseltmeden önce yazılıp henüz gönderilmemiş
+# alarmlar eski (Türkçe) anahtarlarla gelir. Etiketler yine İngilizce.
+bekle "eski biçim: kritik açılış" \
+    'time=x level=ERROR msg=ALARM alarm=backup_failed:kadran.db durum=acildi ciddiyet=kritik hedef=kadran.db ayrinti="zamanlı yedek alınamıyor"' \
+    $'🔴 CRITICAL — backup_failed:kadran.db\n   zamanlı yedek alınamıyor'
+
+bekle "eski biçim: uyarı açılış" \
+    'time=x level=WARN msg=ALARM alarm=disk_low:host durum=acildi ciddiyet=uyari hedef=/ ayrinti="%9 boş"' \
+    $'🟡 WARNING — disk_low:host (/)\n   %9 boş'
+
+bekle "eski biçim: tırmanma" \
+    'time=x level=ERROR msg=ALARM alarm=disk_low:host durum=tirmandi ciddiyet=kritik hedef=host ayrinti="%3 boş"' \
+    $'🔴 WORSE — disk_low:host\n   %3 boş'
+
+bekle "eski biçim: kapanış" \
+    'time=x level=WARN msg=ALARM alarm=disk_low:host durum=kapandi' \
+    '✅ RESOLVED — disk_low:host'
 
 echo "== Yapılandırma ayrıştırıcı =="
 
@@ -120,9 +137,9 @@ onek_dene() {
     fi
 }
 onek_dene "journal altında notice/err önekli" "8:123" \
-    $'<5>kadran-notify: x\n<3>kadran-notify: HATA: y'
+    $'<5>kadran-notify: x\n<3>kadran-notify: ERROR: y'
 onek_dene "terminalde öneksiz" "" \
-    $'kadran-notify: x\nkadran-notify: HATA: y'
+    $'kadran-notify: x\nkadran-notify: ERROR: y'
 
 echo "== Servis kararı (K-110) =="
 
@@ -201,17 +218,17 @@ satir_dene() {
         fail=1
     fi
 }
-satir_dene "çöktü, geri geldi" '🟠 ÇÖKTÜ — kadrand.service: 1 kez (signal), systemd yeniden başlattı' \
+satir_dene "çöktü, geri geldi" '🟠 CRASHED — kadrand.service: 1 time(s) (signal), systemd restarted it' \
     coktu kadrand.service 1 signal 1
-satir_dene "çöktü, kalkmadı" '🟠 ÇÖKTÜ — kadrand.service: 2 kez (exit-code), şu an ÇALIŞMIYOR' \
+satir_dene "çöktü, kalkmadı" '🟠 CRASHED — kadrand.service: 2 time(s) (exit-code), NOT RUNNING now' \
     coktu kadrand.service 2 exit-code 0
-satir_dene "watchdog öldürdü (K-115)" '🟠 ÇÖKTÜ — kadrand.service: 1 kez (watchdog), systemd yeniden başlattı' \
+satir_dene "watchdog öldürdü (K-115)" '🟠 CRASHED — kadrand.service: 1 time(s) (watchdog), systemd restarted it' \
     coktu kadrand.service 1 watchdog 1
-satir_dene "döngü" '🔴 ÇÖKME DÖNGÜSÜ — kadran-exec.service: son kontrolden beri 26 kez daha (exit-code)' \
+satir_dene "döngü" '🔴 CRASH LOOP — kadran-exec.service: 26 more time(s) since the last check (exit-code)' \
     dongu kadran-exec.service 26 exit-code 1
-satir_dene "çalışmıyor" '🔴 ÇALIŞMIYOR — kadran-caddy.service' calismiyor kadran-caddy.service 0 "" 0
-satir_dene "toparlandı" '✅ TOPARLANDI — kadrand.service: son kontrolden beri çökmedi' duzeldi kadrand.service 0 "" 1
-satir_dene "geri geldi" '✅ YENİDEN ÇALIŞIYOR — kadran-caddy.service' geri_geldi kadran-caddy.service 0 "" 1
+satir_dene "çalışmıyor" '🔴 NOT RUNNING — kadran-caddy.service' calismiyor kadran-caddy.service 0 "" 0
+satir_dene "toparlandı" '✅ RECOVERED — kadrand.service: no crash since the last check' duzeldi kadrand.service 0 "" 1
+satir_dene "geri geldi" '✅ RUNNING AGAIN — kadran-caddy.service' geri_geldi kadran-caddy.service 0 "" 1
 
 echo "== Servis turu, uçtan uca sahte ortamda (K-110) =="
 
@@ -254,17 +271,17 @@ rm -f "$SAHTE_KOK/giden"
 tur_kos "$CEKIRDEK_JSON" 0
 tur_dene "ilk koşu geçmişi GÖNDERMEZ" '[[ ! -e $SAHTE_KOK/giden && -s $STATE_DIRECTORY/servis-imlec ]]'
 tur_kos "$CEKIRDEK_JSON" 0
-tur_dene "çöküş gönderildi" 'grep -q "ÇÖKTÜ — kadrand.service: 1 kez (signal)" $SAHTE_KOK/giden'
+tur_dene "çöküş gönderildi" 'grep -q "CRASHED — kadrand.service: 1 time(s) (signal)" $SAHTE_KOK/giden'
 tur_dene "durum kaydedildi" 'grep -q "^kadrand.service coktu 0$" $STATE_DIRECTORY/servisler'
 cp "$STATE_DIRECTORY/servisler" "$SAHTE_KOK/onceki"; rm -f "$SAHTE_KOK/giden"
 tur_kos "$SAHTE_KOK/bos.json" 1 kadran-caddy.service
 tur_kos "$SAHTE_KOK/bos.json" 1 kadran-caddy.service
 tur_dene "gönderim başarısız → durum İLERLEMEDİ" 'cmp -s $SAHTE_KOK/onceki $STATE_DIRECTORY/servisler'
 tur_kos "$SAHTE_KOK/bos.json" 0 kadran-caddy.service
-tur_dene "tekrar denemede kadrand toparlandı" 'grep -q "TOPARLANDI — kadrand.service" $SAHTE_KOK/giden'
+tur_dene "tekrar denemede kadrand toparlandı" 'grep -q "RECOVERED — kadrand.service" $SAHTE_KOK/giden'
 tur_dene "caddy bir tur kapalı → henüz sessiz" '[[ -s $SAHTE_KOK/giden ]] && ! grep -q "caddy" $SAHTE_KOK/giden'
 tur_kos "$SAHTE_KOK/bos.json" 0 kadran-caddy.service
-tur_dene "iki tur kapalı → ÇALIŞMIYOR" 'grep -q "ÇALIŞMIYOR — kadran-caddy.service" $SAHTE_KOK/giden'
+tur_dene "iki tur kapalı → ÇALIŞMIYOR" 'grep -q "NOT RUNNING — kadran-caddy.service" $SAHTE_KOK/giden'
 rm -f "$SAHTE_KOK/giden"
 tur_kos "$SAHTE_KOK/bos.json" 0 kadran-caddy.service
 tur_dene "kapalı sürüyor → mesaj YOK" '[[ ! -e $SAHTE_KOK/giden ]]'

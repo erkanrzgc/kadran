@@ -194,6 +194,20 @@ mutate_in "$INST" "iki satırlı anahtar dosyası kabul ediliyor" \
 mutate_in "$INST" "CR taşıyan anahtar kabul ediliyor" \
     "s=s.replace(') return 1 ;; esac',') : ;; esac',1)"
 
+echo "== Docker adres havuzu (K-150) =="
+
+mutate_in "$INST" "var olan daemon.json eziliyor" \
+    "s=s.replace('    if [ -e \"\$f\" ] || [ -L \"\$f\" ]; then','    if false; then',1)"
+
+mutate_in "$INST" "kırık bağın hedefine yazılıyor (-L yok)" \
+    "s=s.replace('    if [ -e \"\$f\" ] || [ -L \"\$f\" ]; then','    if [ -e \"\$f\" ]; then',1)"
+
+mutate_in "$INST" "ağ başına /24 yazılıyor (aracının /16 varsayımı)" \
+    "s=s.replace('\"size\": 16}'+chr(39),'\"size\": 24}'+chr(39),1)"
+
+mutate_in "$INST" "havuz 192.168'e sabitleniyor" \
+    "s=s.replace('\"base\": \"172.16.0.0/12\", \"size\": 16}'+chr(39),'\"base\": \"192.168.0.0/16\", \"size\": 16}'+chr(39),1)"
+
 echo
 if [[ "$fail" -ne 0 ]]; then
     echo "En az bir mutasyon yakalanmadı — denetimler iddia ettikleri şeyi korumuyor."

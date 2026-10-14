@@ -374,6 +374,10 @@ func TestUpdateAppAuditRecordsOnlyTheNamedFields(t *testing.T) {
 	}
 	if rec == nil {
 		t.Fatal("app.update zincire hiç yazılmadı")
+		// CI'daki staticcheck (golangci-lint v2.12.2) PR #13'te burada SA5011
+		// bildirdi; aynı sürüm yerelde (önbelleksiz, GOOS=linux da) bildirmedi.
+		// Sebep ölçülmedi. return akışı açık eder.
+		return
 	}
 	if rec.Outcome != audit.OutcomeSuccess {
 		t.Errorf("sonuç = %v", rec.Outcome)

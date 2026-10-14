@@ -199,11 +199,11 @@ contains "kapsam içi dağıtım işleyiciye ulaştı" "build starting" "$out"
 lacks "kapsam içi: yetki reddi yok" "outside this key's scope" "$out"
 lacks "kapsam içi: rol reddi yok" "this key can only deploy" "$out"
 
-contains "ret kadrand günlüğünde" "yetki reddedildi" "$(cat "$LOG")"
-contains "günlükte rol" "rol=deploy" "$(cat "$LOG")"
+contains "ret kadrand günlüğünde" 'msg="authorization denied"' "$(cat "$LOG")"
+contains "günlükte rol" "role=deploy" "$(cat "$LOG")"
 # Hangi anahtarın denediği: parmak izi gerçekten taşınıyor mu (K-134;
 # canlıda 56 kaydın 0'ında yoktu).
-contains "günlükte anahtar parmak izi" "anahtar=SHA256:" "$(cat "$LOG")"
+contains "günlükte anahtar parmak izi" "key=SHA256:" "$(cat "$LOG")"
 
 echo
 echo "==> soket izinleri"

@@ -67,6 +67,9 @@ When you add an invariant, add a mutation for it. The mutant must compile — th
 scripts refuse to count a build failure as "caught", and CI checks that every
 script has that gate.
 
+CI runs the mutation scripts on every change except one that touches only
+documentation (`*.md` and `docs/`).
+
 `buf generate` succeeding does **not** mean `buf lint` will. Style rules —
 for example, a streaming RPC's response message must be named
 `<Rpc>Response` — are only enforced by `buf lint`, and CI runs it.

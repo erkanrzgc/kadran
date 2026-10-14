@@ -11129,12 +11129,11 @@ ve kaldırıldı; License bölümü lisansı ve iki üçüncü taraf dosyasını
 metinleri paketlerde ve uygulamada olduğu için yükümlülük değişmiyor. CONTRIBUTING:
 Apache-2.0 kodu NOTICE ile gelirse kökte yeniden bir NOTICE açılır.
 
-## K-150 — Journal, alarm ve Telegram metni İngilizce; CI belge değişikliğinde mutasyonu atlar (2026-10-14)
+## K-150 — Journal ve alarm metni İngilizce, Docker adres havuzu sabit, CI belgede mutasyonu atlar (2026-10-14)
 
-Kullanıcı 14 Ekim'de açık işlerden "hepsini yap" dedi. Bu kayıt ikisini kapatıyor:
-K-141'in 5. aşaması ve CI'daki mutasyon süresi. Adres havuzu (K-070 yükümlülüğü)
-kullanıcı kararını bekliyor; masaüstü onay/iptal akışının elle denemesi kullanıcıyla
-yapılacak.
+Kullanıcı 14 Ekim'de açık işlerden "hepsini yap" dedi. Bu kayıt üçünü kapatıyor:
+K-141'in 5. aşaması, CI'daki mutasyon süresi ve K-070'in adres havuzu yükümlülüğü.
+Masaüstü onay/iptal akışının elle denemesi kullanıcıyla yapılacak.
 
 ### 1. Journal, alarm ve Telegram metni (K-141, 5. aşama)
 
@@ -11216,3 +11215,53 @@ koşuyordu (PR #12: 54 dk). Yeni `changes` işi değişen dosyalara bakar; mutas
 Ölçüm: betik gerçek commit çiftleriyle sınandı: yalnız belge (c06f6c6→aa1726b) `false`,
 kod içeren (989eb73→c06f6c6) `true`, sıfır SHA `true`, PR yalnız belge `false`, elle
 tetikleme `true`, bilinmeyen taban `true`. `actionlint` (1.7.7) temiz.
+
+### 3. Docker adres havuzu (K-070'in yükümlülüğü)
+
+K-070 "dockerd'nin adres havuzu `daemon.json` ile sabitlenmeli; yapılmadı" diyordu. Docker'ın
+varsayılan havuzu 172.17–172.31'i (~15 ağ) tüketince 192.168.0.0/16'ya geçer. kadrand
+yalnız 172.16.0.0/12'ye yoklama yapabiliyor (`IPAddressAllow`), aracı yalnız oradan upstream
+kabul ediyor (K-143): o ağdaki uygulama dağıtılamıyordu, hata sağlık kapısında ve aracıda
+dolaylı çıkıyordu.
+
+İki seçenek kullanıcıya sunuldu; kullanıcı ikisini birden seçti (A+B):
+
+- **A — bootstrap `daemon.json` yazar.** `install.sh`'taki `docker_havuzu_sabitle` dosya
+  YOKSA `{"default-address-pools":[{"base":"172.16.0.0/12","size":16}]}` yazar (0644,
+  geçici dosya + `mv`). VARSA dokunmaz: JSON'u kabukta birleştirmek operatörün ayarını
+  bozabilirdi; anahtar yoksa kurulum sonunda uyarır. Kırık bağ da var olan dosya sayılır
+  (hedefine yazılmaz). `default-address-pools` yeniden yüklenebilen ayarlardan değil (Docker
+  belgesindeki reload listesinde yok); dockerd ancak yeniden başlarken okur. Hiç konteyner
+  yoksa (taze sunucu) kurulum dockerd'yi yeniden başlatıp yanıt vermesini bekliyor; varsa
+  çalışan uygulamaları durdurmamak için operatöre bırakıyor ve uyarıyor. `/16` boyutu
+  aracının ağ geçidi kuralıyla (x.y.0.1) aynı varsayım; `/24` seçilmedi.
+- **B — executor alt ağı denetler.** `dockerdrv.NetworkEnsure` ağı oluşturduktan (ya da 409
+  ile var bulduktan) sonra `GET /networks/{ad}` ile IPAM alt ağlarını okur. Her IPv4 alt ağ
+  172.16.0.0/12 içinde ve en az bir IPv4 alt ağ olmalı; değilse hata
+  (`pin dockerd's default-address-pools`). Bu çağrının oluşturduğu ağ silinir; önceden var
+  olan ağa dokunulmaz (üzerinde konteyner olabilir). `/24` gibi küçük alt ağlar KABUL:
+  operatörün kendi havuzu çalışmaya devam etsin (ağ geçidi kuralının /16 varsayımı
+  SECURITY.md'de, K-148). Açık IPAM ile alt ağı executor seçmedi: Docker'ın host rotası
+  çakışma denetimi açık alt ağda çalışmıyor (ör. AWS varsayılan VPC'si 172.31.0.0/16).
+
+**Ayrıcalıklı yüzey 2900 → 2925.** Ölçüm 2882 → 2916 (+34). Küçültme seçenekleri ve neden
+seçilmedikleri `check-exec-surface.sh`'ta yazılı (denetimi kadrand'ye taşımak yüzeyi iki
+tarafa yayardı; yalnız A, operatörün kendi daemon.json'u olan sunucuda sessiz bozulmayı
+geri bırakırdı).
+
+**Ölçüm.**
+- `go test ./internal/dockerdrv/`: havuz dışı alt ağ reddi + silme, var olan ağın
+  korunması, 13 durumlu kural tablosu (havuzun iki ucu, hemen dışı, havuzdan geniş, IPv6,
+  karışık, bozuk). `TestNetworkEnsurePropagatesRealErrors` yalnız oluşturmayı düşürecek
+  biçimde sıkılaştırıldı: alt ağ sorgusu da düşseydi 409 kuralı bozulduğunda yanlış sebeple
+  yeşil kalırdı.
+- `mutate-netpool.sh` (yeni): 8/8 yakalandı (denetim yok, silme yok, var olanı silme,
+  havuzdan geniş, havuz /11, IPv4 yok, bozuk alt ağ atlanıyor, 409 dışı hata yutuluyor).
+- `check-install-sh.sh`'a 8 denetim (yazım bayt bayt, ikinci koşu, operatörün havuzu,
+  havuzsuz dosya, kırık bağ, kontrol grubu). Windows'ta bağ testleri platform yüzünden
+  kırmızı (mevcut bölümler gibi); WSL Ubuntu 24.04'te hepsi yeşil.
+- `mutate-install.sh`'a 4 mutant; WSL'de (root'suz) koşuldu, 4/4 yakalandı.
+- **Ölçülmedi:** taze sunucuda dockerd'nin yeniden başlatılması ve gerçek bir Docker'ın
+  dosyayı okuyup yeni ağı 172.16/12'den vermesi. Canlı sunucularda dosya henüz yok;
+  bir sonraki sürümle bootstrap yazacak, dockerd'nin yeniden başlatılması her sunucu için
+  ayrı onay.

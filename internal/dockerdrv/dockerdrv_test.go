@@ -31,6 +31,13 @@ type fakeDocker struct {
 	// imageUser, /images/<ad>/json'ın bildireceği Config.User.
 	// Boş dize "USER yok" demektir ve root anlamına gelir.
 	imageUser string
+	// networkCreateStatus, yalnız `POST /networks/create`'in kodu (0: 201).
+	// status bütün isteklere uygulanıyor; ağ oluşturma 409 dönerken alt
+	// ağ sorgusunun yanıt vermesi gerekiyor (K-150).
+	networkCreateStatus int
+	// networkSubnets, `GET /networks/<ad>`'ın bildireceği IPAM alt ağları.
+	// nil ise gerçek bir varsayılan: 172.18.0.0/16.
+	networkSubnets []string
 }
 
 type recorded struct {
@@ -57,6 +64,23 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 		if f.status != 0 {
 			w.WriteHeader(f.status)
 			_, _ = w.Write([]byte(`{"message":"sahte hata"}`))
+			return
+		}
+		if f.networkCreateStatus != 0 && strings.HasSuffix(r.URL.Path, "/networks/create") {
+			w.WriteHeader(f.networkCreateStatus)
+			_, _ = w.Write([]byte(`{"message":"sahte hata"}`))
+			return
+		}
+		if r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/networks/") {
+			subnets := f.networkSubnets
+			if subnets == nil {
+				subnets = []string{"172.18.0.0/16"}
+			}
+			cfg := make([]map[string]string, 0, len(subnets))
+			for _, s := range subnets {
+				cfg = append(cfg, map[string]string{"Subnet": s})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"IPAM": map[string]any{"Config": cfg}})
 			return
 		}
 		// Uzlaşma çağrısı: gerçek bir daemon gibi aralık bildir.
@@ -648,7 +672,7 @@ func TestRemoveKeepsVolumes(t *testing.T) {
 // sayılmadığını doğrular ("ensure" semantiği).
 func TestNetworkEnsureTreatsConflictAsSuccess(t *testing.T) {
 	f := newFakeDocker(t)
-	f.status = http.StatusConflict
+	f.networkCreateStatus = http.StatusConflict
 	c := f.client("/var/lib/kadran/volumes")
 
 	name, err := c.NetworkEnsure(context.Background(), "blog")
@@ -667,11 +691,91 @@ func TestNetworkEnsureTreatsConflictAsSuccess(t *testing.T) {
 // o gevşemenin diğer hataları da kapsamadığını gösteriyor.
 func TestNetworkEnsurePropagatesRealErrors(t *testing.T) {
 	f := newFakeDocker(t)
-	f.status = http.StatusInternalServerError
+	// Yalnız oluşturma düşüyor: alt ağ sorgusu da düşseydi, 409 kuralı
+	// bozulduğunda hata yine dönerdi ve test yanlış sebeple yeşil kalırdı.
+	f.networkCreateStatus = http.StatusInternalServerError
 	c := f.client("/var/lib/kadran/volumes")
 
 	if _, err := c.NetworkEnsure(context.Background(), "blog"); err == nil {
 		t.Fatal("500 yutuldu")
+	}
+}
+
+// ağSilindiMi, sürücünün ağı silmek için istek gönderip göndermediği.
+func agSilindiMi(f *fakeDocker) bool {
+	for _, r := range f.requests {
+		if r.Method == http.MethodDelete && strings.Contains(r.Path, "/networks/kadran-blog") {
+			return true
+		}
+	}
+	return false
+}
+
+// TestNetworkEnsureRejectsSubnetOutsidePool: Docker'ın varsayılan havuzu
+// 172.x tükenince 192.168'e geçer (K-070). O ağdaki uygulamaya kadrand
+// yoklama yapamaz, aracı rotasını reddeder; dağıtım burada, açık bir
+// hatayla durmalı ve bu çağrının oluşturduğu ağ geride kalmamalı (K-150).
+func TestNetworkEnsureRejectsSubnetOutsidePool(t *testing.T) {
+	f := newFakeDocker(t)
+	f.networkSubnets = []string{"192.168.0.0/20"}
+	c := f.client("/var/lib/kadran/volumes")
+
+	_, err := c.NetworkEnsure(context.Background(), "blog")
+	if err == nil || !strings.Contains(err.Error(), "default-address-pools") {
+		t.Fatalf("havuz dışı alt ağ kabul edildi ya da hata çareyi söylemiyor: %v", err)
+	}
+	if !agSilindiMi(f) {
+		t.Error("bu çağrının oluşturduğu ağ silinmedi — bir sonraki dağıtım onu 409 ile 'var' sayardı")
+	}
+}
+
+// TestNetworkEnsureKeepsExistingNetworkOnBadSubnet: önceden var olan ağın
+// üzerinde konteyner olabilir; reddedilir ama SİLİNMEZ.
+func TestNetworkEnsureKeepsExistingNetworkOnBadSubnet(t *testing.T) {
+	f := newFakeDocker(t)
+	f.networkCreateStatus = http.StatusConflict
+	f.networkSubnets = []string{"192.168.16.0/20"}
+	c := f.client("/var/lib/kadran/volumes")
+
+	if _, err := c.NetworkEnsure(context.Background(), "blog"); err == nil {
+		t.Fatal("var olan havuz dışı ağ kabul edildi")
+	}
+	if agSilindiMi(f) {
+		t.Error("var olan ağ silindi — üzerindeki konteynerler ağsız kalırdı")
+	}
+}
+
+// TestNetworkEnsureSubnetRule, alt ağ kuralının iki yönünü de ölçer:
+// havuz içindekiler geçer (kontrol grubu), sınırın hemen dışı ve bozuk
+// yanıt düşer.
+func TestNetworkEnsureSubnetRule(t *testing.T) {
+	durumlar := []struct {
+		ad      string
+		subnets []string
+		gecer   bool
+	}{
+		{"varsayılan /16", []string{"172.18.0.0/16"}, true},
+		{"havuzun ilk bloğu", []string{"172.16.0.0/16"}, true},
+		{"havuzun son bloğu", []string{"172.31.0.0/16"}, true},
+		{"operatörün /24 havuzu", []string{"172.20.5.0/24"}, true},
+		{"IPv6 yok sayılır", []string{"172.19.0.0/16", "fd00:1::/64"}, true},
+		{"havuzun hemen üstü", []string{"172.32.0.0/16"}, false},
+		{"havuzun hemen altı", []string{"172.15.0.0/16"}, false},
+		{"havuzdan geniş", []string{"172.16.0.0/11"}, false},
+		{"biri içeride biri dışarıda", []string{"172.18.0.0/16", "10.0.0.0/16"}, false},
+		{"biri içeride biri bozuk", []string{"172.18.0.0/16", "bozuk"}, false},
+		{"yalnız IPv6", []string{"fd00:1::/64"}, false},
+		{"alt ağ yok", []string{}, false},
+		{"ayrıştırılamayan", []string{"bozuk"}, false},
+	}
+	for _, d := range durumlar {
+		f := newFakeDocker(t)
+		f.networkSubnets = d.subnets
+		c := f.client("/var/lib/kadran/volumes")
+		_, err := c.NetworkEnsure(context.Background(), "blog")
+		if (err == nil) != d.gecer {
+			t.Errorf("%s %v: hata = %v, geçmesi bekleniyordu: %v", d.ad, d.subnets, err, d.gecer)
+		}
 	}
 }
 

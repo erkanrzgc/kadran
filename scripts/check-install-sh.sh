@@ -17,7 +17,7 @@ dene() {
 
 FN="$(mktemp)"
 trap 'rm -f "$FN"' EXIT
-FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi)
+FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle)
 for f in "${FONKS[@]}"; do
     sed -n "/^$f() {/,/^}/p" internal/bootstrap/install.sh >> "$FN"
 done
@@ -228,6 +228,37 @@ dene "boş dosya → 0 ve kurulum DURMAZ" \
 # Kontrol grubu: eski denetim kirli dosyayı GEÇİRİYORDU.
 dene "KONTROL: eski denetim kısıtsız satırı geçirirdi" \
     "grep -q 'command=\"' '$D/kirli'"
+
+echo
+echo "== docker_havuzu_sabitle: dockerd adres havuzu (K-150) =="
+H="$(mktemp -d)"
+trap 'rm -f "$FN"; rm -rf "$D" "$H"' EXIT
+mkdir -p "$H/var" "$H/elle" "$H/bag"
+printf '%s\n' '{"default-address-pools":[{"base":"10.10.0.0/16","size":24}]}' > "$H/var/daemon.json"
+printf '%s\n' '{"log-driver":"journald"}' > "$H/elle/daemon.json"
+cp "$H/var/daemon.json" "$H/var/once"; cp "$H/elle/daemon.json" "$H/elle/once"
+ln -s "$H/yok/hedef.json" "$H/bag/daemon.json"
+dene "dosya yoksa dizin dahil yazılıyor, sonuç 'yazildi'" \
+    "$(ys "[ \"\$(docker_havuzu_sabitle '$H/yeni/daemon.json')\" = yazildi ]")"
+printf '{
+  "default-address-pools": [
+    {"base": "172.16.0.0/12", "size": 16}
+  ]
+}
+' > "$H/beklenen.json"
+dene "yazılan dosya: 172.16.0.0/12, ağ başına /16 (bayt bayt)" "cmp -s '$H/yeni/daemon.json' '$H/beklenen.json'"
+dene "geçici dosya geride kalmıyor" "[ ! -e '$H/yeni/daemon.json.kadran-yeni' ]"
+dene "ikinci koşu 'var' der ve dosyaya dokunmaz" \
+    "$(ys "cp '$H/yeni/daemon.json' '$H/yeni/once'; [ \"\$(docker_havuzu_sabitle '$H/yeni/daemon.json')\" = var ]; cmp -s '$H/yeni/daemon.json' '$H/yeni/once'")"
+dene "operatörün havuzu 'var' ve DEĞİŞMİYOR" \
+    "$(ys "[ \"\$(docker_havuzu_sabitle '$H/var/daemon.json')\" = var ]; cmp -s '$H/var/daemon.json' '$H/var/once'")"
+dene "havuzsuz daemon.json 'elle' ve DEĞİŞMİYOR" \
+    "$(ys "[ \"\$(docker_havuzu_sabitle '$H/elle/daemon.json')\" = elle ]; cmp -s '$H/elle/daemon.json' '$H/elle/once'")"
+dene "kırık bağ var sayılıyor, hedefine YAZILMIYOR" \
+    "$(ys "[ \"\$(docker_havuzu_sabitle '$H/bag/daemon.json')\" = elle ]; [ -L '$H/bag/daemon.json' ]; [ ! -e '$H/yok/hedef.json' ]")"
+# Kontrol grubu: yalnız `-e` bakan bir denetim kırık bağı "yok" sayar ve
+# bağın hedefine yazardı; `-L` bu yüzden var.
+dene "KONTROL: kırık bağ -e ile görünmez, -L ile görünür"     "[ ! -e '$H/bag/daemon.json' ] && [ -L '$H/bag/daemon.json' ]"
 
 echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }

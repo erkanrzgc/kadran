@@ -7,6 +7,15 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ### Changed
 
+- **Docker's address pool is pinned (K-150).** When `/etc/docker/daemon.json` does not exist,
+  `kadran bootstrap` writes it with `default-address-pools` set to `172.16.0.0/12`, `/16` per
+  network. dockerd reads it only on restart: on a server with no containers bootstrap
+  restarts dockerd; otherwise it warns and leaves the restart to you, because running
+  containers stop briefly. An existing `daemon.json` is never changed. The executor also
+  checks each app network's subnet and stops the deploy when it falls outside
+  `172.16.0.0/12` (Docker's default pool moves to `192.168.0.0/16` after about 15 networks).
+  Before, such a deploy failed later on the health probe and the proxy. See the
+  [operations guide](docs/guides/operations.md#docker-adres-havuzu).
 - **Server journal, alarm and Telegram texts are English (K-150).** This covers kadrand's and
   kadran-exec's log messages and field names, the systemd status line, alarm details, the
   alarm sender's Telegram messages and the heartbeat Worker's messages. If you search the

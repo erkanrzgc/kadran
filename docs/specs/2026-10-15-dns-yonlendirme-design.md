@@ -47,6 +47,7 @@ Yanlış DNS, firma tanınıyor (`app update -domain` hatası ve `domain check` 
   At Vercel: vercel dns add erkanrzgc.dev @ A 46.225.95.35
              or Dashboard → Domains → erkanrzgc.dev → DNS Records → Add
   If the domain is assigned to a Vercel project, remove it from the project as well.
+  Guide: <Vercel'in resmi DNS kaydı yardım sayfası>
 ```
 
 Sunucu kaydı eklenmiş ama eski kayıt da duruyor (bugün bu GEÇİYOR, artık durur):
@@ -92,7 +93,7 @@ basar. Sunucu tarafı değişmiyor; protokol 3 kalır.
 | Dosya | Görev |
 |---|---|
 | `zone.go` | Adın bölgesini bulur: adın kendisinden başlayıp üst etiketlere NS sorgusuyla çıkar (`net.Resolver.LookupNS`). İlk NS bulunan ad bölgedir. Kaydın adını hesaplar: bölgenin kendisi → `@`, değilse bölgeye göre sol kısım (`kadran`). |
-| `providers.go` | NS son eki → firma tablosu. Her girdide: ad, panelde nereye gidileceği, varsa CLI komutu, firmaya özel uyarılar. NS'ler iki farklı firmaya bölünmüşse ya da hiçbiri eşleşmezse genel tarif. |
+| `providers.go` | NS son eki → firma tablosu (~50 firma, aşağıda). Her girdide: ad, panel yolu, varsa CLI komutu, firmaya özel uyarı, resmi yardım sayfası. NS'ler iki farklı firmaya bölünmüşse ya da hiçbiri eşleşmezse genel tarif. |
 | `authoritative.go` | Bölgenin NS'lerinin **hepsine** doğrudan A/AAAA sorar (`golang.org/x/net/dns/dnsmessage`, UDP; kesilirse TCP). Cevap ancak AA (yetkili) bayrağı taşıyorsa sayılır: bayraksız cevap, 53. portu araya giren bir ISS önbelleğinden gelmiş olabilir (Türk ISS'lerinde yaygın) ve "yetkili ulaşılamadı" sayılır. Cevabı ve TTL'yi döndürür. `x/net` zaten dolaylı bağımlılık; yeni modül yok. |
 | `cloudflare.go` | Cloudflare'in yayımladığı IPv4/IPv6 aralıkları (sabit liste, kaynağı yorumda). A/AAAA bu aralıktaysa NS'ye göre ya "proxied" ya da "Cloudflare'de barınan sayfa". |
 | `domaincheck.go` | `Check` yukarıdakileri birleştirir; `Report`'a alanlar eklenir: `Zone`, `NameServers`, `Provider`, `RecordName`, `Authoritative` (adresler + TTL), `CNAME`, `Proxied`, `Fix` (eklenecek ve silinecek kayıtlar). |
@@ -130,33 +131,103 @@ değişikliğinde koşuyor. Tüm DNS aşaması en çok 10 sn sürer; NS sorgular
 3 sn. Bütçe aşılırsa sessizce kural 4'e düşülür (bugünkü davranış), komut takılmaz. NS'nin
 IPv4 adresi önce denenir; yalnız IPv4'lü ağda IPv6 adresinde beklenmez.
 
-### Firma tablosu (ilk sürüm)
+### Firma tablosu
 
-NS son ekleri 15 Ekim'de herkese açık DNS'te doğrulandı. IONOS kalıbı ve Squarespace'in
-yeni domainlerde de Google NS'lerini kullandığı uygulamada yeniden doğrulanacak.
+Kullanıcı isteği (15 Ekim): "major platformların çoğu olmalı". Tablo dört grupta ~50 firma.
+Domain çoğu zaman alındığı firmanın DNS'inde kalıyor. NS başka yere taşındıysa (ör. Namecheap'ten
+alınıp Cloudflare'e bağlanmış) tarif DNS'in olduğu yeri söyler, çünkü kayıt orada değişir.
+
+Her girdide: ad, NS son ekleri, panel yolu (tek satır), varsa CLI komutu, firmaya özel uyarı ve
+firmanın **resmi yardım sayfası** (`Guide: <url>` olarak basılır). Panel menüleri değişse de
+kullanıcı doğru sayfaya gider.
+
+Doğrulama (15 Ekim): aşağıdaki NS adlarının hepsi herkese açık DNS'te çözülüyor. Uygulamada her
+girdi için ayrıca (a) firmanın belgelerinde bu NS'nin müşteri varsayılanı olduğu, (b) yardım
+sayfası bağlantısının açıldığı doğrulanır. Doğrulanamayan girdi tabloya girmez. Shopify,
+Radore, Vargonen ve NameBright'ın varsayılan NS'leri doğrulanamadığı için şimdilik dışarıda.
+
+Eşleşme etiket sınırında yapılır: NS ya son ekin kendisidir ya da `.` + son ek ile biter
+(`he.net`, `ns1.he.net`'i tutar; `ns.the.net`'i tutmaz).
+
+**Domain firmaları**
 
 | Firma | NS son eki | Not |
 |---|---|---|
 | Vercel | `vercel-dns.com` | `vercel dns add <bölge> <ad> A <ip>`; domain bir projeye bağlıysa oradan da kaldır; `*` joker kaydı varsayılan |
 | Cloudflare | `ns.cloudflare.com` | Proxy status: DNS only |
+| GoDaddy | `domaincontrol.com` | "Parked" A kaydını değiştir |
 | Namecheap | `registrar-servers.com` | Advanced DNS; "URL Redirect Record" / park kaydını sil |
-| GoDaddy | `domaincontrol.com` | DNS → Records; "Parked" A kaydını değiştir |
-| Porkbun | `porkbun.com` | DNS Records; varsayılan ALIAS/CNAME park kayıtlarını sil |
-| Google Cloud DNS / Squarespace | `googledomains.com` | Google Domains'ten Squarespace'e geçen domainler bu NS'lerde |
-| AWS Route 53 | `awsdns-*` (`.com/.net/.org/.co.uk`) | Hosted zone → Create record |
-| Hostinger | `dns-parking.com` | DNS / Nameservers → park kaydını sil |
-| Hetzner DNS | `ns.hetzner.com` | DNS Console |
+| Network Solutions | `worldnic.com` | |
+| Register.com | `register.com` | |
+| Domain.com | `domain.com` | |
+| Porkbun | `porkbun.com` | varsayılan ALIAS/CNAME park kayıtlarını sil |
+| Squarespace / Google | `googledomains.com` | Google Domains'ten geçen domainler; Squarespace'in yeni domainleri uygulamada doğrulanacak |
+| Name.com | `name.com` | |
+| Hover | `hover.com` | |
+| Dynadot | `dyna-ns.net` | |
+| NameSilo | `dnsowl.com` | |
+| Spaceship | `spaceship.net` | |
+| Epik | `epik.com` | |
+| Gandi | `gandi.net` | |
+| OVHcloud | `ovh.net`, `ovh.ca` | |
+| IONOS | `ui-dns.com`, `ui-dns.de`, `ui-dns.org`, `ui-dns.biz` | |
+| Strato | `rzone.de` | |
+| one.com | `one.com` | |
+| Wix | `wixdns.net` | |
+| Reg.ru | `reg.ru` | |
+| Alibaba Cloud | `hichina.com` | |
+| Tencent DNSPod | `dnspod.net` | |
+
+**Hosting firmaları** (domain hosting paketiyle alınınca NS onlarda kalıyor)
+
+| Firma | NS son eki | Not |
+|---|---|---|
+| Hostinger | `dns-parking.com`, `hostinger.com` | park kaydını sil |
+| Bluehost | `bluehost.com` | |
+| HostGator | `hostgator.com` | |
+| DreamHost | `dreamhost.com` | |
+| SiteGround | `siteground.net` | |
+| InMotion | `inmotionhosting.com` | |
+| A2 Hosting | `a2hosting.com` | |
+| Namecheap Hosting | `namecheaphosting.com` | cPanel → Zone Editor |
+
+**Bulut ve DNS servisleri**
+
+| Firma | NS son eki | Not |
+|---|---|---|
+| AWS Route 53 | `awsdns-NN.com/.net/.org/.co.uk` | Hosted zone → Create record |
+| Azure DNS | `azure-dns.com/.net/.org/.info` | |
+| Google Cloud DNS | `googledomains.com` | Squarespace satırıyla aynı NS; ikisi birlikte adlandırılır |
 | DigitalOcean | `digitalocean.com` | Networking → Domains |
-| OVH | `ovh.net` | DNS zone |
-| Name.com | `name.com` | Manage DNS Records |
-| Gandi | `gandi.net` | DNS Records |
-| IONOS | `ui-dns.*` | DNS ayarları |
-| Wix | `wixdns.net` | Domains → Manage DNS Records |
+| Linode / Akamai | `linode.com` | |
+| Vultr | `vultr.com` | |
+| Hetzner | `ns.hetzner.com`, `first-ns.de`, `second-ns.de`, `second-ns.com` | DNS Console; eski Robot NS'leri de |
+| Netlify / NS1 | `nsone.net` | iki servis aynı NS'yi kullanıyor; ikisi birlikte adlandırılır |
+| Bunny DNS | `bunny.net` | |
+| ClouDNS | `cloudns.net` | |
+| DNSimple | `dnsimple.com` | |
+| DNS Made Easy | `dnsmadeeasy.com` | |
+| easyDNS | `easydns.com` | |
+| Hurricane Electric | `he.net` | |
+| FreeDNS (afraid.org) | `afraid.org` | |
+
+**Türkiye**
+
+| Firma | NS son eki | Not |
+|---|---|---|
 | Natro | `natrohost.com` | DNS Yönetimi |
 | İsimtescil | `isimtescil.net` | DNS Yönetimi |
 | Turhost | `turhost.com` | DNS Yönetimi |
+| Güzel Hosting | `guzelhosting.com` | |
+| Turkticaret.net | `turkticaret.net` | |
+| Hosting.com.tr | `hosting.com.tr` | |
+| Markum | `markum.net` | |
 
-Firma adımları kısa tutulur (2–3 satır); ayrıntı `docs/guides/domains.md`'de.
+Tanınmayan her NS genel tarife düşer: "your DNS host's control panel → DNS / Zone editor",
+NS adları ve eklenecek kayıt. Tablo veri olarak tutulur (`providers.go`); yeni firma eklemek
+tek satır ve bir test satırıdır.
+
+Firma adımları kısa tutulur (1–2 satır + `Guide:` bağlantısı); ayrıntı `docs/guides/domains.md`'de.
 
 ### `-wait`
 
@@ -181,7 +252,7 @@ Firma adımları kısa tutulur (2–3 satır); ayrıntı `docs/guides/domains.md
 
 ## Test
 
-- `providers_test.go`: her NS son eki için tablo testi; büyük/küçük harf ve sondaki nokta;
+- `providers_test.go`: tablodaki her NS son eki için test (tablodan üretilir, yeni girdi testsiz kalamaz); her girdinin yardım bağlantısı `https://` ile başlar; büyük/küçük harf ve sondaki nokta;
   iki firmaya bölünmüş NS → genel tarif; benzer ama farklı son ek (`notvercel-dns.com.evil`)
   eşleşmez.
 - `zone_test.go`: sahte çözümleyiciyle `kadran.erkanrzgc.dev` → bölge `erkanrzgc.dev`, kayıt

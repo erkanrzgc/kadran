@@ -70,11 +70,13 @@ func TestCLIMessagesAreEnglish(t *testing.T) {
 }
 
 // serverPackages, sunucu tarafı paketler (K-141, 3. aşama). Buradaki hata
-// metni gRPC ile olduğu gibi CLI'a dönüyor (appError → err.Error()).
+// metni gRPC ile olduğu gibi CLI'a dönüyor (appError → err.Error()); journal
+// ve alarm metni de (K-150) aynı paketlerde.
 var serverPackages = []string{
 	"../../cmd/kadrand",
 	"../../cmd/kadran-connect",
 	"../../cmd/kadran-exec",
+	"../../cmd/kadran-proxy",
 	"../../cmd/kadran-vault",
 	"../../internal/alarm",
 	"../../internal/api",
@@ -90,6 +92,7 @@ var serverPackages = []string{
 	"../../internal/pbconv",
 	"../../internal/peercred",
 	"../../internal/proxydrv",
+	"../../internal/proxyguard",
 	"../../internal/sdnotify",
 	"../../internal/sockets",
 	"../../internal/sshenv",
@@ -99,58 +102,10 @@ var serverPackages = []string{
 	"../../internal/vault/vaulttest",
 }
 
-// journalOnlyLiterals, journal'a ya da alarma giden ama slog/Detail/
-// sdnotify kalıbına uymayan dizeler: 5. aşamada (journal, alarm, Telegram;
-// K-108/K-114 sözleşmesi) karara bağlanacak. Dosya + dize sabiti.
-var journalOnlyLiterals = map[string]bool{
-	// döngü adı: watchdog günlüğünde ve e2e-watchdog beklentisinde
-	`cmd/kadrand/main.go "gözetmen"`: true,
-	// açılış uzlaştırmasının sonucu: alarm ayrıntısına yazılıyor
-	`cmd/kadrand/main.go "ters vekil uzlaştırılamadı: "`: true,
-	// "executor hazır" günlük satırının alan değeri
-	`cmd/kadran-exec/main.go "YOK (kısıt uygulanmıyor)"`: true,
-}
-
-// isJournalOnly, dize sabitinin yalnız journal'a/alarma gittiğini söyler:
-// bir slog çağrısının argümanı, sdnotify.Status'un argümanı ya da bir
-// store.Alarm'ın Detail alanı.
-func isJournalOnly(stack []ast.Node) bool {
-	for i := len(stack) - 1; i >= 0; i-- {
-		switch n := stack[i].(type) {
-		case *ast.CallExpr:
-			sel, ok := n.Fun.(*ast.SelectorExpr)
-			if !ok {
-				continue
-			}
-			pkg, ok := sel.X.(*ast.Ident)
-			if ok && (pkg.Name == "slog" || pkg.Name == "sdnotify" && sel.Sel.Name == "Status") {
-				return true
-			}
-		case *ast.KeyValueExpr:
-			key, ok := n.Key.(*ast.Ident)
-			if !ok || key.Name != "Detail" || i == 0 {
-				continue
-			}
-			if lit, ok := stack[i-1].(*ast.CompositeLit); ok && isStoreAlarm(lit.Type) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func isStoreAlarm(t ast.Expr) bool {
-	sel, ok := t.(*ast.SelectorExpr)
-	if !ok {
-		return false
-	}
-	pkg, ok := sel.X.(*ast.Ident)
-	return ok && pkg.Name == "store" && sel.Sel.Name == "Alarm"
-}
-
 // TestServerErrorsAreEnglish: sunucunun CLI'a dönen metni (hata değerleri,
-// yanıt ayrıntıları, ikililerin -h metni) İngilizce (K-141, 3. aşama).
-// journal ve alarm metni 5. aşamada; isJournalOnly onları ayırıyor.
+// yanıt ayrıntıları, ikililerin -h metni; K-141, 3. aşama) ve journal ile
+// alarm metni (slog iletileri ve alanları, sdnotify durumu, alarm ayrıntısı;
+// K-150) İngilizce. İstisna listesi yok.
 func TestServerErrorsAreEnglish(t *testing.T) {
 	fset := token.NewFileSet()
 	files, literals := 0, 0
@@ -170,21 +125,13 @@ func TestServerErrorsAreEnglish(t *testing.T) {
 				t.Fatalf("%s ayrıştırılamadı: %v", path, err)
 			}
 			files++
-			rel := filepath.ToSlash(strings.TrimPrefix(filepath.ToSlash(path), "../../"))
-			var stack []ast.Node
 			ast.Inspect(f, func(n ast.Node) bool {
-				if n == nil {
-					stack = stack[:len(stack)-1]
-					return true
-				}
-				stack = append(stack, n)
 				lit, ok := n.(*ast.BasicLit)
 				if !ok || lit.Kind != token.STRING {
 					return true
 				}
 				literals++
-				if !strings.ContainsAny(lit.Value, turkishLetters) || isJournalOnly(stack) ||
-					journalOnlyLiterals[rel+" "+lit.Value] {
+				if !strings.ContainsAny(lit.Value, turkishLetters) {
 					return true
 				}
 				t.Errorf("%s: Türkçe metin: %.80s", fset.Position(lit.Pos()), lit.Value)
@@ -200,7 +147,7 @@ func TestServerErrorsAreEnglish(t *testing.T) {
 }
 
 // serverScripts, sunucuda koşup operatöre metin basan betikler (K-141,
-// 2. aşama). Alarm göndericisi (deploy/notify) 5. aşamada.
+// 2. aşama; alarm göndericisi K-150).
 var serverScripts = []string{
 	"../../internal/bootstrap/install.sh",
 	"../../internal/bootstrap/goc.sh",
@@ -208,6 +155,7 @@ var serverScripts = []string{
 	"../../internal/bootstrap/kasa-coz.sh",
 	"../../deploy/offsite/kadran-offsite.sh",
 	"../../deploy/offsite/kadran-volume-backup.sh",
+	"../../deploy/notify/kadran-notify.sh",
 }
 
 // trailingComment, satır sonu yorumu: boşluk, #, boşluk. `${#dizi[@]}`

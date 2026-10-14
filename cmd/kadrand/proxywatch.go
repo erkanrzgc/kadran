@@ -82,7 +82,7 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 
 	if err != nil {
 		w.failures++
-		slog.Warn("ters vekil denetlenemedi", "ust_uste", w.failures, "hata", err)
+		slog.Warn("reverse proxy check failed", "consecutive", w.failures, "error", err)
 		if w.failures >= proxyWatchAlarmAfter {
 			w.am.Raise(ctx, store.Alarm{
 				ID:       proxyAlarmID,
@@ -90,8 +90,8 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 				Target:   "host",
 				Severity: store.SeverityCritical,
 				Since:    time.Now(),
-				Detail: fmt.Sprintf("ters vekil %d denetimdir üst üste uzlaştırılamıyor, "+
-					"TRAFİK AKMIYOR OLABİLİR: %v", w.failures, err),
+				Detail: fmt.Sprintf("reverse proxy has failed to reconcile for %d consecutive checks, "+
+					"TRAFFIC MAY NOT BE FLOWING: %v", w.failures, err),
 			})
 		}
 		return
@@ -99,7 +99,7 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 
 	w.failures = 0
 	if len(missing) > 0 {
-		slog.Warn("ters vekil rotalarını kaybetmişti — yeniden yüklendi", "eksik", missing)
+		slog.Warn("reverse proxy had lost its routes — reloaded", "missing", missing)
 	}
 	if sonuc.Exact && len(sonuc.Skipped) == 0 {
 		w.am.Clear(ctx, proxyAlarmID)

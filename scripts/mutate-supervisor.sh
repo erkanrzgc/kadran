@@ -122,7 +122,7 @@ mutate "geri cekilme tavansiz" "TestBackoffIsCapped" \
 		}''',1)"
 
 mutate "denetim kaydi her turda (gecis degil)" "TestUnhealthyAndHealedAreRecordedOnceEach" \
-    "s=s.replace('	if st.unhealthy {\n		slog.Info(\"uygulama iyileşti\"','	if true {\n		slog.Info(\"uygulama iyileşti\"',1)"
+    "s=s.replace('	if st.unhealthy {\n		slog.Info(\"app recovered\"','	if true {\n		slog.Info(\"app recovered\"',1)"
 
 mutate "yaris korumasi silindi (eskiyen surum ayaga kaldirilir)" "TestHealIsSkippedWhenActiveReleaseChanged" \
     "s=s.replace('''	cur, err := s.store.ActiveDeployment(ctx, d.AppID)

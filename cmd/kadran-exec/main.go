@@ -47,7 +47,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("executor başlatılamadı", "hata", err)
+		slog.Error("executor could not start", "error", err)
 		os.Exit(1)
 	}
 }
@@ -126,7 +126,7 @@ func run() error {
 	}
 	defer func() {
 		if err := journal.Close(); err != nil {
-			slog.Error("denetim günlüğü kapatılamadı", "hata", err)
+			slog.Error("audit log could not be closed", "error", err)
 		}
 	}()
 
@@ -166,21 +166,21 @@ func run() error {
 	// TESPİT EDEMİYOR — kimlik bilgisi başka bir credential helper'da da
 	// olabilir — ama GÖRÜNÜR kılabilir. Operatör "depo_kisiti=YOK"
 	// satırını görmeli.
-	repoLimit := "YOK (kısıt uygulanmıyor)"
+	repoLimit := "NONE (no restriction applied)"
 	if n := len(splitHosts(*gitRepos)); n > 0 {
 		repoLimit = fmt.Sprintf("%d depo", n)
 	}
-	slog.Info("executor hazır",
-		"surum", version.Version,
-		"soket", *socketPath,
-		"izinli_uid", allowedUID,
-		"denetim_kaydi", seq,
-		"depo_kisiti", repoLimit,
-		"kasa", vault.Recipient().String(),
+	slog.Info("executor ready",
+		"version", version.Version,
+		"socket", *socketPath,
+		"allowed_uid", allowedUID,
+		"audit_log", seq,
+		"repo_restriction", repoLimit,
+		"vault", vault.Recipient().String(),
 	)
 
 	if err := sdnotify.Ready(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {
-		slog.Warn("systemd bilgilendirilemedi", "hata", err)
+		slog.Warn("could not notify systemd", "error", err)
 	}
 
 	return grpcserve.Run(server, listener)

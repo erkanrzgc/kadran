@@ -203,8 +203,8 @@ func (w *Watchdog) Run(ctx context.Context) {
 			w.beat(ctx)
 			if w.ReportEvery > 0 && w.Beats.now().Sub(lastReport) >= w.ReportEvery {
 				lastReport = w.Beats.now()
-				slog.Info("watchdog: döngülerin en uzun ilerleme aralıkları",
-					"aralik", strings.Join(w.Beats.Gaps(), " "))
+				slog.Info("watchdog: longest progress gap per loop",
+					"gaps", strings.Join(w.Beats.Gaps(), " "))
 			}
 		}
 	}
@@ -212,12 +212,12 @@ func (w *Watchdog) Run(ctx context.Context) {
 
 func (w *Watchdog) beat(ctx context.Context) {
 	if err := w.Check(ctx); err != nil {
-		slog.Error("watchdog: canlılık BİLDİRİLMİYOR — sürerse systemd kadrand'yi yeniden başlatacak",
-			"sebep", err)
+		slog.Error("watchdog: liveness NOT REPORTED — if this persists systemd will restart kadrand",
+			"reason", err)
 		return
 	}
 	if err := w.Notify(); err != nil {
-		slog.Warn("watchdog: systemd'ye bildirilemedi", "hata", err)
+		slog.Warn("watchdog: could not notify systemd", "error", err)
 	}
 }
 

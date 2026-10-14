@@ -53,7 +53,7 @@ else
     ONEK_NOTICE=""; ONEK_HATA=""
 fi
 log() { echo "${ONEK_NOTICE}kadran-notify: $*"; }
-die() { echo "${ONEK_HATA}kadran-notify: HATA: $*" >&2; exit 1; }
+die() { echo "${ONEK_HATA}kadran-notify: ERROR: $*" >&2; exit 1; }
 
 TOKEN=""
 CHAT_ID=""
@@ -83,7 +83,7 @@ yapilandirma_oku() {
     else
         conf="${KADRAN_NOTIFY_CONF:-/etc/kadran/notify.conf}"
     fi
-    [[ -r "$conf" ]] || die "yapılandırma okunamadı: $conf (kurulum: deploy/notify/README.md)"
+    [[ -r "$conf" ]] || die "cannot read configuration: $conf (setup: deploy/notify/README.md)"
 
     local anahtar deger
     while IFS='=' read -r anahtar deger; do
@@ -103,16 +103,16 @@ yapilandirma_oku() {
 
     # Biçim denetimi. Anahtar ASLA yazdırılmıyor — hata iletisinde bile.
     [[ "$TOKEN" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] ||
-        die "TELEGRAM_TOKEN eksik ya da biçimi bozuk (BotFather'ın verdiği 123456:ABC… biçimi)"
+        die "TELEGRAM_TOKEN missing or malformed (expected the 123456:ABC… form BotFather gives)"
 
     # Nabız isteğe bağlı, ama YARIM kurulmuşsa sessiz kalınmıyor: yalnızca
     # biri tanımlıysa dış kontrol hiç nabız almaz ve kullanıcı bunun
     # neden olduğunu göremezdi.
     if [[ -n "$NABIZ_URL" || -n "$NABIZ_ANAHTAR" ]]; then
         [[ "$NABIZ_URL" =~ ^https://[A-Za-z0-9.-]+/ping$ ]] ||
-            die "HEARTBEAT_URL https://…/ping biçiminde olmalı"
+            die "HEARTBEAT_URL must look like https://…/ping"
         [[ "$NABIZ_ANAHTAR" =~ ^[A-Za-z0-9]{32,}$ ]] ||
-            die "HEARTBEAT_TOKEN en az 32 harf/rakam olmalı (openssl rand -hex 32)"
+            die "HEARTBEAT_TOKEN must be at least 32 letters/digits (openssl rand -hex 32)"
     fi
 }
 
@@ -131,14 +131,14 @@ telegram() {
 # gonder <metin-dosyası>
 gonder() {
     [[ "$CHAT_ID" =~ ^-?[0-9]+$ ]] ||
-        die "TELEGRAM_CHAT_ID eksik ya da sayı değil (bulmak için: $0 sohbet-bul)"
+        die "TELEGRAM_CHAT_ID missing or not a number (to find it: $0 sohbet-bul)"
     local kod
     kod="$(telegram sendMessage --data-urlencode "chat_id=$CHAT_ID" \
             --data-urlencode "text@$1")"
     if [[ "$kod" != 200 ]]; then
         # Telegram'ın hata gövdesi anahtarı İÇERMEZ; curl'ün hatası
         # da URL'yi basmaz (-sS). Yine de ilk satırla sınırlı.
-        echo "${ONEK_HATA}kadran-notify: gönderilemedi (http=${kod:-yok}): $(head -c 200 "$TMP/yanit" 2>/dev/null) $(head -1 "$TMP/curl.err")" >&2
+        echo "${ONEK_HATA}kadran-notify: send failed (http=${kod:-none}): $(head -c 200 "$TMP/yanit" 2>/dev/null) $(head -1 "$TMP/curl.err")" >&2
         return 1
     fi
 }
@@ -160,17 +160,23 @@ alan() {
 bicimle() {
     local s="$1" id durum ciddiyet hedef ayrinti simge etiket
     id="$(alan "$s" alarm)"
-    durum="$(alan "$s" durum)"
-    ciddiyet="$(alan "$s" ciddiyet)"
-    hedef="$(alan "$s" hedef)"
-    ayrinti="$(alan "$s" ayrinti)"
+    # K-150: anahtarlar İngilizce. Yükseltmeden önce yazılmış ve henüz
+    # gönderilmemiş satırlar eski (Türkçe) anahtarları taşıyabilir.
+    durum="$(alan "$s" state)"
+    [[ -n "$durum" ]] || durum="$(alan "$s" durum)"
+    ciddiyet="$(alan "$s" severity)"
+    [[ -n "$ciddiyet" ]] || ciddiyet="$(alan "$s" ciddiyet)"
+    hedef="$(alan "$s" target)"
+    [[ -n "$hedef" ]] || hedef="$(alan "$s" hedef)"
+    ayrinti="$(alan "$s" detail)"
+    [[ -n "$ayrinti" ]] || ayrinti="$(alan "$s" ayrinti)"
     case "$durum" in
-        acildi)
-            if [[ "$ciddiyet" == kritik ]]; then simge="🔴"; etiket="KRİTİK"
-            else simge="🟡"; etiket="UYARI"; fi ;;
-        tirmandi) simge="🔴"; etiket="KÖTÜLEŞTİ" ;;
-        kapandi)  simge="✅"; etiket="DÜZELDİ" ;;
-        *)        simge="❔"; etiket="${durum:-bilinmeyen}" ;;
+        opened|acildi)
+            if [[ "$ciddiyet" == critical || "$ciddiyet" == kritik ]]; then simge="🔴"; etiket="CRITICAL"
+            else simge="🟡"; etiket="WARNING"; fi ;;
+        escalated|tirmandi) simge="🔴"; etiket="WORSE" ;;
+        closed|kapandi)     simge="✅"; etiket="RESOLVED" ;;
+        *)                  simge="❔"; etiket="${durum:-unknown}" ;;
     esac
     printf '%s %s — %s' "$simge" "$etiket" "${id:-?}"
     [[ -n "$hedef" && "$id" != *":$hedef" ]] && printf ' (%s)' "$hedef"
@@ -207,15 +213,15 @@ izle() {
     if [[ ! -s "$imlec" ]]; then
         journalctl -u kadrand.service --no-pager -o cat -n 0 \
             --cursor-file="$imlec" >/dev/null ||
-            die "journal okunamadı (systemd-journal grubu?)"
-        log "ilk koşu — imleç şimdiye kondu, geçmiş gönderilmedi"
+            die "cannot read the journal (systemd-journal group?)"
+        log "first run — cursor set to now, history not sent"
         return 0
     fi
 
     cp "$imlec" "$gecici"
     journalctl -u kadrand.service --no-pager -o cat \
         --cursor-file="$gecici" > "$TMP/yeni" ||
-        die "journal okunamadı (systemd-journal grubu?)"
+        die "cannot read the journal (systemd-journal group?)"
 
     grep -F 'msg=ALARM ' "$TMP/yeni" > "$TMP/alarmlar" || true
     local n
@@ -226,13 +232,13 @@ izle() {
     fi
 
     {
-        printf '🖥 %s — %d alarm olayı\n\n' "$SUNUCU" "$n"
+        printf '🖥 %s — %d alarm event(s)\n\n' "$SUNUCU" "$n"
         local sayac=0
         while IFS= read -r satir; do
             sayac=$((sayac + 1))
             # Telegram mesajı 4096 karakterle sınırlı.
             if (( sayac > 20 )); then
-                printf '… ve %d olay daha (journalctl -u kadrand)\n' $((n - 20))
+                printf '… and %d more (journalctl -u kadrand)\n' $((n - 20))
                 break
             fi
             bicimle "$satir"
@@ -241,10 +247,10 @@ izle() {
 
     if gonder "$TMP/mesaj"; then
         imlec_koy "$gecici" "$imlec"
-        log "$n alarm olayı gönderildi"
+        log "$n alarm event(s) sent"
     else
         # İmleç İLERLEMEDİ: bir sonraki koşu aynı olayları yeniden dener.
-        die "$n alarm olayı gönderilemedi — bir sonraki koşuda tekrar denenecek"
+        die "$n alarm event(s) could not be sent — will retry on the next run"
     fi
 }
 
@@ -277,7 +283,7 @@ nabiz_at() {
     if [[ "$kod" == 204 ]]; then
         : > "$isaret"
     else
-        echo "${ONEK_HATA}kadran-notify: nabız atılamadı (http=${kod:-yok}) $(head -1 "$TMP/nabiz.err")" >&2
+        echo "${ONEK_HATA}kadran-notify: heartbeat failed (http=${kod:-none}) $(head -1 "$TMP/nabiz.err")" >&2
     fi
 }
 
@@ -367,13 +373,13 @@ servis_satiri() {
     local eylem="$1" birim="$2" cokus="$3" sonuc="$4" calisiyor="$5" hal
     case "$eylem" in
         coktu)
-            if (( calisiyor )); then hal="systemd yeniden başlattı"; else hal="şu an ÇALIŞMIYOR"; fi
-            printf '🟠 ÇÖKTÜ — %s: %d kez (%s), %s\n' "$birim" "$cokus" "$sonuc" "$hal" ;;
+            if (( calisiyor )); then hal="systemd restarted it"; else hal="NOT RUNNING now"; fi
+            printf '🟠 CRASHED — %s: %d time(s) (%s), %s\n' "$birim" "$cokus" "$sonuc" "$hal" ;;
         dongu)
-            printf '🔴 ÇÖKME DÖNGÜSÜ — %s: son kontrolden beri %d kez daha (%s)\n' "$birim" "$cokus" "$sonuc" ;;
-        calismiyor) printf '🔴 ÇALIŞMIYOR — %s\n' "$birim" ;;
-        duzeldi)    printf '✅ TOPARLANDI — %s: son kontrolden beri çökmedi\n' "$birim" ;;
-        geri_geldi) printf '✅ YENİDEN ÇALIŞIYOR — %s\n' "$birim" ;;
+            printf '🔴 CRASH LOOP — %s: %d more time(s) since the last check (%s)\n' "$birim" "$cokus" "$sonuc" ;;
+        calismiyor) printf '🔴 NOT RUNNING — %s\n' "$birim" ;;
+        duzeldi)    printf '✅ RECOVERED — %s: no crash since the last check\n' "$birim" ;;
+        geri_geldi) printf '✅ RUNNING AGAIN — %s\n' "$birim" ;;
     esac
 }
 
@@ -396,13 +402,13 @@ servis_olaylari_oku() {
         journalctl "${birimler[@]}" --no-pager -o json \
             --output-fields=MESSAGE_ID,UNIT,UNIT_RESULT,_PID \
             --cursor-file="$gecici" > "$TMP/servis-json" ||
-            die "journal okunamadı (servis olayları)"
+            die "cannot read the journal (service events)"
     else
         # İlk koşu: GEÇMİŞİ gönderme. Test sunucusunun journal'ında
         # kurulum gününden kalma 155 çöküş var; hepsi bir mesajda giderdi.
         journalctl "${birimler[@]}" --no-pager -o json -n 0 \
             --cursor-file="$gecici" > /dev/null ||
-            die "journal okunamadı (servis olayları)"
+            die "cannot read the journal (service events)"
         : > "$TMP/servis-json"
     fi
     servis_olay_ayikla < "$TMP/servis-json" > "$TMP/servis-olaylar"
@@ -433,8 +439,8 @@ servisler() {
     if [[ -s "$TMP/servis-mesaj" ]]; then
         { printf '🖥 %s\n' "$SUNUCU"; cat "$TMP/servis-mesaj"; } > "$TMP/servis-gonder"
         gonder "$TMP/servis-gonder" ||
-            die "servis durumu gönderilemedi — bir sonraki koşuda tekrar denenecek"
-        log "servis durumu gönderildi ($(wc -l < "$TMP/servis-mesaj") satır)"
+            die "service status could not be sent — will retry on the next run"
+        log "service status sent ($(wc -l < "$TMP/servis-mesaj") line(s))"
     fi
     imlec_koy "$TMP/servis-imlec" "$imlec"
     imlec_koy "$TMP/servis-durum" "$durum_dosyasi"
@@ -447,20 +453,20 @@ servisler() {
 # `OnFailure=` ile bu kipi çağırıyor.
 hata() {
     local birim="${1:-}"
-    [[ "$birim" =~ ^[A-Za-z0-9@._:-]+$ ]] || die "geçersiz birim adı: $birim"
+    [[ "$birim" =~ ^[A-Za-z0-9@._:-]+$ ]] || die "invalid unit name: $birim"
     {
-        printf '🖥 %s\n🔴 BİRİM BAŞARISIZ — %s\n\n' "$SUNUCU" "$birim"
+        printf '🖥 %s\n🔴 UNIT FAILED — %s\n\n' "$SUNUCU" "$birim"
         journalctl -u "$birim" --no-pager -o cat -n 4 2>/dev/null |
             cut -c1-300 | sed 's/^/   /'
     } > "$TMP/mesaj"
-    gonder "$TMP/mesaj" || die "birim arızası bildirilemedi: $birim"
-    log "birim arızası bildirildi: $birim"
+    gonder "$TMP/mesaj" || die "unit failure could not be reported: $birim"
+    log "unit failure reported: $birim"
 }
 
 dene() {
-    printf '🖥 %s\n✅ Kadran deneme mesajı — alarm teslimatı çalışıyor.\n' "$SUNUCU" > "$TMP/mesaj"
-    gonder "$TMP/mesaj" || die "deneme mesajı gönderilemedi"
-    log "deneme mesajı gönderildi"
+    printf '🖥 %s\n✅ Kadran test message — alarm delivery works.\n' "$SUNUCU" > "$TMP/mesaj"
+    gonder "$TMP/mesaj" || die "test message could not be sent"
+    log "test message sent"
 }
 
 # ── sohbet-bul ───────────────────────────────────────────────────────
@@ -470,11 +476,11 @@ dene() {
 sohbet_bul() {
     local kod sohbetler
     kod="$(telegram getUpdates)"
-    [[ "$kod" == 200 ]] || die "getUpdates başarısız (http=${kod:-yok}) — anahtar doğru mu?"
+    [[ "$kod" == 200 ]] || die "getUpdates failed (http=${kod:-none}) — is the token right?"
     sohbetler="$(grep -o '"chat":{"id":-\?[0-9]*[^}]*' "$TMP/yanit" | sort -u |
-        sed -E 's/"chat":\{"id":(-?[0-9]+).*"(first_name|title)":"([^"]*)".*/sohbet kimliği: \1   (\3)/')"
+        sed -E 's/"chat":\{"id":(-?[0-9]+).*"(first_name|title)":"([^"]*)".*/chat id: \1   (\3)/')"
     [[ -n "$sohbetler" ]] ||
-        die "hiç mesaj yok — önce Telegram'da bota bir mesaj yaz, sonra tekrar dene"
+        die "no messages — send the bot a message in Telegram first, then try again"
     printf '%s\n' "$sohbetler"
 }
 
@@ -492,5 +498,5 @@ case "${1:-izle}" in
     hata)       hata "${2:-}" ;;
     dene)       dene ;;
     sohbet-bul) sohbet_bul ;;
-    *)          die "bilinmeyen kip: $1 (izle | hata <birim> | dene | sohbet-bul)" ;;
+    *)          die "unknown mode: $1 (izle | hata <unit> | dene | sohbet-bul)" ;;
 esac

@@ -71,11 +71,11 @@ type Transition string
 
 const (
 	// Opened — koşul bozuk olmayan durumdan bozuk duruma geçti.
-	Opened Transition = "acildi"
+	Opened Transition = "opened"
 	// Escalated — zaten bozuktu, DAHA KÖTÜ oldu.
-	Escalated Transition = "tirmandi"
+	Escalated Transition = "escalated"
 	// Closed — koşul düzeldi.
-	Closed Transition = "kapandi"
+	Closed Transition = "closed"
 )
 
 // Manager, alarm durumunu yönetir ve YALNIZCA geçişlerde bildirir.
@@ -101,8 +101,8 @@ func (m *Manager) Raise(ctx context.Context, a store.Alarm) {
 		// Alarm yazılamıyorsa bunu YUTMAK, sessiz arızaya karşı
 		// yazılmış bir mekanizmanın kendisini sessizce arızalı
 		// bırakmak olurdu.
-		slog.Error("ALARM YAZILAMADI — arıza görünmez kalabilir",
-			"alarm", a.ID, "hata", err)
+		slog.Error("ALARM COULD NOT BE WRITTEN — the failure may stay invisible",
+			"alarm", a.ID, "error", err)
 		return
 	}
 	if fresh {
@@ -116,7 +116,7 @@ func (m *Manager) Raise(ctx context.Context, a store.Alarm) {
 	}
 	climbed, err := m.store.EscalateAlarm(ctx, a.ID)
 	if err != nil {
-		slog.Error("alarm tırmandırılamadı", "alarm", a.ID, "hata", err)
+		slog.Error("alarm could not be escalated", "alarm", a.ID, "error", err)
 		return
 	}
 	if climbed {
@@ -132,7 +132,7 @@ func (m *Manager) Raise(ctx context.Context, a store.Alarm) {
 func (m *Manager) Clear(ctx context.Context, id string) {
 	wasActive, err := m.store.ClearAlarm(ctx, id)
 	if err != nil {
-		slog.Error("alarm kapatılamadı", "alarm", id, "hata", err)
+		slog.Error("alarm could not be closed", "alarm", id, "error", err)
 		return
 	}
 	if wasActive {
@@ -159,13 +159,13 @@ type LogSink struct{}
 func (LogSink) Notify(_ context.Context, ev Event) {
 	args := []any{
 		"alarm", ev.Alarm.ID,
-		"durum", string(ev.State),
+		"state", string(ev.State),
 	}
 	if ev.State != Closed {
 		args = append(args,
-			"ciddiyet", ev.Alarm.Severity,
-			"hedef", ev.Alarm.Target,
-			"ayrinti", ev.Alarm.Detail)
+			"severity", logSeverity(ev.Alarm.Severity),
+			"target", ev.Alarm.Target,
+			"detail", ev.Alarm.Detail)
 	}
 
 	if ev.State != Closed && ev.Alarm.Severity == store.SeverityCritical {
@@ -173,4 +173,18 @@ func (LogSink) Notify(_ context.Context, ev Event) {
 		return
 	}
 	slog.Warn("ALARM", args...)
+}
+
+// logSeverity, depodaki ciddiyet değerinin journal'daki adı. Depodaki değer
+// (`kritik`/`uyari`) uygulanmış göçlere bağlı ve değişmiyor (K-141); journal
+// satırı İngilizce (K-150). Tanınmayan değer olduğu gibi geçer: gizlemek,
+// yeni bir ciddiyeti sessizce "warning" gibi gösterirdi.
+func logSeverity(s string) string {
+	switch s {
+	case store.SeverityCritical:
+		return "critical"
+	case store.SeverityWarning:
+		return "warning"
+	}
+	return s
 }

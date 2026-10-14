@@ -10623,7 +10623,8 @@ yokken ileti yok, `-r` yok): CI taklidinde (uid 1001 + parolasız sudo +
 **Tarih:** 5 Ekim 2026
 **Durum:** 1. aşama PR #8 (CI 10/10, mutasyon 27/27), 2. aşama PR #9 (`fa4f77a`),
 3. aşama PR #10 (`1f1c028`) birleşti; 4. aşama K-142 ile (masaüstü, dal
-`masaustu-temel`); 5. aşama sırada.
+`masaustu-temel`); 5. aşama K-150 ile (journal, alarm, Telegram; kullanıcı
+14 Ekim'de "hepsini yap" dedi).
 
 ### Neden
 
@@ -11127,3 +11128,87 @@ Not (2026-10-14, kullanıcı kararı): README'deki bileşen listesi gereksiz bul
 ve kaldırıldı; License bölümü lisansı ve iki üçüncü taraf dosyasını anıyor. Lisans
 metinleri paketlerde ve uygulamada olduğu için yükümlülük değişmiyor. CONTRIBUTING:
 Apache-2.0 kodu NOTICE ile gelirse kökte yeniden bir NOTICE açılır.
+
+## K-150 — Journal, alarm ve Telegram metni İngilizce; CI belge değişikliğinde mutasyonu atlar (2026-10-14)
+
+Kullanıcı 14 Ekim'de açık işlerden "hepsini yap" dedi. Bu kayıt ikisini kapatıyor:
+K-141'in 5. aşaması ve CI'daki mutasyon süresi. Adres havuzu (K-070 yükümlülüğü)
+kullanıcı kararını bekliyor; masaüstü onay/iptal akışının elle denemesi kullanıcıyla
+yapılacak.
+
+### 1. Journal, alarm ve Telegram metni (K-141, 5. aşama)
+
+**Kapsam envanterle çıkarıldı, tahminle değil.** `TestServerErrorsAreEnglish`'in
+`isJournalOnly` mantığı (slog çağrısı, `sdnotify.Status`, `store.Alarm{Detail}`) ayrı bir
+AST taramasında çalıştırıldı: 16 dosyada 169 dize sabiti. Çeviri satır kapsamlıydı:
+her dize yalnız envanterdeki satırında ve tam bir kez eşleşerek değişti (161 dize; kalan
+8'i `ALARM`, ayırıcılar ve bayrak adı gibi değişmeyenler). Envanterin göremediği yerler
+elle yapıldı: `LogSink`'in ve istek önleyicisinin `[]any` içinde kurduğu alan adları,
+döngü adları (`registerLoop`), eski istisna listesindeki üç dize.
+
+**Sözleşme taraması.** Eski metne bakan her yer bulundu ve aynı değişiklikte güncellendi:
+
+- ALARM satırı ↔ `kadran-notify.sh`: alanlar `state`/`severity`/`target`/`detail`,
+  geçişler `opened`/`escalated`/`closed`. Depodaki ciddiyet `kritik`/`uyari` kalıyor
+  (uygulanmış göçlere bağlı, K-141); journal'a `logSeverity` ile `critical`/`warning`
+  yazılıyor. Gönderici eski anahtarları da okuyor: yükseltmeden hemen önce yazılmış ama
+  henüz gönderilmemiş satırlar kaybolmasın. `check-notify-format.sh`'a eski biçim için
+  dört örnek eklendi.
+- `check-notify-format.sh` ↔ `logsink_test.go`: örnekler bayt düzeyinde; ikisi birlikte.
+- E2E: `e2e-cli-runner.sh` (`msg="permission denied"`, `role=deploy`, `key=SHA256:`),
+  `e2e-watchdog.sh` (`watched_loops=supervisor,proxy-watch,disk,backup`,
+  `ping_interval=`, `watchdog enabled`).
+- Mutasyon iğneleri: `mutate-notifycontract.sh` (3), `mutate-supervisor.sh` (1),
+  `mutate-watchdog.sh` (1).
+- Testler: `authz_test.go`, `credentials_test.go` artık `connection refused` arıyor.
+
+Negatif iddia taraması (bkz. "Çeviri negatif testleri öldürür"): eski metni `!Contains`
+ya da `! grep` ile arayan test yok. Eski metni taşıyan test satırları ya tanı mesajı
+(`t.Fatalf("iyileştirme başarısız: %v")`) ya da keyfi test verisi (liveness testlerinde
+döngü adı).
+
+**Değişmeyenler (bilerek).**
+- Gönderici betiğin kip adları (`izle`, `hata`, `dene`, `sohbet-bul`): birim
+  dosyalarıyla sözleşme.
+- Göndericinin durum dosyasındaki değerler (`saglam`, `coktu`, `dongu`, `calismiyor`) ve
+  Worker'ın KV'sindeki `durum` (`var`/`yok`/`hic`): canlıda saklanan durum; değişseydi
+  yükseltmeden sonraki ilk tur bunları "bilinmeyen" okurdu.
+- Worker'ın ortam değişkeni adları (`ESIK_DAKIKA`…): `wrangler.jsonc` ile sözleşme.
+- Saklanmış alarmların Türkçe ayrıntısı.
+- Kod yorumları (K-141 kuralı).
+
+**Koruma.** `TestServerErrorsAreEnglish`'in journal istisnası (`isJournalOnly`,
+`journalOnlyLiterals`) kaldırıldı; artık istisna listesi yok. `cmd/kadran-proxy` ve
+`internal/proxyguard` paket listesine, `kadran-notify.sh` betik listesine girdi. KIRMIZI
+ölçüldü: `backup.go`'daki `"backup taken"` geçici olarak `"yedek alındı"` yapılınca test
+`backup.go:129: Türkçe metin` ile düştü; geri alındı. Koruma yalnız Türkçe harfe bakıyor;
+`hata`, `sebep` gibi ASCII sözcükleri envanterin yeniden taranması yakaladı (kalan yok).
+
+**Ölçüm.** `go vet ./...`, `go test -count=1 ./...` (hepsi yeşil), `golangci-lint` değişen
+paketlerde 0 bulgu, `check-notify-format.sh` 11 ALARM örneği dahil yeşil, Worker
+`node --test` 20/20, ayrıcalıklı yüzey 2882/2900 (değişmedi: her çeviri kendi satırında).
+Değişen dosyalara dokunan sekiz mutasyon betiği tek tek, başka iş yokken koşuldu: watchdog, authz, alarm, notifycontract, supervisor, proxywatch, backup, domaincheck. Sekizi de "bütün mutasyonlar yakalandı"; UYGULANAMADI ve derlenmeyen mutant 0. Güncellenen beş iğne kendi mutantını uyguladı (iğne eski metne baksaydı UYGULANAMADI düşerdi).
+
+**Canlıya etkisi.** Sunucular bir sonraki sürümle yükseltilince journal İngilizce olur.
+`journalctl -u kadrand | grep` ile eski Türkçe metni arayan bir operatör aramasını
+güncellemeli (CHANGELOG). Cloudflare'daki Worker yeniden `wrangler deploy` edilene kadar
+eski metinle yazar.
+
+### 2. CI: belge değişikliğinde mutasyon atlanır
+
+Mutasyon işi ~45-55 dk sürüyor ve NOTICE/README gibi yalnız belge değişikliklerinde de
+koşuyordu (PR #12: 54 dk). Yeni `changes` işi değişen dosyalara bakar; mutasyon işi
+`needs: changes` ve `if: needs.changes.outputs.code == 'true'` taşır.
+
+- **Varsayılan koşmak.** İzin listesi dar: `*.md` ve `docs/`. Başka her dosya (ci.yml,
+  betikler, deploy/, desktop/, go.mod) işi koşturur.
+- **Belirsizlik atlama sebebi değil.** Fark alınamazsa (yeni dal, sıfır SHA, eksik commit,
+  elle tetikleme) iş koşar.
+- Taban: PR'da `pull_request.base.sha`, push'ta `event.before`; `fetch-depth: 0`.
+- Belgeyi okuyan test (`privategit_guide_test.go`) test işinde zaten koşuyor; belge
+  değişikliği onu kırarsa test işi düşer.
+- Atlanan iş GitHub'da "skipped" görünür; main dalı korumalı değil, gerekli kontrol yok.
+
+Ölçüm: betik gerçek commit çiftleriyle sınandı: yalnız belge (c06f6c6→aa1726b) `false`,
+kod içeren (989eb73→c06f6c6) `true`, sıfır SHA `true`, PR yalnız belge `false`, elle
+tetikleme `true`, bilinmeyen taban `true`. `actionlint` (1.7.7) temiz.

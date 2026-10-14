@@ -64,17 +64,17 @@ export function karar(simdi, son, durum, esikMs) {
 export function mesaj(eylem, sunucu, gecenDk) {
   switch (eylem) {
     case "alarm_yok":
-      return `🔴 NABIZ YOK — ${sunucu}\n` +
-        `${gecenDk} dakikadır haber alınamıyor.\n` +
-        `Sunucu kapalı olabilir ya da alarm göndericisi durmuş olabilir; ` +
-        `bu süre boyunca başka hiçbir alarm sana ulaşmaz.`;
+      return `🔴 NO HEARTBEAT — ${sunucu}\n` +
+        `Nothing heard for ${gecenDk} minutes.\n` +
+        `The server may be down or the alarm sender may have stopped; ` +
+        `no other alarm can reach you while this lasts.`;
     case "alarm_hic":
-      return `🟡 NABIZ HİÇ GELMEDİ — ${sunucu}\n` +
-        `Worker çalışıyor ama sunucudan tek bir nabız almadı. ` +
-        `Kurulum tamamlanmamış olabilir (HEARTBEAT_URL / PING_TOKEN).`;
+      return `🟡 NO HEARTBEAT EVER — ${sunucu}\n` +
+        `The Worker is running but has not received a single heartbeat from the server. ` +
+        `Setup may be incomplete (HEARTBEAT_URL / PING_TOKEN).`;
     case "duzeldi":
-      return `✅ NABIZ GERİ GELDİ — ${sunucu}`;
+      return `✅ HEARTBEAT BACK — ${sunucu}`;
     default:
-      throw new Error(`bilinmeyen eylem: ${eylem}`);
+      throw new Error(`unknown action: ${eylem}`);
   }
 }

@@ -50,7 +50,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("daemon başlatılamadı", "hata", err)
+		slog.Error("daemon could not start", "error", err)
 		os.Exit(1)
 	}
 }
@@ -119,7 +119,7 @@ func run() error {
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			slog.Error("veritabanı kapatılamadı", "hata", err)
+			slog.Error("database could not be closed", "error", err)
 		}
 	}()
 
@@ -134,7 +134,7 @@ func run() error {
 		return fmt.Errorf("could not open the vault: %w — restore the lost key from its backup to "+
 			"/var/lib/kadran-exec/vault.key and run the installer again", err)
 	}
-	slog.Info("kasa açık", "alici", sealer.Recipient(), "muhurlenen_deger", sealed)
+	slog.Info("vault enabled", "recipient", sealer.Recipient(), "sealed_values", sealed)
 
 	exec, err := execclient.Dial(*execSocket)
 	if err != nil {
@@ -142,7 +142,7 @@ func run() error {
 	}
 	defer func() {
 		if err := exec.Close(); err != nil {
-			slog.Error("executor bağlantısı kapatılamadı", "hata", err)
+			slog.Error("executor connection could not be closed", "error", err)
 		}
 	}()
 
@@ -266,7 +266,7 @@ func run() error {
 
 	supOpts := health.DefaultOptions
 	supOpts.Coordinator = coordinator
-	supOpts.Progress = registerLoop(beats, "gözetmen", supOpts.Interval).Mark
+	supOpts.Progress = registerLoop(beats, "supervisor", supOpts.Interval).Mark
 	supervisor, err := health.New(
 		rollout, db, db, alarms, health.SystemClock(), supOpts)
 	if err != nil {
@@ -282,22 +282,22 @@ func run() error {
 	// K-055'in ikinci yarısı: ters vekil yeniden başlayınca rotasız açılıyor.
 	// İzleyici kaybolan rotaları geri yüklüyor (bkz. proxywatch.go, K-112).
 	go watchProxy(shutdown, &proxyWatcher{rp: reconciler, am: alarms}, proxyWatchInterval,
-		registerLoop(beats, "vekil-izleyici", proxyWatchInterval))
+		registerLoop(beats, "proxy-watch", proxyWatchInterval))
 
 	go watchDisk(shutdown, exec, alarms, *diskEvery, registerLoop(beats, "disk", *diskEvery))
 
 	// Zamanlı yedekleme. Gözetmenle aynı kapanış bağlamını paylaşıyor:
 	// tek iptal kaynağı, tanımlı kapanış.
 	go runBackupScheduler(shutdown, db, alarms, *backupEvery,
-		registerLoop(beats, "yedek", *backupEvery))
+		registerLoop(beats, "backup", *backupEvery))
 
 	startWatchdog(shutdown, beats, db.DB())
 
-	slog.Info("daemon hazır",
-		"surum", version.Version,
-		"soket", *socketPath,
-		"istemci_grubu", *clientGroup,
-		"veritabani", *dbPath,
+	slog.Info("daemon ready",
+		"version", version.Version,
+		"socket", *socketPath,
+		"client_group", *clientGroup,
+		"database", *dbPath,
 	)
 
 	// ⚠ READY, "trafik akıyor" DEMEK DEĞİL — ve systemd'ye bunu
@@ -314,12 +314,12 @@ func run() error {
 	// erişemez. Bunun yerine STATUS metni gerçeği taşıyor: artık
 	// `systemctl status kadrand` sorunu ilk satırda gösteriyor.
 	if proxyProblem != "" {
-		_ = sdnotify.Status("BOZUK: " + proxyProblem)
+		_ = sdnotify.Status("BROKEN: " + proxyProblem)
 	} else {
-		_ = sdnotify.Status("hazır — ters vekil uzlaştırıldı")
+		_ = sdnotify.Status("ready — reverse proxy reconciled")
 	}
 	if err := sdnotify.Ready(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {
-		slog.Warn("systemd bilgilendirilemedi", "hata", err)
+		slog.Warn("could not notify systemd", "error", err)
 	}
 
 	return grpcserve.RunContext(shutdown, server, listener)
@@ -332,10 +332,10 @@ func probeExecutor(exec *execclient.Client) {
 
 	ping, err := exec.Ping(ctx)
 	if err != nil {
-		slog.Warn("executor'a ulaşılamıyor — ayrıcalıklı işlemler çalışmayacak", "hata", err)
+		slog.Warn("executor unreachable — privileged operations will not work", "error", err)
 		return
 	}
-	slog.Info("executor bağlandı", "surum", ping.Version, "protokol", ping.ProtocolVersion)
+	slog.Info("executor connected", "version", ping.Version, "protocol", ping.ProtocolVersion)
 }
 
 // recordStartup, daemon başlangıcını denetim zincirine yazar.
@@ -361,7 +361,7 @@ func recordStartup(db *store.Store) {
 	// durdurmaz: kaydı olmayan bir servis, hiç olmayan bir servisten
 	// iyidir ve sorun günlükte görünür.
 	if _, err := db.AppendAudit(ctx, rec); err != nil {
-		slog.Error("başlangıç denetim kaydı yazılamadı", "hata", err)
+		slog.Error("startup audit record could not be written", "error", err)
 	}
 }
 
@@ -423,22 +423,22 @@ func reconcileAtStartup(rc startupReconciler) string {
 
 		if err == nil {
 			if len(res.Skipped) > 0 {
-				slog.Warn("bazı uygulamalar rotalanamadı", "ayrinti", res.Error())
+				slog.Warn("some apps could not be routed", "detail", res.Error())
 				return "rotalanamayan uygulama var: " + res.Error()
 			}
-			slog.Info("ters vekil uzlaştırıldı", "rotalanan", res.Routed)
+			slog.Info("reverse proxy reconciled", "routed", res.Routed)
 			return ""
 		}
 
 		last = err.Error()
-		slog.Warn("ters vekil uzlaştırılamadı, yeniden denenecek",
-			"deneme", attempt, "hata", err)
+		slog.Warn("reverse proxy could not be reconciled, will retry",
+			"attempt", attempt, "error", err)
 		if attempt < startupReconcileTries {
 			time.Sleep(time.Duration(attempt) * time.Second)
 		}
 	}
 
-	slog.Error("ters vekil açılışta uzlaştırılamadı — TRAFİK AKMIYOR",
-		"deneme", startupReconcileTries, "hata", last)
-	return "ters vekil uzlaştırılamadı: " + last
+	slog.Error("reverse proxy could not be reconciled at startup — NO TRAFFIC IS FLOWING",
+		"attempt", startupReconcileTries, "error", last)
+	return "reverse proxy could not be reconciled: " + last
 }

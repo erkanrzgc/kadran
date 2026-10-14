@@ -1,22 +1,24 @@
-# Dış nabız kontrolü (Cloudflare Worker)
+# External heartbeat check (Cloudflare Worker)
 
-Alarm göndericisi (`deploy/notify`) sunucuda koşuyor. Kendisi durursa ya da
-sunucu tamamen kapanırsa bunu bildirecek bir şey sunucuda kalmaz. Bu Worker
-sunucudan 15 dakika haber alamazsa Telegram'a yazar. Ayrıntı: K-109.
+The alarm sender (`deploy/notify`) runs on the server. If it stops, or the
+whole server goes down, nothing is left on the server to report it. This
+Worker writes to Telegram when it has heard nothing from the server for 15
+minutes. Details: K-109.
 
 ```
-sunucu  kadran-notify (dakikada bir)  ──POST /ping, ~5 dk'da bir──►  Worker ─► KV
-Worker  5 dk'da bir kontrol: son nabız > 15 dk?  ──►  Telegram
+server  kadran-notify (every minute)  ──POST /ping, about every 5 min──►  Worker ─► KV
+Worker  check every 5 min: last heartbeat > 15 min?  ──►  Telegram
 ```
 
-Ücretsiz katman: günde ~320 KV yazması (ölçüldü; sınır 1000), 1 zamanlanmış
-tetikleyici (sınır 5).
+Free tier: ~320 KV writes a day (measured; the limit is 1000), 1 scheduled
+trigger (the limit is 5).
 
-## Kurulum
+## Setup
 
-Gereken: Node.js ve Cloudflare hesabı. Komutlar bu dizinde çalıştırılır.
+You need Node.js and a Cloudflare account. Run the commands in this
+directory.
 
-### 1. Giriş ve yükleme (kendi bilgisayarında)
+### 1. Log in and deploy (on your own computer)
 
 ```bash
 cd deploy/nabiz
@@ -24,69 +26,74 @@ npx wrangler login
 npx wrangler deploy
 ```
 
-`deploy`, KV ad alanını kendisi oluşturur ve kimliğini `wrangler.jsonc`'a
-yazar. **Bu değişikliği commit etme** — kimlik senin hesabına özel.
-Çıktıdaki adresi not al: `https://kadran-nabiz.<alt-alan>.workers.dev`.
+`deploy` creates the KV namespace itself and writes its id into
+`wrangler.jsonc`. **Do not commit that change** — the id belongs to your
+account. Note the address in the output:
+`https://kadran-nabiz.<subdomain>.workers.dev`.
 
-### 2. Gizli değerler
+### 2. Secrets
 
-Nabız anahtarını üret ve bir yere kopyala:
+Generate the heartbeat token and copy it somewhere:
 
 ```bash
 openssl rand -hex 32
 ```
 
-Sonra üç değeri Worker'a gir (her biri seni değeri yapıştırmaya çağırır):
+Then give the Worker three values (each command asks you to paste the value):
 
 ```bash
-npx wrangler secret put PING_TOKEN          # az önce üretilen dize
-npx wrangler secret put TELEGRAM_TOKEN      # bot anahtarı
-npx wrangler secret put TELEGRAM_CHAT_ID    # sohbet kimliği
+npx wrangler secret put PING_TOKEN          # the string you just generated
+npx wrangler secret put TELEGRAM_TOKEN      # bot token
+npx wrangler secret put TELEGRAM_CHAT_ID    # chat id
 ```
 
-### 3. Sunucuya nabız ayarı (root)
+### 3. Heartbeat settings on the server (root)
 
-`/etc/kadran/notify.conf`'a iki satır ekle:
+Add two lines to `/etc/kadran/notify.conf`:
 
 ```ini
-HEARTBEAT_URL=https://kadran-nabiz.<alt-alan>.workers.dev/ping
-HEARTBEAT_TOKEN=<aynı PING_TOKEN>
+HEARTBEAT_URL=https://kadran-nabiz.<subdomain>.workers.dev/ping
+HEARTBEAT_TOKEN=<the same PING_TOKEN>
 ```
 
-Bir dakika içinde ilk nabız gider.
+The first heartbeat goes out within a minute.
 
-> **v0.4.0'dan önce `panely-nabiz` adıyla dağıttıysan (K-136):** sunucu
-> göçü Worker'a dokunmaz; `notify.conf`'taki adres eski Worker'ı göstermeye
-> devam eder ve her şey çalışır. Yeniden adlandırmak zorunda değilsin.
-> `wrangler deploy` bu dizinden çalıştırılırsa `kadran-nabiz` adıyla YENİ
-> bir Worker ve yeni bir adres oluşur; eskisi zamanlayıcısıyla çalışmaya
-> devam eder. Taşıyacaksan sıra önemli, yoksa eski Worker nabız alamayıp
-> sahte "NABIZ YOK" yazar:
+> **If you deployed it as `panely-nabiz` before v0.4.0 (K-136):** the server
+> migration does not touch the Worker; the address in `notify.conf` keeps
+> pointing at the old Worker and everything works. You do not have to rename
+> it. Running `wrangler deploy` from this directory creates a NEW Worker named
+> `kadran-nabiz` with a new address; the old one keeps running on its
+> schedule. If you move, the order matters, or the old Worker gets no
+> heartbeat and sends a false "NO HEARTBEAT":
 >
-> 1. `npx wrangler deploy`, sonra yukarıdaki üç sırrı YENİ Worker'a gir
->    (KV aynı, `wrangler.jsonc`'taki kimlik; durum korunur).
-> 2. Sunucuda `HEARTBEAT_URL`'i yeni adrese çevir, bir dakika bekle.
-> 3. Eskisini sil: `npx wrangler delete --name panely-nabiz`.
+> 1. `npx wrangler deploy`, then enter the three secrets above on the NEW
+>    Worker (same KV, the id in `wrangler.jsonc`; the state is kept).
+> 2. On the server, point `HEARTBEAT_URL` at the new address and wait a minute.
+> 3. Delete the old one: `npx wrangler delete --name panely-nabiz`.
+>
+> Messages are in English since K-150. A Worker deployed before that keeps
+> sending the old Turkish texts until you run `npx wrangler deploy` again.
 
-## Doğrulama
+## Verification
 
-Kontrol grubu şart: yalnızca "alarm geldi" görmek, Worker'ın ayırt
-edebildiğini kanıtlamaz.
+A control group is required: only seeing "the alarm arrived" does not prove
+the Worker can tell the difference.
 
-1. **Sessizlik:** gönderici çalışırken en az bir kontrol turu (5 dk)
-   boyunca mesaj GELMEMELİ.
-2. **Alarm:** `systemctl stop kadran-notify.timer` → en geç ~20 dk içinde
-   "🔴 NABIZ YOK" gelmeli.
-3. **Düzelme:** `systemctl start kadran-notify.timer` → "✅ NABIZ GERİ GELDİ".
+1. **Silence:** while the sender is running, NO message should arrive for at
+   least one check round (5 min).
+2. **Alarm:** `systemctl stop kadran-notify.timer` → "🔴 NO HEARTBEAT" should
+   arrive within ~20 min at most.
+3. **Recovery:** `systemctl start kadran-notify.timer` → "✅ HEARTBEAT BACK".
 
-Ölçülen (25 Eyl, K-109): son nabızdan 17 dk sonra 🔴, zamanlayıcı açıldıktan
-sonraki ilk turda ✅. Her durum değişiminde tek mesaj geldi, eşiğin altındaki
-turlar sustu.
+Measured (25 Sep, K-109): 🔴 17 min after the last heartbeat, ✅ on the first
+round after the timer was started. Each state change produced one message,
+and the rounds below the threshold stayed silent.
 
-## Bilinen sınırlar
+## Known limits
 
-- Nabız, alarm göndericisi BAŞARIYLA koştuğunda atılır. Telegram'a
-  ulaşılamadığı için gönderici başarısız olursa nabız da kesilir ve Worker
-  alarm verir — Worker da Telegram'a ulaşamıyorsa o mesaj da gitmez.
-- Worker'ın kendisi durursa (Cloudflare kesintisi, hesap sorunu) kimse haber
-  almaz. Zincirin son halkası.
+- The heartbeat is sent when the alarm sender runs SUCCESSFULLY. If the
+  sender fails because Telegram is unreachable, the heartbeat stops too and the
+  Worker raises an alarm — and if the Worker cannot reach Telegram either, that
+  message does not go out.
+- If the Worker itself stops (a Cloudflare outage, an account problem), nobody
+  hears about it. It is the last link in the chain.

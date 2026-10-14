@@ -34,11 +34,11 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
 
 		actor := actorFromContext(ctx)
 		attrs := []any{
-			"metot", info.FullMethod,
-			"sure_ms", time.Since(started).Milliseconds(),
-			"kaynak_ip", orUnknown(actor.SourceIP),
-			"anahtar", orUnknown(actor.KeyFingerprint),
-			"koken", actor.Origin,
+			"method", info.FullMethod,
+			"duration_ms", time.Since(started).Milliseconds(),
+			"source_ip", orUnknown(actor.SourceIP),
+			"key", orUnknown(actor.KeyFingerprint),
+			"origin", actor.Origin,
 		}
 
 		// SO_PEERCRED ile çekirdekten alınan unix kimliği. Bunu ve SSH
@@ -49,11 +49,11 @@ func LoggingInterceptor() grpc.UnaryServerInterceptor {
 		}
 
 		if err != nil {
-			attrs = append(attrs, "kod", status.Code(err).String(), "hata", err.Error())
-			slog.Warn("istek başarısız", attrs...)
+			attrs = append(attrs, "code", status.Code(err).String(), "error", err.Error())
+			slog.Warn("request failed", attrs...)
 			return resp, err
 		}
-		slog.Debug("istek tamamlandı", attrs...)
+		slog.Debug("request completed", attrs...)
 		return resp, nil
 	}
 }

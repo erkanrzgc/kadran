@@ -221,7 +221,7 @@ func TestInvalidRoleIsRejectedAtHandshake(t *testing.T) {
 		if !errors.Is(err, connproto.ErrInvalidRole) {
 			t.Errorf("%+v: el sıkışma hatası = %v, ErrInvalidRole bekleniyordu", id, err)
 		}
-		if !strings.Contains(buf.String(), "reddedildi") {
+		if !strings.Contains(buf.String(), "connection refused") {
 			t.Errorf("%+v: ret günlüğe yazılmadı:\n%s", id, buf.String())
 		}
 	}

@@ -102,15 +102,15 @@ ok "READY geldi ($(ozellik ActiveState))"
 
 # main'in bir döngüye damga vermeyi unutmadığının tek kanıtı bu satır
 # (Beat.Mark nil'de sessiz).
-if gunluk | grep -q 'izlenen_donguler=gözetmen,vekil-izleyici,disk,yedek'; then
+if gunluk | grep -q 'watched_loops=supervisor,proxy-watch,disk,backup'; then
     ok "dört döngü izleniyor"
 else
     bad "izlenen döngü listesi eksik ya da yok: $(gunluk | grep 'watchdog' | tail -2)"
 fi
-if gunluk | grep -q "ping_araligi=$((WDSEC / 2))s"; then
+if gunluk | grep -q "ping_interval=$((WDSEC / 2))s"; then
     ok "ping aralığı WatchdogSec'in yarısı ($((WDSEC / 2))s)"
 else
-    bad "ping aralığı beklenen değil: $(gunluk | grep 'watchdog açık' | tail -1)"
+    bad "ping aralığı beklenen değil: $(gunluk | grep 'watchdog enabled' | tail -1)"
 fi
 
 echo "== 1. Kontrol: normal koşu, $((6 * WDSEC)) sn =="

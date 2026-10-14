@@ -55,9 +55,9 @@ func RunContext(ctx context.Context, server *grpc.Server, listener net.Listener)
 		return normalize(err)
 
 	case <-ctx.Done():
-		slog.Info("kapanış sinyali alındı, açık istekler tamamlanıyor")
+		slog.Info("shutdown signal received, finishing open requests")
 		if err := sdnotify.Stopping(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {
-			slog.Warn("systemd kapanış bildirimi başarısız", "hata", err)
+			slog.Warn("systemd stopping notification failed", "error", err)
 		}
 		server.GracefulStop()
 		// GracefulStop döndüğünde Serve de dönmüştür.

@@ -42,7 +42,7 @@ test("bozuk zaman damgası taze SAYILMAZ", () => {
 });
 
 test("mesajlar sunucu adını ve süreyi taşıyor", () => {
-  assert.match(mesaj("alarm_yok", "kadran-test", 17), /NABIZ YOK — kadran-test[\s\S]*17 dakikadır/);
-  assert.match(mesaj("duzeldi", "kadran-test", null), /GERİ GELDİ — kadran-test/);
+  assert.match(mesaj("alarm_yok", "kadran-test", 17), /NO HEARTBEAT — kadran-test[\s\S]*for 17 minutes/);
+  assert.match(mesaj("duzeldi", "kadran-test", null), /HEARTBEAT BACK — kadran-test/);
   assert.throws(() => mesaj("yok", "x", 0));
 });

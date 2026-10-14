@@ -23,7 +23,9 @@ Başarı ölçütleri:
    uyarır; `-skip-dns-check` gerekmez.
 4. `kadran domain check -wait <süre>` kayıt doğru olana kadar bekler, sonra port, HTTP ve
    sertifika denetimlerine geçer.
-5. Hiçbir firmanın API anahtarı istenmez (kullanıcı kararı: "yönlendir + doğrula").
+5. Sunucunun kaydıyla birlikte başka adres de dönen karışık küme durdurulur ve silinecek
+   kayıtlar adıyla söylenir.
+6. Hiçbir firmanın API anahtarı istenmez (kullanıcı kararı: "yönlendir + doğrula").
 
 ## Kapsam dışı
 
@@ -47,20 +49,36 @@ Yanlış DNS, firma tanınıyor (`app update -domain` hatası ve `domain check` 
   If the domain is assigned to a Vercel project, remove it from the project as well.
 ```
 
+Sunucu kaydı eklenmiş ama eski kayıt da duruyor (bugün bu GEÇİYOR, artık durur):
+
+```
+✗ DNS       the A records are 46.225.95.35 (server) and 64.29.17.65, 216.198.79.65:
+            visitors and Let's Encrypt reach the other addresses part of the time
+  Delete these records for "@": A/ALIAS → 64.29.17.65, 216.198.79.65
+```
+
 Kayıt firmada doğru, önbellek eski:
 
 ```
 ! DNS       your DNS host (Vercel) already answers 46.225.95.35; this machine still sees
-            64.29.17.65 (cached, up to 600 s). Continuing.
+            64.29.17.65 from its cache (the new record's TTL is 600 s, the old cache time is
+            unknown). Let's Encrypt usually sees the new record; to be sure, wait with
+            kadran domain check -wait 10m. Continuing.
 ```
 
-Cloudflare proxy'si:
+Cloudflare proxy'si (NS Cloudflare'de):
 
 ```
-✗ DNS       the A record points at Cloudflare (104.21.x.x): the record is proxied (orange
-            cloud) or the site is hosted on Cloudflare
+✗ DNS       the A record points at Cloudflare (104.21.x.x): the record is proxied (orange cloud)
   At Cloudflare: DNS → Records → edit the record → Proxy status: DNS only (grey cloud)
   Keeping the proxy is possible: SSL/TLS mode Full (strict), then -skip-dns-check.
+```
+
+Cloudflare aralığı ama NS başka firmada (Porkbun, Hostinger park sayfaları Cloudflare'de):
+
+```
+✗ DNS       the A record points at a Cloudflare-hosted page (104.21.x.x), e.g. the
+            registrar's parking page: replace it with the record below
 ```
 
 Tanınmayan firma: aynı blok, "At Vercel" satırı yerine genel tarif ("your DNS host's control
@@ -75,24 +93,42 @@ basar. Sunucu tarafı değişmiyor; protokol 3 kalır.
 |---|---|
 | `zone.go` | Adın bölgesini bulur: adın kendisinden başlayıp üst etiketlere NS sorgusuyla çıkar (`net.Resolver.LookupNS`). İlk NS bulunan ad bölgedir. Kaydın adını hesaplar: bölgenin kendisi → `@`, değilse bölgeye göre sol kısım (`kadran`). |
 | `providers.go` | NS son eki → firma tablosu. Her girdide: ad, panelde nereye gidileceği, varsa CLI komutu, firmaya özel uyarılar. NS'ler iki farklı firmaya bölünmüşse ya da hiçbiri eşleşmezse genel tarif. |
-| `authoritative.go` | Bölgenin NS'lerine doğrudan A/AAAA sorar (`golang.org/x/net/dns/dnsmessage`, UDP; kesilirse TCP). Cevabı ve TTL'yi döndürür. `x/net` zaten dolaylı bağımlılık; yeni modül yok. |
-| `cloudflare.go` | Cloudflare'in yayımladığı IPv4/IPv6 aralıkları (sabit liste, kaynağı yorumda). A/AAAA bu aralıktaysa "proxied". |
-| `domaincheck.go` | `Check` yukarıdakileri birleştirir; `Report`'a alanlar eklenir: `Zone`, `NameServers`, `Provider`, `RecordName`, `Authoritative` (adresler + TTL), `Proxied`, `Fix` (eklenecek kayıtlar). |
+| `authoritative.go` | Bölgenin NS'lerinin **hepsine** doğrudan A/AAAA sorar (`golang.org/x/net/dns/dnsmessage`, UDP; kesilirse TCP). Cevap ancak AA (yetkili) bayrağı taşıyorsa sayılır: bayraksız cevap, 53. portu araya giren bir ISS önbelleğinden gelmiş olabilir (Türk ISS'lerinde yaygın) ve "yetkili ulaşılamadı" sayılır. Cevabı ve TTL'yi döndürür. `x/net` zaten dolaylı bağımlılık; yeni modül yok. |
+| `cloudflare.go` | Cloudflare'in yayımladığı IPv4/IPv6 aralıkları (sabit liste, kaynağı yorumda). A/AAAA bu aralıktaysa NS'ye göre ya "proxied" ya da "Cloudflare'de barınan sayfa". |
+| `domaincheck.go` | `Check` yukarıdakileri birleştirir; `Report`'a alanlar eklenir: `Zone`, `NameServers`, `Provider`, `RecordName`, `Authoritative` (adresler + TTL), `CNAME`, `Proxied`, `Fix` (eklenecek ve silinecek kayıtlar). |
 
-Karar kuralları (bugünküler korunur, iki ekleme):
+Karar kuralları (bugünküler korunur; 3, 5, 6, 7 ve 8 yeni):
 
 1. `.localhost` → Skipped (bugünkü gibi).
 2. Sorgu bozuk ya da zaman aşımı → Warn; hiçbir zaman engellemez (bugünkü gibi).
-3. **Yetkili cevap varsa öncelik onda:** yetkili sunucu sunucunun adresini veriyorsa ve yerel
+3. **Yetkili cevap varsa öncelik onda:** yetkili sunucular sunucunun adresini veriyor, yerel
    çözümleyici eskiyi veriyorsa → Warn ("propagating"). Yetkili yanlışsa → Stop, yerel doğru
-   görünse bile (Let's Encrypt yetkili cevaba yakın olanı görür).
-4. Yetkili sunucuya ulaşılamazsa bugünkü yerel-çözümleyici kuralları aynen geçerli.
-5. A/AAAA Cloudflare aralığındaysa → Stop, `Proxied=true`, Cloudflare'e özel çözüm.
-6. AAAA başka yeri gösteriyorsa → Stop (bugünkü gibi); `Fix` bloğu "AAAA kaydını sil" der.
+   görünse bile. Uyarı metni kesinlik iddia etmez: Let's Encrypt kendi önbellekli
+   çözümleyicilerini kullanıyor; kesinlik için `-wait` önerilir. Başarısız sertifika denemesi
+   Caddy'yi uzun beklemeye sokar (K-128'in gerekçesi).
+4. Yetkili sunucuya ulaşılamazsa ya da AA bayrağı yoksa bugünkü yerel-çözümleyici kuralları
+   aynen geçerli.
+5. **NS'ler birbirini tutmuyorsa** (ör. firmanın kendi içindeki yayılımı sürüyor) → Warn;
+   cevap "doğru" sayılmaz.
+6. **Karışık kayıt kümesi → Stop.** Kümede sunucunun adresi VE başka adres varsa (bugün
+   `overlaps` bunu geçiriyor) durulur; `Fix` silinecek fazlalıkları listeler. Ziyaretçiler ve
+   Let's Encrypt'in çok noktadan doğrulaması fazlalıklara düşebilir. Bilerek birden çok sunucu
+   kullanan `-skip-dns-check` ile geçer.
+7. **CNAME:** yetkili cevap yalnız CNAME dönerse (www'de yaygın) hedefi sistem
+   çözümleyicisiyle çözülür ve aynı kurallar hedefin adreslerine uygulanır. Hedef sunucuyu
+   gösteriyorsa OK; göstermiyorsa Stop: "CNAME to X; replace it with an A record".
+8. A/AAAA Cloudflare aralığındaysa → Stop. NS Cloudflare'deyse `Proxied=true` ve "DNS only"
+   tarifi; NS başka firmadaysa "Cloudflare'de barınan bir sayfa (ör. park sayfası), değiştir".
+9. AAAA başka yeri gösteriyorsa → Stop (bugünkü gibi); `Fix` bloğu "AAAA kaydını sil" der.
 
 `Fix` bloğu: sunucunun bilinen IPv4'ü için `A`, IPv6'sı biliniyorsa `AAAA`. Aynı ad için
 silinmesi gerekenler hep birlikte söylenir (A/AAAA/ALIAS/CNAME, firma "URL forward" ya da park
 sayfası kaydı).
+
+**Süre bütçesi:** bölge yürüyüşü ve NS sorguları `app create/update`'ten önce her `-domain`
+değişikliğinde koşuyor. Tüm DNS aşaması en çok 10 sn sürer; NS sorguları paralel, sorgu başına
+3 sn. Bütçe aşılırsa sessizce kural 4'e düşülür (bugünkü davranış), komut takılmaz. NS'nin
+IPv4 adresi önce denenir; yalnız IPv4'lü ağda IPv6 adresinde beklenmez.
 
 ### Firma tablosu (ilk sürüm)
 
@@ -136,7 +172,8 @@ Firma adımları kısa tutulur (2–3 satır); ayrıntı `docs/guides/domains.md
 - DNS'ten gelen metin (NS adları) güvenilmez veridir: basılmadan önce `[a-z0-9.-]` dışı
   karakterler atılır, uzunluk sınırlanır. Terminale kaçış dizisi basılamaz.
 - Yetkili sorgu yalnız 53/udp ve 53/tcp; NS'nin adresi sistem çözümleyicisinden alınır.
-  Sorgu başına 3 sn, toplamda komutun kendi süresi.
+  Süre bütçesi "Tasarım" bölümünde: sorgu başına 3 sn, DNS aşaması toplam 10 sn.
+- Cevabın soru kimliği (ID) ve soru bölümü gönderilenle eşleşmezse cevap atılır.
 - NS bulunamazsa (ör. henüz kayıtlı olmayan domain) firma "unknown". Bugünkü A/AAAA kuralları
   geçerli, "domain may not be registered or delegated" notu eklenir.
 - Bölgenin içinde yetki devredilmiş alt bölge varsa zone yürüyüşü onu bulur (ilk NS'li ad).
@@ -150,14 +187,18 @@ Firma adımları kısa tutulur (2–3 satır); ayrıntı `docs/guides/domains.md
 - `zone_test.go`: sahte çözümleyiciyle `kadran.erkanrzgc.dev` → bölge `erkanrzgc.dev`, kayıt
   `kadran`; kök → `@`; NS hiç yoksa unknown.
 - `authoritative_test.go`: sahte DNS sunucusu (yerel UDP dinleyici). A/AAAA cevabı ve TTL,
-  kesilmiş cevapta TCP'ye geçiş, zaman aşımı.
-- `domaincheck_test.go`: karar tablosuna yeni satırlar (yetkili doğru/yerel eski → Warn,
-  yetkili yanlış/yerel doğru → Stop, Cloudflare → Stop+Proxied, yetkiliye ulaşılamıyor → eski
-  kurallar).
+  kesilmiş cevapta TCP'ye geçiş, zaman aşımı, AA bayrağı olmayan cevap → "yetkili yok",
+  yalnız CNAME dönen cevap.
+- `domaincheck_test.go`: karar tablosuna yeni satırlar: yetkili doğru/yerel eski → Warn;
+  yetkili yanlış/yerel doğru → Stop; NS'ler tutarsız → Warn; karışık küme → Stop ve `Fix`
+  fazlalıkları listeler; CNAME hedefi sunucu → OK, başka yer → Stop; Cloudflare aralığı + NS
+  Cloudflare → Proxied, NS başka → park sayfası; yetkiliye ulaşılamıyor → eski kurallar; 10 sn
+  bütçe aşımı → eski kurallar, komut takılmaz.
 - `cmd/kadran`: `domain check` ve `app update` çıktısında firma bloğu; `-wait` sahte saatle.
 - `cmd/kadran/english_test.go` yeni dizeleri kapsar.
-- `scripts/mutate-domaincheck.sh`'a yeni kurallar için mutantlar (öncelik kuralı, Cloudflare
-  aralığı, son ek eşleşmesi, NS temizleme).
+- `scripts/mutate-domaincheck.sh`'a yeni kurallar için mutantlar: öncelik kuralı, karışık
+  küme, AA bayrağı, CNAME takibi, Cloudflare aralığı ve NS'ye göre metin, son ek eşleşmesi, NS
+  temizleme.
 
 ## Belgeler
 

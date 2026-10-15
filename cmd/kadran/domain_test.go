@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/erkanrzgc/kadran/internal/domaincheck/dnstest"
 )
 
 // ── kadran domain check (K-128 B) ────────────────────────────────────
@@ -193,5 +195,35 @@ func TestDomainCheckUsage(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "usage") {
 		t.Errorf("kullanım metni yok: %q", stderr)
+	}
+}
+
+// Kayıt firması satırı: DNS başka firmadaysa kaydın NEREDE değişeceğini
+// açıkça söyler (K-151).
+func TestDomainCheckShowsTheRegistrar(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}, "ip4 ns1.vercel-dns.com": {"192.0.2.1"}}
+	c.nsResolver = cliNS{"example.com": {"ns1.vercel-dns.com."}}
+	c.exchange = dnstest.Exchange(map[string]dnstest.Answer{"192.0.2.1": {AA: true, Addrs: []string{"198.51.100.7"}}})
+
+	mux := http.NewServeMux()
+	rdap := httptest.NewTLSServer(mux)
+	t.Cleanup(rdap.Close)
+	mux.HandleFunc("/boot.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"services":[[["com"],["` + rdap.URL + `/"]]]}`))
+	})
+	mux.HandleFunc("/domain/example.com", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"entities":[{"roles":["registrar"],"vcardArray":["vcard",[["fn",{},"text","Name.com, Inc."]]]}]}`))
+	})
+	c.rdapClient = rdap.Client()
+	c.rdapBootstrap = rdap.URL + "/boot.json"
+
+	_ = c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	for _, want := range []string{"registrar", "Name.com, Inc.", "the DNS is at Vercel: change the record there"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("%q yok:\n%s", want, out)
+		}
 	}
 }

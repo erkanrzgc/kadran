@@ -35,6 +35,7 @@ type domainReport struct {
 }
 
 func (r *domainReport) ok(label, detail string)   { r.line("✓", label, detail) }
+func (r *domainReport) info(label, detail string) { r.line("·", label, detail) }
 func (r *domainReport) warn(label, detail string) { r.line("!", label, detail) }
 func (r *domainReport) fail(label, detail string) {
 	r.failed = true
@@ -71,7 +72,9 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
 	r := &domainReport{out: c.stdout}
-	if c.probeDNS(ctx, r, domain, fs.Arg(1)).Verdict == domaincheck.Stop {
+	rep := c.probeDNS(ctx, r, domain, fs.Arg(1))
+	c.printRegistrar(ctx, r, rep)
+	if rep.Verdict == domaincheck.Stop {
 		// Yanlış DNS'te sonraki satırlar BU sunucuyu değil, alan adının
 		// gösterdiği yeri ölçüyor (ör. joker kayıtta Vercel'in sertifikası).
 		fmt.Fprintln(c.stdout, "    the checks below hit the server the domain points at now, not this server")
@@ -217,4 +220,28 @@ func joinAddrs(addrs []netip.Addr) string {
 		s[i] = a.String()
 	}
 	return strings.Join(s, ", ")
+}
+
+// printRegistrar, domainin akredite kayıt firmasını basar (K-151). Hata,
+// zaman aşımı ya da RDAP olmayan uzantıda sessiz: tanıyı asla bozmaz.
+func (c *cli) printRegistrar(ctx context.Context, r *domainReport, rep domaincheck.Report) {
+	hc, boot := c.rdapClient, c.rdapBootstrap
+	if hc == nil {
+		if c.resolver != nil {
+			return // test: ağa çıkılmaz
+		}
+		hc = domaincheck.RDAPClient()
+	}
+	if boot == "" {
+		boot = domaincheck.IANABootstrapURL
+	}
+	name, err := domaincheck.LookupRegistrar(ctx, hc, boot, rep.Domain)
+	if err != nil || name == "" {
+		return
+	}
+	detail := name + " (accredited registrar; resellers such as Vercel sell through one)"
+	if rep.HasProvider {
+		detail += "\n              the DNS is at " + rep.Provider.Name + ": change the record there"
+	}
+	r.info("registrar", detail)
 }

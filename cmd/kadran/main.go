@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -79,6 +80,10 @@ type cli struct {
 	// sahtesiyken bunlar nil ise AĞA ÇIKILMAZ (dnsChecker).
 	nsResolver domaincheck.NSResolver
 	exchange   domaincheck.Exchanger
+	// `domain check`: kayıt firması (RDAP, K-151). resolver test sahtesiyken
+	// rdapClient nil ise sorgu yapılmaz.
+	rdapClient    *http.Client
+	rdapBootstrap string
 	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
 	keys keyManager
 }

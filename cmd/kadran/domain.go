@@ -71,7 +71,7 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
 	r := &domainReport{out: c.stdout}
-	if c.probeDNS(ctx, r, domain, fs.Arg(1)) == domaincheck.Stop {
+	if c.probeDNS(ctx, r, domain, fs.Arg(1)).Verdict == domaincheck.Stop {
 		// Yanlış DNS'te sonraki satırlar BU sunucuyu değil, alan adının
 		// gösterdiği yeri ölçüyor (ör. joker kayıtta Vercel'in sertifikası).
 		fmt.Fprintln(c.stdout, "    the checks below hit the server the domain points at now, not this server")
@@ -85,12 +85,12 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	return exitOK
 }
 
-func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget string) domaincheck.Verdict {
+func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget string) domaincheck.Report {
 	server, ok := c.serverHostFor(ctx, rawTarget)
 	if !ok {
 		r.warn("DNS", "could not parse the target; the server's address is unknown")
 	}
-	rep := domaincheck.Check(ctx, c.dnsResolver(), domain, server)
+	rep := c.dnsChecker().Check(ctx, domain, server)
 	records := joinAddrs(append(rep.A, rep.AAAA...))
 	switch rep.Verdict {
 	case domaincheck.OK:
@@ -99,8 +99,9 @@ func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget s
 		r.warn("DNS", strings.Join(rep.Reasons, "; "))
 	default:
 		r.fail("DNS", strings.Join(rep.Reasons, "; "))
+		writeDNSGuide(r.out, rep)
 	}
-	return rep.Verdict
+	return rep
 }
 
 func (c *cli) netDial(ctx context.Context, network, addr string) (net.Conn, error) {

@@ -75,6 +75,10 @@ type cli struct {
 	// (nil: sistemin kökleri).
 	dialNet  func(ctx context.Context, network, addr string) (net.Conn, error)
 	tlsRoots *x509.CertPool
+	// K-151: NS sorgusu ve yetkili DNS sorgusu. resolver bir test
+	// sahtesiyken bunlar nil ise AĞA ÇIKILMAZ (dnsChecker).
+	nsResolver domaincheck.NSResolver
+	exchange   domaincheck.Exchanger
 	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
 	keys keyManager
 }

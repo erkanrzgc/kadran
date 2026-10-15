@@ -75,7 +75,10 @@ type Resolver interface {
 
 // Fix, kullanıcının DNS'te yapması gerekenler (K-151).
 type Fix struct {
-	Add    []Record
+	Add []Record
+	// Remove, adın bugün verdiği CEVAPLAR: bir A/AAAA kaydı, ALIAS/düzleştirilmiş
+	// bir kayıt ya da joker (*) kaydı aynı şekilde cevap verir; bölgedeki
+	// satırlarla birebir eşleşmeyebilir. CNAME varsa yalnız CNAME satırı.
 	Remove []Record
 }
 
@@ -238,7 +241,9 @@ func (c Checker) Check(ctx context.Context, domain, serverHost string) Report {
 	rep.Server = serverAddrs(ctx, c.Resolver, serverHost)
 	c.locate(ctx, &rep)
 
+	answered := append(slices.Clone(a), aaaa...)
 	if rep.Auth.Answered && rep.Auth.Agree {
+		answered = rep.Auth.Addrs
 		c.judgeAuthoritative(ctx, &rep, serverHost)
 	} else {
 		for _, e := range []error{aErr, aaaaErr} {
@@ -252,7 +257,7 @@ func (c Checker) Check(ctx context.Context, domain, serverHost string) Report {
 				strings.Join(rep.NameServers, ", "))
 		}
 	}
-	rep.Fix.Add = fixRecords(rep)
+	rep.Fix.Add = fixRecords(rep, answered)
 	return rep
 }
 
@@ -261,7 +266,6 @@ func (c Checker) locate(ctx context.Context, rep *Report) {
 	if c.NS == nil {
 		return
 	}
-	rep.ZoneChecked = true
 	budget := c.Budget
 	if budget <= 0 {
 		budget = DefaultBudget
@@ -269,6 +273,8 @@ func (c Checker) locate(ctx context.Context, rep *Report) {
 	ctx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 	zone, ok := FindZone(ctx, c.NS, rep.Domain)
+	// Bütçe yürüyüşü kestiyse "bölge bulunamadı" denmez: bilinmiyor.
+	rep.ZoneChecked = ok || ctx.Err() == nil
 	if !ok {
 		return
 	}

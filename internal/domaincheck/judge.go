@@ -1,6 +1,7 @@
 package domaincheck
 
 import (
+	"cmp"
 	"context"
 	"net/netip"
 	"slices"
@@ -23,10 +24,13 @@ func judge(rep *Report, a, aaaa []netip.Addr, noRecords bool, serverHost string)
 		}
 		return
 	}
-	if cf := cloudflareAddrs(all); len(cf) > 0 {
+	// Cloudflare'in ad sunucuları CNAME'i yalnız DNS-only kayıtta döndürür.
+	if cf := cloudflareAddrs(all); len(cf) > 0 && rep.CNAME == "" {
 		if rep.HasProvider && rep.Provider.Name == providerCloudflare {
 			rep.Proxied = true
 			rep.raise(Stop, "the record points at Cloudflare (%s): it is proxied (orange cloud)", join(cf))
+		} else if rep.Zone == "" {
+			rep.raise(Stop, "the record points at Cloudflare (%s): it is either proxied (orange cloud) or a Cloudflare-hosted page such as a parking page", join(cf))
 		} else {
 			rep.OnCloudflare = true
 			rep.raise(Stop, "the record points at a Cloudflare-hosted page (%s), e.g. the registrar's parking page", join(cf))
@@ -67,17 +71,25 @@ func checkFamily(rep *Report, record, fam string, records, server []netip.Addr) 
 // yanlıştır.
 func (c Checker) judgeAuthoritative(ctx context.Context, rep *Report, serverHost string) {
 	addrs := rep.Auth.Addrs
+	noRecords := len(addrs) == 0
+	rep.CNAME = rep.Auth.CNAME
 	if len(addrs) == 0 && rep.Auth.CNAME != "" {
-		rep.CNAME = rep.Auth.CNAME
-		ta, _, _ := lookup(ctx, c.Resolver, "ip4", rep.CNAME)
-		taaaa, _, _ := lookup(ctx, c.Resolver, "ip6", rep.CNAME)
+		ta, taNotFound, taErr := lookup(ctx, c.Resolver, "ip4", rep.CNAME)
+		taaaa, taaaaNotFound, taaaaErr := lookup(ctx, c.Resolver, "ip6", rep.CNAME)
 		addrs = append(ta, taaaa...)
+		noRecords = taNotFound && taaaaNotFound
+		// Hedef çözülemediyse kayıt yok demek yanlış olur: uyarır, durmaz.
+		if err := cmp.Or(taErr, taaaaErr); len(addrs) == 0 && err != nil {
+			rep.raise(Warn, "the CNAME target %s did not resolve (%v); records could not be checked", rep.CNAME, err)
+			return
+		}
 	}
-	judge(rep, family(addrs, true), family(addrs, false), len(addrs) == 0, serverHost)
+	judge(rep, family(addrs, true), family(addrs, false), noRecords, serverHost)
 	if rep.Verdict == Stop {
 		if rep.CNAME != "" {
 			rep.raise(Stop, "%s is a CNAME to %s; replace it with an A record", rep.Domain, rep.CNAME)
-			rep.Fix.Remove = append(rep.Fix.Remove, Record{Type: "CNAME", Name: rep.RecordName, Value: rep.CNAME})
+			// Hedefin adresleri kullanıcının bölgesinde satır değil: yalnız CNAME.
+			rep.Fix.Remove = []Record{{Type: "CNAME", Name: rep.RecordName, Value: rep.CNAME}}
 		}
 		rep.raise(Stop, "this is the answer of the DNS host's own nameservers")
 		return
@@ -92,13 +104,17 @@ func (c Checker) judgeAuthoritative(ctx context.Context, rep *Report, serverHost
 }
 
 // fixRecords, durulan denetimde eklenecek kayıtlar: sunucunun bilinen her
-// adresi için A ya da AAAA. Proxy'li Cloudflare kaydında boş: orada kayıt
-// değil proxy ayarı değişiyor.
-func fixRecords(rep Report) []Record {
+// adresi için A ya da AAAA; ad zaten cevap veriyorsa (answered) o adres
+// eklenmez, CNAME değiştiriliyorsa hepsi eklenir. Proxy'li Cloudflare
+// kaydında boş: orada kayıt değil proxy ayarı değişiyor.
+func fixRecords(rep Report, answered []netip.Addr) []Record {
 	if rep.Verdict != Stop || rep.Proxied {
 		return nil
 	}
-	return recordsOf(rep.RecordName, rep.Server)
+	if rep.CNAME != "" {
+		return recordsOf(rep.RecordName, rep.Server)
+	}
+	return recordsOf(rep.RecordName, without(rep.Server, answered))
 }
 
 func recordsOf(name string, addrs []netip.Addr) []Record {

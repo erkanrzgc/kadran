@@ -1,6 +1,8 @@
 package domaincheck
 
 import (
+	"context"
+	"net"
 	"slices"
 	"strings"
 	"testing"
@@ -93,6 +95,10 @@ func TestCheckerRules(t *testing.T) {
 				if !slices.Contains(rep.Fix.Remove, Record{Type: "A", Name: "app", Value: wrong}) {
 					t.Errorf("Fix.Remove fazlalığı içermiyor: %v", rep.Fix.Remove)
 				}
+				// Yalnız silme satırı: sunucu kaydı zaten yanıtta.
+				if len(rep.Fix.Add) != 0 || !slices.Equal(rep.Fix.Remove, []Record{{Type: "A", Name: "app", Value: wrong}}) {
+					t.Errorf("Fix.Add = %v, Fix.Remove = %v", rep.Fix.Add, rep.Fix.Remove)
+				}
 			},
 		},
 		{
@@ -135,8 +141,66 @@ func TestCheckerRules(t *testing.T) {
 			domain: "www.example.com", server: right,
 			want: Stop, reasons: []string{"CNAME to target.example.net"},
 			check: func(t *testing.T, rep Report) {
-				if !slices.Contains(rep.Fix.Remove, Record{Type: "CNAME", Name: "www", Value: "target.example.net"}) {
-					t.Errorf("Fix.Remove CNAME içermiyor: %v", rep.Fix.Remove)
+				want := []Record{{Type: "CNAME", Name: "www", Value: "target.example.net"}}
+				if !slices.Equal(rep.Fix.Remove, want) {
+					t.Errorf("Fix.Remove = %v, beklenen yalnız %v", rep.Fix.Remove, want)
+				}
+			},
+		},
+		{
+			// F1: bölge içi CNAME (cevap hedefin adreslerini de taşıyor) yutulmaz.
+			name: "bölge içi CNAME: CNAME silinir, A eklenir",
+			c: zoneChecker(vercelNS, ip4("www.example.com", right),
+				dnstest.Answer{AA: true, CNAME: "example.com", Addrs: []string{wrong}, TTL: 300},
+				dnstest.Answer{AA: true, CNAME: "example.com", Addrs: []string{wrong}, TTL: 300}),
+			domain: "www.example.com", server: right,
+			want: Stop,
+			check: func(t *testing.T, rep Report) {
+				if rep.CNAME != "example.com" {
+					t.Errorf("CNAME = %q", rep.CNAME)
+				}
+				if !slices.Equal(rep.Fix.Remove, []Record{{Type: "CNAME", Name: "www", Value: "example.com"}}) ||
+					!slices.Equal(rep.Fix.Add, []Record{{Type: "A", Name: "www", Value: right}}) {
+					t.Errorf("Remove = %v, Add = %v", rep.Fix.Remove, rep.Fix.Add)
+				}
+			},
+		},
+		{
+			// F2: hedef çözülemedi (SERVFAIL): durdurmaz, uyarır.
+			name: "CNAME hedefi çözülemedi: uyarır, durmaz",
+			c: zoneChecker(vercelNS, fakeResolver{"ip4 target.example.net": {err: errServfail}},
+				dnstest.Answer{AA: true, CNAME: "target.example.net", TTL: 300},
+				dnstest.Answer{AA: true, CNAME: "target.example.net", TTL: 300}),
+			domain: "www.example.com", server: right,
+			want: Warn, reasons: []string{"CNAME target target.example.net did not resolve"},
+		},
+		{
+			// F3: Cloudflare ad sunucuları CNAME döndürüyorsa kayıt DNS-only.
+			name: "Cloudflare NS, CNAME cevabı: turuncu bulut denmez",
+			c: zoneChecker(cloudflareNS, ip4("target.example.net", "104.21.3.4"),
+				dnstest.Answer{AA: true, CNAME: "target.example.net", TTL: 300},
+				dnstest.Answer{AA: true, CNAME: "target.example.net", TTL: 300}),
+			domain: "app.example.com", server: right,
+			want: Stop,
+			check: func(t *testing.T, rep Report) {
+				if rep.Proxied || rep.OnCloudflare {
+					t.Errorf("Proxied=%v OnCloudflare=%v", rep.Proxied, rep.OnCloudflare)
+				}
+				if !slices.Equal(rep.Fix.Remove, []Record{{Type: "CNAME", Name: "app", Value: "target.example.net"}}) ||
+					!slices.Equal(rep.Fix.Add, []Record{{Type: "A", Name: "app", Value: right}}) {
+					t.Errorf("Remove = %v, Add = %v", rep.Fix.Remove, rep.Fix.Add)
+				}
+			},
+		},
+		{
+			// F5: bölge bilinmiyorsa park sayfası iddia edilmez.
+			name:   "bölge bilinmiyor, Cloudflare adresi: nötr anlatım",
+			c:      Checker{Resolver: ip4("app.example.com", "104.21.3.4")},
+			domain: "app.example.com", server: right,
+			want: Stop, reasons: []string{"proxied (orange cloud) or a Cloudflare-hosted page"},
+			check: func(t *testing.T, rep Report) {
+				if rep.Proxied || rep.OnCloudflare || len(rep.Fix.Remove) != 0 {
+					t.Errorf("Proxied=%v OnCloudflare=%v Remove=%v", rep.Proxied, rep.OnCloudflare, rep.Fix.Remove)
 				}
 			},
 		},
@@ -179,6 +243,9 @@ func TestCheckerRules(t *testing.T) {
 			check: func(t *testing.T, rep Report) {
 				if rep.RecordName != "new" || !slices.Equal(rep.Fix.Add, []Record{{Type: "A", Name: "new", Value: right}}) {
 					t.Errorf("kayıt adı %q, Fix.Add %v", rep.RecordName, rep.Fix.Add)
+				}
+				if !slices.Equal(rep.Fix.Remove, []Record{{Type: "A", Name: "new", Value: wrong}}) {
+					t.Errorf("Fix.Remove = %v", rep.Fix.Remove)
 				}
 			},
 		},
@@ -241,5 +308,27 @@ func TestCheckerBudgetFallsBackToLocalRules(t *testing.T) {
 	}
 	if rep.Auth.Answered || rep.Verdict != OK {
 		t.Fatalf("bütçe aşımında yerel kural bekleniyordu: %+v", rep)
+	}
+}
+
+// blockingNS, bağlam bitene kadar cevap vermeyen NSResolver.
+type blockingNS struct{}
+
+func (blockingNS) LookupNS(ctx context.Context, _ string) ([]*net.NS, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// F7: bütçe bölge yürüyüşünü keserse "bölge devredilmemiş" denmez.
+func TestCheckerBudgetCutWalkIsNotZoneChecked(t *testing.T) {
+	c := Checker{Resolver: ip4("app.example.com", "203.0.113.10"), NS: blockingNS{}, Budget: 200 * time.Millisecond}
+
+	start := time.Now()
+	rep := c.Check(t.Context(), "app.example.com", "203.0.113.10")
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("bütçe uygulanmadı: %v sürdü", took)
+	}
+	if rep.Verdict != OK || rep.ZoneChecked {
+		t.Fatalf("Verdict=%v ZoneChecked=%v; gerekçe %q", rep.Verdict, rep.ZoneChecked, rep.Reasons)
 	}
 }

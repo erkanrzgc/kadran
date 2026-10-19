@@ -21,9 +21,16 @@ CLI=cmd/kadran/domaincheck.go
 APP=cmd/kadran/app.go
 UPD=cmd/kadran/appupdate.go
 DOM=cmd/kadran/domain.go
+JUDGE=internal/domaincheck/judge.go
+PROV=internal/domaincheck/providers.go
+ZONE=internal/domaincheck/zone.go
+CF=internal/domaincheck/cloudflare.go
+AUTH=internal/domaincheck/authoritative.go
+RDAP=internal/domaincheck/rdap.go
+GUIDE=cmd/kadran/domainguide.go
 PKGS=(./internal/domaincheck/ ./cmd/kadran/)
-TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname'
-FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM")
+TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname|Provider|AWSPattern|CleanName|CommandFor|FindZone|GuessRecordName|Cloudflare|AskAuthoritative|DefaultExchange|CheckerRules|CheckerBudget|DNSHost|OnlyTheCache|ProxiedCloudflare|StaysOffline|Registrar|WaitsUntil|WaitGivesUp|WriteDNSGuide|ShowsTheDNSHost|SplitOrLookalike|DnsWaitInterval'
+FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM" "$JUDGE" "$PROV" "$ZONE" "$CF" "$AUTH" "$RDAP" "$GUIDE")
 
 # ⚠ Yedek adı TAM YOLDAN türetiliyor: internal/domaincheck/domaincheck.go
 # ile cmd/kadran/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
@@ -95,19 +102,19 @@ fi
 
 echo "== Karar kuralları =="
 
-mutate_in "$DC" "yanlış kayıt yalnızca uyarıyor" \
+mutate_in "$JUDGE" "yanlış kayıt yalnızca uyarıyor" \
     "s=s.replace('rep.raise(Stop, \"the %s record points at','rep.raise(Warn, \"the %s record points at',1)"
 
 # Sunucunun o ailedeki adresi bilinmeden durmak doğru bir AAAA'yı reddeder.
-mutate_in "$DC" "bilinmeyen aile durduruyor" \
+mutate_in "$JUDGE" "bilinmeyen aile durduruyor" \
     "s=s.replace('rep.raise(Warn, \"there is a %s record (%s) but the server','rep.raise(Stop, \"there is a %s record (%s) but the server',1)"
 
-mutate_in "$DC" "AAAA denetlenmiyor" \
-    "s=s.replace('\tcheckFamily(&rep, \"AAAA\", \"IPv6\", aaaa, family(rep.Server, false))\n','',1)"
+mutate_in "$JUDGE" "AAAA denetlenmiyor" \
+    "s=s.replace('\tcheckFamily(rep, \"AAAA\", \"IPv6\", aaaa, family(rep.Server, false))\n','',1)"
 
 # Tek ailenin yokluğu (yalnız A kaydı olan ad) "kayıt yok" değil.
 mutate_in "$DC" "tek aile yoksa kayıt yok sayılıyor" \
-    "s=s.replace('if aNotFound && aaaaNotFound {','if aNotFound || aaaaNotFound {',1)"
+    "s=s.replace('judge(&rep, a, aaaa, aNotFound && aaaaNotFound, serverHost)','judge(&rep, a, aaaa, aNotFound || aaaaNotFound, serverHost)',1)"
 
 # Bozuk sorgu kaydı gizliyor olabilir; "yok" diye okunmamalı.
 mutate_in "$DC" "bulunamadı ile sorgu hatası yer değiştirdi" \
@@ -123,6 +130,82 @@ mutate_in "$DC" "IPv4 eşlemeli IPv6 çözülmüyor" \
 
 mutate_in "$DC" ".localhost muafiyeti yok" \
     "s=s.replace('if domain == \"localhost\" || strings.HasSuffix(domain, \".localhost\") {','if false {',1)"
+
+echo "== K-151 kuralları =="
+
+mutate_in "$JUDGE" "karışık küme geçiyor" \
+    "s=s.replace('if stray := without(records, server); len(stray) > 0 {','if stray := without(records, server); len(stray) > 99 {',1)"
+
+mutate_in "$DC" "yetkili cevap yok sayılıyor" \
+    "s=s.replace('if rep.Auth.Answered && rep.Auth.Agree {','if false {',1)"
+
+mutate_in "$DC" "NS tutarsızlığı uyarmıyor" \
+    "s=s.replace('if rep.Auth.Answered && rep.Verdict < Stop {','if false {',1)"
+
+mutate_in "$JUDGE" "CNAME izlenmiyor" \
+    "s=s.replace('if len(addrs) == 0 && rep.Auth.CNAME != \"\" {','if false {',1)"
+
+mutate_in "$JUDGE" "Cloudflare metni NS'ye bakmıyor" \
+    "s=s.replace('if rep.HasProvider && rep.Provider.Name == providerCloudflare {','if true {',1)"
+
+mutate_in "$CF" "Cloudflare aralığı tanınmıyor" \
+    "s=s.replace('\t\tif p.Contains(a) {','\t\tif false && p.Contains(a) {',1)"
+
+mutate_in "$AUTH" "AA bayrağı aranmıyor" \
+    "s=s.replace(' || h.ID != id || !h.Authoritative {',' || h.ID != id {',1)"
+
+mutate_in "$AUTH" "sorgu kimliği aranmıyor" \
+    "s=s.replace(' || h.ID != id || !h.Authoritative {',' || !h.Authoritative {',1)"
+
+mutate_in "$AUTH" "NS'ler tutarsızken Agree kalıyor" \
+    "s=s.replace('\t\t\tout.Agree = false\n','',1)"
+
+mutate_in "$DC" "süre bütçesi uygulanmıyor" \
+    "s=s.replace('ctx, cancel := context.WithTimeout(ctx, budget)','ctx, cancel := context.WithCancel(ctx); _ = budget',1)"
+
+mutate_in "$PROV" "son ek etiket sınırını aşıyor" \
+    "s=s.replace('strings.HasSuffix(ns, \".\"+suf)','strings.HasSuffix(ns, suf)',1)"
+
+mutate_in "$PROV" "NS adı temizlenmiyor" \
+    "s=s.replace(\"if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '.' || r == '-' {\",'if true {',1)"
+
+mutate_in "$ZONE" "bölge genel son eke tırmanıyor" \
+    "s=s.replace('\t\tif name == top {\n\t\t\treturn Zone{}, false\n\t\t}\n','\t\t_ = top\n',1)"
+
+mutate_in "$RDAP" "https olmayan yönlendirme izleniyor" \
+    "s=s.replace('if req.URL.Scheme != \"https\" {','if false {',1)"
+
+mutate_in "$RDAP" "RDAP gövdesi sınırsız" \
+    "s=s.replace('io.LimitReader(resp.Body, rdapMaxBody)','io.Reader(resp.Body)',1)"
+
+mutate_in "$GUIDE" "proxy'li kayıtta kayıt ekleme öneriliyor" \
+    "s=s.replace('\tif rep.Proxied {\n','\tif false {\n',1)"
+
+mutate_in "$DOM" "-wait beklemiyor" \
+    "s=s.replace('\t\tif rep.Verdict != domaincheck.Stop {\n\t\t\treturn true\n\t\t}\n','\t\treturn true\n',1)"
+
+# T8a: kayıt otoritesi port/HTTP/TLS'ten önce sorulursa takılan sunucu süreyi yer.
+mutate_in "$DOM" "kayıt firması sorgusu süreyi yiyor" \
+    "s=s.replace('\tc.probePorts(ctx, r, domain)\n','\tc.printRegistrar(ctx, r, rep)\n\tc.probePorts(ctx, r, domain)\n',1)"
+
+mutate_in "$DOM" "DNS'te olmayan ad için RDAP soruluyor" \
+    "s=s.replace('if rep.Verdict == domaincheck.Skipped {','if false {',1)"
+
+# W2
+mutate_in "$DOM" "negatif -wait kabul ediliyor" \
+    "s=s.replace('if *wait < 0 {','if false {',1)"
+
+mutate_in "$DOM" "iptal sonrası denetim ölü bağlamla sürüyor" \
+    "s=s.replace('!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {','!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && false {',1)"
+
+mutate_in "$DOM" "süre dolunca son rapor basılmıyor" \
+    "s=s.replace('!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {','!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) {',1)"
+
+mutate_in "$DOM" "bekleme satırı her turda basılıyor" \
+    "s=s.replace('now != last {','now != last || true {',1)"
+
+mutate_in "$DOM" "bekleme aralığı 15 sn değil" \
+    "s=s.replace('const dnsWaitInterval = 15 * time.Second','const dnsWaitInterval = 1 * time.Second',1)"
 
 echo "== CLI bağlantısı =="
 
@@ -164,7 +247,7 @@ mutate_in "$DOM" "kapalı port yalnızca uyarıyor" \
 
 # Yanlış DNS'te sonraki ✓ satırları başka sunucuyu ölçüyor; söylenmeli.
 mutate_in "$DOM" "başka sunucu ölçüldüğü söylenmiyor" \
-    "s=s.replace('fs.Arg(1)) == domaincheck.Stop {','fs.Arg(1)) == domaincheck.Verdict(99) {',1)"
+    "s=s.replace('if rep.Verdict == domaincheck.Stop {','if rep.Verdict == domaincheck.Verdict(99) {',1)"
 
 restore
 # Geri yükleme kanıtlanıyor: her dosya kendi yedeğiyle bayt bayt aynı ve

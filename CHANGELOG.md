@@ -3,6 +3,25 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Added
+
+- DNS guidance (K-151): when a domain does not point at the server, `app create/update -domain`
+  and `kadran domain check` name the DNS host (~50 providers), print the exact record to add and
+  the records to delete, the place in that provider's panel and its official guide. See the
+  [domain setup guide](docs/guides/domains.md).
+- `kadran domain check` asks the DNS host's own nameservers, so a freshly changed record is
+  recognised before caches expire; `-wait 10m` waits until the record points at the server.
+  A negative `-wait` is rejected, and Ctrl-C while waiting stops without running the remaining
+  checks.
+- `kadran domain check` shows the domain's accredited registrar (RDAP).
+
+### Changed
+
+- A record set that contains the server AND other addresses now stops the DNS precheck (it used
+  to pass): part of the visitors and of Let's Encrypt's validation reached the other addresses.
+
 ## v0.7.0 — 2026-10-15
 
 English server texts and a pinned Docker address pool (K-149, K-150). The protocol is

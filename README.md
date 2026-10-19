@@ -101,7 +101,7 @@ bin/kadran app create -repo github.com/you/site -domain site.example.com -port 8
 bin/kadran deploy site kadran-client@your-server
 ```
 
-Point the domain's DNS at the server first, so that Let's Encrypt can reach it. The
+Point the domain's DNS at the server first, so that Let's Encrypt can reach it. [Domain setup guide](docs/guides/domains.md) covers ~50 DNS hosts step by step. The
 [install guide](#install) covers requirements, the `-sudo` mode and what `bootstrap`
 checks on the way.
 
@@ -227,7 +227,9 @@ Without `-domain` an app is reachable only from the server's internal network.
 can't tell (a private or Tailscale address, a failed query). Behind a proxy such as
 Cloudflare, pass `-skip-dns-check`. If a certificate still doesn't arrive,
 `kadran domain check site.example.com kadran-client@your-server` checks DNS, ports 80/443,
-the redirect and the certificate from your machine.
+the redirect and the certificate from your machine. Right after changing a record, add
+`-wait 10m` (`kadran domain check -wait 10m site.example.com kadran-client@your-server`) to
+wait until the DNS points at the server.
 
 > [!TIP]
 > Flags go **after the command and before positional arguments** (Go's `flag` package

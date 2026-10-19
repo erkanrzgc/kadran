@@ -73,7 +73,6 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
 	r := &domainReport{out: c.stdout}
 	rep := c.probeDNS(ctx, r, domain, fs.Arg(1))
-	c.printRegistrar(ctx, r, rep)
 	if rep.Verdict == domaincheck.Stop {
 		// Yanlış DNS'te sonraki satırlar BU sunucuyu değil, alan adının
 		// gösterdiği yeri ölçüyor (ör. joker kayıtta Vercel'in sertifikası).
@@ -82,6 +81,8 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	c.probePorts(ctx, r, domain)
 	c.probeHTTP(ctx, r, domain)
 	c.probeTLS(ctx, r, domain)
+	// En sonda: kayıt otoritesi takılsa da süre önceki denetimlerden yenmez.
+	c.printRegistrar(ctx, r, rep)
 	if r.failed {
 		return exitError
 	}
@@ -225,6 +226,9 @@ func joinAddrs(addrs []netip.Addr) string {
 // printRegistrar, domainin akredite kayıt firmasını basar (K-151). Hata,
 // zaman aşımı ya da RDAP olmayan uzantıda sessiz: tanıyı asla bozmaz.
 func (c *cli) printRegistrar(ctx context.Context, r *domainReport, rep domaincheck.Report) {
+	if rep.Verdict == domaincheck.Skipped {
+		return // DNS'te olmayan ad: sorulacak kayıt yok
+	}
 	hc, boot := c.rdapClient, c.rdapBootstrap
 	if hc == nil {
 		if c.resolver != nil {

@@ -227,3 +227,126 @@ func TestDomainCheckShowsTheRegistrar(t *testing.T) {
 		}
 	}
 }
+
+// attachRegistry: example.com icin bir RDAP sunucusu (TLS) kurar ve cli'ye
+// baglar. domain nil ise domain/<ad> istegi 404 doner.
+func attachRegistry(t *testing.T, c *cli, domain http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	rdap := httptest.NewTLSServer(mux)
+	t.Cleanup(rdap.Close)
+	mux.HandleFunc("/boot.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"services":[[["com"],["` + rdap.URL + `/"]]]}`))
+	})
+	if domain != nil {
+		mux.HandleFunc("/domain/example.com", domain)
+	}
+	c.rdapClient = rdap.Client()
+	c.rdapBootstrap = rdap.URL + "/boot.json"
+	return rdap
+}
+
+// countConns: sunucuya acilan TCP baglanti sayisini sayar.
+func countConns(srv *httptest.Server) *int {
+	n := 0
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			n++
+		}
+	}
+	return &n
+}
+
+// RDAP asla tanıyı bozmaz (T8a): kayit otoritesi takilsa bile DNS dogruysa
+// cikis 0 kalir, hicbir ✗ satiri cikmaz ve kayit firmasi satiri basilmaz.
+func TestDomainCheckSurvivesAHangingRegistry(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	mux := http.NewServeMux()
+	hang := httptest.NewTLSServer(mux)
+	t.Cleanup(hang.Close)
+	mux.HandleFunc("/boot.json", func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	c.rdapClient = hang.Client()
+	c.rdapBootstrap = hang.URL + "/boot.json"
+
+	code := c.runDomain(t.Context(), []string{"check", "--timeout", "2s", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d, beklenen %d\n%s", code, exitOK, out)
+	}
+	if strings.Contains(out.String(), "✗") {
+		t.Errorf("takılan kayıt otoritesi tanıyı bozdu:\n%s", out)
+	}
+	if strings.Contains(out.String(), "registrar") {
+		t.Errorf("zaman aşımında kayıt firması satırı basıldı:\n%s", out)
+	}
+}
+
+// Bilinmeyen DNS saglayicisi: kayit firmasi satiri yine basilir ama "DNS
+// su yerde" ipucu eklenmez.
+func TestDomainCheckRegistrarWithoutKnownDNSProvider(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
+	attachRegistry(t, c, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"entities":[{"roles":["registrar"],"vcardArray":["vcard",[["fn",{},"text","Name.com, Inc."]]]}]}`))
+	})
+
+	_ = c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if !strings.Contains(out.String(), "Name.com, Inc.") {
+		t.Errorf("kayıt firması satırı yok:\n%s", out)
+	}
+	if strings.Contains(out.String(), "the DNS is at") {
+		t.Errorf("bilinmeyen sağlayıcıda DNS ipucu basıldı:\n%s", out)
+	}
+}
+
+// Kayit otoritesi 500 donerse satir yok, cikis kodu etkilenmez.
+func TestDomainCheckRegistryErrorIsSilent(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	attachRegistry(t, c, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+
+	code := c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d, beklenen %d\n%s", code, exitOK, out)
+	}
+	if strings.Contains(out.String(), "registrar") {
+		t.Errorf("hata cevabında kayıt firması satırı basıldı:\n%s", out)
+	}
+}
+
+// Atlanan (.localhost) alan adinda kayit otoritesine HIC istek gitmez.
+func TestDomainCheckSkippedNameAsksNoRegistry(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	rdap := attachRegistry(t, c, nil)
+	conns := countConns(rdap)
+
+	_ = c.runDomain(t.Context(), []string{"check", "app.localhost", "kimse@203.0.113.10"})
+
+	if *conns != 0 {
+		t.Errorf("atlanan alan adı için kayıt otoritesine %d bağlantı açıldı:\n%s", *conns, out)
+	}
+}
+
+// c.resolver != nil koruması testleri agdan uzak tutar: rdapClient nil iken
+// onyukleme sunucusuna hic baglanilmaz.
+func TestDomainCheckFakeResolverNeverReachesTheNetwork(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	boot := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(boot.Close)
+	conns := countConns(boot)
+	c.rdapBootstrap = boot.URL + "/boot.json" // rdapClient bilerek nil
+
+	_ = c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if *conns != 0 {
+		t.Errorf("sahte çözücüyle %d bağlantı açıldı:\n%s", *conns, out)
+	}
+}

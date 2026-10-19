@@ -149,7 +149,7 @@ func TestLookupRegistrarRefusesPlainHTTPBootstrap(t *testing.T) {
 
 // cleanText: kontrol/biçim karakterleri atılır, uzunluk 100 rune ile sınırlı.
 func TestLookupRegistrarCleansAndTruncatesLongNames(t *testing.T) {
-	name := `A‮B\u009bC` + strings.Repeat("d", 300)
+	name := `A\u202eB\u009bC` + strings.Repeat("d", 300)
 	srv, boot := rdapServer(t, `{"entities":[{"roles":["registrar"],"vcardArray":["vcard",[["fn",{},"text","`+name+`"]]]}]}`)
 
 	got, err := LookupRegistrar(t.Context(), rdapTestClient(srv), boot, "example.com")

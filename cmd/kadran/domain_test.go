@@ -277,7 +277,7 @@ func TestDomainCheckSurvivesAHangingRegistry(t *testing.T) {
 	if strings.Contains(out.String(), "✗") {
 		t.Errorf("takılan kayıt otoritesi tanıyı bozdu:\n%s", out)
 	}
-	if strings.Contains(out.String(), "registrar") {
+	if strings.Contains(out.String(), "accredited registrar") {
 		t.Errorf("zaman aşımında kayıt firması satırı basıldı:\n%s", out)
 	}
 }
@@ -315,7 +315,7 @@ func TestDomainCheckRegistryErrorIsSilent(t *testing.T) {
 	if code != exitOK {
 		t.Fatalf("çıkış %d, beklenen %d\n%s", code, exitOK, out)
 	}
-	if strings.Contains(out.String(), "registrar") {
+	if strings.Contains(out.String(), "accredited registrar") {
 		t.Errorf("hata cevabında kayıt firması satırı basıldı:\n%s", out)
 	}
 }

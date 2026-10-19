@@ -1,11 +1,13 @@
 package domaincheck
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"net"
 	"net/netip"
 	"testing"
+	"time"
 
 	"github.com/erkanrzgc/kadran/internal/domaincheck/dnstest"
 	"golang.org/x/net/dns/dnsmessage"
@@ -57,6 +59,18 @@ func TestAskAuthoritative(t *testing.T) {
 		t.Errorf("kimliği tutmayan cevap kabul edildi: %+v", got)
 	}
 
+	// Cevap değil (QR yok) ya da soru bölümü tutmuyor: atılır.
+	notResp := ok
+	notResp.NotResponse = true
+	if got := ask(t, notResp, notResp); got.Answered {
+		t.Errorf("QR bayraksız mesaj cevap sayıldı: %+v", got)
+	}
+	wrongQ := ok
+	wrongQ.WrongQuestion = true
+	if got := ask(t, wrongQ, wrongQ); got.Answered {
+		t.Errorf("sorusu tutmayan cevap kabul edildi: %+v", got)
+	}
+
 	// Yalnız CNAME (hedef bölge dışında).
 	cn := dnstest.Answer{AA: true, CNAME: "target.example.net", TTL: 300}
 	if got := ask(t, cn, cn); !got.Answered || got.CNAME != "target.example.net" || len(got.Addrs) != 0 {
@@ -85,27 +99,40 @@ func TestAskAuthoritativeSkipsUnresolvableNameserver(t *testing.T) {
 	}
 }
 
+// listenUDPAndTCP, aynı yerel portta UDP ve TCP açar. Port UDP'de seçilir; TCP
+// o portu başka bir süreç almışsa baştan denenir (çakışma testi bozmasın).
+func listenUDPAndTCP(t *testing.T) (net.PacketConn, net.Listener) {
+	t.Helper()
+	for range 20 {
+		udp, err := net.ListenPacket("udp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		tcp, err := net.Listen("tcp", udp.LocalAddr().String())
+		if err == nil {
+			return udp, tcp
+		}
+		_ = udp.Close()
+	}
+	t.Fatal("UDP ve TCP için aynı yerel port bulunamadı")
+	return nil, nil
+}
+
 // Gerçek UDP/TCP: kesik UDP cevabında TCP'ye geçilmeli.
 func TestDefaultExchangeFallsBackToTCPWhenTruncated(t *testing.T) {
-	tcpLn, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tcpLn.Close() }()
-	port := tcpLn.Addr().(*net.TCPAddr).Port
-	udp, err := net.ListenPacket("udp", tcpLn.Addr().String())
-	if err != nil {
-		t.Fatalf("aynı portta UDP açılamadı: %v", err)
-	}
+	udp, tcpLn := listenUDPAndTCP(t)
 	defer func() { _ = udp.Close() }()
+	defer func() { _ = tcpLn.Close() }()
 
 	full := dnstest.Answer{AA: true, Addrs: []string{"203.0.113.10"}, TTL: 60}
+	udpSeen := make(chan struct{})
 	go func() { // UDP: kesik cevap
 		buf := make([]byte, 512)
 		n, addr, err := udp.ReadFrom(buf)
 		if err != nil {
 			return
 		}
+		close(udpSeen)
 		resp, _ := dnstest.Reply(buf[:n], dnstest.Answer{AA: true, Truncated: true})
 		_, _ = udp.WriteTo(resp, addr)
 	}()
@@ -132,10 +159,16 @@ func TestDefaultExchangeFallsBackToTCPWhenTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), uint16(port))
-	resp, err := defaultExchange(t.Context(), server, query)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	resp, err := defaultExchange(ctx, netip.MustParseAddrPort(udp.LocalAddr().String()), query)
 	if err != nil {
 		t.Fatalf("defaultExchange: %v", err)
+	}
+	select {
+	case <-udpSeen:
+	case <-time.After(time.Second):
+		t.Fatal("sorgu önce UDP ile gitmedi")
 	}
 	a, ok := parseAnswer(resp, id, q)
 	if !ok || len(a.addrs) != 1 || a.addrs[0].String() != "203.0.113.10" {

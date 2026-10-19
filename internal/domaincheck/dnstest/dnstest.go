@@ -23,6 +23,10 @@ type Answer struct {
 	WrongID bool
 	// Truncated: TC bayrağı; istemci TCP'ye geçmeli.
 	Truncated bool
+	// NotResponse: QR bayrağı yok (cevap değil, sorgu yankısı).
+	NotResponse bool
+	// WrongQuestion: cevabın soru bölümü sorulandan farklı (sahte cevap).
+	WrongQuestion bool
 	// Block: bağlam bitene kadar cevap vermez (süre bütçesi testi).
 	Block bool
 }
@@ -38,12 +42,15 @@ func Reply(query []byte, a Answer) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if a.WrongQuestion {
+		q.Name = dnsmessage.MustNewName("other.example.org.")
+	}
 	id := h.ID
 	if a.WrongID {
 		id++
 	}
 	b := dnsmessage.NewBuilder(nil, dnsmessage.Header{
-		ID: id, Response: true, Authoritative: a.AA, RCode: a.RCode, Truncated: a.Truncated,
+		ID: id, Response: !a.NotResponse, Authoritative: a.AA, RCode: a.RCode, Truncated: a.Truncated,
 	})
 	b.EnableCompression()
 	if err := b.StartQuestions(); err != nil {

@@ -11313,6 +11313,19 @@ kümeyi geçiriyordu.
   otoritesinin RDAP'ından alınır, üçüncü taraf yönlendirici (rdap.org) YOK. Satır en sonda
   basılır; yavaş ya da kapalı bir kayıt otoritesi sonucu asla değiştirmez; RDAP'ı olmayan
   uzantıda ve `.localhost`ta satır/istek yok. `app create/update` RDAP sorgusu yapmaz.
+- **CNAME'li ad bölge sayılmaz.** `LookupNS` CNAME'i izleyip hedefin NS'lerini döndürüyor
+  (`www.github.com` → github.com'un NS'leri, canlıda ölçüldü). Bölge yürüyüşü bir ada NS
+  bulduğunda o ad CNAME ise onu bölge saymaz ve üste çıkar; yoksa `www CNAME @` kurulumunda
+  rehber `@` kaydını değiştirtirdi. CNAME sorgusu hata verirse ad CNAME sayılmaz (eski davranış).
+- **Cloudflare son eki `cloudflare.com`.** Müşteri NS'leri `*.ns.cloudflare.com`, Cloudflare'in
+  kendi bölgeleri `ns3…ns7.cloudflare.com`; ikisi de etiket sınırında `cloudflare.com` ile eşleşir.
+- **Basılan kabuk komutu doğrulanır.** Bölge ve ad yalnız `[a-z0-9.-]` (ad `@` de olabilir),
+  değer geçerli IP değilse komut satırı basılmaz; ad çift tırnakla (`"@"`) yazılır: tek tırnak
+  cmd.exe'de tırnağıyla geçiyordu, çıplak `@` PowerShell'de sözdizimi hatası.
+- **NS sınırı.** En çok 13 NS sorulur; genel olmayan (yerel ağ, loopback) NS adresine sorgu
+  gitmez. Düşman bir bölge kullanıcının makinesinden paket yağdıramaz.
+- **"Kayıtlı olmayabilir" notu** yalnız adın hiç A/AAAA kaydı yokken basılır (ör.
+  `home.duckdns.org` gibi özel genel-son-ek adları çözülüyorken bu notu alıyordu).
 
 ### Ölçülenler (15 Ekim 2026)
 
@@ -11320,6 +11333,28 @@ kümeyi geçiriyordu.
 - erkanrzgc.dev (Vercel'den alındı) için RDAP `Name.com, Inc.` döndürdü: RDAP akredite kayıt
   firmasını verir, alışverişin yapıldığı dükkanı değil. Metin bu yüzden "aldığın yer" demez.
 - `.tr` IANA RDAP önyükleme dosyasında yok; orada kayıt firması satırı çıkmaz.
+
+### Ölçülenler (19 Ekim 2026, canlı, salt-okur)
+
+Dalın ikilisiyle gerçek DNS'e karşı `kadran domain check <ad> kadran-client@<sunucu>`; sunucuya
+yazılmadı. Hepsi 10 sn bütçenin çok altında (1,1–2,5 sn).
+
+- `erkanrzgc.dev`: `✗ DNS` — A kaydı Vercel'in iki adresini gösteriyor, yetkili NS'lerin
+  cevabı. `DNS host  Vercel (ns1.vercel-dns.com, ns2.vercel-dns.com)`, silinecek A/ALIAS satırı
+  ve joker ipucu, `A @ <sunucu>`, `vercel dns add erkanrzgc.dev "@" A <sunucu>`, Vercel proje
+  notu; `registrar Name.com, Inc.` ve "the DNS is at Vercel". Çıkış 1.
+- `kadran.erkanrzgc.dev`: `✓ DNS` (sunucu), 80/443 açık, HTTP 308, Let's Encrypt sertifikası,
+  kayıt firması satırı. Çıkış 0.
+- `cloudflare.com`: ilk ölçümde NS'ler (`ns3…ns7.cloudflare.com`) TANINMADI ve "park sayfası"
+  metni çıktı; son ek `cloudflare.com` yapıldıktan sonra `DNS host  Cloudflare (…)`, "proxied
+  (orange cloud)" ve "DNS only (grey cloud)" tarifi.
+- `www.github.com` (CNAME → github.com): düzeltmeden önce yürüyüş `www.github.com`'u bölge
+  sayardı (incelemede ölçüldü); sonra kayıt adı `www`, bölge github.com. github.com'un NS'leri
+  iki firmada (NS1 + Route 53) olduğundan firma tanınmadı ve NS adları basıldı. Sonuç yetkili
+  cevaba dayanmadı (gerekçede "DNS host's own nameservers" yok), yerel kurallar uygulandı ve
+  CNAME yerine yerel çözümleyicinin gördüğü A satırı gösterildi. Sebebi ölçülmedi (NS'ler
+  arası uyuşmazlık olası); iki firmalı bölgeler için bilinen sınır.
+- Mutasyon: `scripts/mutate-domaincheck.sh` 49/49 yakalandı.
 
 ### Durum
 

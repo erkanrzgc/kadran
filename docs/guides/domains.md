@@ -150,7 +150,7 @@ the records listed above.
 | Provider | Nameservers end with | Where to add the record | Official guide |
 |---|---|---|---|
 | Vercel | `vercel-dns.com` | Dashboard → Domains → the domain → DNS Records → Add | <https://vercel.com/docs/domains/managing-dns-records> |
-| Cloudflare | `ns.cloudflare.com` | DNS → Records → Add record; Proxy status: DNS only (grey cloud) | <https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/> |
+| Cloudflare | `cloudflare.com` | DNS → Records → Add record; Proxy status: DNS only (grey cloud) | <https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/> |
 | GoDaddy | `domaincontrol.com` | My Products → the domain → DNS → Add New Record | <https://www.godaddy.com/help/add-an-a-record-19238> |
 | Namecheap | `registrar-servers.com` | Domain List → Manage → Advanced DNS → Add New Record | <https://www.namecheap.com/support/knowledgebase/article.aspx/319/2237/how-can-i-set-up-an-a-address-record-for-my-domain/> |
 | Network Solutions | `worldnic.com` | Account Manager → My Domain Names → Manage → Advanced DNS → A records | <https://www.networksolutions.com/help/article/manage-dns-adns-records> |

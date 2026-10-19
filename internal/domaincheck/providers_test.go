@@ -26,6 +26,21 @@ func TestEveryProviderSuffixIdentifiesItsProvider(t *testing.T) {
 	}
 }
 
+// L1: Cloudflare ad sunucuları ns3.cloudflare.com gibi adlarla da gelir (canlı
+// ölçüm 2026-10-19); yine de etiket sınırı korunmalı.
+func TestCloudflareSuffixMatchesOnNameBoundary(t *testing.T) {
+	for _, ns := range []string{"ns3.cloudflare.com", "ns4.cloudflare.com", "adam.ns.cloudflare.com"} {
+		if p, ok := IdentifyProvider([]string{ns}); !ok || p.Name != providerCloudflare {
+			t.Errorf("%s: tanınan %q (%v)", ns, p.Name, ok)
+		}
+	}
+	for _, ns := range []string{"ns1.cloudflare.com.evil.example", "ns1.notcloudflare.com"} {
+		if p, ok := IdentifyProvider([]string{ns}); ok {
+			t.Errorf("%s yanlışlıkla %q sayıldı", ns, p.Name)
+		}
+	}
+}
+
 func TestAWSPatternMatchesOnlyRoute53(t *testing.T) {
 	for _, ns := range []string{"ns-1536.awsdns-00.co.uk", "ns-12.awsdns-01.com", "ns-700.awsdns-23.net", "ns-1200.awsdns-63.org"} {
 		if p, ok := IdentifyProvider([]string{ns}); !ok || p.Name != "AWS Route 53" {

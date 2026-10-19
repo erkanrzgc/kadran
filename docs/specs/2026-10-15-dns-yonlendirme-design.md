@@ -169,7 +169,7 @@ Eşleşme etiket sınırında yapılır: NS ya son ekin kendisidir ya da `.` + s
 | Firma | NS son eki | Not |
 |---|---|---|
 | Vercel | `vercel-dns.com` | `vercel dns add <bölge> <ad> A <ip>`; domain bir projeye bağlıysa oradan da kaldır; `*` joker kaydı varsayılan |
-| Cloudflare | `ns.cloudflare.com` | Proxy status: DNS only |
+| Cloudflare | `cloudflare.com` | Proxy status: DNS only |
 | GoDaddy | `domaincontrol.com` | "Parked" A kaydını değiştir |
 | Namecheap | `registrar-servers.com` | Advanced DNS; "URL Redirect Record" / park kaydını sil |
 | Network Solutions | `worldnic.com` | |

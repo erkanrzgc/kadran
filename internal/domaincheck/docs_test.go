@@ -13,10 +13,28 @@ func TestDomainsGuideListsEveryProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("rehber okunamadı: %v", err)
 	}
-	doc := string(b)
+	rows := strings.Split(string(b), "\n")
 	for _, p := range providers {
-		if !strings.Contains(doc, p.Name) {
-			t.Errorf("docs/guides/domains.md %q firmasını anmıyor", p.Name)
+		row := tableRow(rows, p.Name)
+		if row == "" {
+			t.Errorf("docs/guides/domains.md tablosunda %q satırı yok", p.Name)
+			continue
+		}
+		for _, suf := range p.Suffixes {
+			if !strings.Contains(row, "`"+suf+"`") {
+				t.Errorf("docs/guides/domains.md %q satırı %q son ekini anmıyor", p.Name, suf)
+			}
 		}
 	}
+}
+
+// tableRow, "| <name> |" ile başlayan tablo satırı; yoksa "". Düz metin anmaları
+// satır sayılmaz.
+func tableRow(rows []string, name string) string {
+	for _, r := range rows {
+		if strings.HasPrefix(r, "| "+name+" |") {
+			return r
+		}
+	}
+	return ""
 }

@@ -44,7 +44,7 @@ var providers = []Provider{
 		Command: "vercel dns add {zone} '{name}' {type} {value}",
 		Note:    "If the domain is assigned to a Vercel project, remove it there too (Project → Settings → Domains); Vercel keeps a default ALIAS for it.",
 		Guide:   "https://vercel.com/docs/domains/managing-dns-records"},
-	{Name: providerCloudflare, Suffixes: []string{"ns.cloudflare.com"},
+	{Name: providerCloudflare, Suffixes: []string{"cloudflare.com"},
 		Panel: "DNS → Records → Add record; Proxy status: DNS only (grey cloud)",
 		Guide: "https://developers.cloudflare.com/dns/manage-dns-records/how-to/create-dns-records/"},
 	{Name: "GoDaddy", Suffixes: []string{"domaincontrol.com"},

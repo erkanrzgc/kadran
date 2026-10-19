@@ -89,7 +89,7 @@ func Reply(query []byte, a Answer) ([]byte, error) {
 }
 
 // Exchange, sunucu IP'sine (port hariç) göre cevap veren sahte bir
-// domaincheck.Exchanger. Tanımsız sunucu bağlantı hatası verir.
+// domaincheck.Exchanger. Tanımsız sunucu cevap vermez: Exchange context.DeadlineExceeded döndürür.
 func Exchange(byServer map[string]Answer) func(context.Context, netip.AddrPort, []byte) ([]byte, error) {
 	return func(ctx context.Context, server netip.AddrPort, query []byte) ([]byte, error) {
 		a, ok := byServer[server.Addr().String()]

@@ -34,7 +34,7 @@ type Authoritative struct {
 	// Agree: cevap veren bütün ad sunucuları aynı kümeyi verdi.
 	Agree bool
 	Addrs []netip.Addr
-	// CNAME: cevap yalnız CNAME ise hedefi (bölge dışı hedefte adres gelmez).
+	// CNAME: uzlaşılan cevap bir CNAME taşıyorsa hedefi (bölge içi hedefte adresler de gelir).
 	CNAME string
 	// TTL: cevaplardaki en küçük TTL (saniye); kayıt yoksa 0.
 	TTL uint32

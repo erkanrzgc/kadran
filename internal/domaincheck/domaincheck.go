@@ -94,15 +94,16 @@ type Report struct {
 	// ── K-151: DNS'in nerede olduğu ve ne yapılacağı ─────────────────
 	Zone        string
 	NameServers []string
-	// ZoneChecked: NS sorgusu yapıldı (Checker.NS verildi). Zone boşsa
-	// bölge bulunamadı: domain kayıtlı ya da devredilmiş olmayabilir.
+	// ZoneChecked: NS sorgusu yapıldı (Checker.NS verildi) ve süre bütçesi
+	// yürüyüşü kesmedi. Zone boşsa bölge bulunamadı: domain kayıtlı ya da
+	// devredilmiş olmayabilir.
 	ZoneChecked bool
 	Provider    Provider
 	HasProvider bool
 	// RecordName, kaydın bölge içindeki adı ("@" ya da "kadran").
 	RecordName string
 	Auth       Authoritative
-	// CNAME, yetkili cevap yalnız CNAME döndüyse hedefi.
+	// CNAME, uzlaşılan yetkili cevap bir CNAME taşıyorsa hedefi.
 	CNAME string
 	// Proxied: Cloudflare aralığı ve NS Cloudflare'de (turuncu bulut).
 	Proxied bool

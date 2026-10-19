@@ -98,6 +98,7 @@ func TestCleanName(t *testing.T) {
 		"NS1.Vercel-DNS.com.":     "ns1.vercel-dns.com",
 		"ns1.ex\x1b[31mample.com": "ns1.ex31mample.com",
 		"ns1 .example.com":        "ns1.example.com",
+		"ns1.vercel-dns.com.\x1b": "ns1.vercel-dns.com",
 		strings.Repeat("a", 300):  strings.Repeat("a", 253),
 	}
 	for in, want := range cases {

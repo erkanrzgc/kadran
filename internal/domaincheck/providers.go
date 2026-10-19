@@ -317,5 +317,5 @@ func CleanName(s string) string {
 			b.WriteRune(r)
 		}
 	}
-	return b.String()
+	return strings.TrimSuffix(b.String(), ".")
 }

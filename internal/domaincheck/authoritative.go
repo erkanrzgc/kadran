@@ -107,11 +107,16 @@ func askOne(ctx context.Context, r Resolver, ex Exchanger, ns, name string) (nsA
 }
 
 // nsAddress, ad sunucusunun adresini bulur. IPv4 önce: yalnız IPv4'lü bir
-// ağda IPv6 adresinde beklenmesin.
+// ağda IPv6 adresinde beklenmesin. Herkese açık olmayan adres (loopback, özel,
+// CGNAT) atlanır: düşmanca bir bölge NS adlarını kullanıcının LAN'ına ya da
+// kendi makinesine çözdürüp oraya sorgu yağdıramasın.
 func nsAddress(ctx context.Context, r Resolver, ns string) (netip.AddrPort, bool) {
 	for _, network := range []string{"ip4", "ip6"} {
-		if addrs, _, _ := lookup(ctx, r, network, ns); len(addrs) > 0 {
-			return netip.AddrPortFrom(addrs[0], dnsPort), true
+		addrs, _, _ := lookup(ctx, r, network, ns)
+		for _, a := range addrs {
+			if isPublic(a) {
+				return netip.AddrPortFrom(a, dnsPort), true
+			}
 		}
 	}
 	return netip.AddrPort{}, false

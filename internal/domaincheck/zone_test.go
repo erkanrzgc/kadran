@@ -2,6 +2,7 @@ package domaincheck
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"slices"
 	"testing"
@@ -104,6 +105,20 @@ func TestFindZone(t *testing.T) {
 	z, _ := FindZone(t.Context(), ns, "example.com")
 	if !slices.Equal(z.NameServers, []string{"ns1.vercel-dns.com", "ns2.vercel-dns.com"}) {
 		t.Errorf("NS listesi temizlenip sıralanmadı: %v", z.NameServers)
+	}
+}
+
+func TestFindZoneCapsNameServers(t *testing.T) {
+	var hosts []string
+	for i := range 20 {
+		hosts = append(hosts, fmt.Sprintf("ns%02d.example-dns.net.", i))
+	}
+	z, ok := FindZone(t.Context(), fakeNS{"example.com": hosts}, "example.com")
+	if !ok || len(z.NameServers) != maxNameServers {
+		t.Fatalf("%d ad sunucusu kaldı (%v), beklenen %d", len(z.NameServers), ok, maxNameServers)
+	}
+	if z.NameServers[0] != "ns00.example-dns.net" {
+		t.Errorf("kesme sıralamadan SONRA yapılmalı, ilk ad %q", z.NameServers[0])
 	}
 }
 

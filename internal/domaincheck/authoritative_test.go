@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -96,6 +97,49 @@ func TestAskAuthoritativeSkipsUnresolvableNameserver(t *testing.T) {
 	got := AskAuthoritative(t.Context(), twoNS, ex, []string{"ns1.example-dns.net", "yok.example-dns.net"}, "app.example.com")
 	if !got.Answered || !got.Agree || len(got.Addrs) != 1 {
 		t.Errorf("tek çözülen NS: %+v", got)
+	}
+}
+
+// recordingExchange, hangi sunuculara sorgu gittiğini kaydeden sahte Exchanger.
+type recordingExchange struct {
+	mu      sync.Mutex
+	servers map[string]bool
+	inner   Exchanger
+}
+
+func newRecordingExchange(byServer map[string]dnstest.Answer) *recordingExchange {
+	return &recordingExchange{servers: map[string]bool{}, inner: dnstest.Exchange(byServer)}
+}
+
+func (r *recordingExchange) exchange(ctx context.Context, server netip.AddrPort, query []byte) ([]byte, error) {
+	r.mu.Lock()
+	r.servers[server.Addr().String()] = true
+	r.mu.Unlock()
+	return r.inner(ctx, server, query)
+}
+
+// N1: herkese açık olmayan (loopback, özel, CGNAT) NS adresi sorgulanmaz;
+// sonraki herkese açık adres kullanılır.
+func TestAskAuthoritativeSkipsNonPublicNameserverAddresses(t *testing.T) {
+	res := fakeResolver{
+		"ip4 ns1.example-dns.net": {ips: []string{"127.0.0.1", "10.0.0.5", "100.64.0.9", "192.0.2.1"}},
+		"ip4 ns2.example-dns.net": {ips: []string{"127.0.0.2"}},
+	}
+	rec := newRecordingExchange(map[string]dnstest.Answer{
+		"127.0.0.1":  {AA: true, Addrs: []string{"203.0.113.10"}},
+		"127.0.0.2":  {AA: true, Addrs: []string{"203.0.113.10"}},
+		"10.0.0.5":   {AA: true, Addrs: []string{"203.0.113.10"}},
+		"100.64.0.9": {AA: true, Addrs: []string{"203.0.113.10"}},
+		"192.0.2.1":  {AA: true, Addrs: []string{"203.0.113.10"}},
+	})
+
+	got := AskAuthoritative(t.Context(), res, rec.exchange, nsNames, "app.example.com")
+
+	if len(rec.servers) != 1 || !rec.servers["192.0.2.1"] {
+		t.Errorf("sorgulanan sunucular %v; yalnız 192.0.2.1 bekleniyordu", rec.servers)
+	}
+	if !got.Answered {
+		t.Errorf("herkese açık NS cevap vermeliydi: %+v", got)
 	}
 }
 

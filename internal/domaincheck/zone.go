@@ -71,6 +71,9 @@ func lookupNS(ctx context.Context, r NSResolver, name string) []string {
 		}
 	}
 	slices.Sort(out)
+	if len(out) > maxNameServers {
+		out = out[:maxNameServers]
+	}
 	return out
 }
 
@@ -92,3 +95,8 @@ func guessRecordName(domain string) string {
 	}
 	return RecordName(domain, top)
 }
+
+// maxNameServers, bir bölgeden sorgulanacak en çok ad sunucusu (N1). Gerçek
+// bölgelerde 2-8 olur; düşmanca bir bölge yüzlerce ad döndürüp kullanıcının
+// makinesinden port 53'e paket yağmuru çıkarmasın.
+const maxNameServers = 13

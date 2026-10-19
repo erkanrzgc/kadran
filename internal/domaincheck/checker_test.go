@@ -2,6 +2,7 @@ package domaincheck
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"slices"
 	"strings"
@@ -334,6 +335,28 @@ func TestCheckerBudgetFallsBackToLocalRules(t *testing.T) {
 	}
 	if rep.Auth.Answered || rep.Verdict != OK {
 		t.Fatalf("bütçe aşımında yerel kural bekleniyordu: %+v", rep)
+	}
+}
+
+// N1: düşmanca bir bölge yüzlerce NS adı döndürebilir; en çok 13'ü sorgulanır.
+func TestCheckerQueriesAtMostThirteenNameservers(t *testing.T) {
+	res := ip4("app.example.com", "203.0.113.10")
+	var hosts []string
+	answers := map[string]dnstest.Answer{}
+	for i := range 20 {
+		host := fmt.Sprintf("ns%02d.example-dns.net", i)
+		ip := fmt.Sprintf("192.0.2.%d", i+1)
+		hosts = append(hosts, host+".")
+		res["ip4 "+host] = answer{ips: []string{ip}}
+		answers[ip] = auth("203.0.113.10")
+	}
+	rec := newRecordingExchange(answers)
+	c := Checker{Resolver: res, NS: fakeNS{"example.com": hosts}, Exchange: rec.exchange}
+
+	rep := c.Check(t.Context(), "app.example.com", "203.0.113.10")
+
+	if len(rep.NameServers) > maxNameServers || len(rec.servers) > maxNameServers || len(rec.servers) == 0 {
+		t.Fatalf("NameServers=%d, sorgulanan sunucu=%d; en çok %d bekleniyordu", len(rep.NameServers), len(rec.servers), maxNameServers)
 	}
 }
 

@@ -18,6 +18,11 @@
 //     Bozuk bir sorgu (zaman aşımı, SERVFAIL) kaydı gizliyor olabilir; o
 //     yalnızca uyarır. Dalgalı DNS bir dağıtımı asla engellememeli.
 //   - `.localhost` denetlenmez: Caddy onlar için iç sertifikasını kullanır.
+//   - K-151: bölgenin ad sunucuları biliniyorsa karar ONLARIN cevabına
+//     göre verilir (yerel önbellek eski olabilir); sunucunun adresiyle
+//     başka adres birlikte dönerse durulur; Cloudflare aralığı ayrı
+//     anlatılır. Hepsi DefaultBudget içinde; aşılırsa yukarıdaki yerel
+//     kurallar geçerli.
 package domaincheck
 
 import (
@@ -68,6 +73,15 @@ type Resolver interface {
 	LookupIP(ctx context.Context, network, host string) ([]net.IP, error)
 }
 
+// Fix, kullanıcının DNS'te yapması gerekenler (K-151).
+type Fix struct {
+	Add []Record
+	// Remove, adın bugün verdiği CEVAPLAR: bir A/AAAA kaydı, ALIAS/düzleştirilmiş
+	// bir kayıt ya da joker (*) kaydı aynı şekilde cevap verir; bölgedeki
+	// satırlarla birebir eşleşmeyebilir. CNAME varsa yalnız CNAME satırı.
+	Remove []Record
+}
+
 // Report, denetimin bulguları.
 type Report struct {
 	Domain  string
@@ -76,6 +90,26 @@ type Report struct {
 	Server  []netip.Addr
 	A, AAAA []netip.Addr
 	Reasons []string
+
+	// ── K-151: DNS'in nerede olduğu ve ne yapılacağı ─────────────────
+	Zone        string
+	NameServers []string
+	// ZoneChecked: NS sorgusu yapıldı (Checker.NS verildi) ve süre bütçesi
+	// yürüyüşü kesmedi. Zone boşsa bölge bulunamadı: domain kayıtlı ya da
+	// devredilmiş olmayabilir.
+	ZoneChecked bool
+	Provider    Provider
+	HasProvider bool
+	// RecordName, kaydın bölge içindeki adı ("@" ya da "kadran").
+	RecordName string
+	Auth       Authoritative
+	// CNAME, uzlaşılan yetkili cevap bir CNAME taşıyorsa hedefi.
+	CNAME string
+	// Proxied: Cloudflare aralığı ve NS Cloudflare'de (turuncu bulut).
+	Proxied bool
+	// OnCloudflare: Cloudflare aralığı, NS başka firmada (ör. park sayfası).
+	OnCloudflare bool
+	Fix          Fix
 }
 
 func (r *Report) raise(v Verdict, format string, args ...any) {
@@ -170,59 +204,83 @@ func join(addrs []netip.Addr) string {
 	return strings.Join(s, ", ")
 }
 
+// DefaultBudget, bölge yürüyüşü ve yetkili sorguların toplam süresi.
+// Aşılırsa yalnız yerel çözümleyiciyle karar verilir; komut takılmaz.
+const DefaultBudget = 10 * time.Second
+
+// Checker, alan adı denetimini yapar. NS nil ise bölge, firma ve yetkili
+// sorgu yapılmaz: K-128'in yalnız-yerel davranışı.
+type Checker struct {
+	Resolver Resolver
+	NS       NSResolver
+	// Exchange nil ise gerçek ağ (UDP/TCP 53).
+	Exchange Exchanger
+	// Budget sıfırsa DefaultBudget.
+	Budget time.Duration
+}
+
+// Check, K-128 uyumlu kısayol: yalnız yerel çözümleyici.
+func Check(ctx context.Context, r Resolver, domain, serverHost string) Report {
+	return Checker{Resolver: r}.Check(ctx, domain, serverHost)
+}
+
 // Check, alan adının A/AAAA kayıtlarını sunucunun adresleriyle
 // karşılaştırır. serverHost: SSH hedefinin ad ya da adresi; yerel hedefte
 // boş.
-func Check(ctx context.Context, r Resolver, domain, serverHost string) Report {
+func (c Checker) Check(ctx context.Context, domain, serverHost string) Report {
 	domain = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
-	rep := Report{Domain: domain, Verdict: OK}
+	rep := Report{Domain: domain, Verdict: OK, RecordName: guessRecordName(domain)}
 
 	if domain == "localhost" || strings.HasSuffix(domain, ".localhost") {
 		rep.raise(Skipped, "%s is a .localhost name: it is not in DNS, Caddy uses its internal certificate", domain)
 		return rep
 	}
 
-	a, aNotFound, aErr := lookup(ctx, r, "ip4", domain)
-	aaaa, aaaaNotFound, aaaaErr := lookup(ctx, r, "ip6", domain)
+	a, aNotFound, aErr := lookup(ctx, c.Resolver, "ip4", domain)
+	aaaa, aaaaNotFound, aaaaErr := lookup(ctx, c.Resolver, "ip6", domain)
 	rep.A, rep.AAAA = a, aaaa
-	for _, e := range []error{aErr, aaaaErr} {
-		if e != nil {
-			rep.raise(Warn, "DNS lookup did not complete (%v); records could not be checked", e)
+	rep.Server = serverAddrs(ctx, c.Resolver, serverHost)
+	c.locate(ctx, &rep)
+
+	answered := append(slices.Clone(a), aaaa...)
+	if rep.Auth.Answered && rep.Auth.Agree {
+		answered = rep.Auth.Addrs
+		c.judgeAuthoritative(ctx, &rep, serverHost)
+	} else {
+		for _, e := range []error{aErr, aaaaErr} {
+			if e != nil {
+				rep.raise(Warn, "DNS lookup did not complete (%v); records could not be checked", e)
+			}
+		}
+		judge(&rep, a, aaaa, aNotFound && aaaaNotFound, serverHost)
+		if rep.Auth.Answered && rep.Verdict < Stop {
+			rep.raise(Warn, "the DNS host's nameservers do not agree yet (%s): the change is still spreading inside the DNS host",
+				strings.Join(rep.NameServers, ", "))
 		}
 	}
-	if aNotFound && aaaaNotFound {
-		rep.raise(Stop, "%s has no A or AAAA record", domain)
-		return rep
-	}
-
-	rep.Server = serverAddrs(ctx, r, serverHost)
-	if len(rep.Server) == 0 {
-		if serverHost == "" {
-			rep.raise(Warn, "the server's public address is unknown (local target); records: %s", join(append(a, aaaa...)))
-		} else {
-			rep.raise(Warn, "the server's public address is unknown (%s is on a private network or did not resolve); records: %s",
-				serverHost, join(append(a, aaaa...)))
-		}
-		return rep
-	}
-
-	checkFamily(&rep, "A", "IPv4", a, family(rep.Server, true))
-	checkFamily(&rep, "AAAA", "IPv6", aaaa, family(rep.Server, false))
+	rep.Fix.Add = fixRecords(rep, answered)
 	return rep
 }
 
-// checkFamily, bir ailenin kayıtlarını sunucunun o ailedeki adresleriyle
-// karşılaştırır. Sunucunun o ailedeki adresi bilinmiyorsa durmaz, uyarır.
-func checkFamily(rep *Report, record, fam string, records, server []netip.Addr) {
-	switch {
-	case len(records) == 0:
+// locate, bölgeyi, firmayı ve yetkili cevabı bulur; tamamı Budget içinde.
+func (c Checker) locate(ctx context.Context, rep *Report) {
+	if c.NS == nil {
 		return
-	case len(server) == 0:
-		rep.raise(Warn, "there is a %s record (%s) but the server's %s address is unknown; "+
-			"if it points elsewhere no certificate can be issued", record, join(records), fam)
-	case overlaps(records, server):
-		return
-	default:
-		rep.raise(Stop, "the %s record points at %s, the server is %s", record, join(records), join(server))
 	}
+	budget := c.Budget
+	if budget <= 0 {
+		budget = DefaultBudget
+	}
+	ctx, cancel := context.WithTimeout(ctx, budget)
+	defer cancel()
+	zone, ok := FindZone(ctx, c.NS, rep.Domain)
+	// Bütçe yürüyüşü kestiyse "bölge bulunamadı" denmez: bilinmiyor.
+	rep.ZoneChecked = ok || ctx.Err() == nil
+	if !ok {
+		return
+	}
+	rep.Zone, rep.NameServers = zone.Name, zone.NameServers
+	rep.RecordName = RecordName(rep.Domain, zone.Name)
+	rep.Provider, rep.HasProvider = IdentifyProvider(zone.NameServers)
+	rep.Auth = AskAuthoritative(ctx, c.Resolver, c.Exchange, zone.NameServers, rep.Domain)
 }

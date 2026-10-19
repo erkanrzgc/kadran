@@ -16,6 +16,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/erkanrzgc/kadran/internal/domaincheck/dnstest"
 )
 
 // ── kadran domain check (K-128 B) ────────────────────────────────────
@@ -193,5 +195,304 @@ func TestDomainCheckUsage(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "usage") {
 		t.Errorf("kullanım metni yok: %q", stderr)
+	}
+}
+
+// Kayıt firması satırı: DNS başka firmadaysa kaydın NEREDE değişeceğini
+// açıkça söyler (K-151).
+func TestDomainCheckShowsTheRegistrar(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}, "ip4 ns1.vercel-dns.com": {"192.0.2.1"}}
+	c.nsResolver = cliNS{"example.com": {"ns1.vercel-dns.com."}}
+	c.exchange = dnstest.Exchange(map[string]dnstest.Answer{"192.0.2.1": {AA: true, Addrs: []string{"198.51.100.7"}}})
+
+	mux := http.NewServeMux()
+	rdap := httptest.NewTLSServer(mux)
+	t.Cleanup(rdap.Close)
+	mux.HandleFunc("/boot.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"services":[[["com"],["` + rdap.URL + `/"]]]}`))
+	})
+	mux.HandleFunc("/domain/example.com", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"entities":[{"roles":["registrar"],"vcardArray":["vcard",[["fn",{},"text","Name.com, Inc."]]]}]}`))
+	})
+	c.rdapClient = rdap.Client()
+	c.rdapBootstrap = rdap.URL + "/boot.json"
+
+	_ = c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	for _, want := range []string{"registrar", "Name.com, Inc.", "the DNS is at Vercel: change the record there"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("%q yok:\n%s", want, out)
+		}
+	}
+}
+
+// attachRegistry: example.com icin bir RDAP sunucusu (TLS) kurar ve cli'ye
+// baglar. domain nil ise domain/<ad> istegi 404 doner.
+func attachRegistry(t *testing.T, c *cli, domain http.HandlerFunc) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	rdap := httptest.NewTLSServer(mux)
+	t.Cleanup(rdap.Close)
+	mux.HandleFunc("/boot.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"services":[[["com"],["` + rdap.URL + `/"]]]}`))
+	})
+	if domain != nil {
+		mux.HandleFunc("/domain/example.com", domain)
+	}
+	c.rdapClient = rdap.Client()
+	c.rdapBootstrap = rdap.URL + "/boot.json"
+	return rdap
+}
+
+// countConns: sunucuya acilan TCP baglanti sayisini sayar.
+func countConns(srv *httptest.Server) *int {
+	n := 0
+	srv.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			n++
+		}
+	}
+	return &n
+}
+
+// RDAP asla tanıyı bozmaz (T8a): kayit otoritesi takilsa bile DNS dogruysa
+// cikis 0 kalir, hicbir ✗ satiri cikmaz ve kayit firmasi satiri basilmaz.
+func TestDomainCheckSurvivesAHangingRegistry(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	mux := http.NewServeMux()
+	hang := httptest.NewTLSServer(mux)
+	t.Cleanup(hang.Close)
+	mux.HandleFunc("/boot.json", func(_ http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	c.rdapClient = hang.Client()
+	c.rdapBootstrap = hang.URL + "/boot.json"
+
+	code := c.runDomain(t.Context(), []string{"check", "--timeout", "2s", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d, beklenen %d\n%s", code, exitOK, out)
+	}
+	if strings.Contains(out.String(), "✗") {
+		t.Errorf("takılan kayıt otoritesi tanıyı bozdu:\n%s", out)
+	}
+	if strings.Contains(out.String(), "accredited registrar") {
+		t.Errorf("zaman aşımında kayıt firması satırı basıldı:\n%s", out)
+	}
+}
+
+// Bilinmeyen DNS saglayicisi: kayit firmasi satiri yine basilir ama "DNS
+// su yerde" ipucu eklenmez.
+func TestDomainCheckRegistrarWithoutKnownDNSProvider(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
+	attachRegistry(t, c, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"entities":[{"roles":["registrar"],"vcardArray":["vcard",[["fn",{},"text","Name.com, Inc."]]]}]}`))
+	})
+
+	_ = c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if !strings.Contains(out.String(), "Name.com, Inc.") {
+		t.Errorf("kayıt firması satırı yok:\n%s", out)
+	}
+	if strings.Contains(out.String(), "the DNS is at") {
+		t.Errorf("bilinmeyen sağlayıcıda DNS ipucu basıldı:\n%s", out)
+	}
+}
+
+// Kayit otoritesi 500 donerse satir yok, cikis kodu etkilenmez.
+func TestDomainCheckRegistryErrorIsSilent(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	attachRegistry(t, c, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	})
+
+	code := c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d, beklenen %d\n%s", code, exitOK, out)
+	}
+	if strings.Contains(out.String(), "accredited registrar") {
+		t.Errorf("hata cevabında kayıt firması satırı basıldı:\n%s", out)
+	}
+}
+
+// Atlanan (.localhost) alan adinda kayit otoritesine HIC istek gitmez.
+func TestDomainCheckSkippedNameAsksNoRegistry(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	rdap := attachRegistry(t, c, nil)
+	conns := countConns(rdap)
+
+	_ = c.runDomain(t.Context(), []string{"check", "app.localhost", "kimse@203.0.113.10"})
+
+	if *conns != 0 {
+		t.Errorf("atlanan alan adı için kayıt otoritesine %d bağlantı açıldı:\n%s", *conns, out)
+	}
+}
+
+// c.resolver != nil koruması testleri agdan uzak tutar: rdapClient nil iken
+// onyukleme sunucusuna hic baglanilmaz.
+func TestDomainCheckFakeResolverNeverReachesTheNetwork(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	boot := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(boot.Close)
+	conns := countConns(boot)
+	c.rdapBootstrap = boot.URL + "/boot.json" // rdapClient bilerek nil
+
+	_ = c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if *conns != 0 {
+		t.Errorf("sahte çözücüyle %d bağlantı açıldı:\n%s", *conns, out)
+	}
+}
+
+// switchingResolver: ilk n sorguda wrong, sonra right döner.
+type switchingResolver struct {
+	n            *int
+	after        int
+	wrong, right cliResolver
+}
+
+func (s switchingResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+	if network == "ip4" && host == "example.com" {
+		*s.n++
+	}
+	if *s.n <= s.after {
+		return s.wrong.LookupIP(ctx, network, host)
+	}
+	return s.right.LookupIP(ctx, network, host)
+}
+
+// pollResolver: example.com A sorgusunun k. turunda ips[k] döner; son
+// adres tekrarlanır.
+type pollResolver struct {
+	polls *int
+	ips   []string
+}
+
+func (p pollResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+	if network == "ip4" && host == "example.com" {
+		*p.polls++
+	}
+	i := min(*p.polls, len(p.ips)) - 1
+	return cliResolver{"ip4 example.com": {p.ips[i]}}.LookupIP(ctx, network, host)
+}
+
+// assertWaitIntervals, bekleme sürelerinin sayısını ve her birinin
+// dnsWaitInterval olduğunu denetler.
+func assertWaitIntervals(t *testing.T, got []time.Duration, want int) {
+	t.Helper()
+	if len(got) != want {
+		t.Fatalf("bekleme sayısı %d, beklenen %d", len(got), want)
+	}
+	for i, d := range got {
+		if d != dnsWaitInterval {
+			t.Errorf("%d. bekleme %s, beklenen %s", i+1, d, dnsWaitInterval)
+		}
+	}
+}
+
+func TestDnsWaitIntervalIsFifteenSeconds(t *testing.T) {
+	if dnsWaitInterval != 15*time.Second {
+		t.Fatalf("dnsWaitInterval %s, beklenen 15s", dnsWaitInterval)
+	}
+}
+
+func TestDomainCheckWaitsUntilTheDNSIsRight(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	n := 0
+	c.resolver = switchingResolver{n: &n, after: 2,
+		wrong: cliResolver{"ip4 example.com": {"198.51.100.7"}},
+		right: cliResolver{"ip4 example.com": {"203.0.113.10"}}}
+	var sleeps []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error { sleeps = append(sleeps, d); return nil }
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d (beklenen 0):\n%s", code, out)
+	}
+	assertWaitIntervals(t, sleeps, 2)
+	if got := strings.Count(out.String(), "waiting for DNS"); got != 1 {
+		t.Errorf("aynı yanlış cevaptan %d bekleme satırı çıktı (beklenen 1):\n%s", got, out)
+	}
+}
+
+func TestDomainCheckWaitPrintsAgainWhenTheReasonChanges(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	polls := 0
+	c.resolver = pollResolver{polls: &polls,
+		ips: []string{"198.51.100.7", "198.51.100.8", "203.0.113.10"}}
+	var sleeps []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error { sleeps = append(sleeps, d); return nil }
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d (beklenen 0):\n%s", code, out)
+	}
+	assertWaitIntervals(t, sleeps, 2)
+	if got := strings.Count(out.String(), "waiting for DNS"); got != 2 {
+		t.Errorf("neden değişince %d bekleme satırı (beklenen 2):\n%s", got, out)
+	}
+}
+
+func TestDomainCheckWaitGivesUp(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
+	var sleeps []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error {
+		sleeps = append(sleeps, d)
+		if len(sleeps) == 3 {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait", "1m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitError || !strings.Contains(out.String(), "✗ DNS") {
+		t.Fatalf("süre dolunca hata beklenirdi (çıkış %d):\n%s", code, out)
+	}
+	assertWaitIntervals(t, sleeps, 3)
+}
+
+func TestDomainCheckWaitInterruptedByCancel(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	c.sleep = func(context.Context, time.Duration) error {
+		cancel()
+		return context.Canceled
+	}
+
+	code := c.runDomain(ctx, []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitError || !strings.Contains(out.String(), "interrupted") {
+		t.Fatalf("iptal kesintisi beklenirdi (çıkış %d):\n%s", code, out)
+	}
+	if strings.Contains(out.String(), "80/tcp") {
+		t.Errorf("iptal sonrası sonda çalışmamalı:\n%s", out)
+	}
+}
+
+func TestDomainCheckNegativeWaitIsUsageError(t *testing.T) {
+	f := newDomainFixture(t)
+	c, _ := domainTestCLI(t, f, true)
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait=-5m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitUsage {
+		t.Fatalf("çıkış %d, beklenen %d (kullanım hatası)", code, exitUsage)
 	}
 }

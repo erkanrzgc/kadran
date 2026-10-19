@@ -35,6 +35,7 @@ type domainReport struct {
 }
 
 func (r *domainReport) ok(label, detail string)   { r.line("✓", label, detail) }
+func (r *domainReport) info(label, detail string) { r.line("·", label, detail) }
 func (r *domainReport) warn(label, detail string) { r.line("!", label, detail) }
 func (r *domainReport) fail(label, detail string) {
 	r.failed = true
@@ -55,8 +56,12 @@ func (c *cli) runDomain(ctx context.Context, args []string) int {
 func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("domain check")
 	timeout := fs.Duration("timeout", 30*time.Second, "overall time limit")
+	wait := fs.Duration("wait", 0, "wait until the DNS points at the server (e.g. 10m), checking every 15s")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
+	}
+	if *wait < 0 {
+		return c.usageError("-wait cannot be negative")
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
 		return c.usageError("usage: kadran domain check <domain> [target]")
@@ -66,12 +71,17 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return c.usageError("invalid domain (%q) — it cannot contain a scheme, port or path", fs.Arg(0))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *timeout+*wait)
 	defer cancel()
 
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
+	if *wait > 0 && !c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {
+		fmt.Fprintln(c.stdout, "  interrupted while waiting for DNS")
+		return exitError
+	}
 	r := &domainReport{out: c.stdout}
-	if c.probeDNS(ctx, r, domain, fs.Arg(1)) == domaincheck.Stop {
+	rep := c.probeDNS(ctx, r, domain, fs.Arg(1))
+	if rep.Verdict == domaincheck.Stop {
 		// Yanlış DNS'te sonraki satırlar BU sunucuyu değil, alan adının
 		// gösterdiği yeri ölçüyor (ör. joker kayıtta Vercel'in sertifikası).
 		fmt.Fprintln(c.stdout, "    the checks below hit the server the domain points at now, not this server")
@@ -79,18 +89,59 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	c.probePorts(ctx, r, domain)
 	c.probeHTTP(ctx, r, domain)
 	c.probeTLS(ctx, r, domain)
+	// En sonda: kayıt otoritesi takılsa da süre önceki denetimlerden yenmez.
+	c.printRegistrar(ctx, r, rep)
 	if r.failed {
 		return exitError
 	}
 	return exitOK
 }
 
-func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget string) domaincheck.Verdict {
+// dnsWaitInterval, `-wait` sırasında iki DNS denetimi arası.
+const dnsWaitInterval = 15 * time.Second
+
+// waitForDNS, DNS denetimi durmayı bırakana (OK ya da yalnız uyarı) kadar
+// bekler. Yalnız durum değişince satır basar. Süre dolarsa false.
+func (c *cli) waitForDNS(ctx context.Context, domain, rawTarget string, wait time.Duration) bool {
+	server, _ := c.serverHostFor(ctx, rawTarget)
+	wctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	last := ""
+	for {
+		rep := c.dnsChecker().Check(ctx, domain, server)
+		if rep.Verdict != domaincheck.Stop {
+			return true
+		}
+		if now := strings.Join(rep.Reasons, "; "); now != last {
+			fmt.Fprintf(c.stdout, "  … waiting for DNS (every %s): %s\n", dnsWaitInterval, now)
+			last = now
+		}
+		if err := c.sleepFor(wctx, dnsWaitInterval); err != nil {
+			return false
+		}
+	}
+}
+
+func (c *cli) sleepFor(ctx context.Context, d time.Duration) error {
+	if c.sleep != nil {
+		return c.sleep(ctx, d)
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget string) domaincheck.Report {
 	server, ok := c.serverHostFor(ctx, rawTarget)
 	if !ok {
 		r.warn("DNS", "could not parse the target; the server's address is unknown")
 	}
-	rep := domaincheck.Check(ctx, c.dnsResolver(), domain, server)
+	rep := c.dnsChecker().Check(ctx, domain, server)
 	records := joinAddrs(append(rep.A, rep.AAAA...))
 	switch rep.Verdict {
 	case domaincheck.OK:
@@ -99,8 +150,9 @@ func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget s
 		r.warn("DNS", strings.Join(rep.Reasons, "; "))
 	default:
 		r.fail("DNS", strings.Join(rep.Reasons, "; "))
+		writeDNSGuide(r.out, rep)
 	}
-	return rep.Verdict
+	return rep
 }
 
 func (c *cli) netDial(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -216,4 +268,31 @@ func joinAddrs(addrs []netip.Addr) string {
 		s[i] = a.String()
 	}
 	return strings.Join(s, ", ")
+}
+
+// printRegistrar, domainin akredite kayıt firmasını basar (K-151). Hata,
+// zaman aşımı ya da RDAP olmayan uzantıda sessiz: tanıyı asla bozmaz.
+func (c *cli) printRegistrar(ctx context.Context, r *domainReport, rep domaincheck.Report) {
+	if rep.Verdict == domaincheck.Skipped {
+		return // DNS'te olmayan ad: sorulacak kayıt yok
+	}
+	hc, boot := c.rdapClient, c.rdapBootstrap
+	if hc == nil {
+		if c.resolver != nil {
+			return // test: ağa çıkılmaz
+		}
+		hc = domaincheck.RDAPClient()
+	}
+	if boot == "" {
+		boot = domaincheck.IANABootstrapURL
+	}
+	name, err := domaincheck.LookupRegistrar(ctx, hc, boot, rep.Domain)
+	if err != nil || name == "" {
+		return
+	}
+	detail := name + " (accredited registrar; resellers such as Vercel sell through one)"
+	if rep.HasProvider {
+		detail += "\n              the DNS is at " + rep.Provider.Name + ": change the record there"
+	}
+	r.info("registrar", detail)
 }

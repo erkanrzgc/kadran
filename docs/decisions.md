@@ -11269,3 +11269,94 @@ geri bırakırdı).
   dosyayı okuyup yeni ağı 172.16/12'den vermesi. Canlı sunucularda dosya henüz yok;
   bir sonraki sürümle bootstrap yazacak, dockerd'nin yeniden başlatılması her sunucu için
   ayrı onay.
+
+## K-151 — DNS yönlendirme: firma tanıma, yetkili sorgu, kayıt firması (2026-10-15)
+
+**Durum:** `dns-yonlendirme` dalında uygulandı; henüz yayımlanmadı.
+
+### Bağlam
+
+Kullanıcı alan adını Vercel'den, Cloudflare'den, Namecheap'ten ya da bir Türk firmasından
+almış olabilir ve Kadran'dan şunu istedi: DNS'in hangi firmada olduğunu, tam olarak hangi
+kaydı ekleyeceğini ve o firmada bunu nerede yapacağını söylesin, sonra kaydın gerçekten
+sunucuyu gösterdiğini doğrulasın. K-128'in önkontrolü yalnız "kayıt başka yeri gösteriyor"
+diyordu ve dört eksiği vardı: DNS firmasını söylemiyordu; Cloudflare'in proxy'li kaydını
+"başka yer" diye raporluyordu; kayıt firmada doğru ama yerel önbellek eskiyse kullanıcıyı
+`-skip-dns-check`e itiyordu; sunucunun adresiyle birlikte başka adres de dönen karışık
+kümeyi geçiriyordu.
+
+### Karar
+
+- **Yönlendir + doğrula, API yok.** Hiçbir firmanın API anahtarı istenmez; Kadran DNS'e
+  yazmaz. Kullanıcı kararı.
+- **~50 firma tablosu** (`internal/domaincheck/providers.go`, 52 satır): NS adından
+  tanınır; her satırda panel yolu, varsa CLI komutu, firmaya özel uyarı ve resmi yardım
+  sayfası. Tüm NS'ler aynı firmaya ait olmalı, yoksa genel tarif. Rehber
+  `docs/guides/domains.md`; `TestDomainsGuideListsEveryProvider` rehberde eksik firmayı yakalar.
+- **Yetkili cevap önceliği.** Bölgenin NS'lerine doğrudan sorulur ve yalnız yetkili (AA)
+  cevap sayılır. Yetkili cevap doğru ama yerel çözümleyici eskiyse komut DURMAZ, uyarır
+  ve `-wait 10m` önerir. NS'ler birbirinden ayrışırsa yerel çözümleyicinin cevabı yargılanır: yanlışsa yine Stop, değilse uyarıyla geçer.
+- **Karışık küme durur.** Sunucu + başka adres artık Stop; silinecek kayıtlar adıyla söylenir
+  (`Delete these records for …`, joker ipucuyla).
+- **CNAME.** Ad bir CNAME ise silinecek tek kayıt o CNAME'dir (hedefin adresleri kullanıcının
+  bölgesinde satır değil) ve yerine A eklenir. Hedef aranamazsa Stop değil uyarı.
+- **Cloudflare, NS'e göre.** NS Cloudflare ise proxy'li kayıt (turuncu bulut); NS başkasıysa
+  "Cloudflare'de barınan sayfa" (park sayfası); bölge bilinmiyorsa tarafsız metin.
+- **10 sn bütçe.** Bölge yürüyüşü ve NS sorguları toplam ~10 sn; bütçe biterse "DNS host"
+  satırı hiç basılmaz ("kayıtlı olmayabilir" demez). CNAME hedef aramaları yerel çözümleyiciyle,
+  bütçenin dışında.
+- **`-wait`.** Her 15 sn bakar, yalnız sebep değişince satır basar; DNS denetimi durmayı
+  bırakınca (OK ya da yalnız uyarı) bekleme biter ve port/HTTP/sertifika koşar. Süre dolarsa
+  son rapor basılır, çıkış 1. Negatif `-wait` kullanım hatası; Ctrl-C "interrupted while
+  waiting for DNS" basıp 1 ile çıkar.
+- **RDAP yalnız `domain check`.** Kayıt firması IANA önyükleme dosyasından bulunan kayıt
+  otoritesinin RDAP'ından alınır, üçüncü taraf yönlendirici (rdap.org) YOK. Satır en sonda
+  basılır; yavaş ya da kapalı bir kayıt otoritesi sonucu asla değiştirmez; RDAP'ı olmayan
+  uzantıda ve `.localhost`ta satır/istek yok. `app create/update` RDAP sorgusu yapmaz.
+- **CNAME'li ad bölge sayılmaz.** `LookupNS` CNAME'i izleyip hedefin NS'lerini döndürüyor
+  (`www.github.com` → github.com'un NS'leri, canlıda ölçüldü). Bölge yürüyüşü bir ada NS
+  bulduğunda o ad CNAME ise onu bölge saymaz ve üste çıkar; yoksa `www CNAME @` kurulumunda
+  rehber `@` kaydını değiştirtirdi. CNAME sorgusu hata verirse ad CNAME sayılmaz (eski davranış).
+- **Cloudflare son eki `cloudflare.com`.** Müşteri NS'leri `*.ns.cloudflare.com`, Cloudflare'in
+  kendi bölgeleri `ns3…ns7.cloudflare.com`; ikisi de etiket sınırında `cloudflare.com` ile eşleşir.
+- **Basılan kabuk komutu doğrulanır.** Bölge ve ad yalnız `[a-z0-9.-]` (ad `@` de olabilir),
+  değer geçerli IP değilse komut satırı basılmaz; ad çift tırnakla (`"@"`) yazılır: tek tırnak
+  cmd.exe'de tırnağıyla geçiyordu, çıplak `@` PowerShell'de sözdizimi hatası; `-` ile başlayan
+  etiketler ve IPv6 bölge kimlikleri reddedilir, Stop sonrası `-wait 10m` öneri satırı da yalnız düz adlarla basılır.
+- **NS sınırı.** En çok 13 NS sorulur; genel olmayan (yerel ağ, loopback) NS adresine sorgu
+  gitmez. Düşman bir bölge kullanıcının makinesinden paket yağdıramaz.
+- **"Kayıtlı olmayabilir" notu** yalnız adın hiç A/AAAA kaydı yokken basılır (ör.
+  `home.duckdns.org` gibi özel genel-son-ek adları çözülüyorken bu notu alıyordu).
+
+### Ölçülenler (15 Ekim 2026)
+
+- Tablodaki NS son ekleri herkese açık DNS'te çözüldü.
+- erkanrzgc.dev (Vercel'den alındı) için RDAP `Name.com, Inc.` döndürdü: RDAP akredite kayıt
+  firmasını verir, alışverişin yapıldığı dükkanı değil. Metin bu yüzden "aldığın yer" demez.
+- `.tr` IANA RDAP önyükleme dosyasında yok; orada kayıt firması satırı çıkmaz.
+
+### Ölçülenler (19 Ekim 2026, canlı, salt-okur)
+
+Dalın ikilisiyle gerçek DNS'e karşı `kadran domain check <ad> kadran-client@<sunucu>`; sunucuya
+yazılmadı. Hepsi 10 sn bütçenin çok altında (1,1–2,5 sn).
+
+- `erkanrzgc.dev`: `✗ DNS` — A kaydı Vercel'in iki adresini gösteriyor, yetkili NS'lerin
+  cevabı. `DNS host  Vercel (ns1.vercel-dns.com, ns2.vercel-dns.com)`, silinecek A/ALIAS satırı
+  ve joker ipucu, `A @ <sunucu>`, `vercel dns add erkanrzgc.dev "@" A <sunucu>`, Vercel proje
+  notu; `registrar Name.com, Inc.` ve "the DNS is at Vercel". Çıkış 1.
+- `kadran.erkanrzgc.dev`: `✓ DNS` (sunucu), 80/443 açık, HTTP 308, Let's Encrypt sertifikası,
+  kayıt firması satırı. Çıkış 0.
+- `cloudflare.com`: ilk ölçümde NS'ler (`ns3…ns7.cloudflare.com`) TANINMADI ve "park sayfası"
+  metni çıktı; son ek `cloudflare.com` yapıldıktan sonra `DNS host  Cloudflare (…)`, "proxied
+  (orange cloud)" ve "DNS only (grey cloud)" tarifi.
+- `www.github.com` (CNAME → github.com): düzeltmeden önce yürüyüş `www.github.com`'u bölge
+  sayardı (incelemede ölçüldü); sonra kayıt adı `www`, bölge github.com. github.com'un NS'leri
+  iki firmada (NS1 + Route 53) olduğundan firma tanınmadı ve NS adları basıldı. Sonuç yetkili
+  cevaba dayanmadı (gerekçede "DNS host's own nameservers" yok), yerel kurallar uygulandı ve
+  CNAME yerine yerel çözümleyicinin gördüğü A satırı gösterildi. Sebebi ölçülmedi (NS'ler
+  arası uyuşmazlık olası); iki firmalı bölgeler için bilinen sınır.
+- Mutasyon: `scripts/mutate-domaincheck.sh` 51/51 yakalandı (son düzeltmelerden sonra).
+
+### Durum
+
+Uygulandı (`dns-yonlendirme` dalı), yayımlanmadı. Rehber: `docs/guides/domains.md`.

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -75,6 +76,16 @@ type cli struct {
 	// (nil: sistemin kökleri).
 	dialNet  func(ctx context.Context, network, addr string) (net.Conn, error)
 	tlsRoots *x509.CertPool
+	// K-151: NS sorgusu ve yetkili DNS sorgusu. resolver bir test
+	// sahtesiyken bunlar nil ise AĞA ÇIKILMAZ (dnsChecker).
+	nsResolver domaincheck.NSResolver
+	exchange   domaincheck.Exchanger
+	// `domain check`: kayıt firması (RDAP, K-151). resolver test sahtesiyken
+	// rdapClient nil ise sorgu yapılmaz.
+	rdapClient    *http.Client
+	rdapBootstrap string
+	// `domain check -wait`: bekleme (nil: gerçek zamanlayıcı).
+	sleep func(ctx context.Context, d time.Duration) error
 	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
 	keys keyManager
 }

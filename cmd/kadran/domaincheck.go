@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os/exec"
 	"strings"
 	"time"
@@ -23,11 +24,27 @@ const sshConfigTimeout = 5 * time.Second
 // anıyor.
 const skipDNSCheckFlag = "skip-dns-check"
 
-func (c *cli) dnsResolver() domaincheck.Resolver {
-	if c.resolver != nil {
-		return c.resolver
+// dnsChecker, önkontrol ve `domain check` için denetleyici (K-151). Gerçek
+// çözümleyicide NS ve yetkili sorgular açık. Testte (resolver sahte) NS
+// yalnız test kendi sahtesini verirse açılır, yetkili sorgu da yalnız test
+// sahtesiyle: CI gerçek DNS'e çıkmasın.
+func (c *cli) dnsChecker() domaincheck.Checker {
+	if c.resolver == nil {
+		return domaincheck.Checker{Resolver: net.DefaultResolver, NS: net.DefaultResolver}
 	}
-	return net.DefaultResolver
+	ch := domaincheck.Checker{Resolver: c.resolver, Exchange: c.exchange}
+	if c.nsResolver != nil {
+		ch.NS = c.nsResolver
+	}
+	if ch.Exchange == nil {
+		ch.Exchange = offlineExchange
+	}
+	return ch
+}
+
+// offlineExchange, testte yetkili sorguyu kapatır.
+func offlineExchange(context.Context, netip.AddrPort, []byte) ([]byte, error) {
+	return nil, errors.New("authoritative DNS queries are off in this test")
 }
 
 // resolveSSHHost, SSH hedefinin GERÇEK adını ssh yapılandırmasından okur:
@@ -84,6 +101,33 @@ func (c *cli) serverHostFor(ctx context.Context, rawTarget string) (string, bool
 	return c.resolveSSHHost(ctx, target.SSHHost), true
 }
 
+// waitHint, Stop raporunun "düzelttikten sonra" satırı. Alan adı ve hedef
+// kullanıcı girdisi; hata metni kopyalanıp kabuğa yapıştırılır, bu yüzden
+// yalnız düz değerler basılır, aksi hâlde satır hiç basılmaz (C2).
+func waitHint(domain, rawTarget string) string {
+	if !domaincheck.PlainName(domain) || !plainTarget(rawTarget) {
+		return ""
+	}
+	cmd := "kadran domain check -wait 10m " + domain
+	if rawTarget != "" {
+		cmd += " " + rawTarget
+	}
+	return "  After fixing it: " + cmd + "\n"
+}
+
+// plainTarget: hedef boş ya da [A-Za-z0-9._@:-] ve "-" ile başlamıyor.
+func plainTarget(s string) bool {
+	if strings.HasPrefix(s, "-") {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && !strings.ContainsRune("._@:-", r) {
+			return false
+		}
+	}
+	return true
+}
+
 // checkDomain, `-domain` verildiğinde, sunucuya bağlanmadan ÖNCE alan
 // adının DNS kaydını sunucunun adresiyle karşılaştırır (K-128). Rapor
 // stderr'e gider: stdout `-json` için temiz kalmalı. Açıkça yanlış DNS'te
@@ -103,7 +147,7 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		return nil
 	}
 
-	rep := domaincheck.Check(ctx, c.dnsResolver(), domain, server)
+	rep := c.dnsChecker().Check(ctx, domain, server)
 	switch rep.Verdict {
 	case domaincheck.OK:
 		return nil
@@ -113,15 +157,15 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 		}
 		return nil
 	}
-	const later = "  No certificate can be issued; Caddy may wait up to a day before retrying.\n"
-	if len(rep.A) == 0 && len(rep.AAAA) == 0 {
-		return fmt.Errorf("%s has no DNS record\n"+later+
-			"  Add an A record pointing the domain at the server's address and try again\n"+
-			"  (if you just added it, wait for it to propagate or skip with -%s)",
-			rep.Domain, skipDNSCheckFlag)
+	var b strings.Builder
+	if len(rep.A) == 0 && len(rep.AAAA) == 0 && !rep.Auth.Answered {
+		fmt.Fprintf(&b, "%s has no DNS record\n", rep.Domain)
+	} else {
+		fmt.Fprintf(&b, "%s does not point at this server: %s\n", rep.Domain, strings.Join(rep.Reasons, "; "))
 	}
-	return fmt.Errorf("%s does not point at this server: %s\n"+later+
-		"  Fix the DNS and try again. If the domain is behind a proxy (e.g. Cloudflare)\n"+
-		"  this is expected: skip with -%s",
-		rep.Domain, strings.Join(rep.Reasons, "; "), skipDNSCheckFlag)
+	writeDNSGuide(&b, rep)
+	b.WriteString("  No certificate can be issued; Caddy may wait up to a day before retrying.\n")
+	b.WriteString(waitHint(rep.Domain, rawTarget))
+	fmt.Fprintf(&b, "  If the domain is behind a proxy on purpose, skip with -%s", skipDNSCheckFlag)
+	return errors.New(b.String())
 }

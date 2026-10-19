@@ -60,6 +60,9 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
+	if *wait < 0 {
+		return c.usageError("-wait cannot be negative")
+	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
 		return c.usageError("usage: kadran domain check <domain> [target]")
 	}
@@ -72,8 +75,9 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	defer cancel()
 
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
-	if *wait > 0 {
-		c.waitForDNS(ctx, domain, fs.Arg(1), *wait)
+	if *wait > 0 && !c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {
+		fmt.Fprintln(c.stdout, "  interrupted while waiting for DNS")
+		return exitError
 	}
 	r := &domainReport{out: c.stdout}
 	rep := c.probeDNS(ctx, r, domain, fs.Arg(1))

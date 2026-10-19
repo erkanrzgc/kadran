@@ -368,6 +368,41 @@ func (s switchingResolver) LookupIP(ctx context.Context, network, host string) (
 	return s.right.LookupIP(ctx, network, host)
 }
 
+// pollResolver: example.com A sorgusunun k. turunda ips[k] döner; son
+// adres tekrarlanır.
+type pollResolver struct {
+	polls *int
+	ips   []string
+}
+
+func (p pollResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+	if network == "ip4" && host == "example.com" {
+		*p.polls++
+	}
+	i := min(*p.polls, len(p.ips)) - 1
+	return cliResolver{"ip4 example.com": {p.ips[i]}}.LookupIP(ctx, network, host)
+}
+
+// assertWaitIntervals, bekleme sürelerinin sayısını ve her birinin
+// dnsWaitInterval olduğunu denetler.
+func assertWaitIntervals(t *testing.T, got []time.Duration, want int) {
+	t.Helper()
+	if len(got) != want {
+		t.Fatalf("bekleme sayısı %d, beklenen %d", len(got), want)
+	}
+	for i, d := range got {
+		if d != dnsWaitInterval {
+			t.Errorf("%d. bekleme %s, beklenen %s", i+1, d, dnsWaitInterval)
+		}
+	}
+}
+
+func TestDnsWaitIntervalIsFifteenSeconds(t *testing.T) {
+	if dnsWaitInterval != 15*time.Second {
+		t.Fatalf("dnsWaitInterval %s, beklenen 15s", dnsWaitInterval)
+	}
+}
+
 func TestDomainCheckWaitsUntilTheDNSIsRight(t *testing.T) {
 	f := newDomainFixture(t)
 	c, out := domainTestCLI(t, f, true)
@@ -375,16 +410,37 @@ func TestDomainCheckWaitsUntilTheDNSIsRight(t *testing.T) {
 	c.resolver = switchingResolver{n: &n, after: 2,
 		wrong: cliResolver{"ip4 example.com": {"198.51.100.7"}},
 		right: cliResolver{"ip4 example.com": {"203.0.113.10"}}}
-	sleeps := 0
-	c.sleep = func(context.Context, time.Duration) error { sleeps++; return nil }
+	var sleeps []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error { sleeps = append(sleeps, d); return nil }
 
 	code := c.runDomain(t.Context(), []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
 
-	if code != exitOK || sleeps != 2 {
-		t.Fatalf("çıkış %d, bekleme %d (beklenen 0 ve 2):\n%s", code, sleeps, out)
+	if code != exitOK {
+		t.Fatalf("çıkış %d (beklenen 0):\n%s", code, out)
 	}
-	if !strings.Contains(out.String(), "waiting") {
-		t.Errorf("bekleme satırı yok:\n%s", out)
+	assertWaitIntervals(t, sleeps, 2)
+	if got := strings.Count(out.String(), "waiting for DNS"); got != 1 {
+		t.Errorf("aynı yanlış cevaptan %d bekleme satırı çıktı (beklenen 1):\n%s", got, out)
+	}
+}
+
+func TestDomainCheckWaitPrintsAgainWhenTheReasonChanges(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	polls := 0
+	c.resolver = pollResolver{polls: &polls,
+		ips: []string{"198.51.100.7", "198.51.100.8", "203.0.113.10"}}
+	var sleeps []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error { sleeps = append(sleeps, d); return nil }
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("çıkış %d (beklenen 0):\n%s", code, out)
+	}
+	assertWaitIntervals(t, sleeps, 2)
+	if got := strings.Count(out.String(), "waiting for DNS"); got != 2 {
+		t.Errorf("neden değişince %d bekleme satırı (beklenen 2):\n%s", got, out)
 	}
 }
 
@@ -392,10 +448,10 @@ func TestDomainCheckWaitGivesUp(t *testing.T) {
 	f := newDomainFixture(t)
 	c, out := domainTestCLI(t, f, true)
 	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
-	sleeps := 0
-	c.sleep = func(context.Context, time.Duration) error {
-		sleeps++
-		if sleeps == 3 {
+	var sleeps []time.Duration
+	c.sleep = func(_ context.Context, d time.Duration) error {
+		sleeps = append(sleeps, d)
+		if len(sleeps) == 3 {
 			return context.DeadlineExceeded
 		}
 		return nil
@@ -405,5 +461,38 @@ func TestDomainCheckWaitGivesUp(t *testing.T) {
 
 	if code != exitError || !strings.Contains(out.String(), "✗ DNS") {
 		t.Fatalf("süre dolunca hata beklenirdi (çıkış %d):\n%s", code, out)
+	}
+	assertWaitIntervals(t, sleeps, 3)
+}
+
+func TestDomainCheckWaitInterruptedByCancel(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	c.sleep = func(context.Context, time.Duration) error {
+		cancel()
+		return context.Canceled
+	}
+
+	code := c.runDomain(ctx, []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitError || !strings.Contains(out.String(), "interrupted") {
+		t.Fatalf("iptal kesintisi beklenirdi (çıkış %d):\n%s", code, out)
+	}
+	if strings.Contains(out.String(), "80/tcp") {
+		t.Errorf("iptal sonrası sonda çalışmamalı:\n%s", out)
+	}
+}
+
+func TestDomainCheckNegativeWaitIsUsageError(t *testing.T) {
+	f := newDomainFixture(t)
+	c, _ := domainTestCLI(t, f, true)
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait=-5m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitUsage {
+		t.Fatalf("çıkış %d, beklenen %d (kullanım hatası)", code, exitUsage)
 	}
 }

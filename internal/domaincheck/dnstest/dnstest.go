@@ -27,6 +27,8 @@ type Answer struct {
 	NotResponse bool
 	// WrongQuestion: cevabın soru bölümü sorulandan farklı (sahte cevap).
 	WrongQuestion bool
+	// WrongType: cevabın soru türü sorulandan farklı (sahte cevap).
+	WrongType bool
 	// Block: bağlam bitene kadar cevap vermez (süre bütçesi testi).
 	Block bool
 }
@@ -44,6 +46,9 @@ func Reply(query []byte, a Answer) ([]byte, error) {
 	}
 	if a.WrongQuestion {
 		q.Name = dnsmessage.MustNewName("other.example.org.")
+	}
+	if a.WrongType {
+		q.Type = dnsmessage.TypeTXT
 	}
 	id := h.ID
 	if a.WrongID {

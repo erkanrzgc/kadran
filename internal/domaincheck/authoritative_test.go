@@ -66,6 +66,11 @@ func TestAskAuthoritative(t *testing.T) {
 	if got := ask(t, notResp, notResp); got.Answered {
 		t.Errorf("QR bayraksız mesaj cevap sayıldı: %+v", got)
 	}
+	wrongT := ok
+	wrongT.WrongType = true
+	if got := ask(t, wrongT, wrongT); got.Answered {
+		t.Errorf("türü tutmayan cevap kabul edildi: %+v", got)
+	}
 	wrongQ := ok
 	wrongQ.WrongQuestion = true
 	if got := ask(t, wrongQ, wrongQ); got.Answered {

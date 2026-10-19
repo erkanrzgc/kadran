@@ -183,6 +183,13 @@ mutate_in "$PROV" "komut girdisi doğrulanmıyor" \
 mutate_in "$AUTH" "cevap bayrağı aranmıyor" \
     "s=s.replace('err != nil || !h.Response || h.ID != id','err != nil || h.ID != id',1)"
 
+mutate_in "$AUTH" "soru türü aranmıyor" \
+    "s=s.replace('got.Type != q.Type || !strings.EqualFold','!strings.EqualFold',1)"
+
+# C2: hata metni kabuğa yapıştırılıyor.
+mutate_in "$CLI" "bekleme önerisi doğrulanmıyor" \
+    "s=s.replace('if !domaincheck.PlainName(domain) || !plainTarget(rawTarget) {','if false {',1)"
+
 mutate_in "$AUTH" "soru eşleşmesi aranmıyor" \
     "s=s.replace('got.Type != q.Type || !strings.EqualFold','got.Type != q.Type && !strings.EqualFold',1)"
 

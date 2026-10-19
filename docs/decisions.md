@@ -11355,7 +11355,7 @@ yazılmadı. Hepsi 10 sn bütçenin çok altında (1,1–2,5 sn).
   cevaba dayanmadı (gerekçede "DNS host's own nameservers" yok), yerel kurallar uygulandı ve
   CNAME yerine yerel çözümleyicinin gördüğü A satırı gösterildi. Sebebi ölçülmedi (NS'ler
   arası uyuşmazlık olası); iki firmalı bölgeler için bilinen sınır.
-- Mutasyon: `scripts/mutate-domaincheck.sh` 49/49 yakalandı.
+- Mutasyon: `scripts/mutate-domaincheck.sh` 51/51 yakalandı (son düzeltmelerden sonra).
 
 ### Durum
 

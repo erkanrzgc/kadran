@@ -26,6 +26,10 @@ func (f cliNS) LookupNS(_ context.Context, name string) ([]*net.NS, error) {
 	return out, nil
 }
 
+func (cliNS) LookupCNAME(_ context.Context, host string) (string, error) {
+	return host + ".", nil
+}
+
 // vercelCLI: example.com Vercel'de; ad sunucusu 192.0.2.1 authAddrs döner.
 func vercelCLI(local cliResolver, authAddrs ...string) (*cli, *bytes.Buffer, *bytes.Buffer, *int) {
 	res := cliResolver{"ip4 ns1.vercel-dns.com": {"192.0.2.1"}}

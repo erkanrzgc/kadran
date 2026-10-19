@@ -22,6 +22,54 @@ func (f fakeNS) LookupNS(_ context.Context, name string) ([]*net.NS, error) {
 	return out, nil
 }
 
+// LookupCNAME: varsayılan olarak ad takma ad DEĞİL (kendisine döner).
+func (fakeNS) LookupCNAME(_ context.Context, host string) (string, error) {
+	return host + ".", nil
+}
+
+// aliasNS, bazı adların başka bir ada takma ad (CNAME) olduğu sahte çözümleyici.
+// LookupNS takma adın hedefinin NS kaydını döndürür: net.Resolver da CNAME izler.
+type aliasNS struct {
+	fakeNS
+	alias map[string]string
+}
+
+func (f aliasNS) LookupCNAME(_ context.Context, host string) (string, error) {
+	if target, ok := f.alias[host]; ok {
+		return target + ".", nil
+	}
+	return host + ".", nil
+}
+
+// A1: LookupNS CNAME izler; www CNAME @ iken www.example.com bölge sayılmamalı.
+func TestFindZoneSkipsAliasNames(t *testing.T) {
+	ns := aliasNS{
+		fakeNS: fakeNS{
+			"example.com":     {"ns1.vercel-dns.com."},
+			"www.example.com": {"ns1.vercel-dns.com."},
+		},
+		alias: map[string]string{"www.example.com": "example.com"},
+	}
+	z, ok := FindZone(t.Context(), ns, "www.example.com")
+	if !ok || z.Name != "example.com" || RecordName("www.example.com", z.Name) != "www" {
+		t.Fatalf("bölge %q (%v), kayıt %q; beklenen example.com / www", z.Name, ok, RecordName("www.example.com", z.Name))
+	}
+}
+
+// Takma ad olmayan, devredilmiş alt bölge hâlâ bölge sayılır.
+func TestFindZoneKeepsDelegatedSubzone(t *testing.T) {
+	ns := aliasNS{
+		fakeNS: fakeNS{
+			"example.com":     {"ns1.vercel-dns.com."},
+			"sub.example.com": {"ns1.other-dns.example."},
+		},
+	}
+	z, ok := FindZone(t.Context(), ns, "app.sub.example.com")
+	if !ok || z.Name != "sub.example.com" {
+		t.Fatalf("bölge %q (%v), beklenen sub.example.com", z.Name, ok)
+	}
+}
+
 func TestFindZone(t *testing.T) {
 	ns := fakeNS{
 		"example.com":    {"NS2.vercel-dns.com.", "ns1.vercel-dns.com."},

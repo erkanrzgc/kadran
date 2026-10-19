@@ -166,6 +166,32 @@ func TestCheckerRules(t *testing.T) {
 			},
 		},
 		{
+			// A1: www CNAME @ iken LookupNS www adının NS kaydını da döndürür; kayıt
+			// adı "@" değil "www" olmalı (kök alan adı yanlışlıkla silinmesin).
+			name: "www CNAME @: bölge example.com, kayıt www",
+			c: func() Checker {
+				c := zoneChecker(vercelNS, ip4("www.example.com", wrong),
+					dnstest.Answer{AA: true, CNAME: "example.com", Addrs: []string{wrong}, TTL: 300},
+					dnstest.Answer{AA: true, CNAME: "example.com", Addrs: []string{wrong}, TTL: 300})
+				c.NS = aliasNS{
+					fakeNS: fakeNS{"example.com": vercelNS, "www.example.com": vercelNS},
+					alias:  map[string]string{"www.example.com": "example.com"},
+				}
+				return c
+			}(),
+			domain: "www.example.com", server: right,
+			want: Stop,
+			check: func(t *testing.T, rep Report) {
+				if rep.Zone != "example.com" || rep.RecordName != "www" {
+					t.Errorf("bölge %q, ad %q", rep.Zone, rep.RecordName)
+				}
+				if !slices.Equal(rep.Fix.Remove, []Record{{Type: "CNAME", Name: "www", Value: "example.com"}}) ||
+					!slices.Equal(rep.Fix.Add, []Record{{Type: "A", Name: "www", Value: right}}) {
+					t.Errorf("Remove = %v, Add = %v", rep.Fix.Remove, rep.Fix.Add)
+				}
+			},
+		},
+		{
 			// F2: hedef çözülemedi (SERVFAIL): durdurmaz, uyarır.
 			name: "CNAME hedefi çözülemedi: uyarır, durmaz",
 			c: zoneChecker(vercelNS, fakeResolver{"ip4 target.example.net": {err: errServfail}},
@@ -317,6 +343,11 @@ type blockingNS struct{}
 func (blockingNS) LookupNS(ctx context.Context, _ string) ([]*net.NS, error) {
 	<-ctx.Done()
 	return nil, ctx.Err()
+}
+
+func (blockingNS) LookupCNAME(ctx context.Context, _ string) (string, error) {
+	<-ctx.Done()
+	return "", ctx.Err()
 }
 
 // F7: bütçe bölge yürüyüşünü keserse "bölge devredilmemiş" denmez.

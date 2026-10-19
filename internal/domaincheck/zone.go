@@ -9,9 +9,10 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-// NSResolver, *net.Resolver'ın NS sorgusu; testler sahtesini veriyor.
+// NSResolver, *net.Resolver'ın NS ve CNAME sorgusu; testler sahtesini veriyor.
 type NSResolver interface {
 	LookupNS(ctx context.Context, name string) ([]*net.NS, error)
+	LookupCNAME(ctx context.Context, host string) (string, error)
 }
 
 // Zone, adın DNS bölgesi ve ad sunucuları (temizlenmiş, sıralı).
@@ -23,6 +24,10 @@ type Zone struct {
 // FindZone, adın kendisinden kayıt edilebilir alan adına (eTLD+1) kadar
 // çıkar ve NS kaydı olan ilk adı döndürür. Genel son eke (co.uk, com.tr)
 // ASLA tırmanmaz: orası kullanıcının bölgesi değil, kayıt otoritesi.
+// net.Resolver.LookupNS CNAME izler: "www CNAME @" iken www.example.com için
+// example.com'un NS'leri döner. Bu yüzden eTLD+1'in altındaki bir ad, yalnız
+// takma ad DEĞİLSE bölge sayılır (bölge tepesi CNAME tutamaz, devredilmiş alt
+// bölgeler etkilenmez).
 func FindZone(ctx context.Context, r NSResolver, domain string) (Zone, bool) {
 	top, err := publicsuffix.EffectiveTLDPlusOne(domain)
 	if err != nil {
@@ -30,7 +35,7 @@ func FindZone(ctx context.Context, r NSResolver, domain string) (Zone, bool) {
 	}
 	name := domain
 	for {
-		if ns := lookupNS(ctx, r, name); len(ns) > 0 {
+		if ns := lookupNS(ctx, r, name); len(ns) > 0 && (name == top || !isAlias(ctx, r, name)) {
 			return Zone{Name: name, NameServers: ns}, true
 		}
 		if name == top {
@@ -42,6 +47,14 @@ func FindZone(ctx context.Context, r NSResolver, domain string) (Zone, bool) {
 		}
 		name = rest
 	}
+}
+
+// isAlias, adın bir CNAME olup olmadığı. Sorgu hatası "takma ad değil" sayılır.
+func isAlias(ctx context.Context, r NSResolver, name string) bool {
+	ctx, cancel := context.WithTimeout(ctx, LookupTimeout)
+	defer cancel()
+	cn, err := r.LookupCNAME(ctx, name)
+	return err == nil && !strings.EqualFold(strings.TrimSuffix(cn, "."), name)
 }
 
 func lookupNS(ctx context.Context, r NSResolver, name string) []string {

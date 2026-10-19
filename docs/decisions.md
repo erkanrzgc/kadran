@@ -11295,7 +11295,7 @@ kümeyi geçiriyordu.
   `docs/guides/domains.md`; `TestDomainsGuideListsEveryProvider` rehberde eksik firmayı yakalar.
 - **Yetkili cevap önceliği.** Bölgenin NS'lerine doğrudan sorulur ve yalnız yetkili (AA)
   cevap sayılır. Yetkili cevap doğru ama yerel çözümleyici eskiyse komut DURMAZ, uyarır
-  ve `-wait 10m` önerir. NS'ler birbirinden ayrışırsa da uyarı.
+  ve `-wait 10m` önerir. NS'ler birbirinden ayrışırsa yerel çözümleyicinin cevabı yargılanır: yanlışsa yine Stop, değilse uyarıyla geçer.
 - **Karışık küme durur.** Sunucu + başka adres artık Stop; silinecek kayıtlar adıyla söylenir
   (`Delete these records for …`, joker ipucuyla).
 - **CNAME.** Ad bir CNAME ise silinecek tek kayıt o CNAME'dir (hedefin adresleri kullanıcının

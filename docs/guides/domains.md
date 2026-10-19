@@ -30,8 +30,9 @@ address). Kadran never changes DNS for you: it tells you what to change and chec
 
    `-wait 10m` re-checks every 15 seconds and prints a line only when the reason changes. It
    stops waiting as soon as the DNS check no longer stops (everything is fine, or only warnings
-   remain), then runs the port, HTTP and certificate checks. If the time runs out it prints the
-   last report and exits with status 1. Ctrl-C while waiting prints
+   remain), then runs the port, HTTP and certificate checks. If the time runs out it still runs
+   those checks, prints the last DNS report with them and exits with status 1 (the DNS check
+   still fails). Ctrl-C while waiting prints
    `interrupted while waiting for DNS` and exits with status 1. A negative `-wait` is a usage error.
 
 3. **Create or update the app:**
@@ -51,13 +52,15 @@ Buying a domain from a reseller and leaving its default nameservers is fine, but
 records are edited at the reseller's DNS panel, not at the registry or at the accredited
 registrar behind it.
 
-`kadran domain check` shows both:
+`kadran domain check` can show both, but not always:
 
-- `DNS host  <name> (<nameservers>)` is the company whose nameservers answer for the domain,
+- `DNS host  <name> (<nameservers>)` appears only when the DNS check stops, that is when the
+  record is wrong. It is the company whose nameservers answer for the domain,
   recognised by the nameserver names (see [Providers](#providers)). This is where the record
-  goes. When Kadran does not recognise the nameservers it prints them as they are, with a
+  goes. For a healthy domain the line is not printed. When Kadran does not recognise the nameservers it prints them as they are, with a
   generic instruction and a link to this guide.
-- `registrar` is the domain's **accredited registrar** from RDAP, printed last. RDAP names the
+- `registrar` is the domain's **accredited registrar** from RDAP, printed last on every check
+  when RDAP knows the domain's extension (there is none for `.tr`). RDAP names the
   accredited registrar, not the reseller you paid. For example a domain bought through Vercel is
   registered through Name.com, so the line says Name.com while the DNS host stays Vercel. When
   the DNS host is recognised the line adds `the DNS is at <name>: change the record there`.
@@ -70,10 +73,14 @@ already is.
 
 - **Authoritative first.** Kadran finds the zone's nameservers and asks them directly, so a
   record you changed a minute ago is recognised before resolver caches expire. Only
-  authoritative answers count. If the nameservers disagree with each other, or with the local
-  resolver, the check warns instead of stopping: the change is still propagating. The warning
-  says that your DNS host already answers the new record while this machine still sees the old
-  one from its cache, and suggests `kadran domain check -wait 10m`.
+  authoritative answers count. Two cases differ:
+  - The nameservers agree and the answer is right, but this machine's resolver still returns an
+    old record from its cache: the check warns instead of stopping. The warning says that your
+    DNS host already answers the new record while this machine still sees the old one, and
+    suggests `kadran domain check -wait 10m`.
+  - The nameservers do not agree with each other yet: Kadran falls back to what the local
+    resolver returns and judges that. If those records are wrong the check still stops; if they
+    are fine it passes with a warning that the change is still spreading inside the DNS host.
 - **Mixed record sets stop the check.** `the A records are <server> (server) and <other>:
   visitors and Let's Encrypt reach the other addresses part of the time`. Delete the other
   addresses.

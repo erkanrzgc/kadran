@@ -84,6 +84,8 @@ type cli struct {
 	// rdapClient nil ise sorgu yapılmaz.
 	rdapClient    *http.Client
 	rdapBootstrap string
+	// `domain check -wait`: bekleme (nil: gerçek zamanlayıcı).
+	sleep func(ctx context.Context, d time.Duration) error
 	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
 	keys keyManager
 }

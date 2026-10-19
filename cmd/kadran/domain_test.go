@@ -350,3 +350,60 @@ func TestDomainCheckFakeResolverNeverReachesTheNetwork(t *testing.T) {
 		t.Errorf("sahte çözücüyle %d bağlantı açıldı:\n%s", *conns, out)
 	}
 }
+
+// switchingResolver: ilk n sorguda wrong, sonra right döner.
+type switchingResolver struct {
+	n            *int
+	after        int
+	wrong, right cliResolver
+}
+
+func (s switchingResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+	if network == "ip4" && host == "example.com" {
+		*s.n++
+	}
+	if *s.n <= s.after {
+		return s.wrong.LookupIP(ctx, network, host)
+	}
+	return s.right.LookupIP(ctx, network, host)
+}
+
+func TestDomainCheckWaitsUntilTheDNSIsRight(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	n := 0
+	c.resolver = switchingResolver{n: &n, after: 2,
+		wrong: cliResolver{"ip4 example.com": {"198.51.100.7"}},
+		right: cliResolver{"ip4 example.com": {"203.0.113.10"}}}
+	sleeps := 0
+	c.sleep = func(context.Context, time.Duration) error { sleeps++; return nil }
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait", "10m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK || sleeps != 2 {
+		t.Fatalf("çıkış %d, bekleme %d (beklenen 0 ve 2):\n%s", code, sleeps, out)
+	}
+	if !strings.Contains(out.String(), "waiting") {
+		t.Errorf("bekleme satırı yok:\n%s", out)
+	}
+}
+
+func TestDomainCheckWaitGivesUp(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{"ip4 example.com": {"198.51.100.7"}}
+	sleeps := 0
+	c.sleep = func(context.Context, time.Duration) error {
+		sleeps++
+		if sleeps == 3 {
+			return context.DeadlineExceeded
+		}
+		return nil
+	}
+
+	code := c.runDomain(t.Context(), []string{"check", "-wait", "1m", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitError || !strings.Contains(out.String(), "✗ DNS") {
+		t.Fatalf("süre dolunca hata beklenirdi (çıkış %d):\n%s", code, out)
+	}
+}

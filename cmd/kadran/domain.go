@@ -56,6 +56,7 @@ func (c *cli) runDomain(ctx context.Context, args []string) int {
 func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("domain check")
 	timeout := fs.Duration("timeout", 30*time.Second, "overall time limit")
+	wait := fs.Duration("wait", 0, "wait until the DNS points at the server (e.g. 10m), checking every 15s")
 	if err := fs.Parse(args); err != nil {
 		return exitUsage
 	}
@@ -67,10 +68,13 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return c.usageError("invalid domain (%q) — it cannot contain a scheme, port or path", fs.Arg(0))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *timeout+*wait)
 	defer cancel()
 
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
+	if *wait > 0 {
+		c.waitForDNS(ctx, domain, fs.Arg(1), *wait)
+	}
 	r := &domainReport{out: c.stdout}
 	rep := c.probeDNS(ctx, r, domain, fs.Arg(1))
 	if rep.Verdict == domaincheck.Stop {
@@ -87,6 +91,45 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return exitError
 	}
 	return exitOK
+}
+
+// dnsWaitInterval, `-wait` sırasında iki DNS denetimi arası.
+const dnsWaitInterval = 15 * time.Second
+
+// waitForDNS, DNS denetimi durmayı bırakana (OK ya da yalnız uyarı) kadar
+// bekler. Yalnız durum değişince satır basar. Süre dolarsa false.
+func (c *cli) waitForDNS(ctx context.Context, domain, rawTarget string, wait time.Duration) bool {
+	server, _ := c.serverHostFor(ctx, rawTarget)
+	wctx, cancel := context.WithTimeout(ctx, wait)
+	defer cancel()
+	last := ""
+	for {
+		rep := c.dnsChecker().Check(ctx, domain, server)
+		if rep.Verdict != domaincheck.Stop {
+			return true
+		}
+		if now := strings.Join(rep.Reasons, "; "); now != last {
+			fmt.Fprintf(c.stdout, "  … waiting for DNS (every %s): %s\n", dnsWaitInterval, now)
+			last = now
+		}
+		if err := c.sleepFor(wctx, dnsWaitInterval); err != nil {
+			return false
+		}
+	}
+}
+
+func (c *cli) sleepFor(ctx context.Context, d time.Duration) error {
+	if c.sleep != nil {
+		return c.sleep(ctx, d)
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (c *cli) probeDNS(ctx context.Context, r *domainReport, domain, rawTarget string) domaincheck.Report {

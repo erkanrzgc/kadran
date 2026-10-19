@@ -172,6 +172,27 @@ mutate_in "$PROV" "NS adı temizlenmiyor" \
 mutate_in "$ZONE" "bölge genel son eke tırmanıyor" \
     "s=s.replace('\t\tif name == top {\n\t\t\treturn Zone{}, false\n\t\t}\n','\t\t_ = top\n',1)"
 
+# A1: LookupNS CNAME izler; takma ad olan ad bölge sayılmamalı.
+mutate_in "$ZONE" "CNAME adı bölge sayılıyor" \
+    "s=s.replace('!isAlias(ctx, r, name)','true',1)"
+
+# C1: yazdırılan kabuk komutuna güvensiz girdi girmemeli.
+mutate_in "$PROV" "komut girdisi doğrulanmıyor" \
+    "s=s.replace('p.Command == \"\" || !commandSafe(zone, r) {','p.Command == \"\" || false {',1)"
+
+mutate_in "$AUTH" "cevap bayrağı aranmıyor" \
+    "s=s.replace('err != nil || !h.Response || h.ID != id','err != nil || h.ID != id',1)"
+
+mutate_in "$AUTH" "soru eşleşmesi aranmıyor" \
+    "s=s.replace('got.Type != q.Type || !strings.EqualFold','got.Type != q.Type && !strings.EqualFold',1)"
+
+# N1: düşmanca bölge yüzlerce NS ve özel adres döndürebilir.
+mutate_in "$ZONE" "NS sayısı sınırsız" \
+    "s=s.replace('if len(out) > maxNameServers {','if len(out) > 99999 {',1)"
+
+mutate_in "$AUTH" "özel NS adresi sorgulanıyor" \
+    "s=s.replace('if isPublic(a) {','if true {',1)"
+
 mutate_in "$RDAP" "https olmayan yönlendirme izleniyor" \
     "s=s.replace('if req.URL.Scheme != \"https\" {','if false {',1)"
 

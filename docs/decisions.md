@@ -11321,7 +11321,8 @@ kümeyi geçiriyordu.
   kendi bölgeleri `ns3…ns7.cloudflare.com`; ikisi de etiket sınırında `cloudflare.com` ile eşleşir.
 - **Basılan kabuk komutu doğrulanır.** Bölge ve ad yalnız `[a-z0-9.-]` (ad `@` de olabilir),
   değer geçerli IP değilse komut satırı basılmaz; ad çift tırnakla (`"@"`) yazılır: tek tırnak
-  cmd.exe'de tırnağıyla geçiyordu, çıplak `@` PowerShell'de sözdizimi hatası.
+  cmd.exe'de tırnağıyla geçiyordu, çıplak `@` PowerShell'de sözdizimi hatası; `-` ile başlayan
+  etiketler ve IPv6 bölge kimlikleri reddedilir, Stop sonrası `-wait 10m` öneri satırı da yalnız düz adlarla basılır.
 - **NS sınırı.** En çok 13 NS sorulur; genel olmayan (yerel ağ, loopback) NS adresine sorgu
   gitmez. Düşman bir bölge kullanıcının makinesinden paket yağdıramaz.
 - **"Kayıtlı olmayabilir" notu** yalnız adın hiç A/AAAA kaydı yokken basılır (ör.

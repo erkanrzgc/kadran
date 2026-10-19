@@ -128,6 +128,11 @@ func TestCommandFor(t *testing.T) {
 		{"", "app", "203.0.113.10"},
 		{"example.com", "app", "203.0.113.10; id"},
 		{"example.com", "app", "not-an-ip"},
+		// C3: "-" ile başlayan etiket komut satırında seçenek olurdu; IPv6 bölge kimliği de.
+		{"example.com", "-x", "203.0.113.10"},
+		{"example.com", "a.-x", "203.0.113.10"},
+		{"-example.com", "app", "203.0.113.10"},
+		{"example.com", "app", "fe80::1%eth0"},
 	} {
 		if cmd := v.CommandFor(tc.zone, Record{Type: "A", Name: tc.name, Value: tc.value}); cmd != "" {
 			t.Errorf("CommandFor(%q, %q, %q) = %q, boş bekleniyordu", tc.zone, tc.name, tc.value, cmd)

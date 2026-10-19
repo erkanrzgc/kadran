@@ -101,6 +101,33 @@ func (c *cli) serverHostFor(ctx context.Context, rawTarget string) (string, bool
 	return c.resolveSSHHost(ctx, target.SSHHost), true
 }
 
+// waitHint, Stop raporunun "düzelttikten sonra" satırı. Alan adı ve hedef
+// kullanıcı girdisi; hata metni kopyalanıp kabuğa yapıştırılır, bu yüzden
+// yalnız düz değerler basılır, aksi hâlde satır hiç basılmaz (C2).
+func waitHint(domain, rawTarget string) string {
+	if !domaincheck.PlainName(domain) || !plainTarget(rawTarget) {
+		return ""
+	}
+	cmd := "kadran domain check -wait 10m " + domain
+	if rawTarget != "" {
+		cmd += " " + rawTarget
+	}
+	return "  After fixing it: " + cmd + "\n"
+}
+
+// plainTarget: hedef boş ya da [A-Za-z0-9._@:-] ve "-" ile başlamıyor.
+func plainTarget(s string) bool {
+	if strings.HasPrefix(s, "-") {
+		return false
+	}
+	for _, r := range s {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && !strings.ContainsRune("._@:-", r) {
+			return false
+		}
+	}
+	return true
+}
+
 // checkDomain, `-domain` verildiğinde, sunucuya bağlanmadan ÖNCE alan
 // adının DNS kaydını sunucunun adresiyle karşılaştırır (K-128). Rapor
 // stderr'e gider: stdout `-json` için temiz kalmalı. Açıkça yanlış DNS'te
@@ -138,7 +165,7 @@ func (c *cli) checkDomain(ctx context.Context, domain, rawTarget string, skip bo
 	}
 	writeDNSGuide(&b, rep)
 	b.WriteString("  No certificate can be issued; Caddy may wait up to a day before retrying.\n")
-	fmt.Fprintf(&b, "  After fixing it: kadran domain check -wait 10m %s %s\n", rep.Domain, rawTarget)
+	b.WriteString(waitHint(rep.Domain, rawTarget))
 	fmt.Fprintf(&b, "  If the domain is behind a proxy on purpose, skip with -%s", skipDNSCheckFlag)
 	return errors.New(b.String())
 }

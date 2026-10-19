@@ -145,3 +145,44 @@ func TestDNSCheckerStaysOfflineInTests(t *testing.T) {
 		t.Fatalf("test yetkili sorgusu hata vermedi")
 	}
 }
+
+// C2: hata metni kabuğa yapıştırılıyor; kabuk metakarakteri taşıyan girdi
+// "düzelttikten sonra" satırına girmez, raporun geri kalanı yine basılır.
+func TestStopHintOmittedForUnsafeDomain(t *testing.T) {
+	c, _, stderr, _ := vercelCLI(cliResolver{"ip4 x$(id).example.com": {"198.51.100.7"}}, "198.51.100.7")
+
+	code := c.runAppCreate(t.Context(), []string{
+		"-repo", "github.com/u/r", "-domain", "x$(id).example.com", "web", "kimse@203.0.113.10"})
+
+	out := stderr.String()
+	if code != exitError {
+		t.Fatalf("çıkış %d\n%s", code, out)
+	}
+	if strings.Contains(out, "After fixing it") {
+		t.Errorf("güvensiz alan adı öneri satırına girdi:\n%s", out)
+	}
+	for _, want := range []string{"does not point at this server", "-skip-dns-check"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rapor %q içermiyor:\n%s", want, out)
+		}
+	}
+}
+
+func TestWaitHint(t *testing.T) {
+	for _, tc := range []struct{ domain, target, want string }{
+		{"app.example.com", "kimse@203.0.113.10", "  After fixing it: kadran domain check -wait 10m app.example.com kimse@203.0.113.10\n"},
+		{"app.example.com", "", "  After fixing it: kadran domain check -wait 10m app.example.com\n"},
+		{"app.example.com", "-oProxyCommand=x", ""},
+		{"app.example.com", "a b", ""},
+		{"app.example.com", "x;id", ""},
+		{"x$(id).example.com", "kimse@203.0.113.10", ""},
+		{"-bad.example.com", "", ""},
+		{"a.-bad.example.com", "", ""},
+		{"", "", ""},
+		{"app.example.com", "host.example:2222", "  After fixing it: kadran domain check -wait 10m app.example.com host.example:2222\n"},
+	} {
+		if got := waitHint(tc.domain, tc.target); got != tc.want {
+			t.Errorf("waitHint(%q, %q) = %q, beklenen %q", tc.domain, tc.target, got, tc.want)
+		}
+	}
+}

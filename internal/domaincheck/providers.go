@@ -278,18 +278,20 @@ func (p Provider) CommandFor(zone string, r Record) string {
 	return strings.NewReplacer("{zone}", zone, "{name}", r.Name, "{type}", r.Type, "{value}", r.Value).Replace(p.Command)
 }
 
-// commandSafe: bölge boş olmayan [a-z0-9.-], ad "@" ya da boş olmayan
-// [a-z0-9.-] (joker "*" dahil değil), değer geçerli bir IP.
+// commandSafe: bölge PlainName, ad "@" ya da PlainName (joker "*" dahil
+// değil), değer bölge kimliksiz geçerli bir IP.
 func commandSafe(zone string, r Record) bool {
-	if !isPlainName(zone) || (r.Name != "@" && !isPlainName(r.Name)) {
+	if !PlainName(zone) || (r.Name != "@" && !PlainName(r.Name)) {
 		return false
 	}
-	_, err := netip.ParseAddr(r.Value)
-	return err == nil
+	a, err := netip.ParseAddr(r.Value)
+	return err == nil && a.Zone() == ""
 }
 
-func isPlainName(s string) bool {
-	if s == "" {
+// PlainName, adın kabuğa güvenle yazılabilir olup olmadığı: boş değil, yalnız
+// [a-z0-9.-] ve "-" ile başlayan etiket yok (komut satırında seçenek olurdu).
+func PlainName(s string) bool {
+	if s == "" || strings.HasPrefix(s, "-") || strings.Contains(s, ".-") {
 		return false
 	}
 	for _, c := range s {

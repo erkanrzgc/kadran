@@ -1,6 +1,7 @@
 package domaincheck
 
 import (
+	"net/netip"
 	"regexp"
 	"strings"
 )
@@ -41,7 +42,7 @@ var providers = []Provider{
 	// ── Domain firmaları ─────────────────────────────────────────────
 	{Name: "Vercel", Suffixes: []string{"vercel-dns.com"},
 		Panel:   "Dashboard → Domains → the domain → DNS Records → Add",
-		Command: "vercel dns add {zone} '{name}' {type} {value}",
+		Command: `vercel dns add {zone} "{name}" {type} {value}`,
 		Note:    "If the domain is assigned to a Vercel project, remove it there too (Project → Settings → Domains); Vercel keeps a default ALIAS for it.",
 		Guide:   "https://vercel.com/docs/domains/managing-dns-records"},
 	{Name: providerCloudflare, Suffixes: []string{"cloudflare.com"},
@@ -151,7 +152,7 @@ var providers = []Provider{
 		Guide: "https://learn.microsoft.com/en-us/azure/dns/dns-operations-recordsets-portal"},
 	{Name: "DigitalOcean", Suffixes: []string{"digitalocean.com"},
 		Panel:   "Networking → Domains → the domain → Create new record",
-		Command: "doctl compute domain records create {zone} --record-type {type} --record-name {name} --record-data {value}",
+		Command: "doctl compute domain records create {zone} --record-type {type} --record-name \"{name}\" --record-data {value}",
 		Guide:   "https://docs.digitalocean.com/products/networking/dns/how-to/manage-records/"},
 	{Name: "Linode / Akamai", Suffixes: []string{"linode.com"},
 		Panel: "Domains → the domain → Add an A/AAAA Record",
@@ -265,12 +266,38 @@ func IdentifyProvider(nameservers []string) (Provider, bool) {
 	return Provider{}, false
 }
 
-// CommandFor, firmanın r kaydını ekleyen CLI komutunu verir; komutu yoksa "".
+// CommandFor, firmanın r kaydını ekleyen CLI komutunu verir; komutu yoksa ya
+// da girdi güvenli değilse "". Ad bir DNS cevabından ya da kullanıcının
+// yazdığı alan adından gelir; kabuk metakarakteri taşıyan bir ad yazdırılan
+// komutta tırnaktan çıkabilirdi. Ad çift tırnakta: "@" cmd.exe, PowerShell ve
+// bash'te aynı gelir.
 func (p Provider) CommandFor(zone string, r Record) string {
-	if p.Command == "" {
+	if p.Command == "" || !commandSafe(zone, r) {
 		return ""
 	}
 	return strings.NewReplacer("{zone}", zone, "{name}", r.Name, "{type}", r.Type, "{value}", r.Value).Replace(p.Command)
+}
+
+// commandSafe: bölge boş olmayan [a-z0-9.-], ad "@" ya da boş olmayan
+// [a-z0-9.-] (joker "*" dahil değil), değer geçerli bir IP.
+func commandSafe(zone string, r Record) bool {
+	if !isPlainName(zone) || (r.Name != "@" && !isPlainName(r.Name)) {
+		return false
+	}
+	_, err := netip.ParseAddr(r.Value)
+	return err == nil
+}
+
+func isPlainName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, c := range s {
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '.' && c != '-' {
+			return false
+		}
+	}
+	return true
 }
 
 // maxNameLen, bir DNS adının en uzun hâli (RFC 1035).

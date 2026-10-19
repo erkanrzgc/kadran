@@ -46,7 +46,7 @@ Yanlış DNS, firma tanınıyor (`app update -domain` hatası ve `domain check` 
   DNS host  Vercel (ns1.vercel-dns.com, ns2.vercel-dns.com)
   Set this record and delete other A, AAAA, ALIAS or CNAME records for the same name:
       A   @   203.0.113.10
-  At Vercel: vercel dns add erkanrzgc.dev @ A 203.0.113.10
+  At Vercel: vercel dns add erkanrzgc.dev "@" A 203.0.113.10
              or Dashboard → Domains → erkanrzgc.dev → DNS Records → Add
   If the domain is assigned to a Vercel project, remove it from the project as well.
   Guide: <Vercel'in resmi DNS kaydı yardım sayfası>

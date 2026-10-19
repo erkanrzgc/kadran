@@ -56,7 +56,7 @@ func TestAppCreateShowsTheDNSHostAndTheRecord(t *testing.T) {
 		`Delete these records for "app": A/ALIAS → 198.51.100.7`,
 		"A     app",
 		"203.0.113.10",
-		"vercel dns add example.com 'app' A 203.0.113.10",
+		`vercel dns add example.com "app" A 203.0.113.10`,
 		"Guide: https://vercel.com/",
 		"kadran domain check -wait 10m app.example.com kimse@203.0.113.10",
 		"-skip-dns-check",

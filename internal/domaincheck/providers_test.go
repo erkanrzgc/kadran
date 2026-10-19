@@ -110,8 +110,27 @@ func TestCleanName(t *testing.T) {
 func TestCommandFor(t *testing.T) {
 	v, _ := IdentifyProvider([]string{"ns1.vercel-dns.com"})
 	got := v.CommandFor("example.com", Record{Type: "A", Name: "@", Value: "203.0.113.10"})
-	if want := "vercel dns add example.com '@' A 203.0.113.10"; got != want {
+	if want := `vercel dns add example.com "@" A 203.0.113.10`; got != want {
 		t.Errorf("Vercel komutu %q, beklenen %q", got, want)
+	}
+	do, _ := IdentifyProvider([]string{"ns1.digitalocean.com"})
+	if got, want := do.CommandFor("example.com", Record{Type: "A", Name: "@", Value: "203.0.113.10"}),
+		`doctl compute domain records create example.com --record-type A --record-name "@" --record-data 203.0.113.10`; got != want {
+		t.Errorf("DigitalOcean komutu %q, beklenen %q", got, want)
+	}
+	// C1: yazdırılan kabuk komutuna yalnız güvenli karakterler girer.
+	for _, tc := range []struct{ zone, name, value string }{
+		{"example.com", "x'$(id)'", "203.0.113.10"},
+		{"example.com", "*", "203.0.113.10"},
+		{"example.com", "", "203.0.113.10"},
+		{"a b.com", "app", "203.0.113.10"},
+		{"", "app", "203.0.113.10"},
+		{"example.com", "app", "203.0.113.10; id"},
+		{"example.com", "app", "not-an-ip"},
+	} {
+		if cmd := v.CommandFor(tc.zone, Record{Type: "A", Name: tc.name, Value: tc.value}); cmd != "" {
+			t.Errorf("CommandFor(%q, %q, %q) = %q, boş bekleniyordu", tc.zone, tc.name, tc.value, cmd)
+		}
 	}
 	cf, _ := IdentifyProvider([]string{"adam.ns.cloudflare.com"})
 	if cmd := cf.CommandFor("example.com", Record{Type: "A", Name: "@", Value: "203.0.113.10"}); cmd != "" {

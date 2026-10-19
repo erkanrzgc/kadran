@@ -23,7 +23,7 @@ func writeDNSGuide(w io.Writer, rep domaincheck.Report) {
 		fmt.Fprintf(w, "  DNS host  %s (%s)\n", rep.Provider.Name, strings.Join(rep.NameServers, ", "))
 	case len(rep.NameServers) > 0:
 		fmt.Fprintf(w, "  DNS host  %s\n", strings.Join(rep.NameServers, ", "))
-	case rep.ZoneChecked:
+	case rep.ZoneChecked && len(rep.A) == 0 && len(rep.AAAA) == 0:
 		fmt.Fprintln(w, "  DNS host  unknown: no nameservers found; the domain may not be registered or delegated yet")
 	}
 	if rep.Proxied {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -69,6 +70,13 @@ func TestWriteDNSGuideTable(t *testing.T) {
 			name: "bolge denetlendi, ad sunucusu yok",
 			rep:  domaincheck.Report{Verdict: domaincheck.Stop, ZoneChecked: true},
 			want: []string{"DNS host  unknown: no nameservers found"},
+		},
+		{
+			// G1: ad cozuluyorsa (ozel son ek, ornegin duckdns.org) "kayitli degil" denmez.
+			name: "bolge denetlendi, ad sunucusu yok ama adres var",
+			rep: domaincheck.Report{Verdict: domaincheck.Stop, ZoneChecked: true,
+				A: []netip.Addr{netip.MustParseAddr("198.51.100.7")}},
+			notWant: []string{"DNS host  unknown", "may not be registered"},
 		},
 		{
 			name: "taninmayan firma",

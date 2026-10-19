@@ -29,7 +29,7 @@ AUTH=internal/domaincheck/authoritative.go
 RDAP=internal/domaincheck/rdap.go
 GUIDE=cmd/kadran/domainguide.go
 PKGS=(./internal/domaincheck/ ./cmd/kadran/)
-TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname|Provider|AWSPattern|CleanName|CommandFor|FindZone|GuessRecordName|Cloudflare|AskAuthoritative|DefaultExchange|CheckerRules|CheckerBudget|DNSHost|OnlyTheCache|ProxiedCloudflare|StaysOffline|Registrar|WaitsUntil|WaitGivesUp|WriteDNSGuide|ShowsTheDNSHost|SplitOrLookalike|DnsWaitInterval'
+TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname|Provider|AWSPattern|CleanName|CommandFor|FindZone|GuessRecordName|Cloudflare|AskAuthoritative|DefaultExchange|CheckerRules|CheckerBudget|DNSHost|OnlyTheCache|ProxiedCloudflare|StaysOffline|Registrar|WaitsUntil|WaitGivesUp|WriteDNSGuide|ShowsTheDNSHost|SplitOrLookalike|DnsWaitInterval|StopHint|WaitHint'
 FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM" "$JUDGE" "$PROV" "$ZONE" "$CF" "$AUTH" "$RDAP" "$GUIDE")
 
 # ⚠ Yedek adı TAM YOLDAN türetiliyor: internal/domaincheck/domaincheck.go

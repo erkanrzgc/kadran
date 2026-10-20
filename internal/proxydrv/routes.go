@@ -11,6 +11,18 @@ import (
 // no handler, response body, file path, admin address or listener fields.
 type RouteSet struct {
 	Routes []ProxyRoute `json:"routes"`
+	// Redirects, Routes içindeki bir domaine 308 ile yönlenen adlardır.
+	// omitempty ZORUNLU: yönlendirmesiz küme bugünkü JSON'u bayt bayt
+	// üretmeli (eski aracı DisallowUnknownFields kullanıyor).
+	//
+	// Kanonik sıra: Routes sırasına göre gruplu, grup içinde girdi sırası.
+	Redirects []ProxyRedirect `json:"redirects,omitempty"`
+}
+
+// ProxyRedirect, From adından To domainine giden 308 yönlendirmesidir.
+type ProxyRedirect struct {
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 type ProxyRoute struct {
 	Domain    string          `json:"domain"`
@@ -24,6 +36,7 @@ type ProxyUpstream struct {
 const MaxRouteRequest = 1 << 20
 const MaxRoutes = 1024
 const MaxRouteUpstreams = 64
+const MaxRedirects = 1024
 
 // FixedConfig constructs the only configuration the broker can load. Docker
 // must use the same 172.16/12 pool permitted by kadrand's network sandbox.
@@ -34,7 +47,11 @@ func FixedConfig(set RouteSet) (*Config, error) {
 	if len(set.Routes) > MaxRoutes {
 		return nil, fmt.Errorf("too many proxy routes")
 	}
+	if len(set.Redirects) > MaxRedirects {
+		return nil, fmt.Errorf("too many proxy redirects")
+	}
 	routes := make([]AppRoute, 0, len(set.Routes))
+	routeIndex := make(map[string]int, len(set.Routes))
 	for i, r := range set.Routes {
 		if !ValidDomain(r.Domain) {
 			return nil, fmt.Errorf("invalid proxy domain %q", r.Domain)
@@ -63,6 +80,28 @@ func FixedConfig(set RouteSet) (*Config, error) {
 			upstreams = append(upstreams, dial)
 		}
 		routes = append(routes, AppRoute{AppID: fmt.Sprintf("%04d", i), Domain: r.Domain, Upstreams: upstreams})
+		routeIndex[r.Domain] = i
+	}
+	// kadrand güvenilmez: hedef kümedeki bir domain olmalı, kaynak hiçbir
+	// domaine eşit olmamalı, kaynak tekrar etmemeli. Girdi sırası grup
+	// içinde korunur (kanonik sıra, bkz. RouteSet.Redirects).
+	seenFrom := make(map[string]bool, len(set.Redirects))
+	for _, rd := range set.Redirects {
+		if !ValidDomain(rd.From) || !ValidDomain(rd.To) {
+			return nil, fmt.Errorf("invalid proxy redirect %q -> %q", rd.From, rd.To)
+		}
+		idx, ok := routeIndex[rd.To]
+		if !ok {
+			return nil, fmt.Errorf("redirect target %q is not a routed domain", rd.To)
+		}
+		if _, routed := routeIndex[rd.From]; routed {
+			return nil, fmt.Errorf("redirect source %q is a routed domain", rd.From)
+		}
+		if seenFrom[rd.From] {
+			return nil, fmt.Errorf("duplicate redirect source %q", rd.From)
+		}
+		seenFrom[rd.From] = true
+		routes[idx].Redirects = append(routes[idx].Redirects, rd.From)
 	}
 	return BuildConfig(BuildOptions{Admin: Admin{Listen: "fd/3", Origins: []string{"localhost"}}, Routes: routes})
 }
@@ -108,6 +147,28 @@ func ValidDomain(domain string) bool {
 	return err != nil
 }
 
+// redirectOf, rotanın TAM yönlendirme şekline uyup uymadığını söyler: tek
+// eşleşme, tek Host, tek static_response işleyicisi, tek "Location" başlığı,
+// tek değer, "https://" öneki ve "{http.request.uri}" soneki. Şekle uyup
+// fazladan alan taşıyan rotayı (durum kodu, gövde) SafeRoutes sonundaki
+// FixedConfig + DeepEqual yakalar; şekle hiç uymayan rota eski kontrole düşüp
+// reddedilir.
+func redirectOf(r Route) (from, to string, ok bool) {
+	if len(r.Match) != 1 || len(r.Match[0].Host) != 1 || len(r.Handle) != 1 || r.Handle[0].Handler != "static_response" {
+		return "", "", false
+	}
+	h := r.Handle[0]
+	loc, found := h.Headers["Location"]
+	if len(h.Headers) != 1 || !found || len(loc) != 1 {
+		return "", "", false
+	}
+	const prefix, suffix = "https://", "{http.request.uri}"
+	if len(loc[0]) < len(prefix)+len(suffix) || !strings.HasPrefix(loc[0], prefix) || !strings.HasSuffix(loc[0], suffix) {
+		return "", "", false
+	}
+	return r.Match[0].Host[0], loc[0][len(prefix) : len(loc[0])-len(suffix)], true
+}
+
 // SafeRoutes validates every representable field, then exports only the typed
 // route capability. It also rejects drift into unsupported handlers/settings.
 func SafeRoutes(cfg *Config) (RouteSet, error) {
@@ -124,6 +185,10 @@ func SafeRoutes(cfg *Config) (RouteSet, error) {
 			return set, fmt.Errorf("unsupported proxy server")
 		}
 		for _, r := range srv.Routes {
+			if from, to, ok := redirectOf(r); ok {
+				set.Redirects = append(set.Redirects, ProxyRedirect{From: from, To: to})
+				continue
+			}
 			if len(r.Match) != 1 || len(r.Match[0].Host) != 1 || len(r.Handle) != 2 || r.Handle[0].Handler != "encode" || r.Handle[1].Handler != "reverse_proxy" {
 				return set, fmt.Errorf("unsupported proxy route/handler")
 			}

@@ -1,0 +1,21 @@
+{
+  "match": [
+    {
+      "host": [
+        "www.example.com"
+      ]
+    }
+  ],
+  "handle": [
+    {
+      "handler": "static_response",
+      "status_code": 308,
+      "headers": {
+        "Location": [
+          "https://example.com{http.request.uri}"
+        ]
+      }
+    }
+  ],
+  "terminal": true
+}

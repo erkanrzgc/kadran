@@ -106,6 +106,9 @@ type Handler struct {
 	// static_response
 	StatusCode int    `json:"status_code,omitempty"`
 	Body       string `json:"body,omitempty"`
+	// Headers yalnız yönlendirme rotasında kullanılır (Location). SafeRoutes
+	// başka bir başlığı ya da şablonu KABUL ETMEZ.
+	Headers map[string][]string `json:"headers,omitempty"`
 
 	// encode
 	//
@@ -161,6 +164,36 @@ type AppRoute struct {
 	AppID     string
 	Domain    string
 	Upstreams []Upstream
+	// Redirects, bu rotanın Domain alanına 308 ile yönlenen adlardır (verilen
+	// sırayla). Her ad geçerli bir alan adı olmalı ve hiçbir domaine ya da
+	// başka bir yönlendirmeye eşit olmamalı; aksi hâlde BuildConfig hata verir.
+	Redirects []string
+}
+
+// redirectStatus, yönlendirme rotasının TEK durum kodu: yöntemi ve gövdeyi
+// koruyan kalıcı yönlendirme.
+const redirectStatus = 308
+
+// redirectLocation, yönlendirmenin TEK Location şablonudur. Değişken kısım
+// yalnız {http.request.uri}; build/caddy/redirect_test.go bunun istek
+// yolundaki yer tutucuları yeniden açmadığını ölçer. to doğrulanmış bir
+// alan adıdır.
+func redirectLocation(to string) string {
+	return "https://" + to + "{http.request.uri}"
+}
+
+// redirectRoute, from adından to domainine giden TEK yönlendirme rotasıdır;
+// from ve to doğrulanmış olmalı.
+func redirectRoute(from, to string) Route {
+	return Route{
+		Match: []Match{{Host: []string{from}}},
+		Handle: []Handler{{
+			Handler:    "static_response",
+			StatusCode: redirectStatus,
+			Headers:    map[string][]string{"Location": {redirectLocation(to)}},
+		}},
+		Terminal: true,
+	}
 }
 
 // BuildOptions, üretilecek yapılandırmanın girdileridir.
@@ -238,6 +271,26 @@ func BuildConfig(opts BuildOptions) (*Config, error) {
 
 	if len(out) == 0 {
 		return cfg, nil
+	}
+
+	// Yönlendirmeler domain rotalarından SONRA: önce bütün domainler
+	// bilinmeli ki bir ad herhangi bir domaine eşitse HATA verilebilsin.
+	for _, r := range routes {
+		if r.Domain == "" {
+			continue
+		}
+		for _, from := range r.Redirects {
+			if !ValidDomain(from) || !ValidDomain(r.Domain) {
+				return nil, fmt.Errorf("invalid redirect %q -> %q", from, r.Domain)
+			}
+			if prev, dup := seen[from]; dup {
+				return nil, fmt.Errorf(
+					"redirect name %q is already used by %s — "+
+						"which one wins would depend on order", from, prev)
+			}
+			seen[from] = r.AppID
+			out = append(out, redirectRoute(from, r.Domain))
+		}
 	}
 
 	app := &HTTPApp{Servers: map[string]*HTTPServer{

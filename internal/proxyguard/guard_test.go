@@ -196,3 +196,76 @@ func TestBrokerBoundsBodyBeforeCaddy(t *testing.T) {
 		t.Error("oversized request reached Caddy")
 	}
 }
+
+const redirectRoutes = `{"routes":[{"domain":"app.example.com","upstreams":[{"ip":"172.18.0.3","port":8080}]}],"redirects":[{"from":"www.app.example.com","to":"app.example.com"}]}`
+
+func TestBrokerLoadsTypedRedirectRoute(t *testing.T) {
+	a := &recordingAdmin{}
+	w := httptest.NewRecorder()
+	Handler(a).ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/routes", strings.NewReader(redirectRoutes)))
+	if w.Code != http.StatusOK {
+		t.Fatalf("geçerli yönlendirme reddedildi: %d %s", w.Code, w.Body.String())
+	}
+	if a.calls != 1 {
+		t.Fatalf("yükleme sayısı %d", a.calls)
+	}
+	var got proxydrv.RouteSet
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Redirects) != 1 || got.Redirects[0] != (proxydrv.ProxyRedirect{From: "www.app.example.com", To: "app.example.com"}) {
+		t.Fatalf("yönlendirme cevapta geri dönmedi: %s", w.Body.String())
+	}
+	// Yüklenen yapılandırma dosya yer tutucusu ya da gövde taşıyamaz.
+	b, _ := json.Marshal(a.cfg)
+	if strings.Contains(string(b), "{file.") || strings.Contains(string(b), `"body"`) {
+		t.Fatalf("yönlendirmeli yapılandırmada güvensiz alan: %s", b)
+	}
+	if !strings.Contains(string(b), `"status_code":308`) || !strings.Contains(string(b), `https://app.example.com{http.request.uri}`) {
+		t.Fatalf("yönlendirme rotası beklenen biçimde değil: %s", b)
+	}
+}
+
+func TestBrokerRejectsUntypedRedirects(t *testing.T) {
+	cases := map[string]string{
+		"hedef kümede yok":   strings.Replace(redirectRoutes, `"to":"app.example.com"`, `"to":"evil.example"`, 1),
+		"kaynak domain":      strings.Replace(redirectRoutes, `"from":"www.app.example.com"`, `"from":"app.example.com"`, 1),
+		"yer tutuculu hedef": strings.Replace(redirectRoutes, `"to":"app.example.com"`, `"to":"app.example.com/{file./synthetic/key}"`, 1),
+		"gövde alanı":        strings.Replace(redirectRoutes, `"to":"app.example.com"`, `"to":"app.example.com","body":"{file./synthetic/key}"`, 1),
+		"durum kodu alanı":   strings.Replace(redirectRoutes, `"to":"app.example.com"`, `"to":"app.example.com","status":302`, 1),
+		"yinelenen kaynak":   strings.Replace(redirectRoutes, `"to":"app.example.com"}]}`, `"to":"app.example.com"},{"from":"www.app.example.com","to":"app.example.com"}]}`, 1),
+		"yinelenen anahtar":  strings.Replace(redirectRoutes, `"redirects":[`, `"redirects":[],"redirects":[`, 1),
+		"yanlış tür":         strings.Replace(redirectRoutes, `"redirects":[{"from":"www.app.example.com","to":"app.example.com"}]`, `"redirects":"x"`, 1),
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			a := &recordingAdmin{}
+			w := httptest.NewRecorder()
+			Handler(a).ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/v1/routes", strings.NewReader(body)))
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("durum %d: %s", w.Code, w.Body.String())
+			}
+			if a.calls != 0 {
+				t.Error("reddedilen istek ham Caddy yöneticisine ulaştı")
+			}
+		})
+	}
+}
+
+func TestBrokerRejectsTamperedLiveRedirect(t *testing.T) {
+	cfg, err := proxydrv.FixedConfig(proxydrv.RouteSet{
+		Routes:    []proxydrv.ProxyRoute{{Domain: "app.example.com", Upstreams: []proxydrv.ProxyUpstream{{IP: "172.18.0.3", Port: 8080}}}},
+		Redirects: []proxydrv.ProxyRedirect{{From: "www.app.example.com", To: "app.example.com"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	routes := cfg.Apps.HTTP.Servers["kadran"].Routes
+	routes[len(routes)-1].Handle[0].Body = "{file./synthetic/key}"
+	a := &recordingAdmin{live: cfg}
+	w := httptest.NewRecorder()
+	Handler(a).ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/routes", nil))
+	if w.Code != http.StatusBadGateway {
+		t.Fatalf("kurcalanmış canlı yönlendirme dışarı verildi: %d %s", w.Code, w.Body.String())
+	}
+}

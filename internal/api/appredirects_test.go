@@ -296,3 +296,45 @@ func TestUpdateAppNamesOnlyOnUnroutedAppIsNotReportedAsApplied(t *testing.T) {
 		t.Errorf("rotalanmamış uygulama için yalan başarı: %q", d)
 	}
 }
+
+func TestUpdateAppWWWAloneReportsPartner(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	spec := testSpec()
+	spec.Domain = "example.com"
+	mustCreateApp(t, srv, spec)
+
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(true)})
+	if !strings.Contains(resp.GetRedirectDetail(), "www.example.com") {
+		t.Errorf("RedirectDetail www eşini söylemiyor: %q", resp.GetRedirectDetail())
+	}
+	if resp.GetProxyDetail() != "" {
+		t.Errorf("ProxyDetail dolu: %q", resp.GetProxyDetail())
+	}
+}
+
+func TestUpdateAppReportsSkippedWWWPartner(t *testing.T) {
+	rec := &fakeReconciler{result: deploy.Result{
+		SkippedRedirects: map[string]string{"www.example.com": "no tls"}}}
+	srv, _ := newUpdateServer(t, rec)
+	spec := testSpec()
+	spec.Domain = "example.com"
+	mustCreateApp(t, srv, spec)
+
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(true)})
+	if !strings.Contains(resp.GetRedirectDetail(), "redirect www.example.com NOT applied (no tls)") {
+		t.Errorf("atlanan www eşi bildirilmedi: %q", resp.GetRedirectDetail())
+	}
+}
+
+func TestUpdateAppWWWOffWithNoNamesReportsRemoved(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	spec := testSpec()
+	spec.Domain = "example.com"
+	spec.Www = boolp(true)
+	mustCreateApp(t, srv, spec)
+
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(false)})
+	if !strings.Contains(resp.GetRedirectDetail(), "redirects removed — example.com has no redirect names") {
+		t.Errorf("RedirectDetail: %q", resp.GetRedirectDetail())
+	}
+}

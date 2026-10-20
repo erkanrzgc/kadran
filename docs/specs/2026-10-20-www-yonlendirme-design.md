@@ -57,8 +57,8 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
 - `app create`: `-no-www` www'yi kapatır; `-redirect <ad>` (birden çok kez) ek ad.
 - `app update`: `-www` / `-no-www` aç/kapa; `-redirect <ad>` ekler, `-redirect-rm <ad>`
   çıkarır (`-env-rm`/`-volume-rm` deseni). Verilmeyen değişmez.
-- `app show` ve `app list`: "redirects" satırı (`www.example.com, eski.com → example.com`);
-  `-json` alanları taşır.
+- `app show` ile create/update sonucu: "Redirects" satırı (`www.example.com, eski.com →
+  example.com (308)`); `-json` alanları taşır. `app list` tablosu değişmez **(karar)**.
 - Eski sunucuya yeni CLI: sunucu cevabında alan yoksa CLI "this server does not support
   redirects; upgrade kadrand" uyarır ve yönlendirme var demez **(karar)**.
 

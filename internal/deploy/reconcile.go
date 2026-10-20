@@ -17,9 +17,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/erkanrzgc/kadran/internal/appnames"
 	"github.com/erkanrzgc/kadran/internal/execclient"
 	"github.com/erkanrzgc/kadran/internal/proxydrv"
 	"github.com/erkanrzgc/kadran/internal/store"
@@ -234,6 +236,32 @@ type plan struct {
 	routes         []proxydrv.AppRoute
 	skippedDomains map[string]string // uygulama → alan adı (atlananlar)
 	res            Result
+
+	// domains: bütün uygulamaların (rotalanan ve atlanan) alan adı → uygulama.
+	// redirectTo: kabul edilmiş yönlendirme adı → hedef alan adı.
+	domains    map[string]string
+	redirectTo map[string]string
+}
+
+// acceptRedirect, adı domain için yönlendirme olarak kabul eder ya da
+// SkippedRedirects'e sebebiyle yazıp false döner. Yalnız o ad elenir: bir
+// çakışma alan adı rotalarını ya da kümenin geri kalanını düşürmez
+// (BuildConfig çakışmayı hata sayar, bu yüzden süzme ondan ÖNCE yapılır).
+// Aynı ad aynı hedefe tekrar gelirse kabul edilir.
+func (p plan) acceptRedirect(name, domain string) bool {
+	owner, isDomain := p.domains[name]
+	switch {
+	case !proxydrv.ValidDomain(name):
+		p.res.SkippedRedirects[name] = "invalid name"
+	case isDomain:
+		p.res.SkippedRedirects[name] = fmt.Sprintf("collides with the domain of app %q", owner)
+	case p.redirectTo[name] != "" && p.redirectTo[name] != domain:
+		p.res.SkippedRedirects[name] = fmt.Sprintf("already redirects to %q", p.redirectTo[name])
+	default:
+		p.redirectTo[name] = domain
+		return true
+	}
+	return false
 }
 
 // Carrying a previous route protects continuity, not the new desired state.
@@ -241,21 +269,48 @@ type plan struct {
 // operation whose own current release could not be routed.
 func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
 	routes := p.routes
-	for appID, domain := range p.skippedDomains {
-		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
-			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
+	// AppID sırası: çakışan yönlendirme adında "ilk gelen kazanır" kararlı kalsın.
+	appIDs := make([]string, 0, len(p.skippedDomains))
+	for appID := range p.skippedDomains {
+		appIDs = append(appIDs, appID)
+	}
+	sort.Strings(appIDs)
+	for _, appID := range appIDs {
+		domain := p.skippedDomains[appID]
+		ups := proxydrv.LiveUpstreams(live, domain)
+		if len(ups) == 0 {
+			continue
 		}
+		// Yeni sürümü rotalanamayan uygulamanın canlı yönlendirmeleri de
+		// taşınır; yoksa başarısız bir dağıtım www'yi düşürürdü.
+		var redirects []string
+		for _, name := range proxydrv.LiveRedirects(live, domain) {
+			if p.acceptRedirect(name, domain) {
+				redirects = append(redirects, name)
+			}
+		}
+		routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups, Redirects: redirects})
 	}
 	return routes
 }
 
 // plan'ı kurar. Çağıran rc.gate'i tutmalı.
 func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
-	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}, SkippedRedirects: map[string]string{}}}
+	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}, SkippedRedirects: map[string]string{}},
+		domains: map[string]string{}, redirectTo: map[string]string{}}
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
 	if err != nil {
 		return p, fmt.Errorf("deploy: could not read active deployments: %w", err)
+	}
+
+	// AppID sırası: çakışmada ilk gelen kazanır, sonuç kararlı olsun.
+	deps = slices.Clone(deps)
+	sort.SliceStable(deps, func(i, j int) bool { return deps[i].AppID < deps[j].AppID })
+	for _, d := range deps {
+		if d.Domain != "" {
+			p.domains[d.Domain] = d.AppID
+		}
 	}
 
 	p.routes = make([]proxydrv.AppRoute, 0, len(deps))
@@ -283,10 +338,17 @@ func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 			p.skippedDomains[d.AppID] = d.Domain
 			continue
 		}
+		var redirects []string
+		for _, name := range appnames.Names(d.Domain, d.WWW, d.Redirects) {
+			if p.acceptRedirect(name, d.Domain) {
+				redirects = append(redirects, name)
+			}
+		}
 		p.routes = append(p.routes, proxydrv.AppRoute{
 			AppID:     d.AppID,
 			Domain:    d.Domain,
 			Upstreams: ups,
+			Redirects: redirects,
 		})
 		p.res.Routed = append(p.res.Routed, d.AppID)
 	}

@@ -71,6 +71,9 @@ type Owner struct {
 func Conflict(c Owner, others []Owner) (name, ownerID string, found bool) {
 	mine := append([]string{c.Domain}, Names(c.Domain, c.WWW, c.Redirects)...)
 	for _, n := range mine {
+		if n == "" { // domainsiz kayıt bir ad değildir
+			continue
+		}
 		for _, o := range others {
 			if o.AppID == c.AppID {
 				continue

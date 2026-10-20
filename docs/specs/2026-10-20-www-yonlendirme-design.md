@@ -55,8 +55,8 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
 ```
 
 - `app create`: `-no-www` www'yi kapatır; `-redirect <ad>` (birden çok kez) ek ad.
-- `app update`: `-www` / `-no-www` aç/kapa; `-redirect <ad>` ekler, `-redirect-remove <ad>`
-  çıkarır. Verilmeyen değişmez.
+- `app update`: `-www` / `-no-www` aç/kapa; `-redirect <ad>` ekler, `-redirect-rm <ad>`
+  çıkarır (`-env-rm`/`-volume-rm` deseni). Verilmeyen değişmez.
 - `app show` ve `app list`: "redirects" satırı (`www.example.com, eski.com → example.com`);
   `-json` alanları taşır.
 - Eski sunucuya yeni CLI: sunucu cevabında alan yoksa CLI "this server does not support
@@ -103,11 +103,17 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
 
 - Rota kümesi = her uygulamanın domain rotası + her yönlendirme adı için `{From, To}` (To =
   uygulamanın domaini). Türetilmiş eş ve açık adlar aynı yoldan geçer.
+- `www` ya da yönlendirme listesi değişen bir `app update` uzlaştırmayı tetikler (domain ve
+  replika gibi); `app create` tetiklemez (rota ilk dağıtımda gelir).
 - **Çakışma bütün yapılandırmayı düşürmez (karar, zorunlu).** Bugün yinelenen bir ana bilgisayar
   `BuildConfig`'i bütün kümeyi reddettiriyor, yani bütün uygulamalar trafiksiz kalır. Bir
   yönlendirme adı bir domain rotasıyla ya da başka bir yönlendirmeyle çakışırsa YALNIZ o
-  yönlendirme atlanır, `Skipped`'e sebebiyle yazılır; domain rotaları her zaman öncelikli.
-  Domaini rotası atlanmış (ör. upstream yok) uygulamanın yönlendirmeleri de atlanır.
+  yönlendirme atlanır ve AYRI bir alana (`Result.SkippedRedirects`, ad → sebep) yazılır;
+  domain rotaları her zaman öncelikli. `Skipped`'e YAZILMAZ: `moveTraffic` orayı "trafik
+  taşınmadı" diye okur ve sağlam bir domain taşınmasını hata gösterirdi **(karar)**.
+- Yeni sürümü rotalanamayan bir uygulamanın canlı rotası bugün taşınıyor (`carrySkippedRoutes`);
+  o rotanın canlı yönlendirmeleri de aynı yolla taşınır, yoksa başarısız bir dağıtım www'yi
+  düşürürdü **(karar)**.
 
 ### Ters vekil aracısı (kadran-proxy) — güvenlik sınırı
 

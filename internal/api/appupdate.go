@@ -253,6 +253,13 @@ func redirectDetail(res deploy.Result, app store.App) string {
 	if len(app.Redirects) == 0 {
 		return "reverse proxy updated — no redirect names"
 	}
+	// Uygulama rotalanamıyorsa hiçbir ad uygulanmadı: "updated" demek yalan
+	// olurdu. Kayıt başarılı, bu yüzden hata değil — ama açıkça söylenir.
+	if why, skipped := res.Skipped[app.ID]; skipped {
+		return fmt.Sprintf("redirects SAVED (%s → %s) but NOT applied: %s — "+
+			"they take effect when the app is routed: kadran deploy %s",
+			strings.Join(app.Redirects, ", "), app.Domain, why, app.ID)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "reverse proxy updated — redirects: %s → %s",
 		strings.Join(app.Redirects, ", "), app.Domain)

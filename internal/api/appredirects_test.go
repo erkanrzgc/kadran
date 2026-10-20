@@ -38,6 +38,8 @@ func TestValidateRedirects(t *testing.T) {
 		{"dokuz ad", "example.com", nine, "too many redirect names"},
 		{"domain boş, ad var", "", []string{"a.example.net"}, "redirect names need a domain"},
 		{"sekiz geçerli ad", "example.com", eight, ""},
+		{"boş ad", "example.com", []string{""}, "must not be empty"},
+		{"geçerli + boş ad", "example.com", []string{"a.com", ""}, "must not be empty"},
 		{"hiç ad yok", "example.com", nil, ""},
 		{"domain boş, ad yok", "", nil, ""},
 	}
@@ -245,3 +247,52 @@ func TestAppRedirectsRoundTripThroughProto(t *testing.T) {
 }
 
 func boolp(v bool) *bool { return &v }
+
+func TestUpdateAppRejectsEmptyRedirectName(t *testing.T) {
+	rec := &fakeReconciler{}
+	srv, _ := newUpdateServer(t, rec)
+	spec := testSpec()
+	spec.Domain = "example.com"
+	mustCreateApp(t, srv, spec)
+
+	_, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{
+		AppId: "blog", RedirectAdd: []string{""},
+	})
+	if got := status.Code(err); got != codes.InvalidArgument {
+		t.Fatalf("kod = %v (%v), InvalidArgument bekleniyordu", got, err)
+	}
+	if got := mustGetSpec(t, srv, "blog").GetRedirects(); len(got) != 0 {
+		t.Errorf("boş ad depoya yazıldı: %q", got)
+	}
+	if rec.calls != 0 {
+		t.Errorf("reddedilen istek uzlaştırma tetikledi: %d", rec.calls)
+	}
+}
+
+func TestUpdateAppNamesOnlyOnUnroutedAppIsNotReportedAsApplied(t *testing.T) {
+	rec := &fakeReconciler{result: deploy.Result{Skipped: map[string]string{"blog": "no healthy release"}}}
+	srv, _ := newUpdateServer(t, rec)
+	spec := testSpec()
+	spec.Domain = "example.com"
+	mustCreateApp(t, srv, spec)
+
+	resp, err := srv.UpdateApp(context.Background(), &kadranv1.UpdateAppRequest{
+		AppId: "blog", RedirectAdd: []string{"a.example.net"},
+	})
+	if err != nil {
+		t.Fatalf("kayıt başarılıydı, hata dönmemeliydi: %v", err)
+	}
+	if resp.GetProxyDetail() != "" {
+		t.Errorf("ProxyDetail dolu: %q", resp.GetProxyDetail())
+	}
+	d := resp.GetRedirectDetail()
+	for _, want := range []string{"SAVED", "a.example.net", "example.com", "NOT applied",
+		"no healthy release", "kadran deploy blog"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("RedirectDetail %q içinde %q yok", d, want)
+		}
+	}
+	if strings.Contains(d, "reverse proxy updated") {
+		t.Errorf("rotalanmamış uygulama için yalan başarı: %q", d)
+	}
+}

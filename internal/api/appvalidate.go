@@ -302,6 +302,10 @@ func validateRedirects(domain string, names []string) error {
 	}
 	seen := make(map[string]struct{}, len(names))
 	for _, n := range names {
+		if n == "" {
+			// validateDomain("") geçerli sayar (alansız uygulama); burada ad ŞART.
+			return errors.New("redirect name must not be empty")
+		}
 		if err := validateDomain(n); err != nil {
 			return fmt.Errorf("redirect name: %w", err)
 		}

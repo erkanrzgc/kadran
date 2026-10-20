@@ -11,6 +11,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/deploy"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 	"github.com/erkanrzgc/kadran/internal/vault"
@@ -54,6 +55,9 @@ func (s *Server) UpdateApp(
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 	if err := validateVolumeRemove(req.GetVolumes(), req.GetVolumeRemove()); err != nil {
+		return nil, s.denied(ctx, action, tgt, params, err)
+	}
+	if err := validateRedirectChange(req.GetRedirectAdd(), req.GetRedirectRemove()); err != nil {
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 
@@ -100,6 +104,10 @@ func (s *Server) UpdateApp(
 	// kullanılan yolda açık tutmak olurdu.
 	replicasChanged := upd.Replicas != nil && *upd.Replicas != current.Replicas
 
+	// www ve yönlendirme adları da rota kümesinin parçası (appnames.Names):
+	// değişirse ters vekil yeniden uzlaştırılmalı.
+	namesChanged := upd.ChangesNames(current)
+
 	// Env, ters vekili İLGİLENDİRMİYOR — uzlaştırma tetiklemiyor.
 	// Konteynerin ortamı rota tablosundan değil, oluşturma anından
 	// geliyor; uzlaştırmak hiçbir şeyi değiştirmezdi. Burada saptanan
@@ -113,12 +121,14 @@ func (s *Server) UpdateApp(
 	}
 
 	resp := &kadranv1.UpdateAppResponse{App: appToProto(app)}
-	if domainMoved || replicasChanged {
-		detail, err := s.moveTraffic(ctx, appID, current.Domain, app.Domain)
+	if domainMoved || replicasChanged || namesChanged {
+		proxy, redirect, err := s.moveTraffic(ctx, appID, current, app,
+			domainMoved || replicasChanged, namesChanged)
 		if err != nil {
 			return nil, s.completed(ctx, action, tgt, params, err)
 		}
-		resp.ProxyDetail = detail
+		resp.ProxyDetail = proxy
+		resp.RedirectDetail = redirect
 	}
 	if envChanged {
 		resp.EnvDetail = envNeedsRedeploy(appID)
@@ -195,27 +205,63 @@ func envNeedsRedeploy(appID string) string {
 // ── Üç sonuç, üç ayrı cevap ─────────────────────────────────────────
 //
 // Hepsini "tamam" diye raporlamak, en tehlikeli ikisini gizlerdi.
-func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (string, error) {
+//
+// Tek uzlaştırma, iki cevap: rota (alan adı/replika) değiştiyse proxy
+// cevabı, adlar (www/yönlendirme) değiştiyse redirect cevabı döner. Yalnız
+// adlar değiştiyse proxy cevabı BOŞ kalır.
+func (s *Server) moveTraffic(
+	ctx context.Context, appID string, before, after store.App, routeChanged, namesChanged bool,
+) (proxy, redirect string, err error) {
+	from, to := before.Domain, after.Domain
 	res, err := s.reconciler.Reconcile(ctx)
 	if err != nil {
 		// Değişiklik YAZILDI. Bunu söylemeyen bir hata, kullanıcıyı
 		// komutun hiç etki etmediğini sanıp başka bir alan adıyla
 		// yeniden denemeye iterdi — oysa kayıt zaten yeni değerde.
-		return "", status.Errorf(codes.Unavailable,
-			"domain %q → %q SAVED, but the reverse proxy "+
+		what := fmt.Sprintf("domain %q → %q", from, to)
+		if !routeChanged {
+			what = "redirect names"
+		}
+		return "", "", status.Errorf(codes.Unavailable,
+			"%s SAVED, but the reverse proxy "+
 				"could not be updated: traffic is still on the old route. Reconciliation "+
 				"is retried on the next deploy or when kadrand restarts. "+
-				"Cause: %v", from, to, err)
+				"Cause: %v", what, err)
 	}
 
-	if to == "" {
-		return "app REMOVED from the reverse proxy — no longer served on any domain", nil
+	if routeChanged {
+		switch {
+		case to == "":
+			proxy = "app REMOVED from the reverse proxy — no longer served on any domain"
+		default:
+			if why, skipped := res.Skipped[appID]; skipped {
+				return "", "", status.Errorf(codes.Unavailable,
+					"app definition SAVED but TRAFFIC NOT MOVED (%s) — deploy the app: kadran deploy %s", why, appID)
+			}
+			proxy = fmt.Sprintf("reverse proxy updated — %q now goes to this app", to)
+		}
 	}
-	if why, skipped := res.Skipped[appID]; skipped {
-		return "", status.Errorf(codes.Unavailable,
-			"app definition SAVED but TRAFFIC NOT MOVED (%s) — deploy the app: kadran deploy %s", why, appID)
+	if namesChanged {
+		redirect = redirectDetail(res, after)
 	}
-	return fmt.Sprintf("reverse proxy updated — %q now goes to this app", to), nil
+	return proxy, redirect, nil
+}
+
+// redirectDetail, ad değişikliğinin uzlaştırma sonucunu anlatır. Uygulanamayan
+// her ad ayrı satırda: tek bir "tamam" en tehlikeli durumu gizlerdi.
+func redirectDetail(res deploy.Result, app store.App) string {
+	if len(app.Redirects) == 0 {
+		return "reverse proxy updated — no redirect names"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "reverse proxy updated — redirects: %s → %s",
+		strings.Join(app.Redirects, ", "), app.Domain)
+	for _, name := range app.Redirects {
+		if why, skipped := res.SkippedRedirects[name]; skipped {
+			fmt.Fprintf(&b, "\nredirect %s NOT applied (%s)", name, why)
+		}
+	}
+	return b.String()
 }
 
 // updateFromProto, isteği depo katmanının tipine çevirir.
@@ -260,6 +306,16 @@ func updateFromProto(req *kadranv1.UpdateAppRequest) store.AppUpdate {
 	if len(req.GetVolumeRemove()) > 0 {
 		upd.VolumeRemove = append([]string(nil), req.GetVolumeRemove()...)
 	}
+	if req.Www != nil {
+		v := req.GetWww()
+		upd.WWW = &v
+	}
+	if len(req.GetRedirectAdd()) > 0 {
+		upd.RedirectAdd = append([]string(nil), req.GetRedirectAdd()...)
+	}
+	if len(req.GetRedirectRemove()) > 0 {
+		upd.RedirectRemove = append([]string(nil), req.GetRedirectRemove()...)
+	}
 	return upd
 }
 
@@ -299,6 +355,16 @@ func updateAuditParams(req *kadranv1.UpdateAppRequest) map[string]string {
 	}
 	for _, n := range req.GetVolumeRemove() {
 		params["volume_remove."+n] = "detached"
+	}
+	// Yalnız BELİRTİLENLER (yukarıdaki ilke): www sağlanmadıysa yazılmaz.
+	if req.Www != nil {
+		params["www"] = strconv.FormatBool(req.GetWww())
+	}
+	if len(req.GetRedirectAdd()) > 0 {
+		params["redirect_add"] = strings.Join(req.GetRedirectAdd(), ",")
+	}
+	if len(req.GetRedirectRemove()) > 0 {
+		params["redirect_remove"] = strings.Join(req.GetRedirectRemove(), ",")
 	}
 	return params
 }

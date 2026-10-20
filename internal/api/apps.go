@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
@@ -118,6 +120,8 @@ func appFromProto(spec *kadranv1.AppSpec) store.App {
 		Replicas:       spec.GetReplicas(),
 		HealthPath:     spec.GetHealthPath(),
 		Domain:         spec.GetDomain(),
+		WWW:            spec.GetWww(),
+		Redirects:      spec.GetRedirects(),
 		MemoryBytes:    l.GetMemoryBytes(),
 		CPUMillis:      l.GetCpuMillis(),
 		BlkioWeight:    l.GetBlkioWeight(),
@@ -140,6 +144,9 @@ func appToProto(a store.App) *kadranv1.App {
 			Replicas:       a.Replicas,
 			HealthPath:     a.HealthPath,
 			Domain:         a.Domain,
+			// Her zaman dolu: yokluğu "eski sunucu" demek (yeni sunucunun işareti).
+			Www:       proto.Bool(a.WWW),
+			Redirects: a.Redirects,
 			Limits: &kadranv1.ResourceLimits{
 				MemoryBytes: a.MemoryBytes,
 				CpuMillis:   a.CPUMillis,
@@ -200,9 +207,13 @@ func appAuditParams(spec *kadranv1.AppSpec) map[string]string {
 		"source": spec.GetGitHost() + "/" + spec.GetGitOwner() + "/" + spec.GetGitRepo(),
 		"branch": spec.GetGitBranch(),
 		"domain": spec.GetDomain(),
+		"www":    strconv.FormatBool(spec.GetWww()),
 		"port":   strconv.FormatUint(uint64(spec.GetContainerPort()), 10),
 		"replicas": strconv.FormatUint(
 			uint64(spec.GetReplicas()), 10),
+	}
+	if len(spec.GetRedirects()) > 0 {
+		params["redirects"] = strings.Join(spec.GetRedirects(), ",")
 	}
 	for k := range spec.GetBuildArgs() {
 		params["build_arg."+k] = "[REDACTED]"
@@ -239,7 +250,7 @@ func appError(err error) error {
 	// biri farklı bir kod alması gerektiğinde ayrımın kaybolduğu yer
 	// olurdu — ve mesajlar zaten farklı, yani kullanıcı ikisini ayırt
 	// edebiliyor.
-	case errors.Is(err, store.ErrDomainTaken):
+	case errors.Is(err, store.ErrDomainTaken), errors.Is(err, store.ErrNameTaken):
 		return status.Error(codes.AlreadyExists, err.Error())
 	// ⚠ NotFound DEĞİL, FailedPrecondition. Uygulama VAR; eksik olan onun
 	// durumu — henüz dağıtılmamış ya da geri alınacak bir öncesi yok.

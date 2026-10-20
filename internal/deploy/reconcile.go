@@ -89,6 +89,9 @@ type Result struct {
 	// Skipped, alan adı olduğu hâlde yönlendirilemeyen uygulamalar ve
 	// sebepleri.
 	Skipped map[string]string
+	// SkippedRedirects, uygulanamayan yönlendirme adları ve sebepleri
+	// (ad → sebep).
+	SkippedRedirects map[string]string
 }
 
 // Reconcile, canlı durumu ters vekile yansıtır.
@@ -248,7 +251,7 @@ func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
 
 // plan'ı kurar. Çağıran rc.gate'i tutmalı.
 func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
-	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}}}
+	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}, SkippedRedirects: map[string]string{}}}
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
 	if err != nil {

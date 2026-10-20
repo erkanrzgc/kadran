@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/erkanrzgc/kadran/internal/appnames"
 	"modernc.org/sqlite"
 	sqlite3 "modernc.org/sqlite/lib"
 )
@@ -76,6 +77,15 @@ type App struct {
 	// değiştiremez.
 	Volumes []VolumeMount
 
+	// WWW, www eşinin (example.com <-> www.example.com) açık olup olmadığıdır.
+	// Eş domainden TÜRETİLİR ve saklanmaz (appnames.Partner); böylece domain
+	// taşınınca eş de taşınır. Alt ad uygulamasında eş yoktur.
+	WWW bool
+
+	// Redirects, domaine 308 ile yönlenen ek adlardır (sıralı, tekrarsız;
+	// yoksa nil).
+	Redirects []string
+
 	ContainerPort uint32
 	Replicas      uint32
 	HealthPath    string
@@ -131,27 +141,51 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 		return App{}, fmt.Errorf("could not serialize volumes: %w", err)
 	}
 
+	app.Redirects = sortedNames(app.Redirects)
+	redirects, err := marshalNames(app.Redirects)
+	if err != nil {
+		return App{}, err
+	}
+
+	// Ad denetimi ve yazma AYNI işlemde: arada başka bir yazar giremez.
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return App{}, fmt.Errorf("could not begin the create transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if err := checkNames(ctx, tx, appnames.Owner{
+		AppID: app.ID, Domain: app.Domain, WWW: app.WWW, Redirects: app.Redirects,
+	}); err != nil {
+		return App{}, err
+	}
+
 	const q = `
 		INSERT INTO apps (
 			id, git_host, git_owner, git_repo, git_branch,
 			dockerfile_path, build_args_json, env_json, volumes_json,
 			container_port, replicas, health_path, domain,
 			memory_bytes, cpu_millis, blkio_weight,
-			release_seq, created_at, updated_at
-		) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?, 0,?,?)`
+			release_seq, created_at, updated_at,
+			www, redirects_json
+		) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?, 0,?,?, ?,?)`
 
-	_, err = s.db.ExecContext(ctx, q,
+	_, err = tx.ExecContext(ctx, q,
 		app.ID, app.GitHost, app.GitOwner, app.GitRepo, app.GitBranch,
 		app.DockerfilePath, string(args), string(env), string(vols),
 		app.ContainerPort, app.Replicas, app.HealthPath, app.Domain,
 		app.MemoryBytes, app.CPUMillis, app.BlkioWeight,
 		now.UnixNano(), now.UnixNano(),
+		app.WWW, redirects,
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return App{}, s.explainCreateConflict(ctx, app, err)
+			return App{}, explainCreateConflict(ctx, tx, app, err)
 		}
 		return App{}, fmt.Errorf("could not write the app: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return App{}, fmt.Errorf("could not commit the new app: %w", err)
 	}
 	return app, nil
 }
@@ -171,16 +205,16 @@ func (s *Store) CreateApp(ctx context.Context, app App) (App, error) {
 // sessizce yalana döner. Sürücünün hata KODU bu ayrımı taşımıyor (ikisi
 // de SQLITE_CONSTRAINT_UNIQUE) ve mesaj metnine bakmak sürücü sürümüne
 // bağımlılık olurdu; tek dürüst kaynak veritabanının kendisi.
-func (s *Store) explainCreateConflict(ctx context.Context, app App, cause error) error {
+func explainCreateConflict(ctx context.Context, q rowQuerier, app App, cause error) error {
 	// Kimlik ÖNCE sorulur. İki kısıt birden ihlal edilmişse kullanıcının
 	// çözmesi gereken ilk şey kimliktir: alan adını düzeltmek yaratmayı
 	// yine de geçirmezdi.
 	var one int
-	if err := s.db.QueryRowContext(ctx,
+	if err := q.QueryRowContext(ctx,
 		`SELECT 1 FROM apps WHERE id = ?`, app.ID).Scan(&one); err == nil {
 		return fmt.Errorf("%w: %s", ErrAppExists, app.ID)
 	}
-	return domainConflict(ctx, s.db, app.Domain, app.ID, cause)
+	return domainConflict(ctx, q, app.Domain, app.ID, cause)
 }
 
 // GetApp, tek bir uygulamayı okur. Yoksa ErrAppNotFound döner.
@@ -230,16 +264,18 @@ const appSelect = `
 	       dockerfile_path, build_args_json, env_json, volumes_json,
 	       container_port, replicas, health_path, domain,
 	       memory_bytes, cpu_millis, blkio_weight,
-	       release_seq, created_at, updated_at
+	       release_seq, created_at, updated_at,
+	       www, redirects_json
 	FROM apps`
 
 func scanApp(sc scanner) (App, error) {
 	var (
-		app          App
-		argsJSON     string
-		envJSON      string
-		volsJSON     string
-		created, upd int64
+		app           App
+		argsJSON      string
+		envJSON       string
+		volsJSON      string
+		created, upd  int64
+		redirectsJSON string
 	)
 	err := sc.Scan(
 		&app.ID, &app.GitHost, &app.GitOwner, &app.GitRepo, &app.GitBranch,
@@ -247,6 +283,7 @@ func scanApp(sc scanner) (App, error) {
 		&app.ContainerPort, &app.Replicas, &app.HealthPath, &app.Domain,
 		&app.MemoryBytes, &app.CPUMillis, &app.BlkioWeight,
 		&app.ReleaseSeq, &created, &upd,
+		&app.WWW, &redirectsJSON,
 	)
 	if err != nil {
 		return App{}, err
@@ -266,6 +303,9 @@ func scanApp(sc scanner) (App, error) {
 		return App{}, fmt.Errorf("could not decode volumes: %w", err)
 	}
 	app.Volumes = sortedVolumes(app.Volumes)
+	if app.Redirects, err = unmarshalNames(redirectsJSON); err != nil {
+		return App{}, err
+	}
 	app.CreatedAt = time.Unix(0, created)
 	app.UpdatedAt = time.Unix(0, upd)
 	return app, nil

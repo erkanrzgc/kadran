@@ -99,6 +99,17 @@ func TestMigration0005CarriesExistingDeploymentsForward(t *testing.T) {
 		t.Fatalf("0005 uygulanamadı — CANLI VERİTABANI GÖÇEMEZ: %v", err)
 	}
 
+	// Okuma kodu (ActiveDeployment) EN GÜNCEL sütunları seçer; 0005 sonrası
+	// göçler yalnızca sütun ekler, bu yüzden veri taşıma iddiası değişmez.
+	for _, m := range []string{
+		"0006_app_env.sql", "0007_app_volumes.sql", "0008_alarms.sql",
+		"0009_env_seal.sql", "0010_app_redirects.sql",
+	} {
+		if err := s.applyMigration(ctx, m); err != nil {
+			t.Fatalf("%s uygulanamadı: %v", m, err)
+		}
+	}
+
 	// ── Dağıtım hayatta ve AÇIK olmalı ──────────────────────────────
 	live, err := s.ActiveDeployment(ctx, "portfolio")
 	if err != nil {

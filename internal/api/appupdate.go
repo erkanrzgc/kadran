@@ -274,6 +274,11 @@ func redirectDetail(res deploy.Result, before, app store.App) string {
 		if d := unroutedRedirectDetail(app, why, was, names); d != "" {
 			return d
 		}
+		if len(names) > 0 {
+			// Küme değişmedi (örn. açık ad www eşine eşit): canlı 308 yerinde.
+			return fmt.Sprintf("redirects unchanged (%s → %s); the app is not routed: %s — kadran deploy %s",
+				strings.Join(names, ", "), app.Domain, why, app.ID)
+		}
 		return noRedirectNamesDetail(before, app, nil)
 	}
 	if len(names) == 0 {
@@ -310,19 +315,22 @@ func unroutedRedirectDetail(app store.App, why string, was, names []string) stri
 
 // noRedirectNamesDetail, uygulamada yönlendirme adı kalmadığında doğruyu
 // söyler: domain yoksa boş domain basmaz, alt adın www eşi olmadığını
-// "kaldırıldı" diye anlatmaz.
+// "kaldırıldı" diye anlatmaz. Alt ad cümlesi yalnız istek www'ye dokunduğunda
+// (ya da www açıkken domain taşındığında) söylenir; son açık adı kaldırmak
+// www ile ilgili değildir.
 func noRedirectNamesDetail(before, app store.App, was []string) string {
 	removed := ""
 	if len(was) > 0 {
 		removed = "redirects removed — "
 	}
+	wwwInPlay := app.WWW != before.WWW || (app.WWW && app.Domain != before.Domain)
 	switch {
 	case app.Domain == "":
 		return removed + "the app has no domain"
-	case (app.WWW || before.WWW) && appnames.Partner(app.Domain) == "":
+	case wwwInPlay && appnames.Partner(app.Domain) == "":
 		return removed + app.Domain + " is a subdomain and has no www partner"
 	default:
-		return fmt.Sprintf("redirects removed — %s has no redirect names", app.Domain)
+		return removed + app.Domain + " has no redirect names"
 	}
 }
 

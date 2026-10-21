@@ -268,7 +268,10 @@ func (p plan) acceptRedirect(name, domain string) bool {
 		p.res.SkippedRedirects[name] = fmt.Sprintf("already redirects to %q", p.redirectTo[name])
 	case p.redirectTo[name] == "" && len(p.redirectTo) >= proxydrv.MaxRedirects:
 		// Aracı sınırı aşan kümeyi BÜTÜNÜYLE reddeder; sınırdan sonrası ad ad
-		// atlanır (AppID sırası, kararlı). Zaten kabul edilmiş ad sayılmaz.
+		// atlanır. Sıra kararlı: önce rotalanan uygulamaların adları (AppID
+		// sırası), sonra atlanan uygulamalardan taşınan adlar; yani sınır
+		// aşılırsa önce taşınan ad (başarısız dağıtımın canlı www'si) düşer ve
+		// SkippedRedirects'te görünür. Zaten kabul edilmiş ad sayılmaz.
 		p.res.SkippedRedirects[name] = "route set redirect limit reached"
 	default:
 		p.redirectTo[name] = domain

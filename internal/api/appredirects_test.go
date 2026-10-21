@@ -439,6 +439,41 @@ func TestUpdateAppDomainMoveReportsRedirects(t *testing.T) {
 	})
 }
 
+// Rotalanmayan uygulamada ad kümesi DEĞİŞMEDİYSE (açık ad www eşine eşit,
+// -no-www kümeyi değiştirmiyor) cevap "kaldırıldı" dememeli: 308 canlı kalıyor.
+func TestUpdateAppUnchangedNamesOnUnroutedAppAreNotReportedRemoved(t *testing.T) {
+	rec := &fakeReconciler{result: deploy.Result{Skipped: map[string]string{"blog": "no healthy release"}}}
+	srv, _ := newUpdateServer(t, rec)
+	spec := testSpec()
+	spec.Domain = "example.com"
+	spec.Www = boolp(true)
+	spec.Redirects = []string{"www.example.com"}
+	mustCreateApp(t, srv, spec)
+
+	d := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(false)}).GetRedirectDetail()
+	want := "redirects unchanged (www.example.com → example.com); the app is not routed: " +
+		"no healthy release — kadran deploy blog"
+	if d != want {
+		t.Errorf("RedirectDetail = %q\nbeklenen        %q", d, want)
+	}
+}
+
+// Alt ad mesajı yalnız istek www'ye dokunduğunda (ya da www açıkken domain
+// taşındığında) anlamlı; son açık adı kaldırmak "kaldırıldı" demeli.
+func TestUpdateAppRemovingLastRedirectOfSubdomainSaysRemoved(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	spec := testSpec()
+	spec.Domain = "app.example.com"
+	spec.Www = boolp(true)
+	spec.Redirects = []string{"a.example.net"}
+	mustCreateApp(t, srv, spec)
+
+	d := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", RedirectRemove: []string{"a.example.net"}}).GetRedirectDetail()
+	if want := "redirects removed — app.example.com has no redirect names"; d != want {
+		t.Errorf("RedirectDetail = %q, beklenen %q", d, want)
+	}
+}
+
 // Domain kaldırılınca mesajda boş domain basılmamalı.
 func TestUpdateAppRemovingDomainDoesNotPrintBlankDomain(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})

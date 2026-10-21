@@ -109,6 +109,82 @@ When a stop is wrong for your setup, pass `-skip-dns-check` to `app create` / `a
 It is meant for deliberate cases such as a proxy you keep in front of the server, for example
 Cloudflare with SSL/TLS mode Full (strict).
 
+## www and other names
+
+One app can answer to more than one name. Every extra name sends visitors to the app's own
+domain with a permanent redirect (HTTP 308, so the method and body are kept) to
+`https://<domain>`, keeping the path and the query: `https://www.example.com/a?b=1` goes to
+`https://example.com/a?b=1`. The redirect target is always the app's domain; it cannot be set to
+anything else. The reasoning is recorded in K-152 in [`docs/decisions.md`](../decisions.md).
+
+**The automatic www rule.** `app create` turns www on by default, and the partner name is derived
+from the domain:
+
+- a registrable domain (`example.com`, `example.co.uk`) gets `www.example.com` as its partner;
+- a domain that is `www.` plus a registrable domain gets the bare domain as its partner
+  (with `www.example.com` as the domain, `example.com` redirects to it);
+- any other subdomain (`app.example.com`) has no partner: the flags are accepted but nothing is
+  routed, no `Redirects` line mentions a www name and no DNS check runs for one.
+
+Pass `-no-www` to `app create` to turn it off. On an existing app, `app update -www` turns it on
+and `app update -no-www` turns it off (the two flags cannot be combined). Apps created before
+this feature keep www **off** after the upgrade; turning it on is a deliberate
+`app update -www`. The flag is stored, not the name, so `app update -domain` moves the partner
+along with the domain.
+
+**Extra names.** `-redirect <name>` adds a name and can be repeated; `-redirect-rm <name>`
+removes one (on `app update`). An app can have at most 8 explicit names, they must be valid
+lowercase domain names, and an app without a domain cannot have any.
+
+```bash
+kadran app create -repo github.com/you/site -domain example.com -redirect old.example.net site kadran-client@your-server
+kadran app update -redirect-rm old.example.net site kadran-client@your-server
+kadran app update -no-www site kadran-client@your-server
+```
+
+**Collisions.** A name (explicit or derived) cannot equal another app's domain, explicit name or
+derived partner. The server rejects the request and names the app, for example
+`name already in use: "www.example.com" is already used by app "site"`. This includes creating an
+app whose domain is the derived www partner of an existing app.
+
+**DNS for the extra names.** Each name needs its own record that points at the server, like the
+main domain: either an `A` record or a `CNAME` to the domain.
+
+```text
+A      www      203.0.113.10
+CNAME  www      example.com.      # alternative: let www follow the root domain
+```
+
+`app create` and `app update` check every redirect name (the www partner included) after the
+server has accepted the request, in parallel. These checks only warn and never change the exit
+status: a wrong record prints
+
+```text
+kadran: warning: www.example.com does not point at the server yet; it is redirected once it does and gets its own certificate
+```
+
+followed by the same DNS host and record guidance as the main domain. The name starts working by
+itself once its DNS is right. `-skip-dns-check` skips these checks as well as the main one.
+
+**Certificates.** Each name gets its own certificate from Caddy, requested like the main
+domain's once the name points at the server. Whether a www name without DNS leaves the root
+domain's certificate unaffected has not been measured on a live server yet (K-152 lists it as
+open).
+
+**Seeing the result.** `app show` and the result of `app create` / `app update` print one line
+with every name and the target:
+
+```text
+  Redirects: www.example.com, old.example.net → example.com (308)
+```
+
+The line is absent when the app has no extra names. If the server cannot apply a name,
+`app update` prints `redirect <name> NOT applied (<reason>)`, for example
+`collides with the domain of app "site"` or `already redirects to "example.net"`, and the other
+routes keep working. Against a server that predates this feature the CLI prints
+`kadran: warning: this server does not support redirects (www, -redirect); upgrade kadrand` and
+does not print a `Redirects` line.
+
 ## Common traps
 
 - **Parking records.** New domains often ship with a parking record that answers for the root

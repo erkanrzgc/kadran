@@ -231,6 +231,8 @@ the redirect and the certificate from your machine. Right after changing a recor
 `-wait 10m` (`kadran domain check -wait 10m site.example.com kadran-client@your-server`) to
 wait until the DNS points at the server.
 
+A root domain also gets its `www` partner by default: `www.example.com` redirects (308, path and query kept) to `example.com`; `-no-www` turns that off and `-redirect <name>` adds more names ([guide](docs/guides/domains.md#www-and-other-names), K-152).
+
 > [!TIP]
 > Flags go **after the command and before positional arguments** (Go's `flag` package
 > stops at the first positional one): `kadran app update -replicas 2 site host`.

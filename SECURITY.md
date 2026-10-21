@@ -76,7 +76,8 @@ crosses one of these is in scope and will be treated as high severity:
 8. **Escaping the proxy capability broker.** `kadrand` may submit typed domain/IP/port
    routes to `kadran-proxy`; it cannot reach Caddy's raw admin socket. Arbitrary Caddy
    handlers, `{file.…}` response bodies, admin/listener changes and Unix/loopback
-   upstreams are outside that capability. Bypassing it is in scope (K-143).
+   upstreams are outside that capability. The only non-proxy handler the broker accepts is a
+   fixed-shape 308 redirect whose target must be a routed domain (K-152). Bypassing it is in scope (K-143).
 9. **Leaking private repository credentials.** Opt-in repository credentials belong to
    the executor's server configuration. They must not enter application definitions,
    the desktop, daemon database, Docker context, audit records or error messages.
@@ -99,6 +100,10 @@ These are known and documented limitations, not undisclosed weaknesses:
   authorized or compromised daemon can redirect app traffic within that pool.
   Module omission alone is insufficient: Caddy's core `static_response` can expand
   file placeholders; isolation of raw admin and the typed broker provide the boundary.
+- **A compromised `kadrand` can redirect names that already point at the server.** It can
+  308-redirect such a name to any domain it has itself routed first (K-152, ruling S1). The
+  broker bounds redirect targets to the routed set, not to the operator's intent. It needs a
+  compromised control plane and exposes no key, file or exec capability.
 - **Application data requires application-aware backup and deployment.** Control
   database backups exclude volumes. Volume archives read live files; they are not
   transactional snapshots. Replicas and overlapping releases share named volumes.

@@ -16,6 +16,24 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   A negative `-wait` is rejected, and Ctrl-C while waiting stops without running the remaining
   checks.
 - `kadran domain check` shows the domain's accredited registrar (RDAP).
+- www and redirect names (K-152): `app create` also serves the www partner of a registrable
+  domain (or the bare domain when the domain is `www.…`) and redirects it with a 308 to
+  `https://<domain>`, keeping path and query. `-no-www` turns it off; `app update` has `-www`,
+  `-no-www`, `-redirect <name>` (repeatable, at most 8 per app) and `-redirect-rm <name>`.
+  Subdomains get no partner. Apps that exist before the upgrade keep www off. See
+  [www and other names](docs/guides/domains.md#www-and-other-names).
+- Redirect names are checked for DNS after the server accepts the request; the check only warns
+  and `-skip-dns-check` skips it (K-152). `app show` prints a `Redirects` line.
+- The proxy broker accepts one non-proxy handler: a fixed-shape 308 redirect whose target must
+  be a routed domain (K-152). A name that collides with another app's domain or name is
+  rejected by the API; a collision that gets through drops only that redirect, never the whole
+  route set.
+
+### Upgrade notes
+
+- Remove redirects (`-no-www` and `-redirect-rm`) before downgrading `kadrand` below this
+  release (K-152). An older `kadrand` cannot decode a route set that carries redirects, so
+  repair and reconcile stop until the redirects are gone.
 
 ### Changed
 

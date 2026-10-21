@@ -157,7 +157,11 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
 
 ## Hata ve güvenlik
 
-- Açık yönlendirme yok: hedefi aracı doğruluyor (kümedeki bir domain), kadrand değil.
+- Açık yönlendirme yok: hedefi aracı doğruluyor (kümedeki bir domain), kadrand değil. Bu denetim
+  hatalara karşı korur ve hedefleri yönlendirilen küme içinde tutar; ele geçirilmiş bir
+  kadrand'a karşı KORUMAZ: o, önce seçtiği bir ana bilgisayar için rota ekleyip sonra ona
+  yönlendirebilir. Sınırlı: ele geçirilmiş bir kontrol düzlemi gerekir, yalnız bu sunucuyu zaten
+  gösteren adları etkiler, anahtar/dosya/exec açığı yoktur (karar S1).
 - Location'a giren tek değişken doğrulanmış bir alan adı; istek URI'si yer tutucu olarak
   yeniden açılmıyor (ölçüldü).
 - Yasak alanlar ve ayrıcalıklı yüzey: kadran-exec bu işe dokunmaz; `check-exec-surface.sh`

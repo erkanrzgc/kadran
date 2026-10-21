@@ -237,8 +237,8 @@ func (s *Server) moveTraffic(
 	}
 
 	if routeChanged {
-		switch {
-		case to == "":
+		switch to {
+		case "":
 			proxy = "app REMOVED from the reverse proxy — no longer served on any domain"
 		default:
 			if why, skipped := res.Skipped[appID]; skipped {

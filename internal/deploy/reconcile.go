@@ -234,7 +234,8 @@ func (rc *Reconciler) release() { <-rc.gate }
 // plan, SQLite'taki durumdan rotaları ve atlanan uygulamaları çıkarır.
 type plan struct {
 	routes         []proxydrv.AppRoute
-	skippedDomains map[string]string // uygulama → alan adı (atlananlar)
+	skippedDomains map[string]string   // uygulama → alan adı (atlananlar)
+	skippedNames   map[string][]string // uygulama → İSTENEN yönlendirme adları (atlananlar)
 	res            Result
 
 	// domains: bütün uygulamaların (rotalanan ve atlanan) alan adı → uygulama.
@@ -283,9 +284,17 @@ func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
 		}
 		// Yeni sürümü rotalanamayan uygulamanın canlı yönlendirmeleri de
 		// taşınır; yoksa başarısız bir dağıtım www'yi düşürürdü.
+		//
+		// Yalnız hâlâ İSTENEN adlar: -no-www / -redirect-rm atlanan uygulamada
+		// da hemen etkili olur ("kaldırıldı" deyip 308'i canlıda bırakmak yalan
+		// olurdu). Kaldırılan ad SkippedRedirects'e yazılmaz; uygulanamayan
+		// değil, istenmeyen addır. Hedef koşulu yapısal: LiveRedirects yalnız
+		// TAŞINAN domaine gidenleri verir, yani -domain taşımasından sonra eski
+		// domaine giden ad (rotası taşınmıyor) kümeye giremez.
+		desired := p.skippedNames[appID]
 		var redirects []string
 		for _, name := range proxydrv.LiveRedirects(live, domain) {
-			if p.acceptRedirect(name, domain) {
+			if slices.Contains(desired, name) && p.acceptRedirect(name, domain) {
 				redirects = append(redirects, name)
 			}
 		}
@@ -296,7 +305,8 @@ func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
 
 // plan'ı kurar. Çağıran rc.gate'i tutmalı.
 func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
-	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}, SkippedRedirects: map[string]string{}},
+	p := plan{skippedDomains: map[string]string{}, skippedNames: map[string][]string{},
+		res:     Result{Skipped: map[string]string{}, SkippedRedirects: map[string]string{}},
 		domains: map[string]string{}, redirectTo: map[string]string{}}
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
@@ -336,6 +346,7 @@ func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 		if why != "" {
 			p.res.Skipped[d.AppID] = why
 			p.skippedDomains[d.AppID] = d.Domain
+			p.skippedNames[d.AppID] = appnames.Names(d.Domain, d.WWW, d.Redirects)
 			continue
 		}
 		var redirects []string

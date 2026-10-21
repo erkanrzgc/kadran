@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -243,26 +244,28 @@ func (s *Server) moveTraffic(
 		}
 	}
 	if namesChanged {
-		redirect = redirectDetail(res, after)
+		redirect = redirectDetail(res, before, after)
 	}
 	return proxy, redirect, nil
 }
 
 // redirectDetail, ad değişikliğinin uzlaştırma sonucunu anlatır. Uygulanamayan
 // her ad ayrı satırda: tek bir "tamam" en tehlikeli durumu gizlerdi.
-func redirectDetail(res deploy.Result, app store.App) string {
+func redirectDetail(res deploy.Result, before, app store.App) string {
 	// Tam ad kümesi (www eşi dahil): kullanıcı yalnız -www dediğinde de
 	// hangi adın yönlendirildiğini duymalı.
+	was := appnames.Names(before.Domain, before.WWW, before.Redirects)
 	names := appnames.Names(app.Domain, app.WWW, app.Redirects)
-	if len(names) == 0 {
-		return fmt.Sprintf("redirects removed — %s has no redirect names", app.Domain)
-	}
-	// Uygulama rotalanamıyorsa hiçbir ad uygulanmadı: "updated" demek yalan
-	// olurdu. Kayıt başarılı, bu yüzden hata değil — ama açıkça söylenir.
+	// Rotalanma ÖNCE: rotalanmayan uygulamada "updated" ya da çıplak "removed"
+	// demek yalan olurdu. Kayıt başarılı, bu yüzden hata değil.
 	if why, skipped := res.Skipped[app.ID]; skipped {
-		return fmt.Sprintf("redirects SAVED (%s → %s) but NOT applied: %s — "+
-			"they take effect when the app is routed: kadran deploy %s",
-			strings.Join(names, ", "), app.Domain, why, app.ID)
+		if d := unroutedRedirectDetail(app, why, was, names); d != "" {
+			return d
+		}
+		return noRedirectNamesDetail(before, app, nil)
+	}
+	if len(names) == 0 {
+		return noRedirectNamesDetail(before, app, was)
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "reverse proxy updated — redirects: %s → %s",
@@ -273,6 +276,53 @@ func redirectDetail(res deploy.Result, app store.App) string {
 		}
 	}
 	return b.String()
+}
+
+// unroutedRedirectDetail, rotalanmayan uygulamadaki ad değişikliğini anlatır.
+// Kaldırma UYGULANIR (uzlaştırma istenmeyen adı canlıdan taşımıyor), ekleme
+// uygulanmaz (rota yokken yönlendirme kurulamaz). Değişen ad yoksa boş döner.
+func unroutedRedirectDetail(app store.App, why string, was, names []string) string {
+	var lines []string
+	if removed := namesNotIn(was, names); len(removed) > 0 {
+		lines = append(lines, fmt.Sprintf(
+			"redirects removed: %s — applied even though the app is not routed (%s)",
+			strings.Join(removed, ", "), why))
+	}
+	if added := namesNotIn(names, was); len(added) > 0 {
+		lines = append(lines, fmt.Sprintf("redirects SAVED (%s → %s) but NOT applied: %s — "+
+			"they take effect when the app is routed: kadran deploy %s",
+			strings.Join(added, ", "), app.Domain, why, app.ID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// noRedirectNamesDetail, uygulamada yönlendirme adı kalmadığında doğruyu
+// söyler: domain yoksa boş domain basmaz, alt adın www eşi olmadığını
+// "kaldırıldı" diye anlatmaz.
+func noRedirectNamesDetail(before, app store.App, was []string) string {
+	removed := ""
+	if len(was) > 0 {
+		removed = "redirects removed — "
+	}
+	switch {
+	case app.Domain == "":
+		return removed + "the app has no domain"
+	case (app.WWW || before.WWW) && appnames.Partner(app.Domain) == "":
+		return removed + app.Domain + " is a subdomain and has no www partner"
+	default:
+		return fmt.Sprintf("redirects removed — %s has no redirect names", app.Domain)
+	}
+}
+
+// namesNotIn, a'da olup b'de olmayan adları a'nın sırasıyla döndürür.
+func namesNotIn(a, b []string) []string {
+	var out []string
+	for _, n := range a {
+		if !slices.Contains(b, n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // updateFromProto, isteği depo katmanının tipine çevirir.

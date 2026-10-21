@@ -338,3 +338,71 @@ func TestUpdateAppWWWOffWithNoNamesReportsRemoved(t *testing.T) {
 		t.Errorf("RedirectDetail: %q", resp.GetRedirectDetail())
 	}
 }
+
+// Rotalanmayan uygulamada KALDIRMA uygulanır (uzlaştırma istenmeyen adı
+// taşımıyor), EKLEME uygulanmaz: cevap ikisini ayrı ve doğru söylemeli.
+func TestUpdateAppNamesOnUnroutedAppSplitsRemovedFromSaved(t *testing.T) {
+	rec := &fakeReconciler{result: deploy.Result{Skipped: map[string]string{"blog": "no healthy release"}}}
+	srv, _ := newUpdateServer(t, rec)
+	spec := testSpec()
+	spec.Domain = "example.com"
+	spec.Www = boolp(true)
+	mustCreateApp(t, srv, spec)
+
+	t.Run("yalnız kaldırma", func(t *testing.T) {
+		resp := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(false)})
+		d := resp.GetRedirectDetail()
+		want := "redirects removed: www.example.com — applied even though the app is not routed (no healthy release)"
+		if d != want {
+			t.Errorf("RedirectDetail = %q\nbeklenen        %q", d, want)
+		}
+	})
+	t.Run("ekleme ve kaldırma", func(t *testing.T) {
+		update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(true)}) // www geri
+		resp := update(t, srv, &kadranv1.UpdateAppRequest{
+			AppId: "blog", Www: boolp(false), RedirectAdd: []string{"a.example.net"},
+		})
+		d := resp.GetRedirectDetail()
+		for _, want := range []string{
+			"redirects removed: www.example.com — applied even though the app is not routed (no healthy release)",
+			"redirects SAVED (a.example.net → example.com) but NOT applied: no healthy release — " +
+				"they take effect when the app is routed: kadran deploy blog",
+		} {
+			if !strings.Contains(d, want) {
+				t.Errorf("RedirectDetail %q içinde %q yok", d, want)
+			}
+		}
+		if strings.Contains(d, "SAVED (www.example.com") || strings.Contains(d, "reverse proxy updated") {
+			t.Errorf("kaldırılan ad ya da yalan başarı bildirildi: %q", d)
+		}
+	})
+}
+
+// Alt adın www eşi yok: -www "redirects removed" dememeli, doğruyu söylemeli.
+func TestUpdateAppWWWOnSubdomainSaysNoPartner(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	spec := testSpec()
+	spec.Domain = "app.example.com"
+	mustCreateApp(t, srv, spec)
+
+	for _, www := range []bool{true, false} {
+		resp := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Www: boolp(www)})
+		if got, want := resp.GetRedirectDetail(), "app.example.com is a subdomain and has no www partner"; got != want {
+			t.Errorf("www=%v: RedirectDetail = %q, beklenen %q", www, got, want)
+		}
+	}
+}
+
+// Domain kaldırılınca mesajda boş domain basılmamalı.
+func TestUpdateAppRemovingDomainDoesNotPrintBlankDomain(t *testing.T) {
+	srv, _ := newUpdateServer(t, &fakeReconciler{})
+	spec := testSpec()
+	spec.Domain = "example.com"
+	spec.Www = boolp(true)
+	mustCreateApp(t, srv, spec)
+
+	resp := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp(""), Www: boolp(false)})
+	if got, want := resp.GetRedirectDetail(), "redirects removed — the app has no domain"; got != want {
+		t.Errorf("RedirectDetail = %q, beklenen %q", got, want)
+	}
+}

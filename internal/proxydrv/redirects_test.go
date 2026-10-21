@@ -105,8 +105,11 @@ func TestFixedConfigRejectsRedirectToUnroutedDomain(t *testing.T) {
 }
 
 func TestFixedConfigRejectsRedirectFromRoutedDomain(t *testing.T) {
-	if _, err := FixedConfig(yonSet(ProxyRedirect{From: "other.example", To: "example.com"})); err == nil {
-		t.Fatal("yönlendirilen domain kaynak olamaz")
+	// Mesaj ŞART: BuildConfig de aynı girdiyi başka bir mesajla reddeder; FixedConfig
+	// denetimi kapansa hata yine döner ama bu savunma katmanı sessizce kaybolur.
+	_, err := FixedConfig(yonSet(ProxyRedirect{From: "other.example", To: "example.com"}))
+	if err == nil || !strings.Contains(err.Error(), "is a routed domain") {
+		t.Fatalf("yönlendirilen domain kaynak olamaz, FixedConfig reddetmeliydi: %v", err)
 	}
 }
 
@@ -115,8 +118,8 @@ func TestFixedConfigRejectsDuplicateRedirect(t *testing.T) {
 		ProxyRedirect{From: "www.example.com", To: "example.com"},
 		ProxyRedirect{From: "www.example.com", To: "other.example"},
 	))
-	if err == nil {
-		t.Fatal("tekrarlanan kaynak reddedilmeliydi")
+	if err == nil || !strings.Contains(err.Error(), "duplicate redirect source") {
+		t.Fatalf("tekrarlanan kaynak FixedConfig icinde reddedilmeliydi: %v", err)
 	}
 }
 
@@ -195,6 +198,34 @@ func TestSafeRoutesRejectsTamperedRedirect(t *testing.T) {
 				t.Fatal("kurcalanmış yönlendirme kabul edildi")
 			}
 		})
+	}
+}
+
+// SafeRoutes sonundaki FixedConfig + DeepEqual şekil bozuk rotayı zaten
+// reddeder; redirectOf önek/sonek denetimi ondan BAĞIMSIZ bir savunma
+// katmanıdır ve kapatılırsa yalnız burada görünür.
+func TestRedirectOfRequiresExactLocationTemplate(t *testing.T) {
+	cfg, err := FixedConfig(yonSet(ProxyRedirect{From: "www.example.com", To: "example.com"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := yonlendirmeRotasi(t, cfg, "www.example.com")
+	if from, to, ok := redirectOf(good); !ok || from != "www.example.com" || to != "example.com" {
+		t.Fatalf("geçerli rota tanınmadı: %q %q %v", from, to, ok)
+	}
+	for name, loc := range map[string]string{
+		"http şeması":     "http://example.com{http.request.uri}",
+		"önek yok":        "xxxxxxxxexample.com{http.request.uri}",
+		"sonek farklı":    "https://example.com{http.request.uri}x",
+		"sonek yok":       "https://example.com/aaaaaaaaaaaaaaaaaaa",
+		"kısa ve uyumsuz": "https://{x}",
+	} {
+		r := good
+		r.Handle = []Handler{good.Handle[0]}
+		r.Handle[0].Headers = map[string][]string{"Location": {loc}}
+		if _, _, ok := redirectOf(r); ok {
+			t.Errorf("%s: %q yönlendirme sayıldı", name, loc)
+		}
 	}
 }
 

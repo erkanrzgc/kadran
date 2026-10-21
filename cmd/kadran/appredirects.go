@@ -6,6 +6,10 @@ import (
 	"strings"
 	"sync"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+
 	"github.com/erkanrzgc/kadran/internal/appnames"
 	"github.com/erkanrzgc/kadran/internal/domaincheck"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
@@ -21,6 +25,9 @@ func redirectsLine(spec *kadranv1.AppSpec) string {
 	return fmt.Sprintf("  Redirects: %s → %s (308)\n", strings.Join(names, ", "), spec.GetDomain())
 }
 
+// redirectsUnsupported, eski (yönlendirmeyi bilmeyen) sunucu için ipucu.
+const redirectsUnsupported = "this server does not support redirects (www, -redirect); upgrade kadrand"
+
 // serverKnowsRedirects: sunucu cevabında Www HER ZAMAN doludur; eski bir
 // sunucu alanı hiç göndermez.
 func serverKnowsRedirects(spec *kadranv1.AppSpec) bool { return spec.Www != nil }
@@ -31,7 +38,7 @@ func serverKnowsRedirects(spec *kadranv1.AppSpec) bool { return spec.Www != nil 
 func (c *cli) afterRedirectReply(ctx context.Context, spec *kadranv1.AppSpec, asked, check bool, rawTarget string, skip bool) bool {
 	if !serverKnowsRedirects(spec) {
 		if asked {
-			fmt.Fprintln(c.stderr, progName+": warning: this server does not support redirects (www, -redirect); upgrade kadrand")
+			fmt.Fprintln(c.stderr, progName+": warning: "+redirectsUnsupported)
 		}
 		return false
 	}
@@ -39,6 +46,27 @@ func (c *cli) afterRedirectReply(ctx context.Context, spec *kadranv1.AppSpec, as
 		c.checkRedirectNames(ctx, appnames.Names(spec.GetDomain(), spec.GetWww(), spec.GetRedirects()), rawTarget, skip)
 	}
 	return true
+}
+
+// oldServerRejectedNames, yalnız ad alanı (-www/-no-www/-redirect/-redirect-rm)
+// taşıyan bir güncellemenin ESKİ sunucuda reddedildiğini tanır: alanları
+// bilmeyen sunucu isteği boş sayar ve "no field given" ile InvalidArgument
+// döner. Yeni sunucunun doğrulama hataları (dokuzuncu ad, geçersiz ad) da
+// InvalidArgument; onlar METİNLERİYLE ayrılır ve olduğu gibi basılır.
+func oldServerRejectedNames(req *kadranv1.UpdateAppRequest, err error) bool {
+	if req.Www == nil && len(req.GetRedirectAdd()) == 0 && len(req.GetRedirectRemove()) == 0 {
+		return false
+	}
+	rest, ok := proto.Clone(req).(*kadranv1.UpdateAppRequest)
+	if !ok {
+		return false
+	}
+	rest.Www, rest.RedirectAdd, rest.RedirectRemove = nil, nil, nil
+	if !isEmptyUpdate(rest) {
+		return false
+	}
+	st, ok := status.FromError(err)
+	return ok && st.Code() == codes.InvalidArgument && strings.Contains(st.Message(), "no field given")
 }
 
 // checkRedirectNames, yönlendirme adlarının DNS'ini PARALEL denetler. Çıkış

@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/erkanrzgc/kadran/internal/client"
@@ -19,14 +21,18 @@ import (
 // fakeRedirectRPC, yalnız app RPC'lerini cevaplayan sahte sunucudur.
 type fakeRedirectRPC struct {
 	kadranv1.KadranServiceClient
-	old     bool // eski sunucu: cevapta Www yok
-	created *kadranv1.AppSpec
-	updated *kadranv1.UpdateAppRequest
-	show    *kadranv1.AppSpec
+	old       bool // eski sunucu: cevapta Www yok
+	updateErr error
+	created   *kadranv1.AppSpec
+	updated   *kadranv1.UpdateAppRequest
+	show      *kadranv1.AppSpec
 }
 
 func (f *fakeRedirectRPC) reply(s *kadranv1.AppSpec) *kadranv1.AppSpec {
-	out := proto.Clone(s).(*kadranv1.AppSpec)
+	out, ok := proto.Clone(s).(*kadranv1.AppSpec)
+	if !ok {
+		panic("proto.Clone AppSpec döndürmedi")
+	}
 	if f.old {
 		out.Www = nil
 		out.Redirects = nil
@@ -43,6 +49,9 @@ func (f *fakeRedirectRPC) CreateApp(_ context.Context, in *kadranv1.CreateAppReq
 
 func (f *fakeRedirectRPC) UpdateApp(_ context.Context, in *kadranv1.UpdateAppRequest, _ ...grpc.CallOption) (*kadranv1.UpdateAppResponse, error) {
 	f.updated = in
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
 	spec := &kadranv1.AppSpec{AppId: in.GetAppId(), Domain: in.GetDomain(), Www: proto.Bool(in.GetWww()), Redirects: in.GetRedirectAdd()}
 	return &kadranv1.UpdateAppResponse{App: &kadranv1.App{Spec: f.reply(spec)}, RedirectDetail: "redirect detail"}, nil
 }
@@ -158,6 +167,63 @@ func TestAppCreateWarnsOnOldServer(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "Redirects:") {
 		t.Errorf("eski sunucuda Redirects satırı basıldı:\n%s", out)
+	}
+}
+
+// oldServerEmptyUpdate, v0.7.x sunucusunun ad alanlarını tanımadığı için boş
+// saydığı güncellemeye verdiği cevap (internal/api/appupdate.go ile aynı metin).
+var oldServerEmptyUpdate = status.Error(codes.InvalidArgument,
+	"no field given — this call would only advance the timestamp, that is, a silent no-op")
+
+// Yalnız ad bayrağı taşıyan güncelleme eski sunucuda "boş" sayılır: kullanıcı
+// anlamsız bir "no field given" değil, yükseltme ipucu görmeli.
+func TestAppUpdateNamesOnlyOnOldServerHintsUpgrade(t *testing.T) {
+	for _, args := range [][]string{
+		{"-no-www", "web", "kimse@203.0.113.10"},
+		{"-www", "web", "kimse@203.0.113.10"},
+		{"-redirect", "old.com", "web", "kimse@203.0.113.10"},
+		{"-redirect-rm", "old.com", "web", "kimse@203.0.113.10"},
+	} {
+		rpc := &fakeRedirectRPC{old: true, updateErr: oldServerEmptyUpdate}
+		c, _, errOut := redirectCLI(rightDNS, rpc)
+		if code := c.runAppUpdate(t.Context(), args); code != exitError {
+			t.Errorf("%v: çıkış %d, %d bekleniyordu", args, code, exitError)
+		}
+		if !strings.Contains(errOut.String(), "this server does not support redirects (www, -redirect); upgrade kadrand") {
+			t.Errorf("%v: yükseltme ipucu yok:\n%s", args, errOut)
+		}
+		if strings.Contains(errOut.String(), "no field given") {
+			t.Errorf("%v: eski sunucunun anlamsız hatası basıldı:\n%s", args, errOut)
+		}
+	}
+}
+
+// Yeni sunucunun doğrulama hatası (ör. dokuzuncu ad) olduğu gibi basılmalı;
+// ad bayrağı başka bir alanla birlikteyse "no field given" da eski sunucu
+// demek değildir.
+func TestAppUpdateNamesValidationErrorIsShownAsIs(t *testing.T) {
+	cases := []struct {
+		err  error
+		args []string
+		want string
+	}{
+		{status.Error(codes.InvalidArgument, "too many redirect names (9, limit 8)"),
+			[]string{"-redirect", "old.com", "web", "kimse@203.0.113.10"}, "too many redirect names (9, limit 8)"},
+		{oldServerEmptyUpdate,
+			[]string{"-www", "-branch", "main", "web", "kimse@203.0.113.10"}, "no field given"},
+	}
+	for _, tc := range cases {
+		rpc := &fakeRedirectRPC{updateErr: tc.err}
+		c, _, errOut := redirectCLI(rightDNS, rpc)
+		if code := c.runAppUpdate(t.Context(), tc.args); code != exitError {
+			t.Errorf("%v: çıkış %d, %d bekleniyordu", tc.args, code, exitError)
+		}
+		if !strings.Contains(errOut.String(), tc.want) {
+			t.Errorf("%v: gerçek hata basılmadı:\n%s", tc.args, errOut)
+		}
+		if strings.Contains(errOut.String(), "upgrade kadrand") {
+			t.Errorf("%v: doğrulama hatası yükseltme ipucuna çevrildi:\n%s", tc.args, errOut)
+		}
 	}
 }
 

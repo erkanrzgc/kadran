@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"sort"
@@ -126,6 +127,9 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 
 	resp, err := conn.RPC().UpdateApp(ctx, req)
 	if err != nil {
+		if oldServerRejectedNames(req, err) {
+			return c.failUpdate(errors.New(redirectsUnsupported))
+		}
 		return c.failUpdate(err)
 	}
 

@@ -328,13 +328,19 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 		return App{}, fmt.Errorf("could not read the app: %w", err)
 	}
 
+	// Ad denetimi yalnız domain ya da ad kümesi DEĞİŞİNCE: önceden var olan
+	// bir çakışma (eski sürümden kalmış) ilgisiz -replicas/-env/-branch
+	// güncellemelerini kilitlememeli. Değişim sorusu yazılmadan ÖNCE sorulur.
+	namesMoved := upd.ChangesDomain(app.Domain) || upd.ChangesNames(app)
 	upd.applyTo(&app)
 	app.UpdatedAt = time.Now()
 
-	if err := checkNames(ctx, tx, appnames.Owner{
-		AppID: app.ID, Domain: app.Domain, WWW: app.WWW, Redirects: app.Redirects,
-	}); err != nil {
-		return App{}, err
+	if namesMoved {
+		if err := checkNames(ctx, tx, appnames.Owner{
+			AppID: app.ID, Domain: app.Domain, WWW: app.WWW, Redirects: app.Redirects,
+		}); err != nil {
+			return App{}, err
+		}
 	}
 	redirects, err := marshalNames(app.Redirects)
 	if err != nil {

@@ -157,8 +157,58 @@ func TestCreateAppKeepsDomainTaken(t *testing.T) {
 	mustCreate(t, s, namesApp("site", "example.com", false))
 
 	_, err := s.CreateApp(context.Background(), namesApp("other", "example.com", false))
-	if !errors.Is(err, ErrDomainTaken) && !errors.Is(err, ErrNameTaken) {
-		t.Fatalf("hata = %v, alan adı çakışması bekleniyordu", err)
+	if !errors.Is(err, ErrDomainTaken) {
+		t.Fatalf("hata = %v, ErrDomainTaken bekleniyordu (domain ↔ domain, ad çakışması değil)", err)
+	}
+}
+
+// -domain taşıması da çakışma kuralından geçer: yeni domainin türetilmiş eşi
+// başka bir uygulamanın açık adıysa taşıma reddedilir ve kayıt değişmez.
+func TestUpdateAppRejectsDomainMoveWhosePartnerIsTaken(t *testing.T) {
+	s := newAppStore(t)
+	ctx := context.Background()
+	mustCreate(t, s, namesApp("site", "example.com", true))
+	mustCreate(t, s, namesApp("blog", "blog.example.org", false, "www.new.com"))
+
+	_, err := s.UpdateApp(ctx, "site", AppUpdate{Domain: strptr("new.com")})
+	if !errors.Is(err, ErrNameTaken) {
+		t.Fatalf("hata = %v, ErrNameTaken bekleniyordu", err)
+	}
+	if !strings.Contains(err.Error(), `"www.new.com"`) || !strings.Contains(err.Error(), `"blog"`) {
+		t.Errorf("hata çakışan eşi ve sahibini adlandırmıyor: %v", err)
+	}
+	if after, _ := s.GetApp(ctx, "site"); after.Domain != "example.com" {
+		t.Errorf("reddedilen taşıma kaydı DEĞİŞTİRDİ: domain = %q", after.Domain)
+	}
+}
+
+// Ad denetimi yalnız domain ya da ad kümesi değişince koşar: önceden var olan
+// bir çakışma (eski sürümden ya da elle yazılmış) ilgisiz -replicas/-env/-branch
+// güncellemelerini kilitlememeli. Ad değişikliği ise yine reddedilir.
+func TestUpdateAppUnrelatedChangeIgnoresExistingNameConflict(t *testing.T) {
+	s := newAppStore(t)
+	ctx := context.Background()
+	mustCreate(t, s, namesApp("site", "example.com", false))
+	mustCreate(t, s, namesApp("blog", "blog.example.org", false))
+	// Çakışma doğrudan yazılıyor: API ve depo bunu bugün kabul etmezdi.
+	if _, err := s.db.ExecContext(ctx,
+		`UPDATE apps SET redirects_json = '["example.com"]' WHERE id = 'blog'`); err != nil {
+		t.Fatalf("çakışma yazılamadı: %v", err)
+	}
+
+	for _, id := range []string{"site", "blog"} {
+		if _, err := s.UpdateApp(ctx, id, AppUpdate{Replicas: u32ptr(2)}); err != nil {
+			t.Errorf("%s: ilgisiz güncelleme var olan çakışma yüzünden reddedildi: %v", id, err)
+		}
+		if _, err := s.UpdateApp(ctx, id, AppUpdate{GitBranch: strptr("dev")}); err != nil {
+			t.Errorf("%s: dal güncellemesi reddedildi: %v", id, err)
+		}
+	}
+	if _, err := s.UpdateApp(ctx, "site", AppUpdate{WWW: boolptr(true)}); !errors.Is(err, ErrNameTaken) {
+		t.Errorf("ad değişikliği: hata = %v, ErrNameTaken bekleniyordu", err)
+	}
+	if _, err := s.UpdateApp(ctx, "blog", AppUpdate{RedirectAdd: []string{"a.example.net"}}); !errors.Is(err, ErrNameTaken) {
+		t.Errorf("ad ekleme: hata = %v, ErrNameTaken bekleniyordu", err)
 	}
 }
 

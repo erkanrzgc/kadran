@@ -1,13 +1,16 @@
 package deploy
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/execclient"
 	"github.com/erkanrzgc/kadran/internal/proxydrv"
+	"github.com/erkanrzgc/kadran/internal/store"
 )
 
 func TestReconcileAddsRedirectRoutes(t *testing.T) {
@@ -171,7 +174,7 @@ func TestReconcileDropsRemovedRedirectOfSkippedApp(t *testing.T) {
 				if err != nil {
 					t.Fatalf("onarılamadı: %v", err)
 				}
-				skipped = res.Skipped
+				skipped, skippedRedirects = res.Skipped, res.SkippedRedirects
 			}
 			if skipped["site"] == "" {
 				t.Fatalf("uygulama atlanmış olmalı: %v", skipped)
@@ -253,4 +256,91 @@ func TestReconcileDoesNotCarryRedirectToOldDomainOfSkippedApp(t *testing.T) {
 			t.Errorf("%s hedefli yönlendirme taşındı: %v", to, got)
 		}
 	}
+}
+
+// collidingNames: b'nin açık adı a'nın domaini; uzlaştırma yalnız o adı atlar.
+func collidingNames() (fakeDeployments, fakeReplicas) {
+	return fakeDeployments{
+			{AppID: "a", ReleaseID: "r1", Domain: "a.example.com", ContainerPort: 8080, Replicas: 1},
+			{AppID: "b", ReleaseID: "r1", Domain: "b.example.com", Redirects: []string{"a.example.com"}, ContainerPort: 8080, Replicas: 1},
+		}, fakeReplicas{byApp: map[string][]execclient.Replica{
+			"a": {running("a", "r1", 0, "172.18.0.5")},
+			"b": {running("b", "r1", 0, "172.18.0.6")},
+		}}
+}
+
+// Onarım da atlanan adları söylemeli: vekil izleyicisi onları günlüğe yazar.
+func TestRepairReportsSkippedRedirects(t *testing.T) {
+	deps, reps := collidingNames()
+	res, err := mustReconciler(t, deps, reps, &fakeProxy{live: canli(t)}).Repair(context.Background())
+	if err != nil {
+		t.Fatalf("onarılamadı: %v", err)
+	}
+	if why := res.SkippedRedirects["a.example.com"]; !strings.Contains(why, `collides with the domain of app "a"`) {
+		t.Errorf("SkippedRedirects = %v, a.example.com çakışması bekleniyordu", res.SkippedRedirects)
+	}
+}
+
+// captureLog, testin süresince varsayılan slog'u bir tampona yönlendirir.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return &buf
+}
+
+func TestWarnSkippedRedirectsLogsEachNameInOrder(t *testing.T) {
+	buf := captureLog(t)
+	WarnSkippedRedirects(map[string]string{"b.example.net": "no tls", "a.example.net": "invalid name"})
+
+	lines := strings.Split(strings.TrimSpace(buf.String()), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("%d satır, 2 bekleniyordu:\n%s", len(lines), buf)
+	}
+	for i, want := range []string{`name=a.example.net reason="invalid name"`, `name=b.example.net reason="no tls"`} {
+		if !strings.Contains(lines[i], "level=WARN") || !strings.Contains(lines[i], want) {
+			t.Errorf("satır %d = %q, %q bekleniyordu", i, lines[i], want)
+		}
+	}
+}
+
+// Dağıtım ve iyileştirme de atlanan adları yutmamalı (yalnız app update
+// söylüyordu). Geçersiz ad uzlaştırmada "invalid name" ile atlanır.
+func TestRolloutLogsSkippedRedirects(t *testing.T) {
+	withBadName := func(reps Replicas, proxy *fakeProxy) *Reconciler {
+		rec, err := New(fakeDeployments{{AppID: testApp, ReleaseID: relNew, Domain: "example.test",
+			Redirects: []string{"Bad.Example.Net"}, ContainerPort: 8080, Replicas: 1}}, reps, proxy, testAdmin())
+		if err != nil {
+			t.Fatalf("uzlaştırıcı kurulamadı: %v", err)
+		}
+		return rec
+	}
+	const want = `name=Bad.Example.Net reason="invalid name"`
+
+	t.Run("dağıtım", func(t *testing.T) {
+		buf := captureLog(t)
+		h := newHarness(t, &fakeLifecycle{replicas: bothReleasesUp()}, true)
+		h.rollout.rec = withBadName(fakeReplicas{byApp: map[string][]execclient.Replica{
+			testApp: {running(testApp, relNew, 0, "172.20.0.3")}}}, h.proxy)
+		if err := h.rollout.Run(context.Background(), testApplication(), store.Release{ID: relNew}); err != nil {
+			t.Fatalf("dağıtım başarısız: %v", err)
+		}
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("günlükte %q yok:\n%s", want, buf)
+		}
+	})
+	t.Run("iyileştirme", func(t *testing.T) {
+		buf := captureLog(t)
+		w := &healWorld{replicas: []execclient.Replica{stoppedReplica(relNew, 0)}}
+		h := newHealHarness(t, w)
+		h.rollout.rec = withBadName(w, h.proxy)
+		if _, err := h.rollout.Heal(context.Background(), h.app, h.rel); err != nil {
+			t.Fatalf("iyileştirme başarısız: %v", err)
+		}
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("günlükte %q yok:\n%s", want, buf)
+		}
+	})
 }

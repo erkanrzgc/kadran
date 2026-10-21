@@ -123,9 +123,13 @@ func (s *Server) UpdateApp(
 	}
 
 	resp := &kadranv1.UpdateAppResponse{App: appToProto(app)}
+	// Saf -domain taşıması da adları taşır (eş yeni domainden türer, açık
+	// adlar yeni hedefe gider): ad varsa ya da vardıysa cevap onları anlatır,
+	// yoksa taşınırken atlanan bir eş sessiz kalırdı.
+	reportNames := namesChanged || (domainMoved && hasNames(current, app))
 	if domainMoved || replicasChanged || namesChanged {
 		proxy, redirect, err := s.moveTraffic(ctx, appID, current, app,
-			domainMoved || replicasChanged, namesChanged)
+			domainMoved || replicasChanged, reportNames)
 		if err != nil {
 			return nil, s.completed(ctx, action, tgt, params, err)
 		}
@@ -209,10 +213,11 @@ func envNeedsRedeploy(appID string) string {
 // Hepsini "tamam" diye raporlamak, en tehlikeli ikisini gizlerdi.
 //
 // Tek uzlaştırma, iki cevap: rota (alan adı/replika) değiştiyse proxy
-// cevabı, adlar (www/yönlendirme) değiştiyse redirect cevabı döner. Yalnız
-// adlar değiştiyse proxy cevabı BOŞ kalır.
+// cevabı, adlar (www/yönlendirme) değiştiyse ya da domainle taşındıysa
+// (reportNames) redirect cevabı döner. Yalnız adlar değiştiyse proxy cevabı
+// BOŞ kalır.
 func (s *Server) moveTraffic(
-	ctx context.Context, appID string, before, after store.App, routeChanged, namesChanged bool,
+	ctx context.Context, appID string, before, after store.App, routeChanged, reportNames bool,
 ) (proxy, redirect string, err error) {
 	from, to := before.Domain, after.Domain
 	res, err := s.reconciler.Reconcile(ctx)
@@ -243,10 +248,17 @@ func (s *Server) moveTraffic(
 			proxy = fmt.Sprintf("reverse proxy updated — %q now goes to this app", to)
 		}
 	}
-	if namesChanged {
+	if reportNames {
 		redirect = redirectDetail(res, before, after)
 	}
 	return proxy, redirect, nil
+}
+
+// hasNames, uygulamanın önce ya da sonra en az bir yönlendirme adı (www eşi
+// ya da açık ad) taşıyıp taşımadığını söyler.
+func hasNames(before, after store.App) bool {
+	return len(appnames.Names(before.Domain, before.WWW, before.Redirects)) > 0 ||
+		len(appnames.Names(after.Domain, after.WWW, after.Redirects)) > 0
 }
 
 // redirectDetail, ad değişikliğinin uzlaştırma sonucunu anlatır. Uygulanamayan

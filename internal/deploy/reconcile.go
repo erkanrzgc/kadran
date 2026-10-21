@@ -17,6 +17,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
 	"slices"
 	"sort"
 	"strings"
@@ -152,6 +154,10 @@ type RepairResult struct {
 	// Skipped, o an rotalanamayan (sağlıksız) uygulamalar ve sebepleri.
 	// Doluysa izleyici "her şey yolunda" diyemez.
 	Skipped map[string]string
+	// SkippedRedirects, uygulanamayan yönlendirme adları ve sebepleri (ad →
+	// sebep; Result.SkippedRedirects ile aynı). Alarmı ETKİLEMEZ: domain
+	// rotaları yerinde, yalnız o ad yönlendirilmiyor; izleyici günlüğe yazar.
+	SkippedRedirects map[string]string
 	// Exact, canlı yapılandırmanın beklenenle İKİ YÖNLÜ birebir aynı
 	// olduğu doğrulandıysa true: ne eksik rota, ne gönderilmemiş rota,
 	// ne farklı upstream (K-054).
@@ -198,6 +204,8 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 	if cfg, err = rc.build(p.carrySkippedRoutes(live)); err != nil {
 		return out, err
 	}
+	// Taşımadan SONRA: atlanan uygulamanın taşınan adları da süzgeçten geçti.
+	out.SkippedRedirects = p.res.SkippedRedirects
 	// Compare after carrying the validated last known route of unhealthy
 	// apps, so drift repair cannot remove their routes while healing waits.
 	// This repairs changed upstreams and foreign routes as well as omissions.
@@ -463,6 +471,18 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 			d.ReleaseID, len(reps), notMine, notUp, extra)
 	}
 	return ups, ""
+}
+
+// WarnSkippedRedirects, uygulanamayan her yönlendirme adını ayrı bir uyarı
+// satırı olarak günlüğe yazar. Uzlaştırmayı çağıran her yol (açılış,
+// dağıtım, iyileştirme, vekil izleyicisi) bunu kullanır: atlanan ad yalnız
+// `app update` cevabında görünseydi, başka yoldan gelen çakışma sessiz kalırdı.
+//
+// Ad sırasıyla: harita gezintisi rastgele (Error ile aynı gerekçe).
+func WarnSkippedRedirects(skipped map[string]string) {
+	for _, name := range slices.Sorted(maps.Keys(skipped)) {
+		slog.Warn("redirect name could not be applied", "name", name, "reason", skipped[name])
+	}
 }
 
 // Error, atlanan uygulamaları tek satırlık okunabilir bir metne çevirir.

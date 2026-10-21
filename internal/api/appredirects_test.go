@@ -393,6 +393,52 @@ func TestUpdateAppWWWOnSubdomainSaysNoPartner(t *testing.T) {
 	}
 }
 
+// Saf -domain taşıması adları da taşır (eş yeni domainden türer): ad
+// değişmemiş sayılsa da cevap onları ve atlananı söylemeli.
+func TestUpdateAppDomainMoveReportsRedirects(t *testing.T) {
+	t.Run("eş taşınır, atlanan söylenir", func(t *testing.T) {
+		rec := &fakeReconciler{result: deploy.Result{
+			SkippedRedirects: map[string]string{"www.new.example": `collides with the domain of app "x"`}}}
+		srv, _ := newUpdateServer(t, rec)
+		spec := testSpec()
+		spec.Domain = "example.com"
+		spec.Www = boolp(true)
+		mustCreateApp(t, srv, spec)
+
+		d := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("new.example")}).GetRedirectDetail()
+		for _, want := range []string{
+			"reverse proxy updated — redirects: www.new.example → new.example",
+			`redirect www.new.example NOT applied (collides with the domain of app "x")`,
+		} {
+			if !strings.Contains(d, want) {
+				t.Errorf("RedirectDetail %q içinde %q yok", d, want)
+			}
+		}
+	})
+	t.Run("alt ada taşınınca eş kalkar", func(t *testing.T) {
+		srv, _ := newUpdateServer(t, &fakeReconciler{})
+		spec := testSpec()
+		spec.Domain = "example.com"
+		spec.Www = boolp(true)
+		mustCreateApp(t, srv, spec)
+
+		d := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("app.example.com")}).GetRedirectDetail()
+		if want := "redirects removed — app.example.com is a subdomain and has no www partner"; d != want {
+			t.Errorf("RedirectDetail = %q, beklenen %q", d, want)
+		}
+	})
+	t.Run("adsız uygulama", func(t *testing.T) {
+		srv, _ := newUpdateServer(t, &fakeReconciler{})
+		spec := testSpec()
+		spec.Domain = "example.com"
+		mustCreateApp(t, srv, spec)
+
+		if d := update(t, srv, &kadranv1.UpdateAppRequest{AppId: "blog", Domain: strp("new.example")}).GetRedirectDetail(); d != "" {
+			t.Errorf("adsız uygulamada RedirectDetail dolu: %q", d)
+		}
+	})
+}
+
 // Domain kaldırılınca mesajda boş domain basılmamalı.
 func TestUpdateAppRemovingDomainDoesNotPrintBlankDomain(t *testing.T) {
 	srv, _ := newUpdateServer(t, &fakeReconciler{})

@@ -8,7 +8,7 @@
 # ve o lisanslar metinlerinin ikiliyle birlikte verilmesini şart koşuyor.
 #
 # Kullanım (etiketlenmiş, temiz, LF bir klonda; derleme aracı CI'la aynı):
-#   GOTOOLCHAIN=go1.26.9 scripts/package-release.sh <boş çıktı dizini> <sürüm>
+#   GOTOOLCHAIN=go1.26.10 scripts/package-release.sh <boş çıktı dizini> <sürüm>
 #
 # Çıktı:
 #   kadran-<sürüm>-<os>-<arch>[.exe]           iş istasyonu aracı, 5 platform

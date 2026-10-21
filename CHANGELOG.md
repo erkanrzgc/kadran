@@ -33,6 +33,12 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 - For an app that is not routed at the moment, removing a name takes effect at once; an added
   name is saved and applied once the app is routed again (K-152).
 
+### Security
+
+- Both modules and CI now require Go 1.26.10, which fixes GO-2026-6809 in `crypto/x509`
+  (compromised intermediate certificates are distrusted); `govulncheck` reported it reachable
+  through the HTTP health probe. Building from source needs Go 1.26.10.
+
 ### Rolling back to v0.7.x
 
 Remove redirects (`-no-www` and `-redirect-rm`; this works even for an app that is not routed)

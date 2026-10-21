@@ -1,7 +1,7 @@
 // Kadran'ın ters vekili AYRI bir modüldür; gerekçe main.go'da.
 module github.com/erkanrzgc/kadran/build/caddy
 
-go 1.26.9
+go 1.26.10
 
 require github.com/caddyserver/caddy/v2 v2.11.7
 

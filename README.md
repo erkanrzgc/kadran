@@ -11,7 +11,7 @@
 [![CI](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/erkanrzgc/kadran?color=F59E0B)](https://github.com/erkanrzgc/kadran/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache_2.0-0E1116.svg)](LICENSE)
-[![Go 1.26.9+](https://img.shields.io/badge/Go-1.26.9%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
+[![Go 1.26.10+](https://img.shields.io/badge/Go-1.26.10%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 
 [Quick start](#quick-start) · [Why](#why-kadran) · [Features](#what-it-does) · [Security model](#security-model) · [Upgrading](#upgrading-from-v030) · [Known gaps](#known-gaps)
 
@@ -145,7 +145,7 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
   2 GB swap, where a Node build peaked with 237 MiB free, K-121), both x86_64. arm64
   binaries are built and CI runs the tests on real ARM hardware, but no arm64 server has
   been installed yet.
-- **Workstation:** Go 1.26.9+, an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is
+- **Workstation:** Go 1.26.10+, an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is
   used by default; `-client-key` picks another.
 - **Ports 80 and 443** must be free. The installer stops if `caddy`, `nginx`, `apache2`,
   `httpd` or `lighttpd` is running.
@@ -654,7 +654,7 @@ docs/                Architecture decision records
 scripts/             Surface checks, mutation tests — and the tests for those checks
 ```
 
-Requirements: Go 1.26.9+, Node 22.6+ (desktop only), [`buf`](https://buf.build/docs/installation),
+Requirements: Go 1.26.10+, Node 22.6+ (desktop only), [`buf`](https://buf.build/docs/installation),
 Docker for integration tests.
 
 ```bash

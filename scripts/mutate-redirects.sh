@@ -15,8 +15,10 @@
 #
 # Düzenek mutate-domaincheck.sh'tan: tek eşleşme şartı (K-127), yeşil taban
 # şartı, derleme kapısı (K-096), tam yoldan yedek. Ek olarak TESTS düzeninin
-# bu daldaki bütün yeni testleri kapsadığı denetlenir: kapsanmayan yeni test
-# sessizce mutantları ölçmez (önceki betiklerde yaşandı).
+# yönlendirme test dosyalarındaki (OWNED) bütün testleri kapsadığı ve TESTS'teki
+# her adın gerçekten koştuğu denetlenir: kapsanmayan ya da yeniden adlandırılıp
+# koşmaz olan test sessizce mutantları ölçmez (önceki betiklerde yaşandı).
+# Betik git'e dokunmaz; squash sonrası geçmişe bağlı değildir.
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -28,7 +30,14 @@ SNAMES=internal/store/appnames.go
 MIG=internal/store/migrations/0010_app_redirects.sql
 VALID=internal/api/appvalidate.go
 PKGS=(./internal/proxydrv/ ./internal/proxyguard/ ./internal/deploy/ ./internal/appnames/ ./internal/store/ ./internal/api/ ./cmd/kadran/)
-BASE=f86d096
+OWNED=(
+    cmd/kadran/appredirects_test.go
+    internal/api/appredirects_test.go
+    internal/appnames/appnames_test.go
+    internal/deploy/reconcile_redirects_test.go
+    internal/proxydrv/redirects_test.go
+    internal/store/appredirects_test.go
+)
 # Tam ad eşleşmesi: bir test adı değişir ya da eklenirse kapsama denetimi
 # aşağıda yakalar. build/caddy ayrı modül; testleri orada koşar.
 TESTS='^(TestAppCreateSendsWWWByDefault|TestAppCreateNoWWW|TestAppCreateRepeatsRedirect|TestAppUpdateWWWAndNoWWWConflict|TestAppUpdateRedirectRm|TestAppShowPrintsRedirects|TestAppCreateWarnsOnOldServer|TestAppCreateRedirectDNSWarnsButSucceeds|TestAppCreateSkipDNSCheckSkipsRedirects|TestAppCreateSubdomainHasNoWWW|TestRedirectChecksRunInParallel|TestValidateRedirects|TestCreateAppEchoesWWW|TestCreateAppNameConflictIsAlreadyExists|TestUpdateAppNamesOnlyReconciles|TestUpdateAppReportsSkippedRedirects|TestUpdateAppNamesReconcileFailureSaysSaved|TestUpdateAppAddAndRemoveSameRedirect|TestUpdateAppAuditCarriesRedirects|TestCreateAppAuditCarriesWWWAndRedirects|TestAppRedirectsRoundTripThroughProto|TestUpdateAppRejectsEmptyRedirectName|TestUpdateAppNamesOnlyOnUnroutedAppIsNotReportedAsApplied|TestUpdateAppWWWAloneReportsPartner|TestUpdateAppReportsSkippedWWWPartner|TestUpdateAppWWWOffWithNoNamesReportsRemoved|TestPartner|TestNames|TestConflict|TestReconcileAddsRedirectRoutes|TestReconcileSkipsOnlyTheCollidingRedirect|TestReconcileSkipsPartnerOfAnotherApp|TestReconcileCarriesLiveRedirectsOfSkippedApp|TestBuildConfigEmitsRedirectRoute|TestBuildConfigPlacesRedirectsAfterDomainRoutes|TestBuildConfigRejectsRedirectNameClashes|TestFixedConfigRejectsRedirectToUnroutedDomain|TestFixedConfigRejectsRedirectFromRoutedDomain|TestFixedConfigRejectsDuplicateRedirect|TestFixedConfigRejectsTooManyRedirects|TestFixedConfigRejectsInvalidRedirectName|TestSafeRoutesRoundTripsRedirects|TestSafeRoutesRejectsTamperedRedirect|TestRedirectOfRequiresExactLocationTemplate|TestSafeRoutesRejectsRedirectWithExtraHandler|TestRouteSetWithoutRedirectsKeepsWireFormat|TestLiveRedirects|TestLiveRedirectsIgnoresMalformedRoutes|TestVerifyAppliedDetectsRedirectTargetDrift|TestCreateAppStoresWWWAndRedirects|TestMigrationLeavesExistingAppsWithoutWWW|TestCreateAppRejectsNameUsedAsPartner|TestCreateAppRejectsRedirectThatIsAnotherDomain|TestCreateAppKeepsDomainTaken|TestUpdateAppMovesPartnerWithDomain|TestUpdateAppRejectsPartnerConflict|TestUpdateAppRedirectAddRemove|TestActiveDeploymentsCarryNames|TestBrokerLoadsTypedRedirectRoute|TestBrokerRejectsUntypedRedirects|TestBrokerRejectsTamperedLiveRedirect|TestMigration0005CarriesExistingDeploymentsForward)$'
@@ -44,12 +53,14 @@ fail=0
 
 # ── Kapsama denetimi ────────────────────────────────────────────────
 #
-# Bu dalda (BASE'ten beri) eklenen her Test* işlevi TESTS düzenine uymalı ve
-# `go test -list` çıktısında görünmeli (ad yanlışı ya da derleme etiketi
-# yüzünden hiç koşmayan test de sayılmaz). build/caddy ayrı modüldür.
-added=$(git diff "$BASE" -- '*_test.go' ':!build/caddy' | sed -n 's/^+func \(Test[A-Za-z0-9_]*\)(.*/\1/p' | sort -u)
-if [[ -z "$added" ]]; then
-    echo "!! KAPSAMA DENETİMİ: $BASE'ten beri eklenen test bulunamadı — git geçmişi eksik olabilir"
+# 1) OWNED dosyalardaki her Test* işlevi TESTS düzenine uymalı ve
+#    `go test -list` çıktısında görünmeli.
+# 2) TESTS'teki her ad `go test -list` çıktısında olmalı: değiştirilmiş
+#    dosyalardaki (guard_test.go, migration0005_test.go) adları da kapsar ve
+#    yeniden adlandırmayı yakalar. build/caddy ayrı modüldür.
+owned_tests=$(for f in "${OWNED[@]}"; do sed -n 's/^func \(Test[A-Za-z0-9_]*\)(.*/\1/p' "$f"; done | sort -u)
+if [[ -z "$owned_tests" ]]; then
+    echo "!! KAPSAMA DENETİMİ: OWNED dosyalarda test bulunamadı — dosya adları değişmiş olabilir"
     exit 1
 fi
 listed=$(go test "${PKGS[@]}" -list '.*' 2>/dev/null | sed -n 's/^\(Test[A-Za-z0-9_]*\)$/\1/p' | sort -u)
@@ -67,11 +78,18 @@ while IFS= read -r t; do
         echo "!! KAPSAMA: $t TESTS düzenine girmiyor — mutantlar bu testle ölçülmüyor"
         uncovered=1
     fi
-done <<<"$added"
+done <<<"$owned_tests"
+pattern_names=$(sed -e 's/^\^(//' -e 's/)\$$//' <<<"$TESTS" | tr '|' '\n')
+while IFS= read -r t; do
+    if ! grep -qx "$t" <<<"$listed"; then
+        echo "!! KAPSAMA: TESTS içindeki $t go test -list çıktısında yok (silinmiş ya da yeniden adlandırılmış)"
+        uncovered=1
+    fi
+done <<<"$pattern_names"
 if [[ $uncovered -ne 0 ]]; then
     exit 1
 fi
-echo "kapsama: $(wc -l <<<"$added") yeni test, hepsi TESTS içinde"
+echo "kapsama: $(wc -l <<<"$owned_tests") dosya testi + $(wc -l <<<"$pattern_names") TESTS adı, hepsi tutarlı"
 
 # mutate_in <dosya> <ad> <python-ifadesi>
 mutate_in() {

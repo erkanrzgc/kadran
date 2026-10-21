@@ -153,7 +153,7 @@ mutate "appSelect'ten env_json dusuruldu" "$STORE_APPS" \
     "./internal/store/" "Env"
 
 mutate "UPDATE cumlesi env_json yazmiyor" "$STORE_UPD" \
-    "s=s.replace('env_json = ?, volumes_json = ?, updated_at = ?','volumes_json = ?, updated_at = ?',1); s=s.replace('\t\tstring(env), string(vols), app.UpdatedAt.UnixNano(), app.ID,','\t\tstring(vols), app.UpdatedAt.UnixNano(), app.ID,',1); s=s.replace('\tenv, err := json.Marshal(sortedArgs(app.Env))','\tenv, err := json.Marshal(sortedArgs(app.Env))\n\t_ = env',1)" \
+    "s=s.replace('env_json = ?, volumes_json = ?, updated_at = ?','volumes_json = ?, updated_at = ?',1); s=s.replace('\t\tstring(env), string(vols), app.UpdatedAt.UnixNano(),\n','\t\tstring(vols), app.UpdatedAt.UnixNano(),\n',1); s=s.replace('\tenv, err := json.Marshal(sortedArgs(app.Env))','\tenv, err := json.Marshal(sortedArgs(app.Env))\n\t_ = env',1)" \
     "./internal/store/" "Env"
 
 mutate "birlestirme yerine tamamen degistirme" "$STORE_UPD" \

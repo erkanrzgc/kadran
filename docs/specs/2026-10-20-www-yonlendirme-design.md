@@ -45,14 +45,19 @@ Başarı ölçütleri:
 ## Kullanıcının gördüğü
 
 ```
-$ kadran app create site -repo github.com/u/site -domain example.com kadran-client@sunucu
-…
-  www       www.example.com → example.com (308)
-  ⚠ www.example.com does not point at the server yet; its certificate will be issued once it does.
+$ kadran app create -repo github.com/u/site -domain example.com site kadran-client@sunucu
+kadran: warning: www.example.com does not point at the server yet; it is redirected once it does and gets its own certificate
   DNS host  Vercel (ns1.vercel-dns.com, ns2.vercel-dns.com)
-  Set this record:
+  Set this record and delete other A, AAAA, ALIAS or CNAME records for the same name:
       A     www          203.0.113.10
+  …
+App created: site
+  …
+  Redirects: www.example.com → example.com (308)
 ```
+
+(Uyarı ve kayıt rehberi stderr'e, "App created" bloğu stdout'a yazılır; örnek
+`cmd/kadran/appredirects.go` ve `domainguide.go`'nun gerçek çıktısıdır.)
 
 - `app create`: `-no-www` www'yi kapatır; `-redirect <ad>` (birden çok kez) ek ad.
 - `app update`: `-www` / `-no-www` aç/kapa; `-redirect <ad>` ekler, `-redirect-rm <ad>`
@@ -113,7 +118,11 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
   taşınmadı" diye okur ve sağlam bir domain taşınmasını hata gösterirdi **(karar)**.
 - Yeni sürümü rotalanamayan bir uygulamanın canlı rotası bugün taşınıyor (`carrySkippedRoutes`);
   o rotanın canlı yönlendirmeleri de aynı yolla taşınır, yoksa başarısız bir dağıtım www'yi
-  düşürürdü **(karar)**.
+  düşürürdü **(karar)**. Yalnız HÂLÂ İSTENEN adlar taşınır: rotalanmayan uygulamada da
+  `-no-www` / `-redirect-rm` hemen etkili olur; eklenen ad uygulama rotalanınca uygulanır
+  (son inceleme, K-152).
+- Aracının toplam sınırı (`MaxRedirects`) uzlaştırmada da uygulanır: sınırdan sonraki ad
+  `SkippedRedirects`'e yazılır, küme aracının reddedeceği boyuta çıkmaz.
 
 ### Ters vekil aracısı (kadran-proxy) — güvenlik sınırı
 
@@ -175,7 +184,8 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
 - API/depo: çakışma kuralının her kolu (yeni domain = mevcut türetilmiş eş dahil), sınır 8,
   boş domain, update ekle/çıkar/aç/kapa, domain taşınınca eş de taşınır, göç sonrası mevcut
   uygulamalar `www=false`.
-- Reconcile: çakışan yönlendirme yalnız kendini düşürür, `Skipped`'e yazılır.
+- Reconcile: çakışan yönlendirme yalnız kendini düşürür, `SkippedRedirects`'e yazılır
+  (`Skipped`'e değil).
 - proxydrv/proxyguard: `To` kümede değilse ret; `From` bir domain ya da tekrar ise ret;
   sınır; `SafeRoutes` fazladan başlık/gövde/yer tutucu taşıyan yönlendirme rotasını reddeder;
   yönlendirmesiz küme bugünkü JSON'u birebir üretir (`omitempty`).
@@ -183,7 +193,10 @@ $ kadran app create site -repo github.com/u/site -domain example.com kadran-clie
 - CLI: bayraklar, `app show`/`-json`, eski sunucu uyarısı (cevapta alan yok), yönlendirme
   adı DNS'i yanlışken create durmaz ve kayıt satırını basar, paralel denetim.
 - Uçtan uca (gerçek kadrand, `scripts/e2e-cli*.sh`): `curl --resolve` ile www → 308, yol ve
-  sorgu korunur; `app update -domain` sonrası yönlendirme yeni domaine gider.
+  sorgu korunur; `app update -domain` sonrası yönlendirme yeni domaine gider. **Karar E1:** e2e
+  düzeneğinde Caddy/aracı yok; bu curl denetimi C projesindeki canlı doğrulamaya taşındı.
+  Yerine `build/caddy/redirect_readback_test.go` altın rotayı gerçek Caddy'ye yükleyip admin
+  API'sinden (yalnız loopback) geri okur ve anlamca karşılaştırır.
 - Mutasyon: `scripts/mutate-*.sh`'a aracının `To` denetimi, `From` çakışması, reconcile atlama
   ve varsayılan kapalı için mutantlar; yeni test adlarının `TESTS` düzenine uyduğu
   denetlenir.

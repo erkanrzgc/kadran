@@ -132,9 +132,10 @@ this feature keep www **off** after the upgrade; turning it on is a deliberate
 `app update -www`. The flag is stored, not the name, so `app update -domain` moves the partner
 along with the domain.
 
-**Extra names.** `-redirect <name>` adds a name and can be repeated; `-redirect-rm <name>`
-removes one (on `app update`). An app can have at most 8 explicit names, they must be valid
-lowercase domain names, and an app without a domain cannot have any.
+**Extra names.** `-redirect <name>` adds a name and can be repeated (on `app create` and
+`app update`); `-redirect-rm <name>` removes one (on `app update`). An app can have at most 8
+explicit names, they must be valid lowercase domain names, and an app without a domain cannot
+have any.
 
 ```bash
 kadran app create -repo github.com/you/site -domain example.com -redirect old.example.net site kadran-client@your-server
@@ -155,9 +156,10 @@ A      www      203.0.113.10
 CNAME  www      example.com.      # alternative: let www follow the root domain
 ```
 
-`app create` and `app update` check every redirect name (the www partner included) after the
-server has accepted the request, in parallel. These checks only warn and never change the exit
-status: a wrong record prints
+`app create` checks every redirect name (the www partner included) after the server has
+accepted the request, in parallel; `app update` does so only when `-domain`, `-www`, `-no-www`
+or `-redirect` is given. These checks only warn and never change the exit status: a wrong
+record prints
 
 ```text
 kadran: warning: www.example.com does not point at the server yet; it is redirected once it does and gets its own certificate
@@ -166,10 +168,10 @@ kadran: warning: www.example.com does not point at the server yet; it is redirec
 followed by the same DNS host and record guidance as the main domain. The name starts working by
 itself once its DNS is right. `-skip-dns-check` skips these checks as well as the main one.
 
-**Certificates.** Each name gets its own certificate from Caddy, requested like the main
-domain's once the name points at the server. Whether a www name without DNS leaves the root
-domain's certificate unaffected has not been measured on a live server yet (K-152 lists it as
-open).
+**Certificates.** Caddy requests a separate certificate for each name, the same way as for the
+main domain; a name whose DNS does not point at the server cannot get one. How soon it arrives
+after the DNS is fixed, and whether a www name without DNS leaves the root domain's certificate
+unaffected, have not been measured on a live server yet (K-152 lists certificates as open).
 
 **Seeing the result.** `app show` and the result of `app create` / `app update` print one line
 with every name and the target:
@@ -181,9 +183,24 @@ with every name and the target:
 The line is absent when the app has no extra names. If the server cannot apply a name,
 `app update` prints `redirect <name> NOT applied (<reason>)`, for example
 `collides with the domain of app "site"` or `already redirects to "example.net"`, and the other
-routes keep working. Against a server that predates this feature the CLI prints
-`kadran: warning: this server does not support redirects (www, -redirect); upgrade kadrand` and
-does not print a `Redirects` line.
+routes keep working; `kadrand` also writes such names to its journal (at startup, on deploy, on
+heal and from the proxy watcher). `app update -domain` reports the names it moved, and `-www` on
+a subdomain says `<domain> is a subdomain and has no www partner`.
+
+If the app is not routed at the moment (its current release has no running replica), removing
+a name takes effect at once (`redirects removed: … — applied even though the app is not
+routed`), while an added name is saved and applied once the app is routed again
+(`redirects SAVED (…) but NOT applied … kadran deploy <app>`).
+
+Against a server that predates this feature, a request that asks for www or a redirect name
+prints a warning and no `Redirects` line:
+
+```text
+kadran: warning: this server does not support redirects (www, -redirect); upgrade kadrand
+```
+
+An `app update` that changes only names (`-www`, `-no-www`, `-redirect`, `-redirect-rm`) fails
+with the same text instead, because the old server sees an empty update.
 
 ## Common traps
 

@@ -11424,8 +11424,17 @@ Caddy modülü GEREKMİYOR.
 - **D1: sürüm düşürme.** Yönlendirme canlıyken kadrand bu sürümün altına düşürülürse eski çözücü
   aracının cevabını reddeder ve onarım/atlanmış-uygulama uzlaştırması temiz bir uzlaştırmaya
   kadar takılabilir. Çözüm: sürüm düşürmeden önce yönlendirmeleri kaldır (`-no-www` /
-  `-redirect-rm`). CHANGELOG "Upgrade notes"ta belgelendi. Yanılma maliyeti: olağandışı bir
-  sürüm düşürmeden sonra takılmış ters vekil.
+  `-redirect-rm`). CHANGELOG "Rolling back to v0.7.x"te belgelendi. Yanılma maliyeti:
+  olağandışı bir sürüm düşürmeden sonra takılmış ters vekil.
+- **E1: e2e curl denetimi canlı doğrulamaya taşındı.** e2e düzeneğinde Caddy/aracı yok;
+  `www → 308`, yol/sorgu ve `-domain` sonrası hedef C projesinin canlı doğrulamasında ölçülür.
+  Yerine `build/caddy/redirect_readback_test.go` altın rotayı gerçek Caddy'ye yükleyip admin
+  API'sinden (yalnız loopback) geri okur ve anlamca karşılaştırır: `SafeRoutes`'un DeepEqual'ı
+  bu varsayıma dayanıyor. Yanılma maliyeti: kadrand→aracı→Caddy kopukluğu ancak canlıda görünür.
+- **Rotalanmayan uygulamada kaldırma hemen uygulanır (son inceleme).** `carrySkippedRoutes`
+  canlı yönlendirmeyi yalnız ad hâlâ istenen adlar arasındaysa taşır; hedef koşulu yapısal
+  (yalnız taşınan domaine gidenler). `-no-www` / `-redirect-rm` "removed" derken 308 artık
+  canlıda kalmıyor; eklenen ad uygulama rotalanınca uygulanır ve cevap ikisini ayrı söyler.
 
 ### Açık
 

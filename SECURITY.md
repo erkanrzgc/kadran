@@ -76,8 +76,9 @@ crosses one of these is in scope and will be treated as high severity:
 8. **Escaping the proxy capability broker.** `kadrand` may submit typed domain/IP/port
    routes to `kadran-proxy`; it cannot reach Caddy's raw admin socket. Arbitrary Caddy
    handlers, `{file.…}` response bodies, admin/listener changes and Unix/loopback
-   upstreams are outside that capability. The only non-proxy handler the broker accepts is a
-   fixed-shape 308 redirect whose target must be a routed domain (K-152). Bypassing it is in scope (K-143).
+   upstreams are outside that capability. Bypassing the broker is in scope (K-143).
+   The only non-proxy handler it accepts is a fixed-shape 308 redirect whose target
+   must be a routed domain (K-152).
 9. **Leaking private repository credentials.** Opt-in repository credentials belong to
    the executor's server configuration. They must not enter application definitions,
    the desktop, daemon database, Docker context, audit records or error messages.

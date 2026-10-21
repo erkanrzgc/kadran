@@ -3,6 +3,7 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"strings"
@@ -255,6 +256,40 @@ func TestReconcileDoesNotCarryRedirectToOldDomainOfSkippedApp(t *testing.T) {
 		if got := proxydrv.LiveRedirects(proxy.loaded, to); len(got) != 0 {
 			t.Errorf("%s hedefli yönlendirme taşındı: %v", to, got)
 		}
+	}
+}
+
+// Aracı MaxRedirects'i aşan kümeyi BÜTÜNÜYLE reddeder (her uygulama düşer):
+// uzlaştırma sınırdan sonrasını ad ad atlamalı, kümeyi sınırda tutmalı.
+func TestReconcileStopsAtTheBrokerRedirectLimit(t *testing.T) {
+	names := make([]string, 0, proxydrv.MaxRedirects+1)
+	for i := range proxydrv.MaxRedirects + 1 {
+		names = append(names, fmt.Sprintf("r%04d.example.net", i))
+	}
+	last := names[len(names)-1]
+	deps := fakeDeployments{
+		{AppID: "big", ReleaseID: "r1", Domain: "example.com", Redirects: names, ContainerPort: 8080, Replicas: 1},
+	}
+	reps := fakeReplicas{byApp: map[string][]execclient.Replica{
+		"big": {running("big", "r1", 0, "172.18.0.5")},
+	}}
+	proxy := &fakeProxy{}
+
+	res, err := mustReconciler(t, deps, reps, proxy).Reconcile(context.Background())
+	if err != nil {
+		t.Fatalf("uzlaştırılamadı: %v", err)
+	}
+	if _, err := proxydrv.SafeRoutes(proxy.loaded); err != nil {
+		t.Fatalf("aracı kümeyi reddederdi, bütün uygulamalar düşerdi: %v", err)
+	}
+	if got := proxydrv.LiveRedirects(proxy.loaded, "example.com"); len(got) != proxydrv.MaxRedirects {
+		t.Errorf("%d yönlendirme yüklendi, %d bekleniyordu", len(got), proxydrv.MaxRedirects)
+	}
+	if want := map[string]string{last: "route set redirect limit reached"}; !reflect.DeepEqual(res.SkippedRedirects, want) {
+		t.Errorf("SkippedRedirects = %v, %v bekleniyordu", res.SkippedRedirects, want)
+	}
+	if len(res.Skipped) != 0 {
+		t.Errorf("sınır uygulamayı atlattı: %v", res.Skipped)
 	}
 }
 

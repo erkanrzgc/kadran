@@ -3,7 +3,14 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.8.0 — 2026-10-22
+
+DNS guidance and www/redirect names (K-151, K-152). The protocol is unchanged (3), so v0.7.x
+clients keep working; a v0.8.0 client talking to an older server warns instead of claiming
+that redirects exist. Apps created before this release keep www off after the upgrade; turn it
+on with `kadran app update -www <app> <target>`. Upgrade the server with `bootstrap` as usual:
+it restarts the proxy broker before `kadrand`. Before going back to v0.7.x, read "Rolling back
+to v0.7.x" below. Building from source needs Go 1.26.10.
 
 ### Added
 

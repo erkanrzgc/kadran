@@ -11272,7 +11272,7 @@ geri bırakırdı).
 
 ## K-151 — DNS yönlendirme: firma tanıma, yetkili sorgu, kayıt firması (2026-10-15)
 
-**Durum:** `dns-yonlendirme` dalında uygulandı; henüz yayımlanmadı.
+**Durum:** PR #14 (`3d01847`) birleşti; v0.8.0 ile yayında.
 
 ### Bağlam
 
@@ -11363,7 +11363,7 @@ Uygulandı (`dns-yonlendirme` dalı), yayımlanmadı. Rehber: `docs/guides/domai
 
 ## K-152 — www ve yönlendirme adları: bir uygulama, birden çok ad (2026-10-20)
 
-**Durum:** `www-yonlendirme` dalında uygulandı; henüz yayımlanmadı. Özellik: `docs/specs/2026-10-20-www-yonlendirme-design.md`.
+**Durum:** PR #15 (`30b690f`) birleşti; v0.8.0 ile yayında. Özellik: `docs/specs/2026-10-20-www-yonlendirme-design.md`.
 
 ### Bağlam
 

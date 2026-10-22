@@ -104,6 +104,7 @@ mutate "Reconcile cagrisi silindi" "TestHealRestartsStoppedContainerAndReroutes"
 	if err != nil {
 		return recreated, err
 	}
+	WarnSkippedRedirects(res.SkippedRedirects)
 	// POZİTİF ÖLÇÜT (K-042)''','''	res := Result{Skipped: map[string]string{}}
 	_ = res
 	// POZİTİF ÖLÇÜT (K-042)''',1)"

@@ -6,7 +6,7 @@ Son inceleme düzeltmelerini ([K-148](../decisions.md)) içeren commit'i kullan:
 
 ## Birlikte yükseltilen parçalar
 
-`kadran`, `kadrand`, `kadran-exec`, `kadran-connect`, `kadran-vault`, `kadran-caddy`, yeni `kadran-proxy` ve systemd/tmpfiles dosyaları aynı paketten gelmelidir. Eski daemon'u yalnız yeni masaüstüyle kullanmak proxy güvenlik sınırını düzeltmez. `scripts/build-release.sh` ve `scripts/package-release.sh` yeni broker'ı pakete ekler. Derleme için Go 1.26.9 veya daha yeni yamalı araç zinciri gerekir; özel Caddy modülü 2.11.7 kullanır.
+`kadran`, `kadrand`, `kadran-exec`, `kadran-connect`, `kadran-vault`, `kadran-caddy`, yeni `kadran-proxy` ve systemd/tmpfiles dosyaları aynı paketten gelmelidir. Eski daemon'u yalnız yeni masaüstüyle kullanmak proxy güvenlik sınırını düzeltmez. `scripts/build-release.sh` ve `scripts/package-release.sh` yeni broker'ı pakete ekler. Derleme için Go 1.26.10 veya daha yeni yamalı araç zinciri gerekir; özel Caddy modülü 2.11.7 kullanır.
 
 Bootstrap yükseltmesi eski daemon/Caddy bağlantılarını kapatır, ham admin izinlerini değiştirir ve broker'ı etkinleştirir. Güvenlik geçişi kısa proxy kesintisi gerektirebilir; bakım penceresi ayır. Eski açık admin bağlantısını yalnız chmod ile daraltmak yeterli değildir.
 

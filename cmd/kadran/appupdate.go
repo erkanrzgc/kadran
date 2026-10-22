@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"sort"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // appUpdateFlags, `app update`'in kabul ettiği seçeneklerin değerleridir.
@@ -28,6 +30,12 @@ type appUpdateFlags struct {
 	// proto3'te repeated alanlarin presence'i yok.
 	volumes      []*kadranv1.AppVolume
 	volumeRemove []string
+
+	// www/noWWW: ikisi birden verilemez; redirectAdd/redirectRemove ADA göre birleştirilir.
+	www            bool
+	noWWW          bool
+	redirectAdd    []string
+	redirectRemove []string
 }
 
 // runAppUpdate, var olan bir uygulamanın alanlarını değiştirir.
@@ -49,6 +57,10 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		"persistent volume NAME:/mount/point[:ro]; volumes not named are LEFT ALONE")
 	volumeRemove := c.stringSliceFlag(fs, "volume-rm",
 		"name of a volume to detach (does NOT DELETE the data, only removes the mount)")
+	www := fs.Bool("www", false, "also serve and redirect the www partner of the domain")
+	noWWW := fs.Bool("no-www", false, "stop serving the www partner of the domain")
+	redirectAdd := c.stringSliceFlag(fs, "redirect", "extra name that redirects (308) to the domain (repeatable)")
+	redirectRemove := c.stringSliceFlag(fs, "redirect-rm", "extra redirect name to remove (repeatable)")
 	skipDNS := fs.Bool(skipDNSCheckFlag, false, "continue even if the domain's DNS does not point at the server (e.g. Cloudflare proxy)")
 	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
@@ -80,12 +92,20 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	v.envRemove = *envRemove
 	v.volumes = *volumes
 	v.volumeRemove = *volumeRemove
+	v.www = *www
+	v.noWWW = *noWWW
+	v.redirectAdd = *redirectAdd
+	v.redirectRemove = *redirectRemove
+
+	if set["www"] && set["no-www"] {
+		return c.usageError("-www and -no-www cannot be used together")
+	}
 
 	req := buildUpdateRequest(fs.Arg(0), v, set)
 	if isEmptyUpdate(req) {
 		return c.usageError("nothing to change — " +
 			"use -domain, -branch, -health-path, -replicas, -env, " +
-			"-env-rm, -volume or -volume-rm")
+			"-env-rm, -volume, -volume-rm, -www, -no-www, -redirect or -redirect-rm")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -107,8 +127,16 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 
 	resp, err := conn.RPC().UpdateApp(ctx, req)
 	if err != nil {
+		if oldServerRejectedNames(req, err) {
+			return c.failUpdate(errors.New(redirectsUnsupported))
+		}
 		return c.failUpdate(err)
 	}
+
+	s := resp.GetApp().GetSpec()
+	touchesNames := req.Domain != nil || req.Www != nil || len(req.GetRedirectAdd()) > 0
+	known := c.afterRedirectReply(ctx, s, req.GetWww() || len(req.GetRedirectAdd()) > 0,
+		touchesNames, fs.Arg(1), *skipDNS)
 
 	if *asJSON {
 		body, err := protoToJSON(resp)
@@ -118,10 +146,12 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		return c.writeJSON(json.RawMessage(body))
 	}
 
-	s := resp.GetApp().GetSpec()
 	fmt.Fprintf(c.stdout, "App updated: %s\n", s.GetAppId())
 	if req.Domain != nil {
 		fmt.Fprintf(c.stdout, "  Domain  : %s\n", orNone(s.GetDomain()))
+	}
+	if known {
+		fmt.Fprint(c.stdout, redirectsLine(s))
 	}
 	if req.GitBranch != nil {
 		fmt.Fprintf(c.stdout, "  Branch  : %s (used by the next deploy)\n", s.GetGitBranch())
@@ -175,6 +205,10 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	// Ters vekilin durumu SUSULAMAZ. Alan adı değişip trafiğin
 	// taşınmaması mümkün ve o durumda "güncellendi" tek başına yanıltıcı.
 	if d := resp.GetProxyDetail(); d != "" {
+		fmt.Fprintf(c.stdout, "\n%s\n", d)
+	}
+
+	if d := resp.GetRedirectDetail(); d != "" {
 		fmt.Fprintf(c.stdout, "\n%s\n", d)
 	}
 
@@ -271,6 +305,18 @@ func buildUpdateRequest(appID string, v appUpdateFlags, set map[string]bool) *ka
 	if set["volume-rm"] {
 		req.VolumeRemove = v.volumeRemove
 	}
+	if set["www"] {
+		req.Www = proto.Bool(v.www)
+	}
+	if set["no-www"] {
+		req.Www = proto.Bool(!v.noWWW)
+	}
+	if set["redirect"] {
+		req.RedirectAdd = v.redirectAdd
+	}
+	if set["redirect-rm"] {
+		req.RedirectRemove = v.redirectRemove
+	}
 	return req
 }
 
@@ -278,7 +324,8 @@ func isEmptyUpdate(req *kadranv1.UpdateAppRequest) bool {
 	return req.Domain == nil && req.GitBranch == nil &&
 		req.HealthPath == nil && req.Replicas == nil &&
 		len(req.GetEnv()) == 0 && len(req.GetEnvRemove()) == 0 &&
-		len(req.GetVolumes()) == 0 && len(req.GetVolumeRemove()) == 0
+		len(req.GetVolumes()) == 0 && len(req.GetVolumeRemove()) == 0 &&
+		req.Www == nil && len(req.GetRedirectAdd()) == 0 && len(req.GetRedirectRemove()) == 0
 }
 
 // orNone, boş değeri görünür kılar.

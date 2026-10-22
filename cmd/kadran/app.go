@@ -9,6 +9,7 @@ import (
 	"text/tabwriter"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 // runApp, `app` alt komutlarını dağıtır.
@@ -42,6 +43,8 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 	dockerfile := fs.String("dockerfile", "", "Dockerfile path relative to the repository root")
 	domain := fs.String("domain", "", "domain to serve the app on; if empty the app is reachable only from the internal network")
 	skipDNS := fs.Bool(skipDNSCheckFlag, false, "continue even if the domain's DNS does not point at the server (e.g. Cloudflare proxy)")
+	noWWW := fs.Bool("no-www", false, "do not also serve and redirect the www partner of the domain")
+	redirects := c.stringSliceFlag(fs, "redirect", "extra name that redirects (308) to the domain (repeatable)")
 	port := fs.Uint("port", 8080, "port the app listens on inside the container")
 	replicas := fs.Uint("replicas", 1, "number of replicas")
 	health := fs.String("health-path", "/", "health check path")
@@ -89,11 +92,15 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		Replicas:       uint32(*replicas), //nolint:gosec // sunucu 1-64 doğruluyor
 		HealthPath:     *health,
 		Domain:         *domain,
+		Redirects:      *redirects,
 		Limits: &kadranv1.ResourceLimits{
 			MemoryBytes: mem,
 			CpuMillis:   uint32(*cpu),   //nolint:gosec // sunucu doğruluyor
 			BlkioWeight: uint32(*blkio), //nolint:gosec // sunucu 10-1000 doğruluyor
 		},
+	}
+	if *domain != "" {
+		spec.Www = proto.Bool(!*noWWW)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -116,6 +123,10 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("could not create the app: %w", err))
 	}
 
+	s := resp.GetApp().GetSpec()
+	known := c.afterRedirectReply(ctx, s, spec.GetWww() || len(spec.GetRedirects()) > 0,
+		true, fs.Arg(1), *skipDNS)
+
 	if *asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
@@ -124,11 +135,13 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		return c.writeJSON(json.RawMessage(body))
 	}
 
-	s := resp.GetApp().GetSpec()
 	fmt.Fprintf(c.stdout, "App created: %s\n", s.GetAppId())
 	fmt.Fprintf(c.stdout, "  Source  : %s/%s/%s (%s)\n",
 		s.GetGitHost(), s.GetGitOwner(), s.GetGitRepo(), s.GetGitBranch())
 	fmt.Fprintf(c.stdout, "  Port    : %d · replicas: %d\n", s.GetContainerPort(), s.GetReplicas())
+	if known {
+		fmt.Fprint(c.stdout, redirectsLine(s))
+	}
 	fmt.Fprintf(c.stdout, "\nTo deploy: kadran deploy %s\n", s.GetAppId())
 	return exitOK
 }
@@ -231,6 +244,9 @@ func (c *cli) printApp(resp *kadranv1.GetAppResponse) {
 		s.GetGitHost(), s.GetGitOwner(), s.GetGitRepo(), s.GetGitBranch())
 	if d := s.GetDomain(); d != "" {
 		fmt.Fprintf(c.stdout, "  Domain   : %s\n", d)
+	}
+	if serverKnowsRedirects(s) {
+		fmt.Fprint(c.stdout, redirectsLine(s))
 	}
 	fmt.Fprintf(c.stdout, "  Port     : %d · replicas: %d · health: %s\n",
 		s.GetContainerPort(), s.GetReplicas(), s.GetHealthPath())

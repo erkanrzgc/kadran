@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"reflect"
 	"sort"
 	"time"
 )
@@ -329,6 +330,35 @@ func LiveUpstreams(live *Config, host string) []Upstream {
 	return out
 }
 
+// LiveRedirects, live içinde to domainine yönlenen KAYNAK adları rota
+// sırasıyla döndürür.
+//
+// Onarım, atlanan (sağlıksız) uygulamanın canlı yönlendirmelerini taşımak
+// için kullanır (LiveUpstreams'in yönlendirme karşılığı). Canlı yapılandırma
+// güvenilir kaynak değil: yalnız aracının üreteceği TAM rota (redirectRoute)
+// ve geçerli adlar kabul edilir, kurcalanmış rota taşınmaz.
+func LiveRedirects(live *Config, to string) []string {
+	var out []string
+	if live == nil || live.Apps == nil || live.Apps.HTTP == nil {
+		return out
+	}
+	for _, srv := range live.Apps.HTTP.Servers {
+		if srv == nil {
+			continue
+		}
+		for _, r := range srv.Routes {
+			from, target, ok := redirectOf(r)
+			if !ok || target != to || !ValidDomain(from) || !ValidDomain(target) {
+				continue
+			}
+			if reflect.DeepEqual(r, redirectRoute(from, target)) {
+				out = append(out, from)
+			}
+		}
+	}
+	return out
+}
+
 func routesByHost(cfg *Config) map[string][]string {
 	out := map[string][]string{}
 	if cfg == nil || cfg.Apps == nil || cfg.Apps.HTTP == nil {
@@ -343,6 +373,14 @@ func routesByHost(cfg *Config) map[string][]string {
 			for _, h := range r.Handle {
 				for _, u := range h.Upstreams {
 					dials = append(dials, u.Dial)
+				}
+				// Yönlendirme rotasının "hedefi" Location şablonudur; verifyApplied
+				// hedef kaymasını da görsün. Adres olmadığından LiveUpstreams
+				// bunu eler.
+				if h.Handler == "static_response" {
+					for _, loc := range h.Headers["Location"] {
+						dials = append(dials, "redirect "+loc)
+					}
 				}
 			}
 			for _, m := range r.Match {

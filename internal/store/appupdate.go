@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
+
+	"github.com/erkanrzgc/kadran/internal/appnames"
 )
 
 // ErrDomainTaken, alan adının BAŞKA bir uygulamaya ait olduğunu bildirir.
@@ -102,6 +105,13 @@ type AppUpdate struct {
 	// Diskteki dizin olduğu gibi kalır. Yıkıcı olan asla örtük olmaz.
 	Volumes      []VolumeMount
 	VolumeRemove []string
+
+	// WWW, www eşini açar/kapatır (nil = dokunma). RedirectAdd/RedirectRemove
+	// açık adları env gibi BİRLEŞTİRİR: proto3'te repeated alanın presence'ı
+	// yok. Önce eklenir sonra çıkarılır; olmayan adı çıkarmak sessizdir.
+	WWW            *bool
+	RedirectAdd    []string
+	RedirectRemove []string
 }
 
 // IsEmpty, hiçbir alanın belirtilmediğini söyler.
@@ -109,7 +119,17 @@ func (u AppUpdate) IsEmpty() bool {
 	return u.Domain == nil && u.GitBranch == nil &&
 		u.HealthPath == nil && u.Replicas == nil &&
 		len(u.Env) == 0 && len(u.EnvRemove) == 0 &&
-		len(u.Volumes) == 0 && len(u.VolumeRemove) == 0
+		len(u.Volumes) == 0 && len(u.VolumeRemove) == 0 &&
+		u.WWW == nil && len(u.RedirectAdd) == 0 && len(u.RedirectRemove) == 0
+}
+
+// ChangesNames, güncellemenin www değerini ya da sonuç ad listesini
+// GERÇEKTEN değiştirip değiştirmediğini söyler (ChangesDomain gibi "değişti
+// mi" sorusu: çağıran bunu ters vekili yeniden uzlaştırmak için kullanır).
+func (u AppUpdate) ChangesNames(current App) bool {
+	next := u.Apply(current)
+	return next.WWW != current.WWW ||
+		!slices.Equal(sortedNames(next.Redirects), sortedNames(current.Redirects))
 }
 
 // ChangesEnv, güncellemenin ortam değişkenlerine dokunup dokunmadığını
@@ -170,6 +190,23 @@ func (u AppUpdate) applyTo(app *App) {
 	}
 	applyEnv(app, u.Env, u.EnvRemove)
 	applyVolumes(app, u.Volumes, u.VolumeRemove)
+	if u.WWW != nil {
+		app.WWW = *u.WWW
+	}
+	applyRedirects(app, u.RedirectAdd, u.RedirectRemove)
+}
+
+// applyRedirects, açık adları YENİ bir dilime birleştirir (applyEnv ile aynı
+// gerekçe: dilim kopyası alttaki diziyi paylaşır). Önce ekle, sonra çıkar.
+func applyRedirects(app *App, add, remove []string) {
+	if len(add) == 0 && len(remove) == 0 {
+		return
+	}
+	merged := make([]string, 0, len(app.Redirects)+len(add))
+	merged = append(merged, app.Redirects...)
+	merged = append(merged, add...)
+	merged = slices.DeleteFunc(merged, func(n string) bool { return slices.Contains(remove, n) })
+	app.Redirects = sortedNames(merged)
 }
 
 // applyEnv, birleştirmeyi YENİ bir haritaya yapar.
@@ -291,8 +328,24 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 		return App{}, fmt.Errorf("could not read the app: %w", err)
 	}
 
+	// Ad denetimi yalnız domain ya da ad kümesi DEĞİŞİNCE: önceden var olan
+	// bir çakışma (eski sürümden kalmış) ilgisiz -replicas/-env/-branch
+	// güncellemelerini kilitlememeli. Değişim sorusu yazılmadan ÖNCE sorulur.
+	namesMoved := upd.ChangesDomain(app.Domain) || upd.ChangesNames(app)
 	upd.applyTo(&app)
 	app.UpdatedAt = time.Now()
+
+	if namesMoved {
+		if err := checkNames(ctx, tx, appnames.Owner{
+			AppID: app.ID, Domain: app.Domain, WWW: app.WWW, Redirects: app.Redirects,
+		}); err != nil {
+			return App{}, err
+		}
+	}
+	redirects, err := marshalNames(app.Redirects)
+	if err != nil {
+		return App{}, err
+	}
 
 	// Birleştirilmiş harita yeniden serileştiriliyor. Sütun cümleye
 	// EKLENMEZSE `-env` sessizce işlemsiz kalır: fonksiyon güncellenmiş
@@ -311,12 +364,14 @@ func (s *Store) UpdateApp(ctx context.Context, id string, upd AppUpdate) (App, e
 	const q = `
 		UPDATE apps SET
 			git_branch = ?, health_path = ?, domain = ?, replicas = ?,
-			env_json = ?, volumes_json = ?, updated_at = ?
+			env_json = ?, volumes_json = ?, updated_at = ?,
+			www = ?, redirects_json = ?
 		WHERE id = ?`
 
 	if _, err := tx.ExecContext(ctx, q,
 		app.GitBranch, app.HealthPath, app.Domain, app.Replicas,
-		string(env), string(vols), app.UpdatedAt.UnixNano(), app.ID,
+		string(env), string(vols), app.UpdatedAt.UnixNano(),
+		app.WWW, redirects, app.ID,
 	); err != nil {
 		if isUniqueViolation(err) {
 			// Kimlik değişmiyor, dolayısıyla ihlal edilebilecek TEK kısıt

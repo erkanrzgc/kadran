@@ -175,7 +175,7 @@ mutate "saglik olcusu >= yerine > (bir fazla sayar)" "$ROLLOUT" \
 
 UPD='TestUpdateAppReconcilesWhenReplicaCountChanges|TestUpdateAppSkipsReconcileWhenNothingRoutableChanges'
 
-mutate "replika uzlastirma tetikleyicisi kaldirildi" "$APPUPDATE"     "s=s.replace('\tif domainMoved || replicasChanged {','\t_ = replicasChanged\n\tif domainMoved {',1)"     "./internal/api/" "$UPD"
+mutate "replika uzlastirma tetikleyicisi kaldirildi" "$APPUPDATE"     "s=s.replace('\tif domainMoved || replicasChanged || namesChanged {','\t_ = replicasChanged\n\tif domainMoved || namesChanged {',1)"     "./internal/api/" "$UPD"
 
 mutate "replika esitlik kontrolu yok (her zaman tetikler)" "$APPUPDATE"     "s=s.replace('replicasChanged := upd.Replicas != nil and *upd.Replicas != current.Replicas'.replace(' and ',' && '),'replicasChanged := upd.Replicas != nil',1)"     "./internal/api/" "$UPD"
 

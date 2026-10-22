@@ -444,6 +444,14 @@ message AppSpec {
   // Değişikliği BİR SONRAKİ dağıtımda etkili olur — bağlama konteyner
   // oluşturulurken kuruluyor ve Docker onu sonradan değiştiremez.
   repeated AppVolume volumes = 14;
+
+  // www bir BAYRAK: eş ad (example.com <-> www.example.com) domainden türetilir,
+  // saklanmaz. Alt ad uygulamasında eş yoktur. Eski sunucu bu alanı düşürür
+  // (K-152).
+  optional bool www = 15;
+
+  // Ek yönlendirme adları; domaine 308 ile yönlenir.
+  repeated string redirects = 16;
 }
 
 // AppVolume, kullanıcıya görünen hacim tanımıdır.
@@ -610,6 +618,14 @@ message UpdateAppRequest {
   // gibi kalır. Aynı çizgi `app delete`'te de geçerli — yıkıcı olan asla
   // örtük olmaz.
   repeated string volume_remove = 9;
+
+  // www eşini aç/kapat; belirtilmezse dokunulmaz.
+  optional bool www = 10;
+
+  // Eklenecek / çıkarılacak yönlendirme adları (birleştirme; olmayan adı
+  // çıkarmak sessizdir).
+  repeated string redirect_add = 11;
+  repeated string redirect_remove = 12;
 }
 
 message UpdateAppResponse {
@@ -645,6 +661,9 @@ message UpdateAppResponse {
   // env_detail ile ayni gerekceyle AYRI: iki uyari ayni anda dogru
   // olabilir ve tek alan bunlardan birini yutardi.
   string volume_detail = 4;
+
+  // Yönlendirme adlarının durumu. BOŞ ise adlara dokunulmadı.
+  string redirect_detail = 5;
 }
 
 message ListAppsRequest {}

@@ -4,13 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/kadran/internal/appnames"
 	"github.com/erkanrzgc/kadran/internal/audit"
+	"github.com/erkanrzgc/kadran/internal/deploy"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
 	"github.com/erkanrzgc/kadran/internal/vault"
@@ -54,6 +57,9 @@ func (s *Server) UpdateApp(
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 	if err := validateVolumeRemove(req.GetVolumes(), req.GetVolumeRemove()); err != nil {
+		return nil, s.denied(ctx, action, tgt, params, err)
+	}
+	if err := validateRedirectChange(req.GetRedirectAdd(), req.GetRedirectRemove()); err != nil {
 		return nil, s.denied(ctx, action, tgt, params, err)
 	}
 
@@ -100,6 +106,10 @@ func (s *Server) UpdateApp(
 	// kullanılan yolda açık tutmak olurdu.
 	replicasChanged := upd.Replicas != nil && *upd.Replicas != current.Replicas
 
+	// www ve yönlendirme adları da rota kümesinin parçası (appnames.Names):
+	// değişirse ters vekil yeniden uzlaştırılmalı.
+	namesChanged := upd.ChangesNames(current)
+
 	// Env, ters vekili İLGİLENDİRMİYOR — uzlaştırma tetiklemiyor.
 	// Konteynerin ortamı rota tablosundan değil, oluşturma anından
 	// geliyor; uzlaştırmak hiçbir şeyi değiştirmezdi. Burada saptanan
@@ -113,12 +123,18 @@ func (s *Server) UpdateApp(
 	}
 
 	resp := &kadranv1.UpdateAppResponse{App: appToProto(app)}
-	if domainMoved || replicasChanged {
-		detail, err := s.moveTraffic(ctx, appID, current.Domain, app.Domain)
+	// Saf -domain taşıması da adları taşır (eş yeni domainden türer, açık
+	// adlar yeni hedefe gider): ad varsa ya da vardıysa cevap onları anlatır,
+	// yoksa taşınırken atlanan bir eş sessiz kalırdı.
+	reportNames := namesChanged || (domainMoved && hasNames(current, app))
+	if domainMoved || replicasChanged || namesChanged {
+		proxy, redirect, err := s.moveTraffic(ctx, appID, current, app,
+			domainMoved || replicasChanged, reportNames)
 		if err != nil {
 			return nil, s.completed(ctx, action, tgt, params, err)
 		}
-		resp.ProxyDetail = detail
+		resp.ProxyDetail = proxy
+		resp.RedirectDetail = redirect
 	}
 	if envChanged {
 		resp.EnvDetail = envNeedsRedeploy(appID)
@@ -195,27 +211,138 @@ func envNeedsRedeploy(appID string) string {
 // ── Üç sonuç, üç ayrı cevap ─────────────────────────────────────────
 //
 // Hepsini "tamam" diye raporlamak, en tehlikeli ikisini gizlerdi.
-func (s *Server) moveTraffic(ctx context.Context, appID, from, to string) (string, error) {
+//
+// Tek uzlaştırma, iki cevap: rota (alan adı/replika) değiştiyse proxy
+// cevabı, adlar (www/yönlendirme) değiştiyse ya da domainle taşındıysa
+// (reportNames) redirect cevabı döner. Yalnız adlar değiştiyse proxy cevabı
+// BOŞ kalır.
+func (s *Server) moveTraffic(
+	ctx context.Context, appID string, before, after store.App, routeChanged, reportNames bool,
+) (proxy, redirect string, err error) {
+	from, to := before.Domain, after.Domain
 	res, err := s.reconciler.Reconcile(ctx)
 	if err != nil {
 		// Değişiklik YAZILDI. Bunu söylemeyen bir hata, kullanıcıyı
 		// komutun hiç etki etmediğini sanıp başka bir alan adıyla
 		// yeniden denemeye iterdi — oysa kayıt zaten yeni değerde.
-		return "", status.Errorf(codes.Unavailable,
-			"domain %q → %q SAVED, but the reverse proxy "+
+		what := fmt.Sprintf("domain %q → %q", from, to)
+		if !routeChanged {
+			what = "redirect names"
+		}
+		return "", "", status.Errorf(codes.Unavailable,
+			"%s SAVED, but the reverse proxy "+
 				"could not be updated: traffic is still on the old route. Reconciliation "+
 				"is retried on the next deploy or when kadrand restarts. "+
-				"Cause: %v", from, to, err)
+				"Cause: %v", what, err)
 	}
 
-	if to == "" {
-		return "app REMOVED from the reverse proxy — no longer served on any domain", nil
+	if routeChanged {
+		switch to {
+		case "":
+			proxy = "app REMOVED from the reverse proxy — no longer served on any domain"
+		default:
+			if why, skipped := res.Skipped[appID]; skipped {
+				return "", "", status.Errorf(codes.Unavailable,
+					"app definition SAVED but TRAFFIC NOT MOVED (%s) — deploy the app: kadran deploy %s", why, appID)
+			}
+			proxy = fmt.Sprintf("reverse proxy updated — %q now goes to this app", to)
+		}
 	}
-	if why, skipped := res.Skipped[appID]; skipped {
-		return "", status.Errorf(codes.Unavailable,
-			"app definition SAVED but TRAFFIC NOT MOVED (%s) — deploy the app: kadran deploy %s", why, appID)
+	if reportNames {
+		redirect = redirectDetail(res, before, after)
 	}
-	return fmt.Sprintf("reverse proxy updated — %q now goes to this app", to), nil
+	return proxy, redirect, nil
+}
+
+// hasNames, uygulamanın önce ya da sonra en az bir yönlendirme adı (www eşi
+// ya da açık ad) taşıyıp taşımadığını söyler.
+func hasNames(before, after store.App) bool {
+	return len(appnames.Names(before.Domain, before.WWW, before.Redirects)) > 0 ||
+		len(appnames.Names(after.Domain, after.WWW, after.Redirects)) > 0
+}
+
+// redirectDetail, ad değişikliğinin uzlaştırma sonucunu anlatır. Uygulanamayan
+// her ad ayrı satırda: tek bir "tamam" en tehlikeli durumu gizlerdi.
+func redirectDetail(res deploy.Result, before, app store.App) string {
+	// Tam ad kümesi (www eşi dahil): kullanıcı yalnız -www dediğinde de
+	// hangi adın yönlendirildiğini duymalı.
+	was := appnames.Names(before.Domain, before.WWW, before.Redirects)
+	names := appnames.Names(app.Domain, app.WWW, app.Redirects)
+	// Rotalanma ÖNCE: rotalanmayan uygulamada "updated" ya da çıplak "removed"
+	// demek yalan olurdu. Kayıt başarılı, bu yüzden hata değil.
+	if why, skipped := res.Skipped[app.ID]; skipped {
+		if d := unroutedRedirectDetail(app, why, was, names); d != "" {
+			return d
+		}
+		if len(names) > 0 {
+			// Küme değişmedi (örn. açık ad www eşine eşit): canlı 308 yerinde.
+			return fmt.Sprintf("redirects unchanged (%s → %s); the app is not routed: %s — kadran deploy %s",
+				strings.Join(names, ", "), app.Domain, why, app.ID)
+		}
+		return noRedirectNamesDetail(before, app, nil)
+	}
+	if len(names) == 0 {
+		return noRedirectNamesDetail(before, app, was)
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "reverse proxy updated — redirects: %s → %s",
+		strings.Join(names, ", "), app.Domain)
+	for _, name := range names {
+		if why, skipped := res.SkippedRedirects[name]; skipped {
+			fmt.Fprintf(&b, "\nredirect %s NOT applied (%s)", name, why)
+		}
+	}
+	return b.String()
+}
+
+// unroutedRedirectDetail, rotalanmayan uygulamadaki ad değişikliğini anlatır.
+// Kaldırma UYGULANIR (uzlaştırma istenmeyen adı canlıdan taşımıyor), ekleme
+// uygulanmaz (rota yokken yönlendirme kurulamaz). Değişen ad yoksa boş döner.
+func unroutedRedirectDetail(app store.App, why string, was, names []string) string {
+	var lines []string
+	if removed := namesNotIn(was, names); len(removed) > 0 {
+		lines = append(lines, fmt.Sprintf(
+			"redirects removed: %s — applied even though the app is not routed (%s)",
+			strings.Join(removed, ", "), why))
+	}
+	if added := namesNotIn(names, was); len(added) > 0 {
+		lines = append(lines, fmt.Sprintf("redirects SAVED (%s → %s) but NOT applied: %s — "+
+			"they take effect when the app is routed: kadran deploy %s",
+			strings.Join(added, ", "), app.Domain, why, app.ID))
+	}
+	return strings.Join(lines, "\n")
+}
+
+// noRedirectNamesDetail, uygulamada yönlendirme adı kalmadığında doğruyu
+// söyler: domain yoksa boş domain basmaz, alt adın www eşi olmadığını
+// "kaldırıldı" diye anlatmaz. Alt ad cümlesi yalnız istek www'ye dokunduğunda
+// (ya da www açıkken domain taşındığında) söylenir; son açık adı kaldırmak
+// www ile ilgili değildir.
+func noRedirectNamesDetail(before, app store.App, was []string) string {
+	removed := ""
+	if len(was) > 0 {
+		removed = "redirects removed — "
+	}
+	wwwInPlay := app.WWW != before.WWW || (app.WWW && app.Domain != before.Domain)
+	switch {
+	case app.Domain == "":
+		return removed + "the app has no domain"
+	case wwwInPlay && appnames.Partner(app.Domain) == "":
+		return removed + app.Domain + " is a subdomain and has no www partner"
+	default:
+		return removed + app.Domain + " has no redirect names"
+	}
+}
+
+// namesNotIn, a'da olup b'de olmayan adları a'nın sırasıyla döndürür.
+func namesNotIn(a, b []string) []string {
+	var out []string
+	for _, n := range a {
+		if !slices.Contains(b, n) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // updateFromProto, isteği depo katmanının tipine çevirir.
@@ -260,6 +387,16 @@ func updateFromProto(req *kadranv1.UpdateAppRequest) store.AppUpdate {
 	if len(req.GetVolumeRemove()) > 0 {
 		upd.VolumeRemove = append([]string(nil), req.GetVolumeRemove()...)
 	}
+	if req.Www != nil {
+		v := req.GetWww()
+		upd.WWW = &v
+	}
+	if len(req.GetRedirectAdd()) > 0 {
+		upd.RedirectAdd = append([]string(nil), req.GetRedirectAdd()...)
+	}
+	if len(req.GetRedirectRemove()) > 0 {
+		upd.RedirectRemove = append([]string(nil), req.GetRedirectRemove()...)
+	}
 	return upd
 }
 
@@ -299,6 +436,16 @@ func updateAuditParams(req *kadranv1.UpdateAppRequest) map[string]string {
 	}
 	for _, n := range req.GetVolumeRemove() {
 		params["volume_remove."+n] = "detached"
+	}
+	// Yalnız BELİRTİLENLER (yukarıdaki ilke): www sağlanmadıysa yazılmaz.
+	if req.Www != nil {
+		params["www"] = strconv.FormatBool(req.GetWww())
+	}
+	if len(req.GetRedirectAdd()) > 0 {
+		params["redirect_add"] = strings.Join(req.GetRedirectAdd(), ",")
+	}
+	if len(req.GetRedirectRemove()) > 0 {
+		params["redirect_remove"] = strings.Join(req.GetRedirectRemove(), ",")
 	}
 	return params
 }

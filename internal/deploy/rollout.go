@@ -277,6 +277,7 @@ func (r *Rollout) Heal(
 	if err != nil {
 		return recreated, err
 	}
+	WarnSkippedRedirects(res.SkippedRedirects)
 	// POZİTİF ÖLÇÜT (K-042): "uzlaştırma hata vermedi" yetmez. Bizim
 	// uygulamamız atlandıysa ters vekilde rotası YOK ve dışarıdan hâlâ
 	// erişilemez — bunu başarı saymak, iyileşmemiş bir uygulamayı
@@ -471,6 +472,8 @@ func (r *Rollout) switchTraffic(ctx context.Context, app store.App, releaseID st
 	if err != nil {
 		return err
 	}
+	// Atlanan ad bir hata değil (domain rotaları yerinde) ama sessiz kalmamalı.
+	WarnSkippedRedirects(res.SkippedRedirects)
 
 	// ⚠ BİZİM uygulamamız atlandıysa trafik TAŞINMADI: ters vekilde hâlâ
 	// eski sürümün rotası duruyor (ya da hiç rota yok). Eski konteynerleri

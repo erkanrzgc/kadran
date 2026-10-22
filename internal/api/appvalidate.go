@@ -111,6 +111,9 @@ func validateAppSpec(spec *kadranv1.AppSpec) error {
 	if err := validateDomain(spec.GetDomain()); err != nil {
 		return err
 	}
+	if err := validateRedirects(spec.GetDomain(), spec.GetRedirects()); err != nil {
+		return err
+	}
 	return validateLimits(spec.GetLimits())
 }
 
@@ -277,6 +280,58 @@ func validateDomain(d string) error {
 		// burada kabul edilirse vekil bütün rota kümesini reddederdi.
 		return fmt.Errorf("invalid domain (%q) — must be a lowercase DNS name with labels of at most 63 characters, "+
 			"not an IP address, and must not contain a scheme, port or path", d)
+	}
+	return nil
+}
+
+// maxRedirects, uygulama başına açık yönlendirme adı sınırı.
+const maxRedirects = 8
+
+// validateRedirects, uygulamanın açık yönlendirme adlarını doğrular. Her ad
+// alan adıyla AYNI kuraldan geçer (vekil bütün kümeyi reddetmesin); kendi
+// alan adı ve tekrar yasak, alansız uygulamada ad olamaz.
+func validateRedirects(domain string, names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	if domain == "" {
+		return errors.New("redirect names need a domain")
+	}
+	if len(names) > maxRedirects {
+		return fmt.Errorf("too many redirect names (%d, limit %d)", len(names), maxRedirects)
+	}
+	seen := make(map[string]struct{}, len(names))
+	for _, n := range names {
+		if n == "" {
+			// validateDomain("") geçerli sayar (alansız uygulama); burada ad ŞART.
+			return errors.New("redirect name must not be empty")
+		}
+		if err := validateDomain(n); err != nil {
+			return fmt.Errorf("redirect name: %w", err)
+		}
+		if n == domain {
+			return fmt.Errorf("redirect name %q is the same as the app domain", n)
+		}
+		if _, dup := seen[n]; dup {
+			return fmt.Errorf("duplicate redirect name %q", n)
+		}
+		seen[n] = struct{}{}
+	}
+	return nil
+}
+
+// validateRedirectChange, aynı adın hem eklenip hem çıkarılmadığını doğrular
+// (validateEnvRemove ile aynı gerekçe: çelişen iki niyetten birini sessizce
+// seçmek, seçimi kullanıcıdan gizlemek olurdu).
+func validateRedirectChange(add, remove []string) error {
+	adding := make(map[string]struct{}, len(add))
+	for _, n := range add {
+		adding[n] = struct{}{}
+	}
+	for _, n := range remove {
+		if _, both := adding[n]; both {
+			return fmt.Errorf("%q is both added and removed — say which one you want", n)
+		}
 	}
 	return nil
 }

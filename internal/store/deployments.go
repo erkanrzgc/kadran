@@ -29,6 +29,11 @@ type Deployment struct {
 	// olmasaydı uzlaştırıcı her uygulama için ayrı bir sorgu atardı.
 	Replicas uint32
 
+	// WWW ve Redirects, Domain gibi apps'ten denormalize edilir: rota
+	// adları (appnames.Names) bu satırdan üretilir.
+	WWW       bool
+	Redirects []string
+
 	ActivatedAt time.Time
 }
 
@@ -210,7 +215,8 @@ func (s *Store) ActiveDeployments(ctx context.Context) ([]Deployment, error) {
 // gittiği için bu, tek seferde TÜM siteleri yanlış upstream'lere
 // bağlardı. Filtreyi unutmayı mümkün kılmamak, hatırlamaktan güvenli.
 const deploymentSelect = `
-	SELECT d.app_id, d.release_id, d.activated_at, a.domain, a.container_port, a.replicas
+	SELECT d.app_id, d.release_id, d.activated_at, a.domain, a.container_port, a.replicas,
+	       a.www, a.redirects_json
 	FROM deployments d
 	JOIN apps a ON a.id = d.app_id
 	WHERE d.deactivated_at IS NULL`
@@ -219,9 +225,15 @@ func scanDeployment(sc scanner) (Deployment, error) {
 	var (
 		d           Deployment
 		activatedAt int64
+		redirects   string
 	)
 	if err := sc.Scan(&d.AppID, &d.ReleaseID, &activatedAt,
-		&d.Domain, &d.ContainerPort, &d.Replicas); err != nil {
+		&d.Domain, &d.ContainerPort, &d.Replicas,
+		&d.WWW, &redirects); err != nil {
+		return Deployment{}, err
+	}
+	var err error
+	if d.Redirects, err = unmarshalNames(redirects); err != nil {
 		return Deployment{}, err
 	}
 	d.ActivatedAt = time.Unix(0, activatedAt)

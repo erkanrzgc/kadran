@@ -11360,3 +11360,88 @@ yazılmadı. Hepsi 10 sn bütçenin çok altında (1,1–2,5 sn).
 ### Durum
 
 Uygulandı (`dns-yonlendirme` dalı), yayımlanmadı. Rehber: `docs/guides/domains.md`.
+
+## K-152 — www ve yönlendirme adları: bir uygulama, birden çok ad (2026-10-20)
+
+**Durum:** `www-yonlendirme` dalında uygulandı; henüz yayımlanmadı. Özellik: `docs/specs/2026-10-20-www-yonlendirme-design.md`.
+
+### Bağlam
+
+Bir uygulama `example.com`'da yayındayken `www.example.com`'a gelen ziyaretçi Caddy'nin "rota
+yok" cevabını alıyordu. Kullanıcının istediği (15 Ekim): www adresi `https://example.com`'a
+yönlensin, www otomatik gelsin ve `-no-www` ile kapansın, başka adlar `-redirect` ile eklensin,
+yönlendirme ters vekilin rotasında yapılsın ve hedef her zaman uygulamanın kendi domaini olsun.
+
+### Karar
+
+Aşağıdakiler benim kararım (spec'te **(karar)** işaretli):
+
+- **Kapsam dışı: masaüstü.** Yalnız CLI ve API; masaüstü yeni alanları gösterebilir ama bu iş
+  onu değiştirmez.
+- **`app list` tablosu değişmez.** `app show` ve create/update sonucu "Redirects" satırı basar;
+  `-json` yeni alanları taşır.
+- **Eski sunucuya yeni CLI.** Cevapta alan yoksa CLI "this server does not support redirects
+  (www, -redirect); upgrade kadrand" uyarır ve yönlendirme var demez.
+- **www bir bayraktır, ad değildir.** Saklanan `www = true/false`; ad rota kurulurken türetilir.
+  Sebep: `app update -domain` trafiği dağıtımsız taşır, saklanmış `www.eski.com` eski domaine
+  yönlendirmeye devam ederdi.
+- **Simetrik eş.** Domain eTLD+1 ise `www.<domain>`; `www.<eTLD+1>` ise `<eTLD+1>`; başka her
+  alt ad için eş YOK (bayrak açık olsa da rota üretilmez, CLI www satırı basmaz, DNS denetimi
+  yapmaz).
+- **En çok 8 açık ad** uygulama başına.
+- **Varsayılanlar.** Yeni CLI `app create`'te bayrağı açık gönderir (`-no-www` yoksa); sunucuda
+  alan yoksa (eski CLI, mevcut uygulamalar, göç) değer KAPALI. Proto alanları `optional`.
+- **Türetme `internal/appnames`'te.** Kadrand (rota ve çakışma) ile CLI (gösterim ve DNS)
+  aynı işlevi kullanır; `proxydrv`'e konmaz çünkü aracı publicsuffix'e muhtaç olmamalı.
+- **Çakışma bütün yapılandırmayı düşürmez.** Bir yönlendirme adı bir domain rotasıyla ya da
+  başka bir yönlendirmeyle çakışırsa YALNIZ o yönlendirme atlanır ve `Result.SkippedRedirects`'e
+  (ad → sebep) yazılır; domain rotaları öncelikli. `Skipped`'e yazılmaz: `moveTraffic` orayı
+  "trafik taşınmadı" diye okur ve sağlam bir domain taşınmasını hata gösterirdi.
+- **Başarısız dağıtım www'yi düşürmez.** Yeni sürümü rotalanamayan uygulamanın canlı rotası
+  taşınırken (`carrySkippedRoutes`) canlı yönlendirmeleri de taşınır.
+- **Özel Caddy modülü gerekmiyor** (aşağıdaki ölçüm); test kalıcı gerileme testi olarak kalır.
+
+### Ölçülen (20 Ekim 2026)
+
+`build/caddy/redirect_test.go`, Caddy v2.11.7: `static_response` değiştiricisi istek
+yer tutucularını yeniden açmıyor. İstek yolu ya da sorgusu `{file.<yol>}`, `%7B…%7D`,
+`{env.PATH}` ya da `{http.request.uri}` taşısa da Location'a dosya içeriği girmiyor; kontrol
+grubu (şablonun kendisinde `{file.…}`) sızdırıyor, yani test sızıntıyı görebiliyor. Yol ve
+sorgu korunuyor, `%0d%0a` kodlu kalıyor, `//evil.example/x` aynı host'ta kalıyor. Sonuç: özel
+Caddy modülü GEREKMİYOR.
+
+### Hükümler
+
+- **S1: ele geçirilmiş kadrand yine de 308 üretebilir.** Aracı hedefin kümedeki bir domain
+  olduğunu doğrular, bu hatalara karşı korur ve hedefleri yönlendirilen küme içinde tutar.
+  Ele geçirilmiş bir kadrand'a karşı KORUMAZ: o önce seçtiği bir ana bilgisayar için (herhangi
+  bir konteyner upstream'iyle) rota ekleyip sonra ona yönlendirebilir; aracı meşru domaini
+  saldırganınkinden ayıramaz. Kabul edildi, sınırlı: ele geçirilmiş bir kontrol düzlemi gerekir,
+  yalnız bu sunucuyu zaten gösteren adları etkiler, anahtar/dosya/exec açığı yoktur. Belgelendi:
+  spec'in güvenlik satırı ve `SECURITY.md` ("Explicitly out of scope"). Yanılma maliyeti:
+  `--allow-repo` verilmişse ele geçirilmiş kadrand'ın daha önce sahip olmadığı bir sunucu-dışı
+  yönlendirmesi olur.
+- **D1: sürüm düşürme.** Yönlendirme canlıyken kadrand bu sürümün altına düşürülürse eski çözücü
+  aracının cevabını reddeder ve onarım/atlanmış-uygulama uzlaştırması temiz bir uzlaştırmaya
+  kadar takılabilir. Çözüm: sürüm düşürmeden önce yönlendirmeleri kaldır (`-no-www` /
+  `-redirect-rm`). CHANGELOG "Rolling back to v0.7.x"te belgelendi. Yanılma maliyeti:
+  olağandışı bir sürüm düşürmeden sonra takılmış ters vekil.
+- **E1: e2e curl denetimi canlı doğrulamaya taşındı.** e2e düzeneğinde Caddy/aracı yok;
+  `www → 308`, yol/sorgu ve `-domain` sonrası hedef C projesinin canlı doğrulamasında ölçülür.
+  Yerine `build/caddy/redirect_readback_test.go` altın rotayı gerçek Caddy'ye yükleyip admin
+  API'sinden (yalnız loopback) geri okur ve anlamca karşılaştırır: `SafeRoutes`'un DeepEqual'ı
+  bu varsayıma dayanıyor. Yanılma maliyeti: kadrand→aracı→Caddy kopukluğu ancak canlıda görünür.
+- **Rotalanmayan uygulamada kaldırma hemen uygulanır (son inceleme).** `carrySkippedRoutes`
+  canlı yönlendirmeyi yalnız ad hâlâ istenen adlar arasındaysa taşır; hedef koşulu yapısal
+  (yalnız taşınan domaine gidenler). `-no-www` / `-redirect-rm` "removed" derken 308 artık
+  canlıda kalmıyor; eklenen ad uygulama rotalanınca uygulanır ve cevap ikisini ayrı söyler.
+
+### Açık
+
+- **Ad başına sertifika canlıda ölçülmedi.** Caddy her rota host'u için kendiliğinden
+  sertifika alır; yönlendirme adı da. DNS'i olmayan bir www'nin ACME denemelerinin yalnız o adı
+  etkilediği, kök domainin sertifikasının ayrı kaldığı e2e ya da canlı çalışmada ÖLÇÜLECEK.
+
+### Durum
+
+Uygulandı (`www-yonlendirme` dalı), yayımlanmadı. Rehber: `docs/guides/domains.md`.

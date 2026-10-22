@@ -18,11 +18,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # İki go.mod ile aynı yamalı, desteklenen araç zinciri. Go 1.26.9
-  # 2026-10-08 stdlib güvenlik düzeltmelerini içerir; yalnız "1.26"
+  # İki go.mod ile aynı yamalı, desteklenen araç zinciri. Go 1.26.10
+  # stdlib güvenlik düzeltmelerini (GO-2026-6809 dahil) içerir; yalnız "1.26"
   # yazmak setup-go'nun önbellekteki sürüm listesine güvenmek olurdu.
   # Sürüm geçmişi: https://go.dev/doc/devel/release#go1.26.0
-  GO_VERSION: "1.26.9"
+  GO_VERSION: "1.26.10"
   BUF_VERSION: "1.47.2"
 
 jobs:

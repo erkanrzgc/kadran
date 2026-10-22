@@ -16,6 +16,36 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   A negative `-wait` is rejected, and Ctrl-C while waiting stops without running the remaining
   checks.
 - `kadran domain check` shows the domain's accredited registrar (RDAP).
+- www and redirect names (K-152): `app create` also serves the www partner of a registrable
+  domain (or the bare domain when the domain is `www.…`) and redirects it with a 308 to
+  `https://<domain>`, keeping path and query. `-no-www` turns it off. `app create` and
+  `app update` take `-redirect <name>` (repeatable, at most 8 per app); `app update` also has
+  `-www`, `-no-www` and `-redirect-rm <name>`. Subdomains get no partner. Apps that exist
+  before the upgrade keep www off. `app update -domain` moves the names along and reports them.
+  See [www and other names](docs/guides/domains.md#www-and-other-names).
+- Redirect names are checked for DNS after the server accepts the request; the check only warns
+  and `-skip-dns-check` skips it (K-152). `app show` prints a `Redirects` line.
+- The proxy broker accepts one non-proxy handler: a fixed-shape 308 redirect whose target must
+  be a routed domain (K-152). A name that collides with another app's domain or name is
+  rejected by the API; a collision that gets through drops only that redirect, never the whole
+  route set. `kadrand` logs every name it could not apply (startup, deploy, heal and the proxy
+  watcher), not only `app update`.
+- For an app that is not routed at the moment, removing a name takes effect at once; an added
+  name is saved and applied once the app is routed again (K-152).
+
+### Security
+
+- Both modules and CI now require Go 1.26.10, which fixes GO-2026-6809 in `crypto/x509`
+  (compromised intermediate certificates are distrusted); `govulncheck` reported it reachable
+  through the HTTP health probe. Building from source needs Go 1.26.10.
+
+### Rolling back to v0.7.x
+
+Remove redirects (`-no-www` and `-redirect-rm`; this works even for an app that is not routed)
+before installing a `kadrand` older than this release (K-152). The older `kadrand` rejects the
+proxy broker's reply while the live route set carries redirects, so proxy repair and any
+reconcile with an app that is not routed fail until a reconcile with every app routed loads a
+set without redirects.
 
 ### Changed
 

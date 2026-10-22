@@ -422,6 +422,9 @@ func reconcileAtStartup(rc startupReconciler) string {
 		cancel()
 
 		if err == nil {
+			// Atlanan yönlendirme adı açılışı kirletmez (domain rotaları
+			// yerinde) ama sessiz de kalmaz.
+			deploy.WarnSkippedRedirects(res.SkippedRedirects)
 			if len(res.Skipped) > 0 {
 				slog.Warn("some apps could not be routed", "detail", res.Error())
 				return "rotalanamayan uygulama var: " + res.Error()

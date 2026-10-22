@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -14,10 +16,11 @@ import (
 // Deneme SAYISINI de kaydediyor: "yeniden deniyor" iddiası ancak çağrı
 // sayısıyla ölçülebilir, dönen değerle değil.
 type fakeRec struct {
-	calls    int
-	failFor  int // ilk kaç denemede hata dönsün
-	skipped  map[string]string
-	failWith error
+	calls            int
+	failFor          int // ilk kaç denemede hata dönsün
+	skipped          map[string]string
+	skippedRedirects map[string]string
+	failWith         error
 }
 
 func (f *fakeRec) Reconcile(context.Context) (deploy.Result, error) {
@@ -25,7 +28,31 @@ func (f *fakeRec) Reconcile(context.Context) (deploy.Result, error) {
 	if f.calls <= f.failFor {
 		return deploy.Result{}, f.failWith
 	}
-	return deploy.Result{Routed: []string{"portfolio"}, Skipped: f.skipped}, nil
+	return deploy.Result{Routed: []string{"portfolio"}, Skipped: f.skipped, SkippedRedirects: f.skippedRedirects}, nil
+}
+
+// gunlukYakala, testin süresince varsayılan slog'u bir tampona yönlendirir.
+func gunlukYakala(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	onceki := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(onceki) })
+	return &buf
+}
+
+// TestStartupReconcileLogsSkippedRedirects: açılışta atlanan yönlendirme adı
+// günlüğe yazılır ama açılışı kirletmez (domain rotaları yerinde).
+func TestStartupReconcileLogsSkippedRedirects(t *testing.T) {
+	buf := gunlukYakala(t)
+	rec := &fakeRec{skippedRedirects: map[string]string{"www.example.com": `already redirects to "example.org"`}}
+
+	if got := reconcileAtStartup(rec); got != "" {
+		t.Errorf("atlanan yönlendirme açılışı sorunlu saydı: %q", got)
+	}
+	if want := "name=www.example.com"; !strings.Contains(buf.String(), want) {
+		t.Errorf("günlükte %q yok:\n%s", want, buf)
+	}
 }
 
 // TestStartupReconcileReportsFailure, kalıcı başarısızlığın ÇAĞIRANA

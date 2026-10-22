@@ -16,16 +16,17 @@ type sahteOnarici struct {
 }
 
 type onarimSonucu struct {
-	eksik   []string
-	atlanan map[string]string
-	tam     bool // canlı, beklenenle İKİ YÖNLÜ birebir
-	err     error
+	eksik     []string
+	atlanan   map[string]string
+	atlananAd map[string]string // uygulanamayan yönlendirme adları
+	tam       bool              // canlı, beklenenle İKİ YÖNLÜ birebir
+	err       error
 }
 
 func (s *sahteOnarici) Repair(context.Context) (deploy.RepairResult, error) {
 	r := s.sonuclar[s.i]
 	s.i++
-	return deploy.RepairResult{Missing: r.eksik, Skipped: r.atlanan, Exact: r.tam}, r.err
+	return deploy.RepairResult{Missing: r.eksik, Skipped: r.atlanan, SkippedRedirects: r.atlananAd, Exact: r.tam}, r.err
 }
 
 type sahteAlarm struct {
@@ -126,5 +127,25 @@ func TestProxyWatcherKeepsAlarmWhileAppsAreSkipped(t *testing.T) {
 	am = izleyiciKos(t, hata, hata, hata, onarimSonucu{atlanan: atlanan, tam: true})
 	if len(am.kapanan) != 0 {
 		t.Errorf("kendi alarmı, atlanan uygulama varken kapandı: %v", am.kapanan)
+	}
+}
+
+// TestProxyWatcherLogsSkippedRedirectsWhenTheyChange: uygulanamayan ad
+// günlüğe yazılır, ama on saniyede bir AYNI satır değil: yalnız küme
+// değişince. Alarmı etkilemez (domain rotaları yerinde).
+func TestProxyWatcherLogsSkippedRedirectsWhenTheyChange(t *testing.T) {
+	buf := gunlukYakala(t)
+	ad := map[string]string{"www.example.com": `already redirects to "example.org"`}
+	am := izleyiciKos(t,
+		onarimSonucu{atlananAd: ad, tam: true},
+		onarimSonucu{atlananAd: ad, tam: true},
+		onarimSonucu{tam: true},
+		onarimSonucu{atlananAd: ad, tam: true},
+	)
+	if n := strings.Count(buf.String(), "name=www.example.com"); n != 2 {
+		t.Errorf("ad %d kez yazıldı, 2 bekleniyordu (ilk görünüş + geri dönüş):\n%s", n, buf)
+	}
+	if len(am.kapanan) != 4 {
+		t.Errorf("atlanan ad alarmı etkiledi: %d kapanış, 4 bekleniyordu", len(am.kapanan))
 	}
 }

@@ -17,9 +17,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 
+	"github.com/erkanrzgc/kadran/internal/appnames"
 	"github.com/erkanrzgc/kadran/internal/execclient"
 	"github.com/erkanrzgc/kadran/internal/proxydrv"
 	"github.com/erkanrzgc/kadran/internal/store"
@@ -89,6 +93,9 @@ type Result struct {
 	// Skipped, alan adı olduğu hâlde yönlendirilemeyen uygulamalar ve
 	// sebepleri.
 	Skipped map[string]string
+	// SkippedRedirects, uygulanamayan yönlendirme adları ve sebepleri
+	// (ad → sebep).
+	SkippedRedirects map[string]string
 }
 
 // Reconcile, canlı durumu ters vekile yansıtır.
@@ -147,6 +154,10 @@ type RepairResult struct {
 	// Skipped, o an rotalanamayan (sağlıksız) uygulamalar ve sebepleri.
 	// Doluysa izleyici "her şey yolunda" diyemez.
 	Skipped map[string]string
+	// SkippedRedirects, uygulanamayan yönlendirme adları ve sebepleri (ad →
+	// sebep; Result.SkippedRedirects ile aynı). Alarmı ETKİLEMEZ: domain
+	// rotaları yerinde, yalnız o ad yönlendirilmiyor; izleyici günlüğe yazar.
+	SkippedRedirects map[string]string
 	// Exact, canlı yapılandırmanın beklenenle İKİ YÖNLÜ birebir aynı
 	// olduğu doğrulandıysa true: ne eksik rota, ne gönderilmemiş rota,
 	// ne farklı upstream (K-054).
@@ -193,6 +204,8 @@ func (rc *Reconciler) Repair(ctx context.Context) (RepairResult, error) {
 	if cfg, err = rc.build(p.carrySkippedRoutes(live)); err != nil {
 		return out, err
 	}
+	// Taşımadan SONRA: atlanan uygulamanın taşınan adları da süzgeçten geçti.
+	out.SkippedRedirects = p.res.SkippedRedirects
 	// Compare after carrying the validated last known route of unhealthy
 	// apps, so drift repair cannot remove their routes while healing waits.
 	// This repairs changed upstreams and foreign routes as well as omissions.
@@ -229,8 +242,42 @@ func (rc *Reconciler) release() { <-rc.gate }
 // plan, SQLite'taki durumdan rotaları ve atlanan uygulamaları çıkarır.
 type plan struct {
 	routes         []proxydrv.AppRoute
-	skippedDomains map[string]string // uygulama → alan adı (atlananlar)
+	skippedDomains map[string]string   // uygulama → alan adı (atlananlar)
+	skippedNames   map[string][]string // uygulama → İSTENEN yönlendirme adları (atlananlar)
 	res            Result
+
+	// domains: bütün uygulamaların (rotalanan ve atlanan) alan adı → uygulama.
+	// redirectTo: kabul edilmiş yönlendirme adı → hedef alan adı.
+	domains    map[string]string
+	redirectTo map[string]string
+}
+
+// acceptRedirect, adı domain için yönlendirme olarak kabul eder ya da
+// SkippedRedirects'e sebebiyle yazıp false döner. Yalnız o ad elenir: bir
+// çakışma alan adı rotalarını ya da kümenin geri kalanını düşürmez
+// (BuildConfig çakışmayı hata sayar, bu yüzden süzme ondan ÖNCE yapılır).
+// Aynı ad aynı hedefe tekrar gelirse kabul edilir.
+func (p plan) acceptRedirect(name, domain string) bool {
+	owner, isDomain := p.domains[name]
+	switch {
+	case !proxydrv.ValidDomain(name):
+		p.res.SkippedRedirects[name] = "invalid name"
+	case isDomain:
+		p.res.SkippedRedirects[name] = fmt.Sprintf("collides with the domain of app %q", owner)
+	case p.redirectTo[name] != "" && p.redirectTo[name] != domain:
+		p.res.SkippedRedirects[name] = fmt.Sprintf("already redirects to %q", p.redirectTo[name])
+	case p.redirectTo[name] == "" && len(p.redirectTo) >= proxydrv.MaxRedirects:
+		// Aracı sınırı aşan kümeyi BÜTÜNÜYLE reddeder; sınırdan sonrası ad ad
+		// atlanır. Sıra kararlı: önce rotalanan uygulamaların adları (AppID
+		// sırası), sonra atlanan uygulamalardan taşınan adlar; yani sınır
+		// aşılırsa önce taşınan ad (başarısız dağıtımın canlı www'si) düşer ve
+		// SkippedRedirects'te görünür. Zaten kabul edilmiş ad sayılmaz.
+		p.res.SkippedRedirects[name] = "route set redirect limit reached"
+	default:
+		p.redirectTo[name] = domain
+		return true
+	}
+	return false
 }
 
 // Carrying a previous route protects continuity, not the new desired state.
@@ -238,21 +285,57 @@ type plan struct {
 // operation whose own current release could not be routed.
 func (p plan) carrySkippedRoutes(live *proxydrv.Config) []proxydrv.AppRoute {
 	routes := p.routes
-	for appID, domain := range p.skippedDomains {
-		if ups := proxydrv.LiveUpstreams(live, domain); len(ups) > 0 {
-			routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups})
+	// AppID sırası: çakışan yönlendirme adında "ilk gelen kazanır" kararlı kalsın.
+	appIDs := make([]string, 0, len(p.skippedDomains))
+	for appID := range p.skippedDomains {
+		appIDs = append(appIDs, appID)
+	}
+	sort.Strings(appIDs)
+	for _, appID := range appIDs {
+		domain := p.skippedDomains[appID]
+		ups := proxydrv.LiveUpstreams(live, domain)
+		if len(ups) == 0 {
+			continue
 		}
+		// Yeni sürümü rotalanamayan uygulamanın canlı yönlendirmeleri de
+		// taşınır; yoksa başarısız bir dağıtım www'yi düşürürdü.
+		//
+		// Yalnız hâlâ İSTENEN adlar: -no-www / -redirect-rm atlanan uygulamada
+		// da hemen etkili olur ("kaldırıldı" deyip 308'i canlıda bırakmak yalan
+		// olurdu). Kaldırılan ad SkippedRedirects'e yazılmaz; uygulanamayan
+		// değil, istenmeyen addır. Hedef koşulu yapısal: LiveRedirects yalnız
+		// TAŞINAN domaine gidenleri verir, yani -domain taşımasından sonra eski
+		// domaine giden ad (rotası taşınmıyor) kümeye giremez.
+		desired := p.skippedNames[appID]
+		var redirects []string
+		for _, name := range proxydrv.LiveRedirects(live, domain) {
+			if slices.Contains(desired, name) && p.acceptRedirect(name, domain) {
+				redirects = append(redirects, name)
+			}
+		}
+		routes = append(routes, proxydrv.AppRoute{AppID: appID, Domain: domain, Upstreams: ups, Redirects: redirects})
 	}
 	return routes
 }
 
 // plan'ı kurar. Çağıran rc.gate'i tutmalı.
 func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
-	p := plan{skippedDomains: map[string]string{}, res: Result{Skipped: map[string]string{}}}
+	p := plan{skippedDomains: map[string]string{}, skippedNames: map[string][]string{},
+		res:     Result{Skipped: map[string]string{}, SkippedRedirects: map[string]string{}},
+		domains: map[string]string{}, redirectTo: map[string]string{}}
 
 	deps, err := rc.deployments.ActiveDeployments(ctx)
 	if err != nil {
 		return p, fmt.Errorf("deploy: could not read active deployments: %w", err)
+	}
+
+	// AppID sırası: çakışmada ilk gelen kazanır, sonuç kararlı olsun.
+	deps = slices.Clone(deps)
+	sort.SliceStable(deps, func(i, j int) bool { return deps[i].AppID < deps[j].AppID })
+	for _, d := range deps {
+		if d.Domain != "" {
+			p.domains[d.Domain] = d.AppID
+		}
 	}
 
 	p.routes = make([]proxydrv.AppRoute, 0, len(deps))
@@ -278,12 +361,20 @@ func (rc *Reconciler) plan(ctx context.Context) (plan, error) {
 		if why != "" {
 			p.res.Skipped[d.AppID] = why
 			p.skippedDomains[d.AppID] = d.Domain
+			p.skippedNames[d.AppID] = appnames.Names(d.Domain, d.WWW, d.Redirects)
 			continue
+		}
+		var redirects []string
+		for _, name := range appnames.Names(d.Domain, d.WWW, d.Redirects) {
+			if p.acceptRedirect(name, d.Domain) {
+				redirects = append(redirects, name)
+			}
 		}
 		p.routes = append(p.routes, proxydrv.AppRoute{
 			AppID:     d.AppID,
 			Domain:    d.Domain,
 			Upstreams: ups,
+			Redirects: redirects,
 		})
 		p.res.Routed = append(p.res.Routed, d.AppID)
 	}
@@ -387,6 +478,18 @@ func (rc *Reconciler) upstreamsFor(ctx context.Context, d store.Deployment) ([]p
 			d.ReleaseID, len(reps), notMine, notUp, extra)
 	}
 	return ups, ""
+}
+
+// WarnSkippedRedirects, uygulanamayan her yönlendirme adını ayrı bir uyarı
+// satırı olarak günlüğe yazar. Uzlaştırmayı çağıran her yol (açılış,
+// dağıtım, iyileştirme, vekil izleyicisi) bunu kullanır: atlanan ad yalnız
+// `app update` cevabında görünseydi, başka yoldan gelen çakışma sessiz kalırdı.
+//
+// Ad sırasıyla: harita gezintisi rastgele (Error ile aynı gerekçe).
+func WarnSkippedRedirects(skipped map[string]string) {
+	for _, name := range slices.Sorted(maps.Keys(skipped)) {
+		slog.Warn("redirect name could not be applied", "name", name, "reason", skipped[name])
+	}
 }
 
 // Error, atlanan uygulamaları tek satırlık okunabilir bir metne çevirir.

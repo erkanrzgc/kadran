@@ -176,7 +176,7 @@ mutate "hiç yüklemiyor" "$REC" "$DEP" \
 # Güvenlik incelemesi: onarım yüklemesi atlanan uygulamanın canlı
 # rotasını siliyordu.
 mutate "atlananın canlı rotası korunmuyor" "$REC" "$DEP" \
-    "s=s.replace('\tfor appID, domain := range p.skippedDomains {','\tfor appID, domain := range map[string]string{} {',1)"
+    "s=s.replace('\tfor appID := range p.skippedDomains {','\tfor appID := range map[string]string{} {',1)"
 
 # Canlıya başkası yazmış olabilir (K-054): taşınan adres yeniden
 # doğrulanmalı. `_ =` importu kullanılır tutuyor; yoksa mutant

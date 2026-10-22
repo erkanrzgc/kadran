@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"time"
 
 	"github.com/erkanrzgc/kadran/internal/alarm"
@@ -53,6 +54,10 @@ type proxyWatcher struct {
 	rp       proxyRepairer
 	am       alarmRaiser
 	failures int
+	// skippedRedirects, en son günlüğe yazılan uygulanamayan yönlendirme
+	// adları. Tur on saniyede bir; aynı kümeyi her turda yazmak günlüğü
+	// boğardı, bu yüzden yalnız küme DEĞİŞİNCE yazılır.
+	skippedRedirects map[string]string
 }
 
 // tick, bir denetim turu.
@@ -100,6 +105,11 @@ func (w *proxyWatcher) tick(ctx context.Context) {
 	w.failures = 0
 	if len(missing) > 0 {
 		slog.Warn("reverse proxy had lost its routes — reloaded", "missing", missing)
+	}
+	// Atlanan ad alarmı ETKİLEMEZ (domain rotaları yerinde); yalnız günlük.
+	if !maps.Equal(sonuc.SkippedRedirects, w.skippedRedirects) {
+		deploy.WarnSkippedRedirects(sonuc.SkippedRedirects)
+		w.skippedRedirects = maps.Clone(sonuc.SkippedRedirects)
 	}
 	if sonuc.Exact && len(sonuc.Skipped) == 0 {
 		w.am.Clear(ctx, proxyAlarmID)

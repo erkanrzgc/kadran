@@ -258,7 +258,16 @@ func Dial(target Target) (*Client, error) {
 }
 
 // Close, bağlantıyı ve varsa SSH alt sürecini kapatır.
-func (c *Client) Close() error { return c.conn.Close() }
+func (c *Client) Close() error {
+	if c.conn == nil {
+		return nil
+	}
+	return c.conn.Close()
+}
+
+// NewWithRPC, hazır bir RPC istemcisini sarar; ağ bağlantısı yoktur. Yalnız
+// testler için: CLI testleri sahte bir sunucu arayüzü verir.
+func NewWithRPC(rpc kadranv1.KadranServiceClient) *Client { return &Client{rpc: rpc} }
 
 // Target, bağlanılan hedefi döndürür.
 func (c *Client) Target() Target { return c.target }

@@ -94,10 +94,19 @@ func (c *cli) checkRedirectNames(ctx context.Context, names []string, rawTarget 
 
 	// Yazım tek goroutine'de ve ad sırasıyla: çıktı kararlı kalır.
 	for i, rep := range reports {
-		if rep.Verdict != domaincheck.Stop && rep.Verdict != domaincheck.Warn {
-			continue
+		switch rep.Verdict {
+		case domaincheck.Stop:
+			fmt.Fprintf(c.stderr, progName+": warning: %s does not point at the server yet; it is redirected once it does and gets its own certificate\n", names[i])
+			writeDNSGuide(c.stderr, rep)
+		case domaincheck.Warn:
+			// Warn "göstermiyor" demek değil: DNS firması sunucuyu zaten
+			// cevaplıyor ve yalnız bu makinenin önbelleği eski olabilir.
+			// `domain check`'in gerekçeleri olduğu gibi basılır; gerekçe adı
+			// anmadığı için ad başa yazılır.
+			for _, r := range rep.Reasons {
+				fmt.Fprintf(c.stderr, progName+": warning: %s: %s\n", names[i], r)
+			}
+			fmt.Fprintf(c.stderr, "  %s is redirected and gets its own certificate once it resolves to the server; old answers cached elsewhere expire on their own\n", names[i])
 		}
-		fmt.Fprintf(c.stderr, progName+": warning: %s does not point at the server yet; it is redirected once it does and gets its own certificate\n", names[i])
-		writeDNSGuide(c.stderr, rep)
 	}
 }

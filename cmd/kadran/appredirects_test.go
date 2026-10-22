@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/erkanrzgc/kadran/internal/client"
+	"github.com/erkanrzgc/kadran/internal/domaincheck/dnstest"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
@@ -255,6 +256,57 @@ func TestAppCreateSkipDNSCheckSkipsRedirects(t *testing.T) {
 	}
 	if strings.Contains(errOut.String(), "does not point at the server") {
 		t.Errorf("-skip-dns-check yönlendirme uyarısını susturmadı:\n%s", errOut)
+	}
+}
+
+// Yönlendirme adının uyarısı karara uymalı (22 Eki, canlıda görüldü): Stop'ta
+// ad sunucuyu göstermiyor; Warn'da (DNS firması sunucuyu cevaplıyor, yalnız
+// bu makinenin önbelleği eski) "göstermiyor" demek yanlış, `domain check`'in
+// gerekçesi ad başta basılmalı. İkisinde de çıkış kodu değişmez.
+func TestAppUpdateRedirectDNSWarningMatchesVerdict(t *testing.T) {
+	cases := []struct {
+		name      string
+		local     cliResolver
+		vercel    bool
+		want, bad []string
+	}{
+		{name: "stop", local: wrongWWW,
+			want: []string{"www.example.com does not point at the server yet", "A     www"},
+			bad:  []string{"already answers", "from its cache"}},
+		{name: "warn", vercel: true, local: cliResolver{
+			"ip4 ns1.vercel-dns.com": {"192.0.2.1"},
+			"ip4 example.com":        {"203.0.113.10"},
+			"ip4 www.example.com":    {"198.51.100.7"},
+		},
+			want: []string{
+				"www.example.com: your DNS host (Vercel) already answers 203.0.113.10; this machine still sees 198.51.100.7 from its cache",
+				"Let's Encrypt usually sees the new record",
+				"www.example.com is redirected and gets its own certificate once it resolves to the server",
+			},
+			bad: []string{"does not point at the server", "A     www"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _, errOut := redirectCLI(tc.local, &fakeRedirectRPC{})
+			if tc.vercel {
+				c.nsResolver = cliNS{"example.com": {"ns1.vercel-dns.com."}}
+				c.exchange = dnstest.Exchange(map[string]dnstest.Answer{"192.0.2.1": {AA: true, Addrs: []string{"203.0.113.10"}, TTL: 600}})
+			}
+			code := c.runAppUpdate(t.Context(), []string{"-domain", "example.com", "-www", "web", "kimse@203.0.113.10"})
+			if code != exitOK {
+				t.Fatalf("çıkış %d, %d bekleniyordu\n%s", code, exitOK, errOut)
+			}
+			for _, want := range tc.want {
+				if !strings.Contains(errOut.String(), want) {
+					t.Errorf("stderr %q içermiyor:\n%s", want, errOut)
+				}
+			}
+			for _, bad := range tc.bad {
+				if strings.Contains(errOut.String(), bad) {
+					t.Errorf("stderr %q içermemeli:\n%s", bad, errOut)
+				}
+			}
+		})
 	}
 }
 

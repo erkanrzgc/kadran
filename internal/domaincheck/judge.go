@@ -96,9 +96,12 @@ func (c Checker) judgeAuthoritative(ctx context.Context, rep *Report, serverHost
 	}
 	local := append(slices.Clone(rep.A), rep.AAAA...)
 	if rep.Verdict == OK && !sameSet(local, addrs) {
+		// Komut önerilmez: `-wait` yalnız Stop'ta bekler, bu uyarıda hemen
+		// döner. Gerekçe üç yerde (domain check, -domain önkontrolü,
+		// yönlendirme adları) olduğu gibi basılıyor (23 Eki).
 		rep.raise(Warn, "your DNS host%s already answers %s; this machine still sees %s from its cache "+
 			"(the new record's TTL is %d s, how long the old answer stays cached is unknown). "+
-			"Let's Encrypt usually sees the new record; to be sure, wait with: kadran domain check -wait 10m",
+			"Let's Encrypt usually sees the new record",
 			hostSuffix(*rep), join(addrs), orNone(local), rep.Auth.TTL)
 	}
 }

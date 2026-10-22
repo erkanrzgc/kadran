@@ -11296,6 +11296,13 @@ kümeyi geçiriyordu.
 - **Yetkili cevap önceliği.** Bölgenin NS'lerine doğrudan sorulur ve yalnız yetkili (AA)
   cevap sayılır. Yetkili cevap doğru ama yerel çözümleyici eskiyse komut DURMAZ, uyarır
   ve `-wait 10m` önerir. NS'ler birbirinden ayrışırsa yerel çözümleyicinin cevabı yargılanır: yanlışsa yine Stop, değilse uyarıyla geçer.
+
+  > ⚠ Düzeltme (2026-10-23): uyarı artık komut önermiyor. Önerilen `kadran domain check
+  > -wait 10m` alan adı ve hedef taşımıyordu (olduğu gibi kopyalanınca kullanım hatası), ama
+  > ikisiyle de işe yaramazdı: `-wait` yalnız Stop'ta bekler, bu uyarı Warn olduğu için hemen
+  > döner (sahte zamanlayıcıyla ölçüldü: 0 bekleme). `-wait`'i önbelleği de bekleyecek şekilde
+  > genişletmek ayrı bir karar; `-domain` önkontrolünde ve yönlendirme adlarında dağıtım zaten
+  > sürmüş olur.
 - **Karışık küme durur.** Sunucu + başka adres artık Stop; silinecek kayıtlar adıyla söylenir
   (`Delete these records for …`, joker ipucuyla).
 - **CNAME.** Ad bir CNAME ise silinecek tek kayıt o CNAME'dir (hedefin adresleri kullanıcının

@@ -70,7 +70,16 @@ func TestCheckerRules(t *testing.T) {
 			name:   "yetkili doğru, yerel önbellek eski: uyarır, durmaz",
 			c:      zoneChecker(vercelNS, ip4("app.example.com", wrong), auth(right), auth(right)),
 			domain: "app.example.com", server: right,
-			want: Warn, reasons: []string{"(Vercel) already answers 203.0.113.10", "600 s", "-wait"},
+			want: Warn, reasons: []string{"(Vercel) already answers 203.0.113.10", "600 s", "Let's Encrypt usually sees the new record"},
+			// `-wait` yalnız Stop'ta bekler: bu uyarıda önerilen komut hiç
+			// beklemeden dönüyordu (23 Eki). Gerekçe komut önermemeli.
+			check: func(t *testing.T, rep Report) {
+				for _, r := range rep.Reasons {
+					if strings.Contains(r, "-wait") || strings.Contains(r, "kadran domain check") {
+						t.Errorf("gerekçe beklemeyen bir komut öneriyor: %q", r)
+					}
+				}
+			},
 		},
 		{
 			name:   "yetkili yanlış, yerel doğru: durur",

@@ -283,7 +283,8 @@ func TestAppUpdateRedirectDNSWarningMatchesVerdict(t *testing.T) {
 				"Let's Encrypt usually sees the new record",
 				"www.example.com is redirected and gets its own certificate once it resolves to the server",
 			},
-			bad: []string{"does not point at the server", "A     www"}},
+			// `-wait` bu uyarıda beklemeden döner; komut önerilmez.
+			bad: []string{"does not point at the server", "A     www", "-wait"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

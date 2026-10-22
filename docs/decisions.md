@@ -11366,7 +11366,7 @@ yazılmadı. Hepsi 10 sn bütçenin çok altında (1,1–2,5 sn).
 
 ### Durum
 
-Uygulandı (`dns-yonlendirme` dalı), yayımlanmadı. Rehber: `docs/guides/domains.md`.
+PR #14 (`3d01847`) birleşti; v0.8.0 ile yayında. Rehber: `docs/guides/domains.md`.
 
 ## K-152 — www ve yönlendirme adları: bir uygulama, birden çok ad (2026-10-20)
 
@@ -11438,17 +11438,48 @@ Caddy modülü GEREKMİYOR.
   Yerine `build/caddy/redirect_readback_test.go` altın rotayı gerçek Caddy'ye yükleyip admin
   API'sinden (yalnız loopback) geri okur ve anlamca karşılaştırır: `SafeRoutes`'un DeepEqual'ı
   bu varsayıma dayanıyor. Yanılma maliyeti: kadrand→aracı→Caddy kopukluğu ancak canlıda görünür.
+  Canlıda ölçüldü: aşağıdaki "Canlı" bölümü.
 - **Rotalanmayan uygulamada kaldırma hemen uygulanır (son inceleme).** `carrySkippedRoutes`
   canlı yönlendirmeyi yalnız ad hâlâ istenen adlar arasındaysa taşır; hedef koşulu yapısal
   (yalnız taşınan domaine gidenler). `-no-www` / `-redirect-rm` "removed" derken 308 artık
   canlıda kalmıyor; eklenen ad uygulama rotalanınca uygulanır ve cevap ikisini ayrı söyler.
 
+### Canlı (Hetzner, 22 Ekim, v0.8.0, kullanıcı onayıyla)
+
+Portfolyo `kadran.erkanrzgc.dev`'den `www.erkanrzgc.dev`'e taşındı; kök ve eski ad yönlendirme
+oldu. Önce Vercel DNS'te `A @` ve `A www` sunucuya eklendi; ns1/ns2.vercel-dns.com 4 sn içinde
+yalnız sunucunun adresini döndürdü. Sonra `kadran app update -domain www.erkanrzgc.dev -www
+-redirect kadran.erkanrzgc.dev portfolio` (16:45:16–19 UTC, çıkış 0).
+
+- **E1, yönlendirme.** `https://erkanrzgc.dev/privacy?x=1&y=a%20b` → `308`, `Location:
+  https://www.erkanrzgc.dev/privacy?x=1&y=a%20b`, `Server: Caddy`; `kadran.erkanrzgc.dev` aynı.
+  Yol ve sorgu (kodlanmış `%20` dahil) olduğu gibi korunuyor. Düz HTTP'de iki adım:
+  `http://<ad>/p?q=1` önce AYNI adın https'ine 308 (Caddy'nin kendi :80 sunucusu), sonra
+  yukarıdaki 308. `https://www.erkanrzgc.dev/…` uygulamanın 200'ü.
+- **Ad başına sertifika.** Rota güncellemesinden hemen sonra (16:45:18) Caddy www ve kök için
+  AYRI sertifika istedi; ikisi de ilk denemede geldi (www 4,7 sn, kök 5,3 sn; Let's Encrypt YE1,
+  her birinin SAN'ında yalnız kendi adı). `kadran.erkanrzgc.dev` 3 Ekim'den kalan kendi
+  sertifikasıyla (YE2) sürdü.
+- **Kesinti yok.** Geçiş boyunca ~0,3 sn'de bir yoklandı (`--resolve` ile doğrudan sunucuya ve
+  gerçek DNS ile). Sunucuda kök ve www, rota ve sertifika gelene kadar TLS hatası verdi
+  (beklenen); 16:45:25'ten sonra 308/200. Gerçek DNS ile www hep 200; kök önce Vercel'in 307'si,
+  16:45:28'de Kadran'ın 308'i, 16:46:49'da yine Vercel'in 307'si (çözümleyici iki cevap
+  arasında). İki taraf da çalıştığı için ziyaretçi kesinti görmedi.
+- **CLI bulgusu.** `app update` kök için "does not point at the server yet" yazdı; o anda yetkili
+  NS'ler sunucuyu döndürüyordu, yalnız bu makinenin önbelleği eskiydi (`kadran domain check`
+  aynı anda doğru söylüyordu). Düzeltme PR #16: Warn'da `domain check`'in gerekçesi basılır.
+- **Sunucu.** Dört serviste çalışan ikili = diskteki, `NRestarts=0`; K-143 yetki sınırı yerinde;
+  günlükte yalnız Caddy'nin bilinen satırları (yerel kök sertifikasını sistem deposuna kuramadı,
+  sudo yok; :80'de HTTP/2 ve HTTP/3 atlandı).
+
 ### Açık
 
-- **Ad başına sertifika canlıda ölçülmedi.** Caddy her rota host'u için kendiliğinden
-  sertifika alır; yönlendirme adı da. DNS'i olmayan bir www'nin ACME denemelerinin yalnız o adı
-  etkilediği, kök domainin sertifikasının ayrı kaldığı e2e ya da canlı çalışmada ÖLÇÜLECEK.
+- **DNS'i olmayan adın ACME denemeleri ölçülmedi.** Her adın kendi sertifikasını ayrı aldığı
+  22 Ekim'de canlıda görüldü (yukarıda), ama orada bütün adların DNS'i doğruydu. DNS'i olmayan
+  bir www'nin başarısız ACME denemelerinin yalnız o adı etkilediği, kök domainin sertifikasının
+  ayrı kaldığı hâlâ ÖLÇÜLMEDİ.
 
 ### Durum
 
-Uygulandı (`www-yonlendirme` dalı), yayımlanmadı. Rehber: `docs/guides/domains.md`.
+PR #15 (`30b690f`) birleşti; v0.8.0 (22 Ekim) ile yayında, Hetzner'de canlı (yukarıda). Rehber:
+`docs/guides/domains.md`.

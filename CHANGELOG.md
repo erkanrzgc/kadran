@@ -3,6 +3,20 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Fixed
+
+- The startup alarm's detail carried a Turkish fragment in the middle of its English sentence
+  ("rotalanamayan uygulama var:"); it now reads "some apps could not be routed:" (K-153).
+- Backup audit records use the parameter keys `file` and `bytes`, like the other records; they
+  were `dosya` and `bayt`. Records already stored keep their keys and still verify (K-153).
+
+### Changed
+
+- The English-only check now also looks for Turkish words written without Turkish letters, the
+  class both fixes above slipped through (K-153).
+
 ## v0.8.1 — 2026-10-23
 
 Client fixes to the DNS warnings, found while moving a live site to Kadran (K-151, K-152), and

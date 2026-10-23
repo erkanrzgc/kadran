@@ -24,9 +24,22 @@ var cliPackages = []string{
 }
 
 // turkishLetters, ASCII dışı Türkçe harfler. Türkçe bir metnin hepsini
-// yakalamaz ("kapsam", "uygulama"), ama geri dönüşün çoğu bunlardan biriyle
-// gelir; geri kalanı yazarken ve incelemede okunuyor.
+// yakalamaz ("kapsam", "uygulama"); o boşluğu turkishWords dolduruyor.
 const turkishLetters = "çğıöşüÇĞİÖŞÜ"
+
+// turkishWords, Türkçe harf taşımayan Türkçe sözcükler. Harf koruması
+// bunları göremiyordu ve K-150'nin "kalan yok" iddiasından sonra iki artık
+// canlıya çıktı: açılış alarmının ayrıntısında "rotalanamayan uygulama
+// var", yedek denetim kaydında "dosya"/"bayt" anahtarları (K-153). Liste
+// bilerek dar: İngilizce metinde, dosya adlarında ve gömülü betiklerin
+// değişken adlarında (`kullanici`, `hedef`, `kasa-coz.sh`) geçmeyen
+// sözcükler. Betik testine girmiyor: gönderici kip adı `hata` sözleşme.
+var turkishWords = regexp.MustCompile(`(?i)\b(uygulama|uygulamalar|rotalanamayan|dosya|bayt|yok|hata|sebep|degil|icin|veya|gecersiz|basarisiz|bulunamadi|okunamadi|yazilamadi|ayakta|sunucu)\b`)
+
+// isTurkish, bir dize sabitinin Türkçe metin taşıyıp taşımadığı.
+func isTurkish(lit string) bool {
+	return strings.ContainsAny(lit, turkishLetters) || turkishWords.MatchString(lit)
+}
 
 // TestCLIMessagesAreEnglish: CLI'ın metni İngilizce (K-141). Yorumlar ve
 // testlerin tanı mesajları Türkçe kalabilir; burada yalnız üretim kodundaki
@@ -55,7 +68,7 @@ func TestCLIMessagesAreEnglish(t *testing.T) {
 				if !ok || lit.Kind != token.STRING {
 					return true
 				}
-				if strings.ContainsAny(lit.Value, turkishLetters) {
+				if isTurkish(lit.Value) {
 					t.Errorf("%s: Türkçe metin: %.80s", fset.Position(lit.Pos()), lit.Value)
 				}
 				return true
@@ -131,7 +144,7 @@ func TestServerErrorsAreEnglish(t *testing.T) {
 					return true
 				}
 				literals++
-				if !strings.ContainsAny(lit.Value, turkishLetters) {
+				if !isTurkish(lit.Value) {
 					return true
 				}
 				t.Errorf("%s: Türkçe metin: %.80s", fset.Position(lit.Pos()), lit.Value)

@@ -117,7 +117,7 @@ func TestProxyWatcherKeepsAlarmWhenLiveDiffers(t *testing.T) {
 // TestProxyWatcherKeepsAlarmWhileAppsAreSkipped: canlı birebir olsa bile,
 // o an rotalanamayan bir uygulama varken alarm KAPANMAZ. Güvenlik
 // incelemesi buldu: ilk hâli onarımdan sonra koşulsuz kapatıyordu ve
-// açılıştaki "rotalanamayan uygulama var" alarmını gizleyebiliyordu.
+// açılıştaki "some apps could not be routed" alarmını gizleyebiliyordu.
 func TestProxyWatcherKeepsAlarmWhileAppsAreSkipped(t *testing.T) {
 	atlanan := map[string]string{"shop": "ayakta replika yok"}
 	am := izleyiciKos(t, onarimSonucu{eksik: []string{"blog.example.com"}, atlanan: atlanan, tam: true})

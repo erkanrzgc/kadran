@@ -70,8 +70,8 @@ type proxyWatcher struct {
 // sessiz (alarm.Manager), her turda çağrılabilir.
 //
 // İki önceki hâl de yanlıştı:
-//   - Onarımdan sonra koşulsuz kapatmak, açılıştaki "rotalanamayan
-//     uygulama var" alarmını gizliyordu (güvenlik incelemesi).
+//   - Onarımdan sonra koşulsuz kapatmak, açılıştaki "some apps could not
+//     be routed" alarmını gizliyordu (güvenlik incelemesi).
 //   - Yalnızca KENDİ açtığını ya da kendi onardığını kapatmak, reboot'tan
 //     sonra alarmı SONSUZA DEK açık bıraktı: gözetmen uygulamayı
 //     iyileştirip rotayı yüklüyor, izleyici "ben onarmadım" diye

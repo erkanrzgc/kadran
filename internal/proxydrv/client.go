@@ -171,7 +171,35 @@ func decodeLive(raw []byte) (*Config, error) {
 	if err := dec.Decode(new(any)); err != io.EOF {
 		return nil, fmt.Errorf("caddy: trailing data after the live config")
 	}
+	// DisallowUnknownFields harf varyantını GÖRMEZ: Go'nun çözücüsü "Admin"
+	// ya da "Upstreams" anahtarını da `admin`/`upstreams` alanına koyuyor ve
+	// iki varyant yan yana gelince biri öbürünü sessizce eziyor. Çözülen
+	// yapı yeniden kodlanıp cevapla AĞAÇ olarak karşılaştırılıyor: yalnız
+	// alanların kendi yazımı, kendi değeriyle geçer. FixedConfig'in çıktısı
+	// zaten bu biçimde (omitempty, aynı etiketler), meşru geri okuma bozulmaz.
+	if err := sameTree(raw, &cfg); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
+}
+
+// sameTree, cfg'nin JSON kodlamasının raw ile aynı ağaç olduğunu doğrular.
+func sameTree(raw []byte, cfg *Config) error {
+	canon, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("caddy: could not re-encode the live config: %w", err)
+	}
+	var live, want any
+	if err := json.Unmarshal(raw, &live); err != nil {
+		return fmt.Errorf("caddy: could not decode the live config: %w", err)
+	}
+	if err := json.Unmarshal(canon, &want); err != nil {
+		return fmt.Errorf("caddy: could not decode the re-encoded config: %w", err)
+	}
+	if !reflect.DeepEqual(live, want) {
+		return fmt.Errorf("caddy: the live config is not in the form kadran writes (key spelling or empty values differ)")
+	}
+	return nil
 }
 
 func decodeRoutes(raw []byte) (*Config, error) {

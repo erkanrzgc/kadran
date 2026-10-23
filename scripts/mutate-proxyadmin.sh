@@ -118,6 +118,9 @@ echo "== Katı geri okuma (K-154) =="
 mutate "geri okuma bilinmeyen alanı kabul ediyor" \
     "s=s.replace('\tvar cfg Config\n\tdec := json.NewDecoder(bytes.NewReader(raw))\n\tdec.DisallowUnknownFields()\n','\tvar cfg Config\n\tdec := json.NewDecoder(bytes.NewReader(raw))\n',1)"
 
+mutate "geri okuma harf varyantlı anahtarı kabul ediyor" \
+    "s=s.replace('\tif !reflect.DeepEqual(live, want) {','\tif false && !reflect.DeepEqual(live, want) {',1)"
+
 mutate "geri okuma sondaki ikinci belgeyi kabul ediyor" \
     "s=s.replace('\tif err := dec.Decode(new(any)); err != io.EOF {\n\t\treturn nil, fmt.Errorf(\"caddy: trailing','\tif err := dec.Decode(new(any)); false && err != io.EOF {\n\t\treturn nil, fmt.Errorf(\"caddy: trailing',1)"
 

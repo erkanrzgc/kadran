@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -61,6 +62,16 @@ func caddyGibi(t *testing.T, agac map[string]any) []byte {
 // eklemeden ölçülürdü.
 func ekle(t *testing.T, agac map[string]any, yol []any, anahtar string, deger any) {
 	t.Helper()
+	m := bul(t, agac, yol)
+	if _, varMi := m[anahtar]; varMi {
+		t.Fatalf("yol %v: %q zaten var", yol, anahtar)
+	}
+	m[anahtar] = deger
+}
+
+// bul, ağaçta yolun gösterdiği nesneyi verir; yol yoksa test düşer.
+func bul(t *testing.T, agac map[string]any, yol []any) map[string]any {
+	t.Helper()
 	var cur any = agac
 	for _, adim := range yol {
 		switch a := adim.(type) {
@@ -86,10 +97,7 @@ func ekle(t *testing.T, agac map[string]any, yol []any, anahtar string, deger an
 	if !ok {
 		t.Fatalf("yol %v bir nesneye varmıyor", yol)
 	}
-	if _, varMi := m[anahtar]; varMi {
-		t.Fatalf("yol %v: %q zaten var", yol, anahtar)
-	}
-	m[anahtar] = deger
+	return m
 }
 
 // TestLiveReadbackRejectsUnmodelledFields: yapılandırmanın HER yapı
@@ -126,17 +134,55 @@ func TestLiveReadbackRejectsUnmodelledFields(t *testing.T) {
 		{"upstream: max_requests", at(0, "handle", 1, "upstreams", 0), "max_requests", 1},
 		{"static_response: abort", at(1, "handle", 0), "abort", true},
 		{"static_response: close", at(1, "handle", 0), "close", true},
+		// Go'nun çözücüsü anahtarı büyük/küçük harf duyarsız eşliyor:
+		// "Upstreams" bilinmeyen alan SAYILMAZ, `upstreams` alanına düşer ve
+		// Marshal sırasıyla sonra gelen `upstreams` onu ezer. Canlıda iki
+		// upstream listesi olur, karşılaştırma birini hiç görmez.
+		{"reverse_proxy: harf varyantı Upstreams", at(0, "handle", 1), "Upstreams",
+			[]any{map[string]any{"dial": "172.18.0.9:80"}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.ad, func(t *testing.T) {
 			agac := temizAgac(t)
 			ekle(t, agac, tc.yol, tc.anahtar, tc.deger)
-			cfg, err := decodeLive(caddyGibi(t, agac))
-			if err != nil {
-				return
+			_, err := decodeLive(caddyGibi(t, agac))
+			if err == nil {
+				t.Fatalf("%q eklenmiş canlı yapılandırma hatasız çözüldü", tc.anahtar)
 			}
-			if _, err := SafeRoutes(cfg); err == nil {
-				t.Fatalf("%q eklenmiş canlı yapılandırma güvenli sayıldı", tc.anahtar)
+			// Bilinmeyen alanın reddi alanı ADLANDIRIR: vekil alarmının
+			// ayrıntısında operatör neyin eklendiğini görür. Harf varyantı
+			// bilinmeyen alan değil; onu ağaç karşılaştırması yakalıyor.
+			if tc.anahtar == strings.ToLower(tc.anahtar) && !strings.Contains(err.Error(), `"`+tc.anahtar+`"`) {
+				t.Fatalf("ret sebebi %q alanını adlandırmıyor: %v", tc.anahtar, err)
+			}
+		})
+	}
+}
+
+// TestLiveReadbackRejectsCaseVariantKeys: modellenmiş bir alanın harf
+// varyantıyla yazılmış anahtar ("Admin", "Dial") aynı Go alanına düşer ve
+// DisallowUnknownFields onu görmez. Geri okuma yalnız alanların kendi
+// yazımını kabul eder.
+func TestLiveReadbackRejectsCaseVariantKeys(t *testing.T) {
+	for _, tc := range []struct {
+		ad         string
+		yol        []any
+		eski, yeni string
+	}{
+		{"kök: Admin", nil, "admin", "Admin"},
+		{"upstream: Dial", []any{"apps", "http", "servers", serverName, "routes", 0, "handle", 1, "upstreams", 0}, "dial", "Dial"},
+	} {
+		t.Run(tc.ad, func(t *testing.T) {
+			agac := temizAgac(t)
+			m := bul(t, agac, tc.yol)
+			deger, ok := m[tc.eski]
+			if !ok {
+				t.Fatalf("%q yok", tc.eski)
+			}
+			delete(m, tc.eski)
+			m[tc.yeni] = deger
+			if _, err := decodeLive(caddyGibi(t, agac)); err == nil {
+				t.Fatalf("%q yerine %q yazılmış canlı yapılandırma hatasız çözüldü", tc.eski, tc.yeni)
 			}
 		})
 	}
@@ -185,8 +231,14 @@ func TestStartupConfigPassesStrictReadback(t *testing.T) {
 // varsa hangisinin canlı olduğu belirsiz; reddedilir.
 func TestLiveReadbackRejectsTrailingData(t *testing.T) {
 	raw := append(caddyGibi(t, temizAgac(t)), []byte("{}\n")...)
-	if _, err := decodeLive(raw); err == nil {
+	_, err := decodeLive(raw)
+	if err == nil {
 		t.Fatal("sonunda ikinci belge olan cevap kabul edildi")
+	}
+	// Sebep adıyla söylenir; yalnız "çözülemedi" operatöre neyin yanlış
+	// olduğunu anlatmazdı.
+	if !strings.Contains(err.Error(), "trailing data") {
+		t.Fatalf("ret sebebi sondaki veriyi söylemiyor: %v", err)
 	}
 }
 

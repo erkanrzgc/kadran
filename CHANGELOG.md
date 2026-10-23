@@ -3,6 +3,25 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## v0.8.1 — 2026-10-23
+
+Client fixes to the DNS warnings, found while moving a live site to Kadran (K-151, K-152), and
+English step headers in `bootstrap`. The protocol is unchanged (3). Only the `kadran` client
+changed: the server programs are rebuilt with the new version number and nothing else, so
+upgrading the server is optional and a v0.8.1 client works with a v0.8.0 server.
+
+### Fixed
+
+- A redirect name whose record is already right at the DNS host, while this machine still has
+  the old answer cached, was reported as "does not point at the server yet". That case is a
+  warning, not a stop: `app create/update` now prints the same reason as `kadran domain check`,
+  with the name in front. The exit code is unchanged (K-152).
+- The stale-cache warning (in `kadran domain check`, the `-domain` precheck and the redirect
+  names) no longer suggests `kadran domain check -wait 10m`. The command had no domain or
+  target, and `-wait` only waits while the check stops, so it returned at once (K-151).
+- `bootstrap` prints its "Binaries", "Vault" and "Reverse proxy" step headers in English; they
+  were in Turkish.
+
 ## v0.8.0 — 2026-10-22
 
 DNS guidance and www/redirect names (K-151, K-152). The protocol is unchanged (3), so v0.7.x

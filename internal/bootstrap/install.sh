@@ -336,7 +336,7 @@ say "kadran groups: $(id -nG kadran)"
 
 # ── Binary'ler ───────────────────────────────────────────────────────
 
-step "Binary'ler"
+step "Binaries"
 
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
@@ -383,7 +383,7 @@ say "/run/kadran, /run/kadran-exec, $STATE_DIR ready"
 # günlüğe hiç girmiyor. Daemon açık anahtarı /etc/kadran/vault.pub'dan
 # okuyor (root 0644; daemon yazamıyor).
 
-step "Kasa"
+step "Vault"
 
 VAULT_KEY=/var/lib/kadran-exec/vault.key
 VAULT_PUB=/etc/kadran/vault.pub
@@ -552,7 +552,7 @@ vekil_araci_onhazirla() {
 # 6,5 sn'lik vekil geçişinin ~3 sn'si modül denetimiydi. Taze kurulum ve
 # yükseltmede ikisi art arda çalışır (ters_vekil_kur), davranış aynı.
 ters_vekil_hazirla() {
-    step "Ters vekil"
+    step "Reverse proxy"
 
     # ── K-050 SINIRI: binary'de dosya servis eden modül var mı? ──────────
     #

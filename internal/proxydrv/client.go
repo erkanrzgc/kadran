@@ -139,14 +139,37 @@ func (c *Client) Current(ctx context.Context) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeLive(raw)
+}
+
+// decodeLive, Caddy'nin `GET /config/` cevabını KATI çözer.
+//
+// Go yapılarında karşılığı olmayan her alan hata: SafeRoutes canlıyı
+// FixedConfig ile DeepEqual karşılaştırıyor ve bu ancak cevabın TAMAMI
+// karşılaştırmaya girerse bir şey kanıtlar. Düz json.Unmarshal bilinmeyen
+// alanı sessizce atıyordu; `abort`, `transport`, dosya okuyan bir
+// `handle_response` ya da dosyaya yazan bir log `writer`'ı taşıyan canlı
+// yapılandırma güvenli sayılıyordu (K-154).
+//
+// Bu, Caddy'nin kendisi alan eklemediği için mümkün: geri okumayı
+// yüklenen ağaçtan üretiyor, varsayılan doldurmuyor. Açılış yapılandırması
+// (deploy/caddy/config.json) da yalnız modellenmiş alanlar taşıyor; ikisi
+// de testlerde. Yinelenen anahtar denetimi yok: Caddy cevabı bir
+// haritadan kodluyor, aynı anahtar iki kez gelemez.
+func decodeLive(raw []byte) (*Config, error) {
 	// Caddy hiç yapılandırma yoksa "null" döner.
 	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		return &Config{}, nil
 	}
 
 	var cfg Config
-	if err := json.Unmarshal(raw, &cfg); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("caddy: could not decode the live config: %w", err)
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return nil, fmt.Errorf("caddy: trailing data after the live config")
 	}
 	return &cfg, nil
 }

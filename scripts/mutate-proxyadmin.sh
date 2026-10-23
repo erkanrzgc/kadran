@@ -111,6 +111,21 @@ mutate "gönderilmeyen rota görülmüyor (tek yönlü)" \
 mutate "upstream karşılaştırması hep eşit" \
     "s=s.replace('func sameStrings(a, b []string) bool {\n','func sameStrings(a, b []string) bool {\n\treturn true\n',1)"
 
+echo "== Katı geri okuma (K-154) =="
+
+# Modellenmemiş alan sessizce atılırsa SafeRoutes'un DeepEqual'i onu hiç
+# görmez: `abort`, `transport`, log `writer`'ı taşıyan canlı "güvenli" olur.
+mutate "geri okuma bilinmeyen alanı kabul ediyor" \
+    "s=s.replace('\tvar cfg Config\n\tdec := json.NewDecoder(bytes.NewReader(raw))\n\tdec.DisallowUnknownFields()\n','\tvar cfg Config\n\tdec := json.NewDecoder(bytes.NewReader(raw))\n',1)"
+
+mutate "geri okuma sondaki ikinci belgeyi kabul ediyor" \
+    "s=s.replace('\tif err := dec.Decode(new(any)); err != io.EOF {\n\t\treturn nil, fmt.Errorf(\"caddy: trailing','\tif err := dec.Decode(new(any)); false && err != io.EOF {\n\t\treturn nil, fmt.Errorf(\"caddy: trailing',1)"
+
+# Aracının kullandığı uç (Current) katı yoldan geçmezse çözücünün kendi
+# testleri yeşil kalır; bunu yalnız sahte admin üzerinden Current testi görür.
+mutate "Current katı çözümü atlıyor" \
+    "s=s.replace('\treturn decodeLive(raw)\n}','\tvar cfg Config\n\t_ = json.Unmarshal(raw, &cfg)\n\treturn &cfg, nil\n}',1)"
+
 echo "== Admin yanıtları =="
 
 mutate "200 dışı yanıt başarı sayılıyor" \

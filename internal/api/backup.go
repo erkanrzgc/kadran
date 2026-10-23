@@ -41,8 +41,8 @@ func (s *Server) CreateBackup(
 	// Dosya ADI kayda giriyor, tam yol değil: dizin sunucu
 	// yapılandırmasıdır ve zincire yazılacak bir bilgi taşımaz.
 	params := map[string]string{
-		"dosya": filepath.Base(snap.Path),
-		"bayt":  strconv.FormatInt(snap.Bytes, 10),
+		"file":  filepath.Base(snap.Path),
+		"bytes": strconv.FormatInt(snap.Bytes, 10),
 	}
 	if err := s.completed(ctx, action, target, params, nil); err != nil {
 		return nil, err

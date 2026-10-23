@@ -11483,3 +11483,72 @@ yalnız sunucunun adresini döndürdü. Sonra `kadran app update -domain www.erk
 
 PR #15 (`30b690f`) birleşti; v0.8.0 (22 Ekim) ile yayında, Hetzner'de canlı (yukarıda). Rehber:
 `docs/guides/domains.md`.
+
+## K-153 — Yeniden başlatma ölçümü; harf korumasının kaçırdığı Türkçe artıklar (2026-10-23)
+
+**Durum:** dal `fix-turkish-leftovers`, PR bekliyor.
+
+### Yeniden başlatma (iki sunucu, kullanıcı onayıyla, ayrı ayrı)
+
+İki sunucu da yeni çekirdeği bekliyordu ve mevcut birim setiyle (K-136 adları, K-143 soketleri)
+HİÇ açılmamıştı: Hetzner'in son açılışı 30 Eylül, GCP'ninki 3 Ekim. İçeriden `systemctl reboot`;
+öncesi ve sonrası aynı salt-okur betiklerle, kesinti dışarıdan sürekli yoklamayla ölçüldü.
+
+| | GCP (e2-micro) | Hetzner (cx23) |
+|---|---|---|
+| çekirdek | 6.12.111 → 6.12.113 | 6.8.0-142 → 6.8.0-147 |
+| açılış (systemd-analyze) | 44,2 sn | 19,9 sn |
+| dışarıdan kesinti | 85 sn (sslip, `-k`'sız) | ~35 sn (www, gerçek DNS ve `--resolve`) |
+| kadrand hazır → rota geri | 10 sn | 10 sn |
+
+İkisinde de: journal'da `ordering cycle` 0; başarısız birim yok; hacim kökü `nosuid,nodev` ile
+bağlı (K-039'un sessizce düştüğü yer); çalışan ikili = diskteki, `NRestarts=0`; K-143 sınırı
+yerinde (admin soketine `kadran` 000, `kadran-proxy` 200); `--allow-repo` drop-in'i duruyor;
+yalnız etkin sürümlerin konteynerleri kalktı (eskiler `Exited`). Hetzner'de Caddy rotaları
+önce/sonra birebir aynı (5 ad).
+
+Konteynerlerin ilkesi `no`; dönüşü kadrand yapıyor ve sıra iki sunucuda aynıydı: açılış
+uzlaştırması "active release has no running replica" ile atlar → `proxy_unreconciled` KRİTİK
+alarmı açılır → gözetmen 3 × 2 sn sonra konteyneri başlatır (`recreated=false`) → vekil
+izleyicisi rotayı yükler → alarm kapanır (GCP 10 sn, Hetzner 20 sn sonra). Yani her yeniden
+başlatma kısa bir kritik alarm üretir; Hetzner'in göndericisi (`OnBootSec=2min`) bunu Telegram'a
+iletebilir. Bilerek değiştirilmedi: o 10–20 saniye boyunca trafik gerçekten akmıyor.
+
+### Bulgu: alarm ayrıntısında Türkçe
+
+Açılış alarmının ayrıntısı İngilizce cümlenin ortasında `rotalanamayan uygulama var:`
+taşıyordu (`cmd/kadrand/main.go`, `reconcileAtStartup`'ın dönüş değeri). K-150 "ASCII
+sözcükleri envanterin yeniden taranması yakaladı (kalan yok)" diyordu; yanlıştı. Envanter
+dizeleri `slog` çağrısında, `sdnotify.Status`'ta ve `store.Alarm{Detail}` içinde arıyordu. Bu
+dize bir fonksiyondan DÖNÜYOR ve ayrıntıya başka bir dosyada (`recordProxyAlarm`) ekleniyor.
+Koruma (`TestServerErrorsAreEnglish`) yalnız Türkçe harfe baktığı için tamamen ASCII olan dizeyi
+de göremedi.
+
+Aynı sınıftan ikinci artık, ASCII Türkçe sözcük listesiyle yapılan taramada çıktı: yedek
+denetim kaydının parametre anahtarları `dosya`/`bayt` (`internal/api/backup.go`). Öbür
+kayıtların anahtarları İngilizce (`source`, `branch`, `domain`).
+
+### Karar
+
+- Alarm ayrıntısı: `some apps could not be routed: …` (açılış günlüğündeki satırla aynı ifade).
+- Denetim anahtarları: `file`, `bytes`. **Sözleşme taraması:** bu anahtarları okuyan kod, betik,
+  masaüstü ya da belge yok. Saklanmış eski kayıtlar olduğu gibi kalır; zincir saklanan değerin
+  özetini (`ComputeHash` içinde `ParamsJSON`) doğruladığı için doğrulama etkilenmez.
+  Parametreleri gösteren tek yer masaüstünün denetim ayrıntısı ve orada ham JSON basılıyor:
+  eski kayıtlarda `dosya`/`bayt`, yenilerde `file`/`bytes`.
+- **Koruma:** `english_test.go`'ya `turkishWords` (büyük/küçük harf duyarsız, sözcük sınırlı:
+  `uygulama`, `rotalanamayan`, `dosya`, `bayt`, `yok`, `hata`, `sebep`, …). Liste bilerek dar:
+  gömülü betiklerin değişken adları (`kullanici`, `hedef`) ve dosya adları (`kasa-coz.sh`)
+  eşleşmesin. Betik testine girmedi: göndericinin kip adı `hata` sözleşme (K-150).
+- **KIRMIZI ölçüldü:** düzeltmeden önce test tam bu üç dizede düştü (`main.go:430`,
+  `backup.go:44`, `backup.go:45`); CLI ve sunucu paketlerindeki başka hiçbir dize sabitinde
+  eşleşme yok, yani liste yanlış alarm üretmiyor. Düzeltmeden sonra yeşil.
+
+### Ölçüm
+
+`gofmt -l` boş, `go vet`, `go test -count=1 ./...` yeşil, `golangci-lint` 0 bulgu.
+
+### Açık
+
+- Liste bir sözlük değil; listede olmayan bir ASCII Türkçe sözcük yine geçebilir. Yakaladığı
+  şey bu iki artığın sınıfı: dönüş değeriyle ya da anahtar adıyla taşınan kısa metin.

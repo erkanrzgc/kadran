@@ -9,7 +9,7 @@
 #
 # Alarmın kapanma kuralı. Aynı gün ÜÇ kez değişti ve iki önceki hâli de
 # ölçülerek yanlış çıktı:
-#   - onarımdan sonra koşulsuz kapatmak "rotalanamayan uygulama var"
+#   - onarımdan sonra koşulsuz kapatmak "some apps could not be routed"
 #     alarmını gizliyordu (güvenlik incelemesi),
 #   - yalnızca kendi onardığını kapatmak reboot'tan sonra alarmı SONSUZA
 #     DEK açık bıraktı (taze sunucuda ölçüldü).

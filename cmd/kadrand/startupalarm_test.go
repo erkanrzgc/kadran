@@ -45,7 +45,7 @@ func TestStartupAlarmIsClosedByTheProxyWatcher(t *testing.T) {
 	ctx := context.Background()
 	am, db, kayit := gercekAlarmlar(t)
 
-	recordProxyAlarm(ctx, am, "rotalanamayan uygulama var: web: aktif sürümün (r1) ayakta replikası yok")
+	recordProxyAlarm(ctx, am, "some apps could not be routed: web: active release (r1) has no running replica")
 	acik := etkinAlarmlar(t, db)
 	if len(acik) != 1 || acik[0].Severity != store.SeverityCritical {
 		t.Fatalf("açılış alarmı açılmadı: %+v", acik)

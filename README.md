@@ -612,9 +612,12 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   build output is shown after completion, and deletion is permitted only for apps
   without an active release. Restore, pruning and advanced integrations remain
   documented CLI/admin flows.
-- **Some messages are still in Turkish.** The CLI, the install output and the errors the
-  server sends back are English. The desktop app is English by default and can switch to
-  Turkish. The server's journal lines and alarm texts are being translated.
+- **Some stored values are still in Turkish.** The CLI, the install output, the errors the
+  server sends back, its journal lines and alarm texts are English. The desktop app is English
+  by default and can switch to Turkish. Alarms and audit records saved by older versions keep
+  their Turkish text, and a few stored state values (alarm severities in the database, the
+  alarm sender's state file) stay Turkish because running servers depend on them (K-150,
+  K-153).
 - **Dockerfile builds only.** No buildpacks. [Private GitHub builds](docs/guides/private-git.md)
   require a root credential file, repository allowlist and explicit executor network opt-in;
   deploy an exact commit. The archive path does not clone submodules or support symlinks.

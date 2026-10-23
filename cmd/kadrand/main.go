@@ -427,7 +427,7 @@ func reconcileAtStartup(rc startupReconciler) string {
 			deploy.WarnSkippedRedirects(res.SkippedRedirects)
 			if len(res.Skipped) > 0 {
 				slog.Warn("some apps could not be routed", "detail", res.Error())
-				return "rotalanamayan uygulama var: " + res.Error()
+				return "some apps could not be routed: " + res.Error()
 			}
 			slog.Info("reverse proxy reconciled", "routed", res.Routed)
 			return ""

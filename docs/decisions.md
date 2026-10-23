@@ -11486,7 +11486,7 @@ PR #15 (`30b690f`) birleşti; v0.8.0 (22 Ekim) ile yayında, Hetzner'de canlı (
 
 ## K-153 — Yeniden başlatma ölçümü; harf korumasının kaçırdığı Türkçe artıklar (2026-10-23)
 
-**Durum:** dal `fix-turkish-leftovers`, PR bekliyor.
+**Durum:** PR #18 (`497b080`) birleşti; henüz yayınlanmadı.
 
 ### Yeniden başlatma (iki sunucu, kullanıcı onayıyla, ayrı ayrı)
 
@@ -11552,3 +11552,73 @@ kayıtların anahtarları İngilizce (`source`, `branch`, `domain`).
 
 - Liste bir sözlük değil; listede olmayan bir ASCII Türkçe sözcük yine geçebilir. Yakaladığı
   şey bu iki artığın sınıfı: dönüş değeriyle ya da anahtar adıyla taşınan kısa metin.
+
+## K-154 — Caddy geri okuması katı: modellenmemiş alan ve harf varyantı (2026-10-24)
+
+**Durum:** dal `proxy-strict-readback`, PR bekliyor.
+
+### Bağlam
+
+Aracı (`kadran-proxy`, K-143) her yüklemeden ve her vekil denetiminden sonra canlıyı doğruluyor:
+`GET /config/` → `proxydrv.Config` → `SafeRoutes`, yani FixedConfig'in kurabileceğiyle
+`reflect.DeepEqual`. Çözme düz `json.Unmarshal`'dı: Go yapılarında karşılığı olmayan alan
+karşılaştırmaya hiç girmeden atılıyordu. www yönlendirme işinin (K-152) güvenlik incelemesi bunu
+gördü ve bir görev olarak ayrıldı.
+
+İstismar ham admin soketine yazmayı gerektiriyor (root ya da aracının kendisi); bu derinlemesine
+savunma, açık bir yetki yükseltme değil.
+
+### Eski kodda ölçüldü
+
+FixedConfig çıktısına (bir domain rotası, bir yönlendirme) her yapı düzeyine bir alan eklendi ve
+Caddy'nin kodladığı biçimde geri okundu. **15/15 "güvenli" sayıldı:** kökte `storage`, `admin`'de
+`config`, `logging`'de `sink`, log'da dosyaya yazan `writer`, `apps`'te `tls`, `http`'de
+`grace_period`, sunucuda `automatic_https`, rotada `group`, eşleşmede `path`, `encode`'da
+`minimum_length`, `reverse_proxy`'de `transport` ve dosya okuyan `handle_response`, upstream'de
+`max_requests`, `static_response`'ta `abort` ve `close`.
+
+İlk düzeltmeden (yalnız `DisallowUnknownFields`) sonra otomatik güvenlik incelemesi ikinci bir
+yol buldu: Go'nun çözücüsü anahtarları büyük/küçük harf duyarsız eşliyor. `"Upstreams"` bilinmeyen
+alan sayılmıyor, `upstreams` alanına düşüyor ve sıralı kodlamada sonra gelen `upstreams` onu
+eziyor; `"Admin"`, `"Dial"` de aynı. Ölçüldü: üçü de katı çözümden geçti.
+
+### Karar
+
+`proxydrv.decodeLive` (`Current` onu çağırıyor):
+
+- `DisallowUnknownFields`: ret sebebi alanı ADLANDIRIR (`json: unknown field "transport"`);
+  vekil alarmının ayrıntısında operatör neyin eklendiğini görür.
+- Sondaki veri reddi (`trailing data after the live config`).
+- **Ağaç karşılaştırması:** çözülen yapı yeniden kodlanıyor ve cevapla genel JSON ağacı olarak
+  `DeepEqual`. Yalnız kadran'ın yazdığı biçim geçer: harf varyantı, açıkça yazılmış boş değer,
+  modellenmemiş alan.
+
+**Neden meşru geri okumayı bozmuyor.** Caddy v2.11.7 `GET /config/`'u sakladığı ağaçtan
+`json.Encoder` ile üretiyor (`admin.go`, `unsyncedConfigAccess`), varsayılan doldurmuyor;
+FixedConfig `omitempty` ile yazıyor. Ölçüldü: iki sunucunun canlı `/config/` cevabı (salt-okur,
+`kadran-proxy` kimliğiyle; Hetzner 3 rota/2 yönlendirme, GCP 1 rota) ve açılış dosyası
+`deploy/caddy/config.json` yeni çözümden ve `SafeRoutes`'tan geçti. Canlı cevaplar depoya
+girmedi (sslip adı sunucu IP'sini taşıyor); açılış dosyası ve FixedConfig çıktısı testte.
+
+**Yinelenen anahtar denetimi eklenmedi.** Caddy cevabı bir haritadan kodluyor, aynı anahtar iki
+kez gelemez; aracının istek tarafındaki `uniqueJSON` olduğu yerde kaldı.
+
+**Kurcalanırsa.** Aracının `GET`'i 502 döner; kadrand'ın vekil izleyicisi uyarı yazar ve 3
+ardışık turdan sonra KRİTİK `proxy_unreconciled` alarmı açar (Telegram). Önceden sessizdi.
+
+### Testler ve mutasyon
+
+`internal/proxydrv/livedecode_test.go`: 16 alan ekleme (harf varyantı `Upstreams` dahil), 2
+yeniden adlandırma (`Admin`, `Dial`), sondaki belge; kontrol grubu yönlendirmeli FixedConfig
+geri okuması ve açılış dosyası; Linux'ta sahte admin üzerinden `Current`.
+
+`mutate-proxyadmin.sh`'e dört mutant. Ara bulgu: `DisallowUnknownFields` ve açık sondaki-veri
+denetimi ağaç karşılaştırmasıyla örtüşüyor; ilk denemede ikisinin mutantı YAŞADI. İkisi de
+tutuldu, çünkü sebebi adıyla söylüyorlar; testler artık sebebi de doğruluyor ve Windows'ta üç
+mutant yakalandı. "`Current` katı yolu atlıyor" mutantını yalnız Linux testi görür (CI).
+
+### Ölçüm
+
+`gofmt -l` boş; `go vet ./...` ve `golangci-lint run ./...` (Windows) ile `GOOS=linux` için
+`proxydrv` ve `proxyguard` paketleri 0 bulgu; `go test -count=1 ./...` (Windows) yeşil;
+`check-exec-surface.sh` geçti. Linux'taki `Current` testi ve tam mutasyon betiği CI'da koşar.

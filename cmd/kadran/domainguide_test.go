@@ -105,6 +105,10 @@ func TestAppCreateContinuesWhenOnlyTheCacheIsStale(t *testing.T) {
 	if !strings.Contains(stderr.String(), "already answers 203.0.113.10") || stdout.Len() != 0 {
 		t.Errorf("uyarı stderr'de değil ya da stdout kirlendi:\nstderr=%s\nstdout=%s", stderr, stdout)
 	}
+	// `-wait` yalnız Stop'ta bekler; bu uyarıda önerilen komut beklemezdi.
+	if strings.Contains(stderr.String(), "-wait") {
+		t.Errorf("uyarı beklemeyen bir -wait komutu öneriyor:\n%s", stderr)
+	}
 }
 
 func TestWriteDNSGuideForProxiedCloudflare(t *testing.T) {

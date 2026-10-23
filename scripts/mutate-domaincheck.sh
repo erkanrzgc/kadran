@@ -190,6 +190,10 @@ mutate_in "$AUTH" "soru türü aranmıyor" \
 mutate_in "$CLI" "bekleme önerisi doğrulanmıyor" \
     "s=s.replace('if !domaincheck.PlainName(domain) || !plainTarget(rawTarget) {','if false {',1)"
 
+# `-wait` yalnız Stop'ta bekler; önbellek uyarısındaki komut beklemeden dönüyordu.
+mutate_in "$JUDGE" "önbellek uyarısı beklemeyen -wait komutu öneriyor" \
+    "s=s.replace('usually sees the new record','usually sees the new record; to be sure, wait with: kadran domain check -wait 10m',1)"
+
 mutate_in "$AUTH" "soru eşleşmesi aranmıyor" \
     "s=s.replace('got.Type != q.Type || !strings.EqualFold','got.Type != q.Type && !strings.EqualFold',1)"
 

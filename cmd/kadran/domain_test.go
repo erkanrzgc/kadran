@@ -147,6 +147,35 @@ func TestDomainCheckWrongDNS(t *testing.T) {
 	}
 }
 
+// Yetkili doğru, yerel önbellek eski: uyarı satırı komut önermez. `-wait`
+// yalnız Stop'ta bekler; önerilen `kadran domain check -wait 10m` (alan adı
+// ve hedefle bile) beklemeden dönüyordu (23 Eki).
+func TestDomainCheckStaleCacheSuggestsNoCommand(t *testing.T) {
+	f := newDomainFixture(t)
+	c, out := domainTestCLI(t, f, true)
+	c.resolver = cliResolver{
+		"ip4 example.com":        {"198.51.100.7"},
+		"ip4 ns1.vercel-dns.com": {"192.0.2.1"},
+	}
+	c.nsResolver = cliNS{"example.com": {"ns1.vercel-dns.com."}}
+	c.exchange = dnstest.Exchange(map[string]dnstest.Answer{"192.0.2.1": {AA: true, Addrs: []string{"203.0.113.10"}, TTL: 600}})
+
+	code := c.runDomain(t.Context(), []string{"check", "example.com", "kimse@203.0.113.10"})
+
+	if code != exitOK {
+		t.Fatalf("yalnız önbellek eskiyken çıkış %d, beklenen %d:\n%s", code, exitOK, out)
+	}
+	const want = "  ! DNS       your DNS host (Vercel) already answers 203.0.113.10; this machine still sees 198.51.100.7 " +
+		"from its cache (the new record's TTL is 600 s, how long the old answer stays cached is unknown). " +
+		"Let's Encrypt usually sees the new record\n"
+	if !strings.Contains(out.String(), want) {
+		t.Errorf("DNS satırı %q değil:\n%s", want, out)
+	}
+	if strings.Contains(out.String(), "-wait") {
+		t.Errorf("uyarı beklemeyen bir -wait komutu öneriyor:\n%s", out)
+	}
+}
+
 // Otomatik yenilenen bir sertifikada 7 günden az kalması yenilemenin
 // işlemediğini gösterir. Gerçek, kısa ömürlü (3 gün) bir sertifikayla.
 func TestDomainCheckExpiringCertificate(t *testing.T) {

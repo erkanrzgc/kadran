@@ -76,8 +76,9 @@ already is.
   authoritative answers count. Two cases differ:
   - The nameservers agree and the answer is right, but this machine's resolver still returns an
     old record from its cache: the check warns instead of stopping. The warning says that your
-    DNS host already answers the new record while this machine still sees the old one, and
-    suggests `kadran domain check -wait 10m`.
+    DNS host already answers the new record while this machine still sees the old one, and that
+    Let's Encrypt usually sees the new record. `-wait` does not wait for this cache: it stops as
+    soon as only warnings remain.
   - The nameservers do not agree with each other yet: Kadran falls back to what the local
     resolver returns and judges that. If those records are wrong the check still stops; if they
     are fine it passes with a warning that the change is still spreading inside the DNS host.

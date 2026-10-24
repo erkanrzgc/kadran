@@ -195,38 +195,56 @@ type LoginFailure struct {
 	LockedUntil time.Time
 }
 
-// RecordLoginFailure, başarısızlığı sayar ve kilidi totp.LockDuration'a
-// göre ayarlar.
-func (s *Store) RecordLoginFailure(ctx context.Context, fp string, now time.Time) (LoginFailure, error) {
+// ErrLoginLocked, anahtarın şu an kilitli olduğunu söyler; deneme
+// başlatılmadı, sayaç büyümedi.
+var ErrLoginLocked = errors.New("sign-in locked")
+
+// ReserveLoginAttempt, bir giriş denemesini KOD DENENMEDEN ÖNCE sayar.
+//
+// ── Neden önce sayılıyor ────────────────────────────────────────────
+//
+// "Kilitli mi bak → kodu dene → başarısızsa yaz" üç ayrı adım olsaydı,
+// aynı anahtarla paralel açılan bağlantıların hepsi "kilitli değil" görür
+// ve 5'ten fazla kod denerdi. Okuma ve sayma tek transaction'da (DSN:
+// BEGIN IMMEDIATE, süreçler arası da sıralı): kilitliyse ErrLoginLocked
+// döner ve sayaç BÜYÜMEZ; değilse deneme sayılır ve totp.LockDuration'ın
+// kilidi şimdiden kurulur. Doğru kod çıkarsa çağıran ClearLoginFailures
+// ile temizler.
+func (s *Store) ReserveLoginAttempt(ctx context.Context, fp string, now time.Time) (LoginFailure, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return LoginFailure{}, fmt.Errorf("could not start a transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO totp_failures (fingerprint, count, last_failure_at) VALUES (?, 1, ?)
-		ON CONFLICT(fingerprint) DO UPDATE SET
-			count = count + 1, last_failure_at = excluded.last_failure_at`,
-		fp, now.Unix()); err != nil {
-		return LoginFailure{}, fmt.Errorf("could not record the failed sign-in: %w", err)
-	}
 	f := LoginFailure{Fingerprint: fp}
-	if err := tx.QueryRowContext(ctx,
-		`SELECT count FROM totp_failures WHERE fingerprint = ?`, fp).Scan(&f.Count); err != nil {
+	var until int64
+	err = tx.QueryRowContext(ctx,
+		`SELECT count, locked_until FROM totp_failures WHERE fingerprint = ?`, fp).Scan(&f.Count, &until)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return LoginFailure{}, fmt.Errorf("could not read the failed sign-ins: %w", err)
 	}
-	var until int64
+	if until > now.Unix() {
+		f.LockedUntil = time.Unix(until, 0)
+		return f, ErrLoginLocked
+	}
+
+	f.Count++
+	until = 0
 	if d := totp.LockDuration(f.Count); d > 0 {
 		f.LockedUntil = now.Add(d)
 		until = f.LockedUntil.Unix()
 	}
-	if _, err := tx.ExecContext(ctx,
-		`UPDATE totp_failures SET locked_until = ? WHERE fingerprint = ?`, until, fp); err != nil {
-		return LoginFailure{}, fmt.Errorf("could not record the lock: %w", err)
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO totp_failures (fingerprint, count, locked_until, last_failure_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(fingerprint) DO UPDATE SET
+			count = excluded.count, locked_until = excluded.locked_until,
+			last_failure_at = excluded.last_failure_at`,
+		fp, f.Count, until, now.Unix()); err != nil {
+		return LoginFailure{}, fmt.Errorf("could not record the sign-in attempt: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return LoginFailure{}, fmt.Errorf("could not record the failed sign-in: %w", err)
+		return LoginFailure{}, fmt.Errorf("could not record the sign-in attempt: %w", err)
 	}
 	return f, nil
 }

@@ -159,6 +159,8 @@ func TestRecoveryCodeSingleUse(t *testing.T) {
 	}
 }
 
+// TestLoginFailuresLockAfterFive: her deneme kod denenmeden ÖNCE sayılır;
+// 5. denemede kilit kurulur (doğru kod çıkarsa giriş sayacı temizler).
 func TestLoginFailuresLockAfterFive(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
@@ -166,20 +168,21 @@ func TestLoginFailuresLockAfterFive(t *testing.T) {
 	var f LoginFailure
 	var err error
 	for i := 1; i <= 4; i++ {
-		if f, err = s.RecordLoginFailure(ctx, fp, simdi); err != nil {
+		if f, err = s.ReserveLoginAttempt(ctx, fp, simdi); err != nil {
 			t.Fatal(err)
 		}
 		if f.Count != i || !f.LockedUntil.IsZero() {
-			t.Fatalf("%d. başarısızlık: %+v", i, f)
+			t.Fatalf("%d. deneme: %+v", i, f)
 		}
 	}
-	if f, err = s.RecordLoginFailure(ctx, fp, simdi); err != nil || !f.LockedUntil.Equal(simdi.Add(time.Minute)) {
-		t.Fatalf("5. başarısızlık: %+v (%v)", f, err)
+	if f, err = s.ReserveLoginAttempt(ctx, fp, simdi); err != nil || !f.LockedUntil.Equal(simdi.Add(time.Minute)) {
+		t.Fatalf("5. deneme: %+v (%v)", f, err)
 	}
-	if f, err = s.RecordLoginFailure(ctx, fp, simdi); err != nil || !f.LockedUntil.Equal(simdi.Add(2*time.Minute)) {
-		t.Fatalf("6. başarısızlık: %+v (%v)", f, err)
+	sonra := simdi.Add(61 * time.Second)
+	if f, err = s.ReserveLoginAttempt(ctx, fp, sonra); err != nil || f.Count != 6 || !f.LockedUntil.Equal(sonra.Add(2*time.Minute)) {
+		t.Fatalf("kilit bitince 6. deneme: %+v (%v)", f, err)
 	}
-	locked, err := s.LockedLogins(ctx, simdi)
+	locked, err := s.LockedLogins(ctx, sonra)
 	if err != nil || len(locked) != 1 || locked[0].Fingerprint != fp {
 		t.Fatalf("kilitli anahtarlar %+v (%v)", locked, err)
 	}
@@ -194,6 +197,57 @@ func TestLoginFailuresLockAfterFive(t *testing.T) {
 	}
 }
 
+// TestReserveRefusesWhileLocked: kilitliyken deneme hiç başlamaz ve sayacı
+// büyütmez (yoksa kilit süresi her denemeyle uzar, sahibi de kilitli kalırdı).
+func TestReserveRefusesWhileLocked(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	const fp = "SHA256:aaa"
+	for range 5 {
+		if _, err := s.ReserveLoginAttempt(ctx, fp, simdi); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f, err := s.ReserveLoginAttempt(ctx, fp, simdi.Add(30*time.Second))
+	if !errors.Is(err, ErrLoginLocked) || !f.LockedUntil.Equal(simdi.Add(time.Minute)) {
+		t.Fatalf("kilitliyken: %+v (%v)", f, err)
+	}
+	if f, err := s.LoginFailureFor(ctx, fp); err != nil || f.Count != 5 {
+		t.Fatalf("kilitli deneme sayacı büyüttü: %+v (%v)", f, err)
+	}
+}
+
+// TestReserveIsAtomicUnderConcurrency: aynı anahtarla paralel açılan
+// bağlantılar kilidi aşamaz. Okuma, kod denemesi ve yazma ayrı adımlar
+// olsaydı her bağlantı "kilitli değil" görür ve 5'ten fazla kod denerdi.
+func TestReserveIsAtomicUnderConcurrency(t *testing.T) {
+	ctx := context.Background()
+	s := newTestStore(t)
+	const fp = "SHA256:aaa"
+	const n = 20
+	results := make(chan error, n)
+	for range n {
+		go func() {
+			_, err := s.ReserveLoginAttempt(ctx, fp, simdi)
+			results <- err
+		}()
+	}
+	allowed, locked := 0, 0
+	for range n {
+		switch err := <-results; {
+		case err == nil:
+			allowed++
+		case errors.Is(err, ErrLoginLocked):
+			locked++
+		default:
+			t.Fatalf("beklenmeyen hata: %v", err)
+		}
+	}
+	if allowed != 5 || locked != n-5 {
+		t.Fatalf("%d deneme başladı, %d kilitlendi; beklenen 5 ve %d", allowed, locked, n-5)
+	}
+}
+
 // TestFailuresAreKeptAcrossReopen: kadrand'ı yeniden başlatmak kilidi
 // sıfırlamamalı; sıfırlasaydı saldırgan her denemeden önce bunu beklerdi.
 func TestFailuresAreKeptAcrossReopen(t *testing.T) {
@@ -204,7 +258,7 @@ func TestFailuresAreKeptAcrossReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 5 {
-		if _, err := s.RecordLoginFailure(ctx, "SHA256:aaa", simdi); err != nil {
+		if _, err := s.ReserveLoginAttempt(ctx, "SHA256:aaa", simdi); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -226,7 +280,7 @@ func TestDisableClearsEverything(t *testing.T) {
 	ctx := context.Background()
 	s := newTestStore(t)
 	etkinlestir(t, s, sir1, 1)
-	if _, err := s.RecordLoginFailure(ctx, "SHA256:aaa", simdi); err != nil {
+	if _, err := s.ReserveLoginAttempt(ctx, "SHA256:aaa", simdi); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.DisableTOTP(ctx); err != nil {

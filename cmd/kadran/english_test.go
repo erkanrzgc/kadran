@@ -110,6 +110,7 @@ var serverPackages = []string{
 	"../../internal/sockets",
 	"../../internal/sshenv",
 	"../../internal/store",
+	"../../internal/totp",
 	"../../internal/vault",
 	"../../internal/vault/vaultkey",
 	"../../internal/vault/vaulttest",

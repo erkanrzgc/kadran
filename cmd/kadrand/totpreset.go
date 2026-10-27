@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/erkanrzgc/kadran/internal/alarm"
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/store"
 )
@@ -51,6 +52,28 @@ func runTOTPReset(ctx context.Context, dbPath string, out io.Writer) error {
 	}); err != nil {
 		return fmt.Errorf("TOTP is disabled, but the audit record could not be written: %w", err)
 	}
+	// Kilit ve kurtarma alarmlarının koşulu kalmadı; kalsalar, TOTP yeniden
+	// açılınca aynı anahtarın yeni kilidi bildirilmezdi. Alarm durumu
+	// veritabanında: çalışan daemon'un yöneticisi bellekte tutmuyor.
+	if err := closeTOTPAlarms(ctx, db); err != nil {
+		return fmt.Errorf("TOTP is disabled, but its alarms could not be closed: %w", err)
+	}
 	fmt.Fprintln(out, "TOTP disabled; every session is invalid")
+	return nil
+}
+
+func closeTOTPAlarms(ctx context.Context, db *store.Store) error {
+	active, err := db.ListAlarms(ctx)
+	if err != nil {
+		return err
+	}
+	for _, a := range active {
+		if a.Kind != alarm.KindLoginLockout && a.Kind != alarm.KindLoginRecovery {
+			continue
+		}
+		if _, err := db.ClearAlarm(ctx, a.ID); err != nil {
+			return err
+		}
+	}
 	return nil
 }

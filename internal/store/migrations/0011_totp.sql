@@ -24,8 +24,15 @@ CREATE TABLE totp (
     -- iki eşzamanlı girişten yalnız biri kazanır.
     last_step INTEGER NOT NULL DEFAULT 0,
 
-    -- Oturum jetonlarının imza anahtarı (32 bayt). Her onayda yenilenir.
+    -- Oturum jetonlarının imza anahtarı (32 bayt). Her onayda yenilenir:
+    -- eski bir veritabanı kopyasını okuyan biri yeni kuşak için jeton
+    -- basamasın.
     token_key BLOB,
+
+    -- Bir önceki imza anahtarı. Onunla imzalı jeton HİÇBİR ZAMAN kabul
+    -- edilmez; yalnız "geçersiz" yerine "oturumun süresi doldu" demek için
+    -- tanınır (yeniden kurulumdan önce alınmış jeton).
+    prev_token_key BLOB,
 
     -- Her onayda artar; jetondaki kuşak bununla karşılaştırılır.
     generation INTEGER NOT NULL DEFAULT 0,

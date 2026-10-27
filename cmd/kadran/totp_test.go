@@ -309,6 +309,38 @@ func TestReenrollSendsCurrentCode(t *testing.T) {
 	}
 }
 
+// TestReenrollWithRecoveryFlag: telefonu kaybolan kullanıcı yeni telefonu
+// kurtarma koduyla kurar.
+func TestReenrollWithRecoveryFlag(t *testing.T) {
+	d := totpCLI(t, "abcde-fghij\n222222\n", true)
+	if code := d.calistir(t, "totp", "enable", "-recovery", totpHedef); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	if d.rpc.begin.GetRecoveryCode() != "abcde-fghij" || d.rpc.begin.GetCurrentCode() != "" ||
+		d.rpc.confirm.GetCode() != "222222" {
+		t.Fatalf("istekler: %+v %+v", d.rpc.begin, d.rpc.confirm)
+	}
+	if !strings.Contains(d.errOut.String(), "recovery code: ") {
+		t.Fatalf("istem: %q", d.errOut)
+	}
+
+	// TOTP kapalıyken -recovery anlamsız: değiştirilecek bir şey yok.
+	d = totpCLI(t, "abcde-fghij\n", false)
+	if code := d.calistir(t, "totp", "enable", "-recovery", totpHedef); code != exitError || d.rpc.begin != nil {
+		t.Fatalf("TOTP kapalıyken -recovery: çıkış %d, begin %+v", code, d.rpc.begin)
+	}
+}
+
+func TestDisableWithRecoveryFlag(t *testing.T) {
+	d := totpCLI(t, "abcde-fghij\n", true)
+	if code := d.calistir(t, "totp", "disable", "-recovery", totpHedef); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	if d.rpc.disable.GetRecoveryCode() != "abcde-fghij" || d.rpc.disable.GetCode() != "" {
+		t.Fatalf("DisableTotp isteği: %+v", d.rpc.disable)
+	}
+}
+
 func TestTotpUnimplementedSaysUpgrade(t *testing.T) {
 	eski := status.Error(codes.Unimplemented, "unknown method Login for service kadran.v1.KadranService")
 	for _, args := range [][]string{{"login", totpHedef}, {"totp", "enable", totpHedef}} {

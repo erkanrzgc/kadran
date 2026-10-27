@@ -8,6 +8,20 @@ import (
 // rfcSecret, RFC 6238 Ek B'nin SHA1 test anahtarı.
 var rfcSecret = []byte("12345678901234567890")
 
+// TestSpacesInCodeAreIgnored: uygulamalar kodu "123 456" diye gösteriyor.
+func TestSpacesInCodeAreIgnored(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	kod := CodeAt(rfcSecret, now)
+	for _, yazim := range []string{kod[:3] + " " + kod[3:], " " + kod + " ", kod[:2] + " " + kod[2:4] + " " + kod[4:]} {
+		if _, ok := Verify(rfcSecret, yazim, now, 0); !ok {
+			t.Errorf("Verify(%q) reddetti", yazim)
+		}
+		if !InWindow(rfcSecret, yazim, now, 1) {
+			t.Errorf("InWindow(%q) reddetti", yazim)
+		}
+	}
+}
+
 // TestRFC6238Vectors: RFC 6238 Ek B, SHA1 sütunu (8 hane). Algoritma
 // standarttan sapsaydı doğrulayıcı uygulamaların ürettiği kod hiçbir
 // zaman tutmazdı.

@@ -966,6 +966,9 @@ message LoginResponse {
 message BeginTotpEnrollmentRequest {
   // Yeniden kurulumda ŞU ANKİ sırrın kodu; TOTP kapalıyken yok sayılır.
   string current_code = 1;
+  // current_code yerine bir kurtarma kodu: telefonu kaybolan kullanıcı
+  // yeni telefonu kökü beklemeden kurabilsin. İkisinden yalnız biri.
+  string recovery_code = 2;
 }
 
 message BeginTotpEnrollmentResponse {
@@ -992,6 +995,8 @@ message ConfirmTotpEnrollmentResponse {
 message DisableTotpRequest {
   // Taze bir TOTP kodu.
   string code = 1;
+  // code yerine bir kurtarma kodu. İkisinden yalnız biri.
+  string recovery_code = 2;
 }
 
 message DisableTotpResponse {}

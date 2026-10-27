@@ -198,31 +198,49 @@ func (c *cli) runLogout(_ context.Context, args []string) int {
 }
 
 const totpUsage = "usage:\n" +
-	"  kadran totp status|enable|disable [target]\n" +
-	"  kadran totp reset [-sudo] root@server   (lost phone and recovery codes)"
+	"  kadran totp status [target]\n" +
+	"  kadran totp enable|disable [-recovery] [target]   (-recovery: prove with a recovery code)\n" +
+	"  kadran totp reset [-sudo] root@server             (lost phone and recovery codes)"
 
 // runTotp, TOTP'yi yönetir.
 func (c *cli) runTotp(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		return c.usageError("%s", totpUsage)
 	}
-	if args[0] == "reset" {
-		return c.runTotpReset(ctx, args[1:])
-	}
-	raw, ok := singleTarget(args[1:])
-	if !ok {
-		return c.usageError("%s", totpUsage)
-	}
 	switch args[0] {
+	case "reset":
+		return c.runTotpReset(ctx, args[1:])
 	case "status":
+		raw, ok := singleTarget(args[1:])
+		if !ok {
+			return c.usageError("%s", totpUsage)
+		}
 		return c.runTotpStatus(ctx, raw)
-	case "enable":
-		return c.runTotpEnable(ctx, raw)
-	case "disable":
-		return c.runTotpDisable(ctx, raw)
+	case "enable", "disable":
+		fs := c.newFlagSet("totp " + args[0])
+		recovery := fs.Bool("recovery", false, "prove with a recovery code instead of a code from the authenticator app")
+		if err := fs.Parse(args[1:]); err != nil {
+			return exitUsage
+		}
+		raw, ok := singleTarget(fs.Args())
+		if !ok {
+			return c.usageError("%s", totpUsage)
+		}
+		if args[0] == "enable" {
+			return c.runTotpEnable(ctx, raw, *recovery)
+		}
+		return c.runTotpDisable(ctx, raw, *recovery)
 	default:
 		return c.usageError("unknown totp subcommand %q — status, enable, disable or reset", args[0])
 	}
+}
+
+// proofLabel, adım yükseltmede sorulan kanıtın istemidir.
+func proofLabel(recovery bool, code string) string {
+	if recovery {
+		return "recovery code"
+	}
+	return code
 }
 
 // runTotpReset, kökün kaçış yolu: TOTP'yi sunucudaki root olarak kapatır.
@@ -288,8 +306,9 @@ func (c *cli) runTotpStatus(ctx context.Context, raw string) int {
 	return exitOK
 }
 
-// runTotpEnable, TOTP'yi kurar ya da (açıksa) yeniden kurar.
-func (c *cli) runTotpEnable(ctx context.Context, raw string) int {
+// runTotpEnable, TOTP'yi kurar ya da (açıksa) yeniden kurar. recovery:
+// yeniden kurulumda şu anki kod yerine kurtarma kodu (telefon kayıp).
+func (c *cli) runTotpEnable(ctx context.Context, raw string, recovery bool) int {
 	in := bufio.NewReader(c.stdin)
 	connCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
@@ -300,12 +319,22 @@ func (c *cli) runTotpEnable(ctx context.Context, raw string) int {
 	defer func() { _ = conn.Close() }()
 
 	req := &kadranv1.BeginTotpEnrollmentRequest{}
-	if ping.GetTotpRequired() {
-		// Yeniden kurulum: oturumun yanında şu anki sırrın kodu (K-155).
-		fmt.Fprintln(c.stderr, "TOTP is already on: replacing it needs a code from your current authenticator")
-		if req.CurrentCode, err = c.prompt(in, "current code"); err != nil {
+	switch {
+	case ping.GetTotpRequired():
+		// Yeniden kurulum: oturumun yanında şu anki sırrın kodu ya da bir
+		// kurtarma kodu (K-155).
+		fmt.Fprintln(c.stderr, "TOTP is already on: replacing it needs a code from your current authenticator, or a recovery code with -recovery")
+		proof, err := c.prompt(in, proofLabel(recovery, "current code"))
+		if err != nil {
 			return c.fail(err)
 		}
+		if recovery {
+			req.RecoveryCode = proof
+		} else {
+			req.CurrentCode = proof
+		}
+	case recovery:
+		return c.fail(errors.New("TOTP is not on for this server; -recovery only applies when replacing it"))
 	}
 	callCtx, cancelCall := context.WithTimeout(ctx, defaultTimeout)
 	b, err := conn.RPC().BeginTotpEnrollment(callCtx, req)
@@ -343,11 +372,16 @@ func (c *cli) runTotpEnable(ctx context.Context, raw string) int {
 	return exitOK
 }
 
-// runTotpDisable, TOTP'yi kapatır; sunucu oturumun yanında taze bir kod ister.
-func (c *cli) runTotpDisable(ctx context.Context, raw string) int {
-	code, err := c.prompt(bufio.NewReader(c.stdin), "code")
+// runTotpDisable, TOTP'yi kapatır; sunucu oturumun yanında taze bir kod (ya
+// da kurtarma kodu) ister.
+func (c *cli) runTotpDisable(ctx context.Context, raw string, recovery bool) int {
+	proof, err := c.prompt(bufio.NewReader(c.stdin), proofLabel(recovery, "code"))
 	if err != nil {
 		return c.fail(err)
+	}
+	req := &kadranv1.DisableTotpRequest{Code: proof}
+	if recovery {
+		req = &kadranv1.DisableTotpRequest{RecoveryCode: proof}
 	}
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	defer cancel()
@@ -357,7 +391,7 @@ func (c *cli) runTotpDisable(ctx context.Context, raw string) int {
 	}
 	defer func() { _ = conn.Close() }()
 
-	if _, err := conn.RPC().DisableTotp(ctx, &kadranv1.DisableTotpRequest{Code: code}); err != nil {
+	if _, err := conn.RPC().DisableTotp(ctx, req); err != nil {
 		return c.fail(totpErr("totp disable", err))
 	}
 	if _, err := c.deleteSession(raw); err != nil {

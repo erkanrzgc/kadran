@@ -15,8 +15,10 @@ REC=internal/totp/recovery.go
 STO=internal/store/totp.go
 SES=internal/api/session.go
 HND=internal/api/totp.go
+AUZ=internal/api/authz.go
 CLI=internal/client/session.go
-FILES="$VRF $REC $STO $SES $HND $CLI"
+RST=cmd/kadrand/totpreset.go
+FILES="$VRF $REC $STO $SES $HND $AUZ $CLI $RST"
 PKGS="./internal/totp/ ./internal/store/ ./internal/api/"
 
 BAK=$(mktemp -d)
@@ -29,7 +31,7 @@ fail=0
 # Taban YEŞİL olmalı: kırmızı bir taban her mutantı "yakalandı" gösterirdi.
 restore
 # shellcheck disable=SC2086
-if ! go test $PKGS ./internal/client/ -count=1 >/dev/null 2>&1; then
+if ! go test $PKGS ./internal/client/ ./cmd/kadrand/ -count=1 >/dev/null 2>&1; then
     echo "!! TABAN KIRMIZI: mutasyonsuz kodda testler düşüyor — ölçüm YAPILMADI"
     exit 1
 fi
@@ -94,13 +96,25 @@ mutate "Verify son kabul edilen adımı yok sayıyor" "$VRF" \
 mutate "kabul edilen adım tekrar kabul ediliyor (AcceptTOTPStep hep doğru)" "$STO" \
     "s=s.replace('WHERE id = 1 AND secret IS NOT NULL AND last_step < ?\`, step, step)','WHERE id = 1 AND secret IS NOT NULL AND ? > -1\`, step, step)',1)"
 
+mutate "eşzamanlı ikinci giriş aynı kodla geçiyor (koşullu kabul yok sayılıyor)" "$HND" \
+    "s=s.replace('\tif !accepted {','\tif false && !accepted {',1)"
+
+mutate "boşluklu kod (123 456) reddediliyor" "$VRF" \
+    "s=s.replace('return strings.ReplaceAll(code, \" \", \"\")','return strings.TrimSpace(code)',1)"
+
 echo "== Oturum kapısı (CheckSession) =="
 
 mutate "jeton başka bir anahtarla da geçiyor (parmak izi karşılaştırılmıyor)" "$SES" \
     "s=s.replace('if err != nil || c.Fingerprint == \"\" || c.Fingerprint != id.Fingerprint {','if err != nil {',1)"
 
-mutate "eski kuşağın jetonu geçiyor (kuşak denetimi yok)" "$SES" \
-    "s=s.replace('if c.Generation != st.Generation || !s.now().Before(c.Expires) {','if !s.now().Before(c.Expires) {',1)"
+# Kuşak denetimi artık yedek savunma: imza anahtarı her onayda dönüyor ve
+# eski anahtarın jetonu imzadan düşüyor. Tek başına kaldırılması hiçbir şey
+# açmadığı için mutantı yok; yerine anahtar dönüşü korunuyor.
+mutate "yeniden kurulum imza anahtarını döndürmüyor (eski kopyayla jeton basılır)" "$STO" \
+    "s=s.replace('prev_token_key = token_key, token_key = ?,','prev_token_key = token_key, token_key = COALESCE(token_key, ?),',1)"
+
+mutate "yeniden kurulumdan önceki jeton 'süresi doldu' yerine 'geçersiz' alıyor" "$SES" \
+    "s=s.replace('errors.Is(err, totp.ErrBadSignature) && prevKeyToken(','errors.Is(err, totp.ErrBadSignature) && false && prevKeyToken(',1)"
 
 mutate "süresi dolan jeton geçiyor (süre denetimi yok)" "$SES" \
     "s=s.replace('if c.Generation != st.Generation || !s.now().Before(c.Expires) {','if c.Generation != st.Generation {',1)"
@@ -111,6 +125,9 @@ mutate "yönetici de jetonsuz geçiyor (dağıtım muafiyeti herkese)" "$SES" \
 mutate "dağıtım rolü (CI) jeton istiyor" "$SES" \
     "s=s.replace('if id.Role != connproto.RoleAdmin || sessionExempt[method] {','if sessionExempt[method] {',1)"
 
+mutate "akış çağrısında oturum denetimi yok (günlük akışı, dağıtım)" "$AUZ" \
+    "s=s.replace('\t\tif err := gate.CheckSession(ss.Context(), id, info.FullMethod); err != nil {\n\t\t\treturn err\n\t\t}\n','',1)"
+
 mutate "parmak izsiz yöneticiye login döngüsü (SSH yönlendirmesi yok)" "$SES" \
     "s=s.replace('\tif id.Fingerprint == \"\" {\n\t\treturn sessionDenied(id, method, \"no key identity\", msgSessionNoKey)\n\t}\n','',1)"
 
@@ -119,14 +136,14 @@ echo "== Kilit =="
 mutate "kilitli anahtar yine deniyor (kilit denetimi yok)" "$STO" \
     "s=s.replace('\tif until > now.Unix() {','\tif false && until > now.Unix() {',1)"
 
-mutate "Login denemeyi kod denenmeden önce saymıyor" "$HND" \
-    "s=s.replace('attempt, err := s.reserveAttempt(ctx, \"auth.login\", fp, now)\n\tif err != nil {\n\t\treturn nil, err\n\t}','attempt := store.LoginFailure{}',1)"
+mutate "giriş ve adım yükseltme denemeyi kod denenmeden önce saymıyor" "$HND" \
+    "s=s.replace('\tattempt, err := s.reserveAttempt(ctx, action, fp, now)\n\tif err != nil {\n\t\treturn \"\", err\n\t}','\tattempt := store.LoginFailure{}',1)"
 
 mutate "onay kodu kilide sayılmıyor" "$HND" \
     "s=s.replace('\tattempt, err := s.reserveAttempt(ctx, \"totp.confirm\", fp, now)\n\tif err != nil {\n\t\treturn nil, err\n\t}','\tattempt := store.LoginFailure{}',1)"
 
 mutate "başarılı giriş sayacı ve kilit alarmını silmiyor" "$HND" \
-    "s=s.replace('\tif err := s.clearAttempts(ctx, fp); err != nil {\n\t\treturn nil, err\n\t}\n\tif err := s.recordAction(ctx, \"auth.login\"','\tif err := s.recordAction(ctx, \"auth.login\"',1)"
+    "s=s.replace('\tif err := s.clearAttempts(ctx, fp); err != nil {\n\t\treturn \"\", err\n\t}\n\tif detail == \"recovery\" {','\tif detail == \"recovery\" {',1)"
 
 echo "== Kurtarma kodu =="
 
@@ -136,13 +153,25 @@ mutate "kurtarma kodu biçimi normalleştirilmiyor (küçük harf/tire)" "$REC" 
 mutate "kurtarma kodu ikinci kez kullanılabiliyor" "$STO" \
     "s=s.replace('WHERE hash = ? AND used_at IS NULL\`','WHERE hash = ?\`',1)"
 
+echo "== Alarm yaşam döngüsü =="
+
+mutate "kurtarma alarmı yalnız ilk kullanımda bildiriyor (sabit kimlik)" "$HND" \
+    "s=s.replace('+ \":\" + fp + \":\" + use,','+ \":\" + fp + \":\" + use[:0],',1)"
+
+mutate "kapatma kilit ve kurtarma alarmlarını kapatmıyor" "$HND" \
+    "s=s.replace('\ts.clearTOTPAlarms(ctx, alarm.KindLoginLockout, alarm.KindLoginRecovery)\n','',1)"
+
+mutate "sıfırlama kilit ve kurtarma alarmlarını kapatmıyor" "$RST" \
+    "s=s.replace('\tif err := closeTOTPAlarms(ctx, db); err != nil {','\tif err := error(nil); err != nil {',1)" \
+    "./cmd/kadrand/"
+
 echo "== Adım yükseltme (kapatma, yeniden kurulum) =="
 
-mutate "kapatma taze kod istemiyor" "$HND" \
-    "s=s.replace('\tif err := s.stepUp(ctx, \"totp.disable\", msgDisableCode, fp, st, req.GetCode(), s.now()); err != nil {\n\t\treturn nil, err\n\t}\n','',1)"
+mutate "kapatma taze kod istemiyor (yanlış kod yok sayılıyor)" "$HND" \
+    "s=s.replace('\tif err := s.stepUp(ctx, \"totp.disable\", msgDisableCode, fp, st, p, s.now()); err != nil {','\tif err := s.stepUp(ctx, \"totp.disable\", msgDisableCode, fp, st, p, s.now()); false && err != nil {',1)"
 
 mutate "yeniden kurulum güncel kod istemiyor" "$HND" \
-    "s=s.replace('\tif st.Enabled() {\n\t\tif err := s.stepUp(ctx, \"totp.enroll\"','\tif false && st.Enabled() {\n\t\tif err := s.stepUp(ctx, \"totp.enroll\"',1)"
+    "s=s.replace('\tif st.Enabled() {\n\t\tp := newProof(req.GetCurrentCode(), req.GetRecoveryCode())','\tif false && st.Enabled() {\n\t\tp := newProof(req.GetCurrentCode(), req.GetRecoveryCode())',1)"
 
 echo "== İstemci =="
 

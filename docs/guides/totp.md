@@ -77,9 +77,19 @@ kadran login -recovery kadran-client@your-server
 recovery code: ABCDE-FGHIJ
 ```
 
-Case, dashes and spaces do not matter. Every use raises a warning alarm (`login_recovery`):
-the phone may be lost, or the codes may have leaked. `kadran totp status` shows how many codes
-are left and warns when 3 or fewer remain. To get new codes, re-enroll.
+Case, dashes and spaces do not matter. Every use raises its own warning alarm
+(`login_recovery`), because the phone may be lost or the codes may have leaked. These alarms close
+when you re-enroll or turn TOTP off. `kadran totp status` shows how many codes are left and warns
+when 3 or fewer remain.
+
+To set up a new phone without the old one, re-enroll with a recovery code:
+
+```bash
+kadran totp enable -recovery kadran-client@your-server
+recovery code: KLMNO-PQRST
+```
+
+This uses up a second recovery code, and enrolling gives you 10 new ones.
 
 ## Re-enroll (new phone, new codes)
 
@@ -89,16 +99,18 @@ TOTP is already on: replacing it needs a code from your current authenticator
 current code: 123456
 ```
 
-Re-enrolling needs a valid session **and** a current code, so a stolen token cannot swap in a new
-secret. The old secret keeps working until you confirm the new one. Once you confirm, every token
-issued before it is rejected with "session expired".
+Re-enrolling needs a valid session **and** a current code (or a recovery code, with `-recovery`),
+so a stolen token cannot swap in a new secret. The old secret keeps working until you confirm the
+new one. Confirming also replaces the key that signs session tokens. Every token issued before it
+is rejected with "session expired", and an old copy of the database can no longer be used to
+create new ones.
 
 ## Wrong codes and lockout
 
 After 5 wrong codes in a row, that SSH key is locked for 1 minute. Each further wrong code doubles
 the lock, up to 1 hour. While a key is locked, even the right code is refused, and the message
-says how long to wait. A lock raises a warning alarm (`login_lockout`), and a successful sign-in
-clears it. `kadran totp status` lists locked keys. Recovery codes, enrollment confirmation codes
+says how long to wait. A lock raises a warning alarm (`login_lockout`). A successful sign-in closes
+it, and so does turning TOTP off or resetting it. `kadran totp status` lists locked keys. Recovery codes, enrollment confirmation codes
 and the codes asked by `disable` and re-enroll count toward the same lock.
 
 Every wrong TOTP code gets the same message:
@@ -107,7 +119,8 @@ Every wrong TOTP code gets the same message:
 code rejected: check that the code is current and your phone's clock is correct
 ```
 
-The phone and the server must agree on the time within about 30 seconds. The audit log records
+Spaces in a code do not matter (`123 456` works). The phone and the server must agree on the time
+within about 30 seconds. The audit log records
 whether a rejected code was close in time (`clock`) or simply wrong (`wrong_code`). The caller is
 not told, since that would reveal that a guessed code is about to become valid.
 
@@ -119,7 +132,9 @@ code: 123456
 TOTP is off
 ```
 
-Turning TOTP off needs a valid session and a fresh code, so a stolen token cannot do it.
+Turning TOTP off needs a valid session and a fresh code, so a stolen token cannot do it. Without
+the phone, use `kadran totp disable -recovery` and a recovery code. Turning it off also closes the
+lock and recovery alarms.
 
 ## Lost phone and lost recovery codes
 
@@ -138,8 +153,9 @@ turn it back on with kadran totp enable (new secret, new recovery codes)
 ```
 
 On the server, this runs `kadrand -totp-reset` as the `kadran` user. It deletes the secret, the
-recovery codes, the signing key and the lock counters, and writes a `totp.reset` audit record.
-The daemon keeps running, and the change takes effect on the next call.
+recovery codes, the signing keys and the lock counters, closes the lock and recovery alarms, and
+writes a `totp.reset` audit record. The daemon keeps running, and the change takes effect on the
+next call.
 
 ## Where the secret lives
 

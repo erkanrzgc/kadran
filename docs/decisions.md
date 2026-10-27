@@ -11596,16 +11596,24 @@ bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
    `ReserveLoginAttempt` okuma ve saymayı tek `BEGIN IMMEDIATE` işleminde yapıyor; kilitliyse
    `ErrLoginLocked` döner ve sayaç büyümez. "Bak → dene → yaz" üç adım olsaydı paralel SSH
    bağlantıları 5'ten fazla kod denerdi. Ölçüldü: 20 paralel denemenin tam 5'i başladı.
-3. **İmza anahtarı yeniden kurulumda YENİLENMİYOR** (tasarım "token_key yenilenir" diyordu,
-   düzeltme). Eski jetonları kuşak (`generation`) düşürüyor ve "session expired" diyor. Anahtar
-   yenilenseydi imza tutmaz ve "invalid session token" denirdi; Review Focus 3 tam o mesajı
-   istiyor. Anahtar yalnız sıfırdan kurulumda (kapatma ya da sıfırlama sonrası) yenileniyor.
-   Bedeli: sızan bir `token_key` yeniden kurulumdan sağ çıkar, ama onu okuyabilen aynı satırdaki
-   sırrı da okur.
+3. **İmza anahtarı HER onayda dönüyor; önceki anahtar yalnız tanınmak için tutuluyor**
+   (`prev_token_key`). Önceki anahtarla imzalı jeton hiçbir zaman kabul edilmez; yalnız
+   "invalid" yerine "session expired" alır (Review Focus 3). İlk sürümde anahtar yeniden
+   kurulumda KORUNUYORDU ve bedeli "anahtarı okuyabilen aynı satırdaki sırrı da okur" diye
+   yazılmıştı. Tüm-dal incelemesi bu bedelin yanlış olduğunu gösterdi: sır yeniden kurulumda
+   değişiyor, anahtar değişmiyordu. Eski bir veritabanı kopyasını (yerel yedek ya da uzak yedek
+   artı age kimliği) okuyan biri bir yönetici anahtarıyla YENİ kuşak için jeton basabilirdi, çünkü
+   kuşak tahmin edilebilir bir sayaç. Sızıntı şüphesiyle yeniden kurmak tam da bunun önemli olduğu
+   an. Göç `0011` yayımlanmamıştı, sütun oraya eklendi. Kuşak denetimi artık yedek savunma: tek
+   başına kaldırılması hiçbir şey açmıyor (ölçüldü, mutantı betikten çıktı).
 4. **Yeniden kurulum oturumun yanında GÜNCEL kod istiyor** (güvenlik incelemesi; tasarım
    yalnız jeton diyordu). Yalnız jetonla, çalınmış bir jeton sırrı değiştirip sahibini dışarıda
    bırakabilirdi. Kapatmayla aynı yol (`stepUp`): boş kod tahmin değil, sayılmaz
    (`InvalidArgument`); yanlış kod kilide sayılır. Onay kodu da aynı kilide sayılıyor.
+   Tüm-dal incelemesinden sonra kurtarma kodu da geçiyor (`-recovery`): telefonu kaybolan ama
+   kurtarma kodları duran kullanıcı yeni telefonu kökü beklemeden kurabilsin. Çalınmış bir jeton
+   yine yetmez, kurtarma kodları ayrı bir sır. Giriş ve adım yükseltme aynı doğrulamadan
+   geçiyor (`verifyProof`).
 5. **Her doğru kod sayacı ve kilit alarmını siliyor** (giriş, onay, kapatma, yeniden kurulum).
    Önce yalnız giriş siliyordu; başarılı onaylar ve kapatmalar kilide doğru birikirdi.
 6. **Kurulum ve onay parmak izi istiyor.** Parmak izsiz bir çağıran TOTP'yi açıp sonra giriş
@@ -11634,8 +11642,8 @@ bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
 
 ### Ölçüm
 
-- **Testler:** dalda 86 yeni test (`internal/totp` 14, `internal/store` 11, `internal/api` 27,
-  `internal/client` 11, `cmd/kadran` 16, `cmd/kadrand` 2, `internal/bootstrap` 5). `gofmt -l`
+- **Testler:** dalda 99 yeni test (`internal/totp` 15, `internal/store` 11, `internal/api` 36,
+  `internal/client` 11, `cmd/kadran` 18, `cmd/kadrand` 3, `internal/bootstrap` 5). `gofmt -l`
   boş, `go vet ./...` ve `go test -count=1 ./...` yeşil, `golangci-lint` üretilmiş `*_grpc.pb.go`
   dışında 0 bulgu, `check-exec-surface.sh` değişmez, `go.mod`/`go.sum` değişmedi.
 - **Linux:** WSL Ubuntu'da Go yok; `cmd/kadran`, `internal/client`, `internal/bootstrap` ve
@@ -11644,10 +11652,13 @@ bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
   `TestSessionFileMode`'un `0600`/`0700` denetimi dahil. Uzak sıfırlama betiği gerçek bash'te
   ayrıştı ve `kadran` kullanıcısı olmayan makinede setpriv'e varmadan 3 ile çıktı (Windows git
   bash ve WSL).
-- **Mutasyon:** `scripts/mutate-totp.sh`, 18 mutant, 18 yakalandı (Windows'ta ~4,5 dk). Planın
-  10 mutantına ek 8: Verify son adımı yok sayıyor; dağıtım rolü jeton istiyor; parmak izsiz
-  yöneticiye login döngüsü; Login denemeyi önce saymıyor; onay kodu kilide sayılmıyor; başarılı
-  giriş sayacı silmiyor; yeniden kurulum güncel kod istemiyor; sarılmış oturum hatası
+- **Mutasyon:** `scripts/mutate-totp.sh`, 25 mutant, 25 yakalandı. Planın 10 mutantından
+  kuşak denetimi çıktı (karar 3), kalan 9'a ek 16: Verify son adımı yok sayıyor; eşzamanlı ikinci
+  giriş (koşullu kabul yok sayılıyor); boşluklu kod; anahtar dönmüyor; önceki anahtarın jetonu
+  "geçersiz" alıyor; akış çağrısında oturum denetimi yok; dağıtım rolü jeton istiyor; parmak
+  izsiz yöneticiye login döngüsü; giriş ve adım yükseltme denemeyi önce saymıyor; onay kodu
+  kilide sayılmıyor; başarılı giriş sayacı silmiyor; kurtarma alarmı sabit kimlikli; kapatma ve
+  sıfırlama alarmları kapatmıyor; yeniden kurulum güncel kod istemiyor; sarılmış oturum hatası
   tanınmıyor. Betik CI'ın mutasyon işinde glob ile kendiliğinden koşuyor (üç kapı yerinde).
 - **Mutasyonun bulduğu:** `TestSuccessfulLoginClearsLockAlarm` boşa geçiyordu. Karar 5'ten sonra
   onay da aynı alarmı kapatıyor ve "kapatılanlar" listesi daha kurulumda doluyordu; giriş hiç
@@ -11660,13 +11671,53 @@ bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
   | 1 saat kayması | `TestLoginOutsideWindowSameMessageAuditsClock` | pencere ±2 | kırmızı |
   | 2 aynı kod iki kez | `TestAcceptTOTPStepIsOneShot` | `AcceptTOTPStep` hep doğru | kırmızı |
   | 2 aynı kod iki kez | `TestVerifyReplay` | Verify son adımı yok sayıyor | kırmızı |
-  | 3 eski jeton | `TestOldGenerationTokenIsRejected` | kuşak denetimi yok | kırmızı |
+  | 2 aynı kod iki kez | `TestStaleReadCannotReuseAcceptedCode` | koşullu kabul yok sayılıyor | kırmızı |
+  | 3 eski jeton | `TestOldGenerationTokenIsRejected` | önceki anahtar tanınmıyor | kırmızı |
+  | 3 eski jeton | `TestReenrollRotatesTokenKey` | anahtar dönmüyor | kırmızı |
   | 4 CI anahtarı | `TestDeployRoleIsExemptFromSession` | dağıtım rolü jeton istiyor | kırmızı |
   | 5 yarım kurulum | `TestPendingEnrollmentExpires` | süre denetimi yok | kırmızı |
 
   Tekrar iki katmanla kapalı. API testi `TestLoginRejectsReplayedCode` tek katmanlı
   mutantların İKİSİNDE de yeşil kalıyor, çünkü öbür katman tutuyor. Bu derinlemesine savunma
-  ölçüldü; her katmanı kendi testi koruyor.
+  ölçüldü; her katmanı kendi testi koruyor. Sunucudaki koşullu kabul dalını ilk sürümde hiçbir
+  test korumuyordu (inceleme ölçtü). `TestStaleReadCannotReuseAcceptedCode` sırayı elle kuruyor:
+  durum kabulden önce okunur, sonra aynı kod gelir. Zamanlamaya bağlı değil.
+  `TestConcurrentSameCodeOneWins` aynı mutantı Windows'ta da yakaladı, ama kanıt olarak
+  deterministik olana dayanılıyor.
+
+### Tüm-dal incelemesi (2026-10-28)
+
+Taze bir inceleyici (opus) dalın tamamını okudu. Kritik bulgu yok. Altı bulgu tek turda
+düzeltildi, her biri önce kırmızı bir testle:
+
+1. **Telefon kayıp, kurtarma kodları duruyor: yeni telefon ancak kökle kurulabiliyordu.** Rehber
+   "yeniden kur" diyor, yeniden kurulum ise eski telefonun kodunu istiyordu. Adım yükseltme artık
+   kurtarma kodu da kabul ediyor (`BeginTotpEnrollmentRequest.recovery_code`,
+   `DisableTotpRequest.recovery_code`, CLI'da `-recovery`). Testler:
+   `TestStepUpAcceptsRecoveryCode`, `TestReenrollWithRecoveryFlag`, `TestDisableWithRecoveryFlag`.
+2. **Kurtarma alarmı anahtar başına yalnız BİR kez bildiriyordu ve hiç kapanmıyordu.** Alarm
+   yöneticisi yalnız yeni kimliği bildiriyor (`ON CONFLICT DO NOTHING`). Sahte alarm her
+   `Raise`'i kaydettiği için testler bunu göremiyordu. Kimlik artık kullanım başına (kalan kod
+   sayısıyla). Kurtarma alarmlarını yeniden kurulum, kapatma ve sıfırlama kapatıyor; kilit
+   alarmlarını kapatma ve sıfırlama. Testler GERÇEK `alarm.Manager` ile:
+   `TestRecoveryAlarmNotifiesEveryUse`, `TestDisableClosesTotpAlarms`,
+   `TestReenrollClosesRecoveryAlarms`, `TestTOTPResetClosesTotpAlarms`.
+3. **Anahtarın korunması kararının bedeli yanlıştı** (karar 3). Test: `TestReenrollRotatesTokenKey`
+   (eski anahtar ve yeni kuşakla basılmış jeton reddediliyor).
+4. **Akış çağrılarındaki oturum denetimini hiçbir test korumuyordu** (ölçüldü). Test:
+   `TestAdminStreamNeedsSession`.
+5. **"Aynı kod aynı anda iki kez" sunucu düzeyinde sabitlenmemişti** (ölçüldü). Testler:
+   `TestStaleReadCannotReuseAcceptedCode`, `TestConcurrentSameCodeOneWins`.
+6. **Boşluklu kod** (`123 456`, uygulamaların gösterdiği biçim) reddedilip kilide sayılıyordu
+   ve "saatini kontrol et" diyordu. İnceleme bunu Minor saydı; etkisine göre (yanlış yere
+   yönlendiren mesaj ve kilit) düzeltmeye alındı. `Verify` ve `InWindow` boşlukları atıyor.
+   Testler: `TestSpacesInCodeAreIgnored`, `TestSpacedCodeIsAccepted`.
+
+Ertelenen küçükler (Minor): onay, işleyicinin okuması ile güncelleme arasında başka bir `Begin`
+gelirse görülmemiş bir bekleyen sırrı etkinleştirebilir (dar pencere, yeniden kurulum adım
+yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybolur; Ping'in
+`totp_required`'ı boşsa jeton gönderilmiyor; "-1 left" alarm metni; boş sıfırlamadan sonra da
+"turn it back on" satırı; yeniden kurulum oturum olup olmadığını bilmeden kod soruyor.
 
 ### Canlıda ölçülecek (henüz ölçülmedi)
 
@@ -11688,3 +11739,5 @@ bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
 - Sırrın veritabanında düz durması (kasa açamaz). Yerel yedek `0600 kadran`, uzak yedek age
   ile şifreli.
 - Kilit mesajındaki süre Go biçiminde (`2m0s`).
+- Açılmış bir akış (günlük takibi, dağıtım) jetonun süresi dolunca kesilmiyor; denetim akışın
+  başında.

@@ -109,10 +109,10 @@ func TestReenrollKeepsActiveSecretUntilConfirm(t *testing.T) {
 	if gen != 2 || !bytes.Equal(st.Secret, sir2) {
 		t.Fatalf("onaydan sonra gen=%d sır=%x", gen, st.Secret)
 	}
-	// İmza anahtarı yeniden kurulumda DEĞİŞMEZ: eski jetonları kuşak
-	// düşürüyor ve "süresi doldu" diyebilmek için imzaları geçerli kalmalı.
-	if !bytes.Equal(st.TokenKey, jetonA) {
-		t.Fatalf("yeniden kurulum imza anahtarını değiştirdi: %x", st.TokenKey)
+	// İmza anahtarı yeniden kurulumda DÖNER; eskisi yalnız tanımak için
+	// (yeniden kurulumdan önceki jetona "süresi doldu" demek) tutulur.
+	if !bytes.Equal(st.TokenKey, jetonB) || !bytes.Equal(st.PrevTokenKey, jetonA) {
+		t.Fatalf("anahtar dönmedi: şimdiki %x, önceki %x", st.TokenKey, st.PrevTokenKey)
 	}
 	if ok, err := s.UseRecoveryCode(ctx, kurtarmaOzetleri(1)[0], simdi); err != nil || ok {
 		t.Fatalf("eski kurtarma kodu hâlâ geçerli (%v, %v)", ok, err)
@@ -311,7 +311,7 @@ func TestDisableClearsEverything(t *testing.T) {
 	if gen, err := s.ConfirmTOTP(ctx, 5, jetonB, kurtarmaOzetleri(2), simdi); err != nil || gen != 1 {
 		t.Fatalf("yeniden açılış gen=%d (%v)", gen, err)
 	}
-	if st, err := s.TOTP(ctx); err != nil || !bytes.Equal(st.TokenKey, jetonB) {
-		t.Fatalf("sıfırdan kurulum yeni anahtar almadı: %x (%v)", st.TokenKey, err)
+	if st, err := s.TOTP(ctx); err != nil || !bytes.Equal(st.TokenKey, jetonB) || st.PrevTokenKey != nil {
+		t.Fatalf("sıfırdan kurulum: anahtar %x, önceki %x (%v)", st.TokenKey, st.PrevTokenKey, err)
 	}
 }

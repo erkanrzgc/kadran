@@ -431,9 +431,12 @@ connection whose preamble carries the same key fingerprint it was issued to.
   Each attempt is counted before the code is checked, in one transaction, so parallel
   connections cannot get extra guesses.
 - An accepted code cannot be used again, even by a second connection at the same moment.
-- Turning TOTP off or replacing its secret needs a fresh code on top of the session.
-- 10 single-use recovery codes are shown once. If they are gone too, root on the server turns
-  TOTP off (`kadran totp reset`, the same root path as `bootstrap`).
+- Turning TOTP off or replacing its secret needs a fresh code (or a recovery code) on top of the
+  session. Replacing it also rotates the key that signs tokens, so an old copy of the database
+  cannot be used to create new ones.
+- 10 single-use recovery codes are shown once. They sign you in and let you set up a new phone;
+  each use raises its own alarm. If they are gone too, root on the server turns TOTP off
+  (`kadran totp reset`, the same root path as `bootstrap`).
 - Deploy-only CI keys are not affected. Admin commands over the server's local socket are
   refused while TOTP is on, because that caller has no key to bind a token to.
 

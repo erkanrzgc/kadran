@@ -13,11 +13,13 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   local token, and the desktop uses the same saved session. TOTP is off until you turn it on,
   and deploy-only CI keys are never affected. See the [TOTP guide](docs/guides/totp.md).
 - Lockout and alarms: after 5 wrong codes a key is locked for 1 minute, doubling up to 1 hour.
-  Each attempt is counted before the code is checked. A lock or a used recovery code raises a
-  warning alarm, and every sign-in, failure and change goes into the audit log, never with the
-  code, secret or token.
+  Each attempt is counted before the code is checked. A lock raises a warning alarm, and so does
+  every use of a recovery code; turning TOTP off or resetting it closes them. Every sign-in,
+  failure and change goes into the audit log, never with the code, secret or token.
 - 10 single-use recovery codes per enrollment. Turning TOTP off and re-enrolling need a fresh
-  code on top of the session.
+  code on top of the session; `-recovery` takes a recovery code instead, so a lost phone can be
+  replaced without root. Re-enrolling rotates the key that signs session tokens. Codes typed
+  with spaces (`123 456`) are accepted.
 - `kadran totp reset [-sudo] root@server` turns TOTP off through root when the phone and the
   recovery codes are both lost. On the server it runs `kadrand -totp-reset` as the `kadran`
   user, and the daemon keeps running.

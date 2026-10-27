@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/erkanrzgc/kadran/internal/alarm"
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/store"
 	"github.com/erkanrzgc/kadran/internal/totp"
@@ -76,6 +77,44 @@ func TestTOTPResetDisablesAndAudits(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "TOTP disabled; every session is invalid") {
 		t.Fatalf("çıktı: %q", out.String())
+	}
+}
+
+// TestTOTPResetClosesTotpAlarms: sıfırlama kilit ve kurtarma alarmlarını
+// da kapatır; başka alarmlara dokunmaz.
+func TestTOTPResetClosesTotpAlarms(t *testing.T) {
+	path := totpAcikDB(t)
+	ctx := context.Background()
+	db, err := store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	for _, a := range []store.Alarm{
+		{ID: alarm.KindLoginLockout + ":SHA256:x", Kind: alarm.KindLoginLockout, Target: "SHA256:x", Severity: store.SeverityWarning, Since: now},
+		{ID: alarm.KindLoginRecovery + ":SHA256:x:9", Kind: alarm.KindLoginRecovery, Target: "SHA256:x", Severity: store.SeverityWarning, Since: now},
+		{ID: "disk", Kind: "disk", Target: "/", Severity: store.SeverityWarning, Since: now},
+	} {
+		if _, err := db.RaiseAlarm(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_ = db.Close()
+
+	if err := runTOTPReset(ctx, path, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	db, err = store.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	kalan, err := db.ListAlarms(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kalan) != 1 || kalan[0].ID != "disk" {
+		t.Fatalf("sıfırlamadan sonra alarmlar: %+v", kalan)
 	}
 }
 

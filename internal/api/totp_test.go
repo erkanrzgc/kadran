@@ -41,7 +41,7 @@ const (
 	mesajGecersiz      = `invalid session token: sign in again with "kadran login"`
 	mesajYanlisKod     = "code rejected: check that the code is current and your phone's clock is correct"
 	mesajYerelYonetici = "TOTP is on for this server: admin commands need an SSH key identity, so run kadran from your workstation over SSH"
-	mesajGuncelKod     = "TOTP is already on: re-enrolling needs a current code from your authenticator app"
+	mesajGuncelKod     = "TOTP is already on: re-enrolling needs a current code from your authenticator app or a recovery code"
 )
 
 // acikKapi, oturumu denetlemeyen kapı: yalnız rol denetimini doğrudan
@@ -418,7 +418,8 @@ func TestRecoveryCodeLoginOnceAndWarns(t *testing.T) {
 	if _, err := c.Login(context.Background(), &kadranv1.LoginRequest{RecoveryCode: kod}); err != nil {
 		t.Fatalf("kurtarma koduyla giriş: %v", err)
 	}
-	if len(d.alarm.raised) != 1 || d.alarm.raised[0].ID != "login_recovery:SHA256:yonetici" {
+	// Kimlik kullanım başına (kalan sayıyla): her kullanım bildirilsin.
+	if len(d.alarm.raised) != 1 || d.alarm.raised[0].ID != "login_recovery:SHA256:yonetici:9" {
 		t.Fatalf("kurtarma alarmı: %+v", d.alarm.raised)
 	}
 	if !strings.Contains(d.alarm.raised[0].Detail, "9 left") {

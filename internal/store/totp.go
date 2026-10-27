@@ -25,6 +25,7 @@ type TOTPState struct {
 	ConfirmedAt      time.Time
 	LastStep         int64
 	TokenKey         []byte
+	PrevTokenKey     []byte // önceki onayın anahtarı; yalnız tanımak için
 	Generation       int64
 	PendingSecret    []byte
 	PendingCreatedAt time.Time
@@ -46,10 +47,10 @@ func (s *Store) TOTP(ctx context.Context) (TOTPState, error) {
 	var st TOTPState
 	var confirmed, pendingAt sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT secret, confirmed_at, last_step, token_key, generation,
+		SELECT secret, confirmed_at, last_step, token_key, prev_token_key, generation,
 		       pending_secret, pending_created_at
 		FROM totp WHERE id = 1`).Scan(
-		&st.Secret, &confirmed, &st.LastStep, &st.TokenKey, &st.Generation,
+		&st.Secret, &confirmed, &st.LastStep, &st.TokenKey, &st.PrevTokenKey, &st.Generation,
 		&st.PendingSecret, &pendingAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return TOTPState{}, nil
@@ -85,10 +86,12 @@ func (s *Store) BeginTOTPEnrollment(ctx context.Context, pending []byte, now tim
 // daha kullanılamasın), kuşak artar (eski jetonların hepsi düşer),
 // kurtarma kodları değiştirilir.
 //
-// İmza anahtarı yalnız İLK kurulumda yazılır (satır silinip yeniden
-// kurulunca da ilk kurulum sayılır): yeniden kurulumda eski jetonları
-// kuşak düşürüyor ve imzaları geçerli kaldığı için kullanıcıya "geçersiz
-// jeton" yerine "oturumun süresi doldu" denebiliyor.
+// İmza anahtarı HER onayda yenilenir; eskisi prev_token_key'e geçer.
+// Yenilenmeseydi, eski bir veritabanı kopyasını (yedek) okuyan biri bir
+// yönetici anahtarıyla yeni kuşak için jeton basabilirdi: kuşak tahmin
+// edilebilir bir sayaç. Önceki anahtar yalnız tanımak için tutuluyor:
+// yeniden kurulumdan önce alınmış jetona "geçersiz" yerine "oturumun
+// süresi doldu" denebilsin.
 func (s *Store) ConfirmTOTP(
 	ctx context.Context, step int64, tokenKey []byte, recovery [][32]byte, now time.Time,
 ) (int64, error) {
@@ -101,7 +104,7 @@ func (s *Store) ConfirmTOTP(
 	res, err := tx.ExecContext(ctx, `
 		UPDATE totp SET
 			secret = pending_secret, confirmed_at = ?, last_step = ?,
-			generation = generation + 1, token_key = COALESCE(token_key, ?),
+			generation = generation + 1, prev_token_key = token_key, token_key = ?,
 			pending_secret = NULL, pending_created_at = NULL
 		WHERE id = 1 AND pending_secret IS NOT NULL`,
 		now.Unix(), step, tokenKey)

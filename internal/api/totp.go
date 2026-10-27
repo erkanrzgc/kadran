@@ -5,7 +5,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,8 +46,9 @@ const (
 	msgReplayedCode = "code already used: wait for the next one"
 	msgNoTOTP       = "TOTP is not enabled on this server"
 	msgNeedsKey     = "signing in needs an SSH key identity"
-	msgNeedsCurrent = "TOTP is already on: re-enrolling needs a current code from your authenticator app"
-	msgDisableCode  = "disabling TOTP needs a current code from your authenticator app"
+	msgNeedsCurrent = "TOTP is already on: re-enrolling needs a current code from your authenticator app or a recovery code"
+	msgDisableCode  = "disabling TOTP needs a current code from your authenticator app or a recovery code"
+	msgOneProof     = "give exactly one of a TOTP code or a recovery code"
 )
 
 // callerFingerprint, bağlantının önsözündeki parmak izidir.
@@ -66,8 +70,8 @@ func (s *Server) readTOTP(ctx context.Context) (store.TOTPState, error) {
 
 // BeginTotpEnrollment, onay bekleyen bir kurulum başlatır. TOTP açıksa
 // (yeniden kurulum) oturum kapıda denetlendi; burada ayrıca GÜNCEL bir kod
-// isteniyor: çalınmış bir jeton sırrı değiştirip sahibini dışarıda
-// bırakamasın.
+// ya da kurtarma kodu isteniyor: çalınmış bir jeton sırrı değiştirip
+// sahibini dışarıda bırakamasın.
 func (s *Server) BeginTotpEnrollment(
 	ctx context.Context, req *kadranv1.BeginTotpEnrollmentRequest,
 ) (*kadranv1.BeginTotpEnrollmentResponse, error) {
@@ -81,7 +85,8 @@ func (s *Server) BeginTotpEnrollment(
 	}
 	now := s.now()
 	if st.Enabled() {
-		if err := s.stepUp(ctx, "totp.enroll", msgNeedsCurrent, fp, st, req.GetCurrentCode(), now); err != nil {
+		p := newProof(req.GetCurrentCode(), req.GetRecoveryCode())
+		if err := s.stepUp(ctx, "totp.enroll", msgNeedsCurrent, fp, st, p, now); err != nil {
 			return nil, err
 		}
 	}
@@ -159,16 +164,14 @@ func (s *Server) ConfirmTotpEnrollment(
 		_ = s.completed(ctx, "totp.confirm", auditTOTPTarget, nil, err)
 		return nil, status.Error(codes.Internal, "could not confirm the TOTP enrollment")
 	}
-	// İmza anahtarı yeniden kurulumda korunuyor (store.ConfirmTOTP);
-	// jetonu saklanan anahtarla imzalamak için durum yeniden okunuyor.
-	st, err = s.readTOTP(ctx)
-	if err != nil {
-		return nil, err
-	}
 	if err := s.completed(ctx, "totp.confirm", auditTOTPTarget, nil, nil); err != nil {
 		return nil, err
 	}
-	token, exp := s.issueToken(st.TokenKey, fp, gen, now)
+	// Yeni sır ve yeni kurtarma kodları: "kurtarma kodu kullanıldı"
+	// koşulu kapandı.
+	s.clearTOTPAlarms(ctx, alarm.KindLoginRecovery)
+	// Anahtar her onayda yenileniyor (store.ConfirmTOTP): yeni jeton onunla.
+	token, exp := s.issueToken(key, fp, gen, now)
 	return &kadranv1.ConfirmTotpEnrollmentResponse{
 		RecoveryCodes: codesPlain,
 		SessionToken:  token,
@@ -194,40 +197,18 @@ func (s *Server) Login(ctx context.Context, req *kadranv1.LoginRequest) (*kadran
 	if !st.Enabled() {
 		return nil, status.Error(codes.FailedPrecondition, msgNoTOTP)
 	}
-	code, recovery := strings.TrimSpace(req.GetCode()), strings.TrimSpace(req.GetRecoveryCode())
-	if (code == "") == (recovery == "") {
-		return nil, status.Error(codes.InvalidArgument, "give exactly one of a TOTP code or a recovery code")
+	p := newProof(req.GetCode(), req.GetRecoveryCode())
+	if p.empty() || p.both() {
+		return nil, status.Error(codes.InvalidArgument, msgOneProof)
 	}
 
 	now := s.now()
-	attempt, err := s.reserveAttempt(ctx, "auth.login", fp, now)
+	detail, err := s.verifyProof(ctx, "auth.login", fp, st, p, now)
 	if err != nil {
-		return nil, err
-	}
-
-	detail := "totp"
-	if recovery != "" {
-		ok, err := s.store.UseRecoveryCode(ctx, totp.HashRecovery(recovery), now)
-		if err != nil {
-			return nil, status.Error(codes.Internal, "could not check the recovery code")
-		}
-		if !ok {
-			return nil, s.codeFailed(ctx, "auth.login", fp, attempt, now, "recovery_wrong",
-				status.Error(codes.PermissionDenied, "recovery code rejected"))
-		}
-		detail = "recovery"
-	} else if err := s.checkCode(ctx, "auth.login", fp, st, code, attempt, now); err != nil {
-		return nil, err
-	}
-
-	if err := s.clearAttempts(ctx, fp); err != nil {
 		return nil, err
 	}
 	if err := s.recordAction(ctx, "auth.login", auditTOTPTarget, nil, audit.OutcomeSuccess, detail); err != nil {
 		return nil, err
-	}
-	if detail == "recovery" {
-		s.warnRecoveryUsed(ctx, fp, now)
 	}
 	token, exp := s.issueToken(st.TokenKey, fp, st.Generation, now)
 	return &kadranv1.LoginResponse{SessionToken: token, ExpiresAt: timestamppb.New(exp)}, nil
@@ -247,13 +228,17 @@ func (s *Server) DisableTotp(ctx context.Context, req *kadranv1.DisableTotpReque
 	if !st.Enabled() {
 		return nil, status.Error(codes.FailedPrecondition, msgNoTOTP)
 	}
-	if err := s.stepUp(ctx, "totp.disable", msgDisableCode, fp, st, req.GetCode(), s.now()); err != nil {
+	p := newProof(req.GetCode(), req.GetRecoveryCode())
+	if err := s.stepUp(ctx, "totp.disable", msgDisableCode, fp, st, p, s.now()); err != nil {
 		return nil, err
 	}
 	opErr := s.store.DisableTOTP(ctx)
 	if err := s.completed(ctx, "totp.disable", auditTOTPTarget, nil, opErr); err != nil {
 		return nil, status.Error(codes.Internal, "could not disable TOTP")
 	}
+	// TOTP yok: kilit ve kurtarma alarmlarının koşulu da kalmadı. Kalsalar,
+	// yeniden açıldıktan sonra aynı anahtarın yeni kilidi bildirilmezdi.
+	s.clearTOTPAlarms(ctx, alarm.KindLoginLockout, alarm.KindLoginRecovery)
 	return &kadranv1.DisableTotpResponse{}, nil
 }
 
@@ -287,24 +272,83 @@ func (s *Server) GetTotpStatus(ctx context.Context, _ *kadranv1.GetTotpStatusReq
 	return resp, nil
 }
 
-// stepUp, oturumu olan çağırandan şu anki sırrın TAZE kodunu ister (TOTP'yi
-// kapatmak ve yeniden kurmak). Boş kod bir tahmin değil, sayılmaz; dolu kod
-// girişle aynı kilide sayılır ve doğruysa sayacı siler.
+// proof, kullanıcının verdiği kanıt: şu anki sırrın kodu YA DA bir kurtarma
+// kodu.
+type proof struct{ code, recovery string }
+
+func newProof(code, recovery string) proof {
+	return proof{code: strings.TrimSpace(code), recovery: strings.TrimSpace(recovery)}
+}
+
+func (p proof) empty() bool { return p.code == "" && p.recovery == "" }
+func (p proof) both() bool  { return p.code != "" && p.recovery != "" }
+
+// stepUp, oturumu olan çağırandan TAZE bir kanıt ister (TOTP'yi kapatmak ve
+// yeniden kurmak). Kurtarma kodu da geçer: telefonu kaybolan kullanıcı yeni
+// telefonu kökü beklemeden kurabilsin; çalınmış bir jeton yine yetmez. Boş
+// kanıt bir tahmin değil, sayılmaz.
 func (s *Server) stepUp(
-	ctx context.Context, action, missing, fp string, st store.TOTPState, code string, now time.Time,
+	ctx context.Context, action, missing, fp string, st store.TOTPState, p proof, now time.Time,
 ) error {
-	code = strings.TrimSpace(code)
-	if code == "" {
+	if p.empty() {
 		return status.Error(codes.InvalidArgument, missing)
 	}
+	if p.both() {
+		return status.Error(codes.InvalidArgument, msgOneProof)
+	}
+	_, err := s.verifyProof(ctx, action, fp, st, p, now)
+	return err
+}
+
+// verifyProof, kanıtı doğrular: deneme önce sayılır, kod ya da kurtarma
+// kodu denenir, doğruysa sayaç silinir. Kurtarma kodu kullanımı alarm
+// üretir. Dönen sözcük denetim kaydının ayrıntısıdır ("totp"|"recovery").
+func (s *Server) verifyProof(
+	ctx context.Context, action, fp string, st store.TOTPState, p proof, now time.Time,
+) (string, error) {
 	attempt, err := s.reserveAttempt(ctx, action, fp, now)
 	if err != nil {
-		return err
+		return "", err
 	}
-	if err := s.checkCode(ctx, action, fp, st, code, attempt, now); err != nil {
-		return err
+	detail := "totp"
+	if p.recovery != "" {
+		ok, err := s.store.UseRecoveryCode(ctx, totp.HashRecovery(p.recovery), now)
+		if err != nil {
+			return "", status.Error(codes.Internal, "could not check the recovery code")
+		}
+		if !ok {
+			return "", s.codeFailed(ctx, action, fp, attempt, now, "recovery_wrong",
+				status.Error(codes.PermissionDenied, "recovery code rejected"))
+		}
+		detail = "recovery"
+	} else if err := s.checkCode(ctx, action, fp, st, p.code, attempt, now); err != nil {
+		return "", err
 	}
-	return s.clearAttempts(ctx, fp)
+	if err := s.clearAttempts(ctx, fp); err != nil {
+		return "", err
+	}
+	if detail == "recovery" {
+		s.warnRecoveryUsed(ctx, fp, now)
+	}
+	return detail, nil
+}
+
+// clearTOTPAlarms, verilen türlerdeki bütün alarmları (her anahtarın)
+// kapatır. Liste okunamazsa işlem geri alınmaz, günlüğe yazılır.
+func (s *Server) clearTOTPAlarms(ctx context.Context, kinds ...string) {
+	if s.alarms == nil {
+		return
+	}
+	active, err := s.store.ListAlarms(ctx)
+	if err != nil {
+		slog.Error("TOTP alarms could not be listed to close them", "error", err)
+		return
+	}
+	for _, a := range active {
+		if slices.Contains(kinds, a.Kind) {
+			s.alarms.Clear(ctx, a.ID)
+		}
+	}
 }
 
 // clearAttempts, doğru koddan sonra anahtarın deneme sayacını ve kilit
@@ -405,8 +449,16 @@ func (s *Server) warnRecoveryUsed(ctx context.Context, fp string, now time.Time)
 	if err != nil {
 		left = -1
 	}
+	// Kimlik kullanım başına: kalan sayı bir kurulum içinde her kullanımda
+	// azalıyor. Sabit kimlik yalnız ilk kullanımda bildirirdi (alarm
+	// yöneticisi yalnız yeni alarmı bildirir). Yeniden kurulum, kapatma ve
+	// sıfırlama bu alarmları kapatır.
+	use := strconv.Itoa(left)
+	if left < 0 {
+		use = strconv.FormatInt(now.UnixNano(), 10)
+	}
 	s.alarms.Raise(ctx, store.Alarm{
-		ID:       alarm.KindLoginRecovery + ":" + fp,
+		ID:       alarm.KindLoginRecovery + ":" + fp + ":" + use,
 		Kind:     alarm.KindLoginRecovery,
 		Target:   fp,
 		Severity: store.SeverityWarning,

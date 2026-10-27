@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -73,6 +74,10 @@ func codeAt(secret []byte, step int64, digits int) string {
 // CodeAt, t anında doğrulayıcı uygulamanın göstereceği koddur.
 func CodeAt(secret []byte, t time.Time) string { return codeAt(secret, StepAt(t), Digits) }
 
+// normalizeCode, koddaki boşlukları atar: uygulamalar kodu "123 456" diye
+// gösteriyor ve öyle yazılan kod reddedilip kilide sayılmamalı.
+func normalizeCode(code string) string { return strings.ReplaceAll(code, " ", "") }
+
 // wellFormed, kodun tam Digits ASCII rakam olduğunu söyler.
 func wellFormed(code string) bool {
 	if len(code) != Digits {
@@ -92,6 +97,7 @@ func wellFormed(code string) bool {
 // (ya da daha eskisi) ikinci kez geçmez. Dönen adım, eşleşen adımdır;
 // çağıran onu kalıcı olarak son adım yapmalı.
 func Verify(secret []byte, code string, now time.Time, lastStep int64) (int64, bool) {
+	code = normalizeCode(code)
 	if !wellFormed(code) {
 		return 0, false
 	}
@@ -112,6 +118,7 @@ func Verify(secret []byte, code string, now time.Time, lastStep int64) (int64, b
 // Yalnız tanı için: pencere dışında ama yakın bir kod, yanlış koddan çok
 // kaymış bir saati gösterir. Kabul kararı HER ZAMAN Verify'ındır.
 func InWindow(secret []byte, code string, now time.Time, span int64) bool {
+	code = normalizeCode(code)
 	if !wellFormed(code) {
 		return false
 	}

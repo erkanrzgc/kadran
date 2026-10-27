@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 
 	"google.golang.org/grpc/codes"
@@ -70,6 +71,11 @@ func (s *Server) CheckSession(ctx context.Context, id connproto.Identity, method
 		return sessionDenied(id, method, "no session token", msgNoSession)
 	}
 	c, err := totp.ParseToken(st.TokenKey, tok)
+	if errors.Is(err, totp.ErrBadSignature) && prevKeyToken(st.PrevTokenKey, tok, id.Fingerprint) {
+		// Yeniden kurulumdan önce alınmış jeton: hiçbir zaman kabul
+		// edilmez, yalnız doğru mesajı alır.
+		return sessionDenied(id, method, "token from before re-enrollment", msgSessionExpired)
+	}
 	if err != nil || c.Fingerprint == "" || c.Fingerprint != id.Fingerprint {
 		return sessionDenied(id, method, "invalid session token", msgSessionInvalid)
 	}
@@ -77,6 +83,16 @@ func (s *Server) CheckSession(ctx context.Context, id connproto.Identity, method
 		return sessionDenied(id, method, "expired session token", msgSessionExpired)
 	}
 	return nil
+}
+
+// prevKeyToken, jetonun bir önceki imza anahtarıyla aynı anahtar için
+// imzalandığını söyler.
+func prevKeyToken(prevKey []byte, tok, fp string) bool {
+	if len(prevKey) == 0 {
+		return false
+	}
+	c, err := totp.ParseToken(prevKey, tok)
+	return err == nil && c.Fingerprint == fp
 }
 
 // sessionToken, metadata'daki jetonu okur; yoksa ya da birden çoksa boş.

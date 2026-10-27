@@ -41,6 +41,9 @@ const (
 	msgNoSession      = `TOTP is on for this server: sign in with "kadran login" (upgrade kadran if it has no login command)`
 	msgSessionExpired = `session expired: sign in again with "kadran login"`
 	msgSessionInvalid = `invalid session token: sign in again with "kadran login"`
+	// Parmak izsiz yönetici (sunucudaki yerel soket) jeton alamaz; ona
+	// "kadran login" demek bir döngü olurdu.
+	msgSessionNoKey = "TOTP is on for this server: admin commands need an SSH key identity, so run kadran from your workstation over SSH"
 )
 
 // CheckSession, SessionGate'i karşılar. Durum her çağrıda veritabanından
@@ -57,6 +60,9 @@ func (s *Server) CheckSession(ctx context.Context, id connproto.Identity, method
 	}
 	if !st.Enabled() {
 		return nil
+	}
+	if id.Fingerprint == "" {
+		return sessionDenied(id, method, "no key identity", msgSessionNoKey)
 	}
 
 	tok := sessionToken(ctx)

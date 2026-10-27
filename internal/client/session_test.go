@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -179,6 +180,10 @@ func TestIsSessionError(t *testing.T) {
 		status.Error(codes.Unauthenticated, `no identity`):                                             false,
 		errors.New("session expired"): false,
 		nil:                           false,
+		// Komutlar hatayı sarıyor ("could not get apps: %w"); önek sarılmış
+		// mesaja değil sunucunun mesajına bakmalı.
+		fmt.Errorf("could not get apps: %w",
+			status.Error(codes.Unauthenticated, `session expired: sign in again`)): true,
 	}
 	for err, want := range cases {
 		if got := IsSessionError(err); got != want {

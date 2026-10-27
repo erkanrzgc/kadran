@@ -36,11 +36,12 @@ var (
 )
 
 const (
-	mesajJetonYok    = `TOTP is on for this server: sign in with "kadran login" (upgrade kadran if it has no login command)`
-	mesajSuresiBitti = `session expired: sign in again with "kadran login"`
-	mesajGecersiz    = `invalid session token: sign in again with "kadran login"`
-	mesajYanlisKod   = "code rejected: check that the code is current and your phone's clock is correct"
-	mesajGuncelKod   = "TOTP is already on: re-enrolling needs a current code from your authenticator app"
+	mesajJetonYok      = `TOTP is on for this server: sign in with "kadran login" (upgrade kadran if it has no login command)`
+	mesajSuresiBitti   = `session expired: sign in again with "kadran login"`
+	mesajGecersiz      = `invalid session token: sign in again with "kadran login"`
+	mesajYanlisKod     = "code rejected: check that the code is current and your phone's clock is correct"
+	mesajYerelYonetici = "TOTP is on for this server: admin commands need an SSH key identity, so run kadran from your workstation over SSH"
+	mesajGuncelKod     = "TOTP is already on: re-enrolling needs a current code from your authenticator app"
 )
 
 // acikKapi, oturumu denetlemeyen kapı: yalnız rol denetimini doğrudan
@@ -224,6 +225,16 @@ func TestClientRecognisesSessionErrors(t *testing.T) {
 	if client.IsSessionError(yanlis) {
 		t.Errorf("yanlış kod oturum hatası sayıldı: %v", yanlis)
 	}
+}
+
+// TestLocalAdminIsToldToUseSSH: parmak izsiz yönetici (sunucudaki yerel
+// soket) TOTP açıkken çağrı yapamıyor (spec kararı) ve jetonu da
+// alamıyor; mesaj onu "kadran login" döngüsüne değil SSH'a yollamalı.
+func TestLocalAdminIsToldToUseSSH(t *testing.T) {
+	d := totpKur(t)
+	d.etkinlestir()
+	_, err := d.istemci(izsiz).ListApps(oturumla(d.jeton), &kadranv1.ListAppsRequest{})
+	durumMesaj(t, err, codes.Unauthenticated, mesajYerelYonetici)
 }
 
 func TestDeployRoleIsExemptFromSession(t *testing.T) {

@@ -133,12 +133,17 @@ var sessionErrorPrefixes = []string{"TOTP is on", "session expired", "invalid se
 
 // IsSessionError, hatanın "oturum yok / süresi doldu / geçersiz" olduğunu
 // söyler: çözüm `kadran login`.
+//
+// Sunucunun durumu errors.As ile aranıyor: komutlar hatayı sarıyor
+// ("could not get apps: %w") ve status.FromError sarılmış hatada mesajı
+// tüm metin yapar, önek eşleşmezdi.
 func IsSessionError(err error) bool {
-	if err == nil {
+	var gs interface{ GRPCStatus() *status.Status }
+	if !errors.As(err, &gs) {
 		return false
 	}
-	st, ok := status.FromError(err)
-	if !ok || st.Code() != codes.Unauthenticated {
+	st := gs.GRPCStatus()
+	if st.Code() != codes.Unauthenticated {
 		return false
 	}
 	for _, p := range sessionErrorPrefixes {
@@ -157,10 +162,15 @@ func (c *Client) SetSession(token string) {
 	c.session = token
 }
 
-func (c *Client) withSession(ctx context.Context) context.Context {
+// Session, ayarlı jetonu döner (boş: yok).
+func (c *Client) Session() string {
 	c.mu.Lock()
-	token := c.session
-	c.mu.Unlock()
+	defer c.mu.Unlock()
+	return c.session
+}
+
+func (c *Client) withSession(ctx context.Context) context.Context {
+	token := c.Session()
 	if token == "" {
 		return ctx
 	}

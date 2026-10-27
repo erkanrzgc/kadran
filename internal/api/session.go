@@ -29,9 +29,6 @@ type SessionGate interface {
 	CheckSession(ctx context.Context, id connproto.Identity, method string) error
 }
 
-// SessionMetadataKey, jetonun taşındığı metadata anahtarı.
-const SessionMetadataKey = "kadran-session"
-
 // sessionExempt, TOTP açıkken de jetonsuz çağrılabilen yöntemler. Ping:
 // istemci bağlanırken protokolü onunla soruyor. Login: jeton onunla alınıyor.
 var sessionExempt = map[string]bool{
@@ -82,7 +79,7 @@ func sessionToken(ctx context.Context) string {
 	if !ok {
 		return ""
 	}
-	v := md.Get(SessionMetadataKey)
+	v := md.Get(totp.SessionMetadataKey)
 	if len(v) != 1 {
 		return ""
 	}

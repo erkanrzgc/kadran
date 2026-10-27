@@ -15,6 +15,9 @@ const (
 	TokenLifetime = 8 * time.Hour
 	// TokenKeySize, jeton imza anahtarının bayt uzunluğu.
 	TokenKeySize = 32
+	// SessionMetadataKey, jetonun gRPC'de taşındığı metadata anahtarı.
+	// İstemci yazar, kadrand okur; tek kaynak burası.
+	SessionMetadataKey = "kadran-session"
 
 	tokenVersion = "v1"
 )

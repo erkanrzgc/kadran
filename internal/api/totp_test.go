@@ -15,6 +15,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/kadran/internal/client"
 	"github.com/erkanrzgc/kadran/internal/connproto"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/store"
@@ -125,7 +126,7 @@ func oturumla(jeton string) context.Context {
 	if jeton == "" {
 		return ctx
 	}
-	return metadata.AppendToOutgoingContext(ctx, "kadran-session", jeton)
+	return metadata.AppendToOutgoingContext(ctx, totp.SessionMetadataKey, jeton)
 }
 
 func cozSir(t *testing.T, b32 string) []byte {
@@ -201,6 +202,30 @@ func TestAdminNeedsSessionWhenEnabled(t *testing.T) {
 
 // TestDeployRoleIsExemptFromSession: CI'ın dağıtım anahtarı TOTP
 // açıldıktan sonra da jetonsuz dağıtır (kapsam denetimi yine çalışır).
+// TestClientRecognisesSessionErrors: CLI'ın "kadran login" ipucu
+// client.IsSessionError'ın öneklerine bağlı; üç oturum hatası da gerçek
+// sunucudan alınıp sınanıyor, yoksa bir mesaj değişikliği ipucunu sessizce
+// kapatırdı. Yanlış kod bir oturum hatası değil.
+func TestClientRecognisesSessionErrors(t *testing.T) {
+	d := totpKur(t)
+	d.etkinlestir()
+	c := d.istemci(yonetici)
+	_, yok := c.ListApps(context.Background(), &kadranv1.ListAppsRequest{})
+	_, bozuk := c.ListApps(oturumla(d.jeton+"x"), &kadranv1.ListAppsRequest{})
+	_, yanlis := c.Login(context.Background(), &kadranv1.LoginRequest{Code: "12345x"})
+	d.now = d.now.Add(totp.TokenLifetime + time.Second)
+	_, bitti := c.ListApps(oturumla(d.jeton), &kadranv1.ListAppsRequest{})
+
+	for ad, err := range map[string]error{"jeton yok": yok, "bozuk": bozuk, "süresi bitti": bitti} {
+		if !client.IsSessionError(err) {
+			t.Errorf("%s: istemci oturum hatası saymadı: %v", ad, err)
+		}
+	}
+	if client.IsSessionError(yanlis) {
+		t.Errorf("yanlış kod oturum hatası sayıldı: %v", yanlis)
+	}
+}
+
 func TestDeployRoleIsExemptFromSession(t *testing.T) {
 	d := totpKur(t)
 	d.etkinlestir()

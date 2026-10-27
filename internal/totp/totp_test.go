@@ -83,6 +83,16 @@ func TestInWindow(t *testing.T) {
 	}
 }
 
+// TestCodeAtMatchesVerify: CodeAt, doğrulayıcı uygulamanın o an
+// göstereceği kod; Verify onu aynı adımla kabul eder.
+func TestCodeAtMatchesVerify(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	step, ok := Verify(rfcSecret, CodeAt(rfcSecret, now), now, 0)
+	if !ok || step != StepAt(now) {
+		t.Fatalf("CodeAt kodu: ok=%v adım=%d, beklenen %d", ok, step, StepAt(now))
+	}
+}
+
 func TestSecretAndURI(t *testing.T) {
 	s, err := NewSecret()
 	if err != nil {

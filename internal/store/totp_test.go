@@ -97,7 +97,8 @@ func TestReenrollKeepsActiveSecretUntilConfirm(t *testing.T) {
 		t.Fatalf("yeniden kurulum etkin sırrı değiştirdi: %+v", st)
 	}
 
-	gen, err := s.ConfirmTOTP(ctx, 11, jetonA, kurtarmaOzetleri(2), simdi)
+	jetonB := bytes.Repeat([]byte{8}, 32)
+	gen, err := s.ConfirmTOTP(ctx, 11, jetonB, kurtarmaOzetleri(2), simdi)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,6 +108,11 @@ func TestReenrollKeepsActiveSecretUntilConfirm(t *testing.T) {
 	}
 	if gen != 2 || !bytes.Equal(st.Secret, sir2) {
 		t.Fatalf("onaydan sonra gen=%d sır=%x", gen, st.Secret)
+	}
+	// İmza anahtarı yeniden kurulumda DEĞİŞMEZ: eski jetonları kuşak
+	// düşürüyor ve "süresi doldu" diyebilmek için imzaları geçerli kalmalı.
+	if !bytes.Equal(st.TokenKey, jetonA) {
+		t.Fatalf("yeniden kurulum imza anahtarını değiştirdi: %x", st.TokenKey)
 	}
 	if ok, err := s.UseRecoveryCode(ctx, kurtarmaOzetleri(1)[0], simdi); err != nil || ok {
 		t.Fatalf("eski kurtarma kodu hâlâ geçerli (%v, %v)", ok, err)
@@ -295,5 +301,17 @@ func TestDisableClearsEverything(t *testing.T) {
 	}
 	if f, err := s.LoginFailureFor(ctx, "SHA256:aaa"); err != nil || f.Count != 0 {
 		t.Fatalf("sayaç kaldı: %+v (%v)", f, err)
+	}
+
+	// Sıfırdan kurulum yeni imza anahtarı alır ve kuşak baştan başlar.
+	jetonB := bytes.Repeat([]byte{8}, 32)
+	if err := s.BeginTOTPEnrollment(ctx, sir2, simdi); err != nil {
+		t.Fatal(err)
+	}
+	if gen, err := s.ConfirmTOTP(ctx, 5, jetonB, kurtarmaOzetleri(2), simdi); err != nil || gen != 1 {
+		t.Fatalf("yeniden açılış gen=%d (%v)", gen, err)
+	}
+	if st, err := s.TOTP(ctx); err != nil || !bytes.Equal(st.TokenKey, jetonB) {
+		t.Fatalf("sıfırdan kurulum yeni anahtar almadı: %x (%v)", st.TokenKey, err)
 	}
 }

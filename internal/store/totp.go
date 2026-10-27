@@ -82,8 +82,13 @@ func (s *Store) BeginTOTPEnrollment(ctx context.Context, pending []byte, now tim
 // ConfirmTOTP, bekleyen kurulumu etkin yapar.
 //
 // Tek transaction: sır yer değiştirir, son adım yazılır (onay kodu bir
-// daha kullanılamasın), kuşak artar ve imza anahtarı yenilenir (eski
-// jetonların hepsi düşer), kurtarma kodları değiştirilir.
+// daha kullanılamasın), kuşak artar (eski jetonların hepsi düşer),
+// kurtarma kodları değiştirilir.
+//
+// İmza anahtarı yalnız İLK kurulumda yazılır (satır silinip yeniden
+// kurulunca da ilk kurulum sayılır): yeniden kurulumda eski jetonları
+// kuşak düşürüyor ve imzaları geçerli kaldığı için kullanıcıya "geçersiz
+// jeton" yerine "oturumun süresi doldu" denebiliyor.
 func (s *Store) ConfirmTOTP(
 	ctx context.Context, step int64, tokenKey []byte, recovery [][32]byte, now time.Time,
 ) (int64, error) {
@@ -96,7 +101,7 @@ func (s *Store) ConfirmTOTP(
 	res, err := tx.ExecContext(ctx, `
 		UPDATE totp SET
 			secret = pending_secret, confirmed_at = ?, last_step = ?,
-			generation = generation + 1, token_key = ?,
+			generation = generation + 1, token_key = COALESCE(token_key, ?),
 			pending_secret = NULL, pending_created_at = NULL
 		WHERE id = 1 AND pending_secret IS NOT NULL`,
 		now.Unix(), step, tokenKey)

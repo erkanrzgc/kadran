@@ -70,6 +70,9 @@ func codeAt(secret []byte, step int64, digits int) string {
 	return fmt.Sprintf("%0*d", digits, bin%mod)
 }
 
+// CodeAt, t anında doğrulayıcı uygulamanın göstereceği koddur.
+func CodeAt(secret []byte, t time.Time) string { return codeAt(secret, StepAt(t), Digits) }
+
 // wellFormed, kodun tam Digits ASCII rakam olduğunu söyler.
 func wellFormed(code string) bool {
 	if len(code) != Digits {

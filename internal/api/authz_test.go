@@ -231,7 +231,7 @@ func TestInvalidRoleIsRejectedAtHandshake(t *testing.T) {
 // koşmadığını döner.
 func birimCagri(id connproto.Identity, method string, req any) (bool, error) {
 	ran := false
-	_, err := AuthzUnaryInterceptor()(ctxWithCaller(id), req,
+	_, err := AuthzUnaryInterceptor(acikKapi{})(ctxWithCaller(id), req,
 		&grpc.UnaryServerInfo{FullMethod: method},
 		func(context.Context, any) (any, error) { ran = true; return nil, nil })
 	return ran, err

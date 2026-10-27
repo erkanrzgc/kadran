@@ -11552,3 +11552,139 @@ kayıtların anahtarları İngilizce (`source`, `branch`, `domain`).
 
 - Liste bir sözlük değil; listede olmayan bir ASCII Türkçe sözcük yine geçebilir. Yakaladığı
   şey bu iki artığın sınıfı: dönüş değeriyle ya da anahtar adıyla taşınan kısa metin.
+
+## K-155 — İki aşamalı giriş: TOTP ve kısa ömürlü oturum jetonu (2026-10-28)
+
+**Durum:** dal `totp`, PR bekliyor. Canlı ölçüm sürümden sonra, her adım ayrı onayla (önce GCP).
+**Tasarım:** `docs/specs/2026-10-24-totp-design.md`. **Plan:** `docs/plans/2026-10-24-totp.md`.
+**Not:** K-154 PR #19'da (katı Caddy geri okuması); iki dal birleşince K-154 bu kaydın önüne
+gelir.
+
+### Neden
+
+Ele geçirilmiş bir yönetici SSH anahtarı tek başına her şeyi yapıyordu: ortam değişkenlerinin
+değerlerini okumak, uygulama silmek, geri almak. Şartname §1.3 TOTP ve imzalı kısa ömürlü jeton
+istiyor; K-076'nın beklettiği kapı da bu. Kadran'da giriş ekranı yok, her çağrı ayrı bir SSH
+bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
+
+### Ne yapıldı
+
+- `internal/totp`: RFC 6238 (HMAC-SHA1, 30 sn, 6 hane, ±1 adım; Ek B vektörleriyle sınandı),
+  kurtarma kodları (10 × 10 base32, SHA-256), jeton `v1.<yük>.<HMAC-SHA256>` (önce imza, sonra
+  JSON), kilit süreleri.
+- Göç `0011_totp`: `totp` (tek satır), `totp_recovery`, `totp_failures`.
+- Beş RPC (`Login`, `BeginTotpEnrollment`, `ConfirmTotpEnrollment`, `DisableTotp`,
+  `GetTotpStatus`) ve `PingResponse.totp_required`. Protokol 3 kaldı.
+- Zorlama K-131'in yetki önleyicisinde (`SessionGate`): rol `admin` ve TOTP açıksa `Ping` ile
+  `Login` dışındaki her çağrı `kadran-session` metadata'sında geçerli jeton ister. Durum her
+  çağrıda veritabanından okunuyor; okunamazsa çağrı düşer (kapı açık kalmaz).
+- İstemci: hedef başına jeton dosyası (`os.UserConfigDir()/kadran/sessions`, `0700`/`0600`,
+  geçici dosya + rename), tekli ve akış önleyicileri, `login`, `logout`, `totp
+  status|enable|disable|reset`. Masaüstü sidecar'ı aynı dosyayı okuyor.
+- Kökün kaçış yolu: `kadran totp reset [-sudo] root@sunucu` → sunucuda `setpriv` ile `kadran`
+  olarak `kadrand -totp-reset`; denetim kaydı `totp.reset` (`origin=local`). Daemon durmuyor.
+
+### Kararlar (tasarımdan sapmalar ve geliştirmede verilenler)
+
+1. **Saat ipucu çağırana gösterilmiyor** (otomatik güvenlik incelemesi). "Saatini kontrol et"
+   yalnız ±4 adım içindeki kodlara denseydi, saldırgana tahmin ettiği kodun birkaç dakika sonra
+   geçerli olacağını söylerdi. Her yanlış kod aynı mesajı alıyor (`code rejected: check that the
+   code is current and your phone's clock is correct`); `clock` ile `wrong_code` ayrımı yalnız
+   denetim kaydında. Tasarımdaki `TestLoginOutsideWindowMentionsClock` bu yüzden
+   `TestLoginOutsideWindowSameMessageAuditsClock` oldu.
+2. **Deneme, kod denenmeden ÖNCE sayılıyor** (güvenlik incelemesi: kilit TOCTOU).
+   `ReserveLoginAttempt` okuma ve saymayı tek `BEGIN IMMEDIATE` işleminde yapıyor; kilitliyse
+   `ErrLoginLocked` döner ve sayaç büyümez. "Bak → dene → yaz" üç adım olsaydı paralel SSH
+   bağlantıları 5'ten fazla kod denerdi. Ölçüldü: 20 paralel denemenin tam 5'i başladı.
+3. **İmza anahtarı yeniden kurulumda YENİLENMİYOR** (tasarım "token_key yenilenir" diyordu,
+   düzeltme). Eski jetonları kuşak (`generation`) düşürüyor ve "session expired" diyor. Anahtar
+   yenilenseydi imza tutmaz ve "invalid session token" denirdi; Review Focus 3 tam o mesajı
+   istiyor. Anahtar yalnız sıfırdan kurulumda (kapatma ya da sıfırlama sonrası) yenileniyor.
+   Bedeli: sızan bir `token_key` yeniden kurulumdan sağ çıkar, ama onu okuyabilen aynı satırdaki
+   sırrı da okur.
+4. **Yeniden kurulum oturumun yanında GÜNCEL kod istiyor** (güvenlik incelemesi; tasarım
+   yalnız jeton diyordu). Yalnız jetonla, çalınmış bir jeton sırrı değiştirip sahibini dışarıda
+   bırakabilirdi. Kapatmayla aynı yol (`stepUp`): boş kod tahmin değil, sayılmaz
+   (`InvalidArgument`); yanlış kod kilide sayılır. Onay kodu da aynı kilide sayılıyor.
+5. **Her doğru kod sayacı ve kilit alarmını siliyor** (giriş, onay, kapatma, yeniden kurulum).
+   Önce yalnız giriş siliyordu; başarılı onaylar ve kapatmalar kilide doğru birikirdi.
+6. **Kurulum ve onay parmak izi istiyor.** Parmak izsiz bir çağıran TOTP'yi açıp sonra giriş
+   yapamaz, kendini kilitlerdi.
+7. **Parmak izsiz yönetici** (sunucudaki yerel soket) TOTP açıkken ayrı bir mesaj alıyor:
+   `admin commands need an SSH key identity, so run kadran from your workstation over SSH`.
+   Tasarımın kararı (parmak izsiz yönetici çağrısı yok) aynen; ama ona "kadran login" demek bir
+   döngüydü, çünkü jeton alamıyor. CLI yerel hedefe login ipucu vermiyor.
+8. **Uyum mesajı** tasarımdakinden farklı: `TOTP is on for this server: sign in with "kadran
+   login" (upgrade kadran if it has no login command)`.
+9. **İstemci:** CLI jetonu yalnız Ping `totp_required` derse ekliyor. Sidecar her çağrıda
+   dosyayı yeniden okuyor (önbellekteki bağlantı dahil, Ping'e bakmadan): masaüstü açıkken
+   CLI'da yapılan login ya da logout bir sonraki çağrıda geçerli. Bozuk bir oturum dosyası
+   komutu DURDURMUYOR, uyarıyor: login de bağlanmaktan geçiyor ve dosyayı yeniden yazacak tek
+   komut o.
+10. **`IsSessionError` sunucunun durumunu `errors.As` ile buluyor.** Komutlar hatayı sarıyor
+    (`alarms: %w`); `status.FromError` sarılmış hatada mesajı tüm metin yapıyor ve önek
+    eşleşmesi sessizce düşüyordu. Önce testle kırmızı gösterildi.
+11. `logout` "signed out" demiyor: sunucuda jeton listesi yok, kopyalanmış bir jeton süresi
+    dolana kadar geçerli. Hepsini düşürmek yeniden kurulum ya da sıfırlama.
+12. Sıfırlama: TOTP kapalı ve bekleyen kurulum yoksa hiçbir şey yazılmıyor (zincire boş bir
+    "sıfırlandı" düşmez). Uzak betik önce `kadran` kullanıcısını arıyor (yoksa 3, "run kadran
+    bootstrap first"), sonra temiz ortamla `setpriv`. `runKeys`'in çıkış eşlemesi
+    `remoteFailure`'a taşındı, anahtar işlemleri ve sıfırlama paylaşıyor; mesajlar aynı.
+13. Metadata anahtarının tek kaynağı `totp.SessionMetadataKey`.
+
+### Ölçüm
+
+- **Testler:** dalda 86 yeni test (`internal/totp` 14, `internal/store` 11, `internal/api` 27,
+  `internal/client` 11, `cmd/kadran` 16, `cmd/kadrand` 2, `internal/bootstrap` 5). `gofmt -l`
+  boş, `go vet ./...` ve `go test -count=1 ./...` yeşil, `golangci-lint` üretilmiş `*_grpc.pb.go`
+  dışında 0 bulgu, `check-exec-surface.sh` değişmez, `go.mod`/`go.sum` değişmedi.
+- **Linux:** WSL Ubuntu'da Go yok; `cmd/kadran`, `internal/client`, `internal/bootstrap` ve
+  `cmd/kadrand`'ın test ikilileri Windows'ta `GOOS=linux` ile derlenip orada koşturuldu: PASS.
+  Linux'a özel `TestManagementTimeoutIncludesInitialConnection` (cli'sız sidecar) ve
+  `TestSessionFileMode`'un `0600`/`0700` denetimi dahil. Uzak sıfırlama betiği gerçek bash'te
+  ayrıştı ve `kadran` kullanıcısı olmayan makinede setpriv'e varmadan 3 ile çıktı (Windows git
+  bash ve WSL).
+- **Mutasyon:** `scripts/mutate-totp.sh`, 18 mutant, 18 yakalandı (Windows'ta ~4,5 dk). Planın
+  10 mutantına ek 8: Verify son adımı yok sayıyor; dağıtım rolü jeton istiyor; parmak izsiz
+  yöneticiye login döngüsü; Login denemeyi önce saymıyor; onay kodu kilide sayılmıyor; başarılı
+  giriş sayacı silmiyor; yeniden kurulum güncel kod istemiyor; sarılmış oturum hatası
+  tanınmıyor. Betik CI'ın mutasyon işinde glob ile kendiliğinden koşuyor (üç kapı yerinde).
+- **Mutasyonun bulduğu:** `TestSuccessfulLoginClearsLockAlarm` boşa geçiyordu. Karar 5'ten sonra
+  onay da aynı alarmı kapatıyor ve "kapatılanlar" listesi daha kurulumda doluyordu; giriş hiç
+  silmese de test yeşildi. Liste girişten önce boşaltılıyor ve sayaç da denetleniyor; mutant
+  artık ölüyor.
+- **Review Focus**, her test kendi mutantına karşı TEK BAŞINA koşuldu:
+
+  | Odak | Test | Mutant | Sonuç |
+  |---|---|---|---|
+  | 1 saat kayması | `TestLoginOutsideWindowSameMessageAuditsClock` | pencere ±2 | kırmızı |
+  | 2 aynı kod iki kez | `TestAcceptTOTPStepIsOneShot` | `AcceptTOTPStep` hep doğru | kırmızı |
+  | 2 aynı kod iki kez | `TestVerifyReplay` | Verify son adımı yok sayıyor | kırmızı |
+  | 3 eski jeton | `TestOldGenerationTokenIsRejected` | kuşak denetimi yok | kırmızı |
+  | 4 CI anahtarı | `TestDeployRoleIsExemptFromSession` | dağıtım rolü jeton istiyor | kırmızı |
+  | 5 yarım kurulum | `TestPendingEnrollmentExpires` | süre denetimi yok | kırmızı |
+
+  Tekrar iki katmanla kapalı. API testi `TestLoginRejectsReplayedCode` tek katmanlı
+  mutantların İKİSİNDE de yeşil kalıyor, çünkü öbür katman tutuyor. Bu derinlemesine savunma
+  ölçüldü; her katmanı kendi testi koruyor.
+
+### Canlıda ölçülecek (henüz ölçülmedi)
+
+- v0.8.0 sunucunun bilinmeyen yönteme `Unimplemented` döndüğü (grpc-go'da kayıtsız yöntem
+  önleyiciye uğramıyor; varsayım) ve CLI'ın "does not support TOTP" demesi.
+- `totp reset -sudo`'nun gerçek sunucuda `kadrand -totp-reset`'i `kadran` olarak koşturması ve
+  WAL dosyalarının sahipliğinin bozulmaması.
+- Gerçek bir doğrulayıcı uygulamanın kodu ve telefon saati.
+- Masaüstünün gerçek sidecar'ı ile CLI'da alınan oturumu kullanması.
+- Sıra (tasarımdaki gibi): yükselt → enable → login → status → aynı jeton başka anahtarla →
+  yanlış kodla kilit → kurtarma kodu → `reset -sudo`. Önce GCP; Hetzner'de TOTP ancak kullanıcı
+  isterse açık kalır.
+
+### Açık
+
+- Yıkıcı işlemde ayrıca taze kod (step-up) yok: 8 saatlik oturum yıkıcı çağrıları da kapsıyor.
+  K-076'nın gevşetilmesi ayrı karar.
+- Masaüstünde kod penceresi yok; giriş CLI'dan.
+- Sırrın veritabanında düz durması (kasa açamaz). Yerel yedek `0600 kadran`, uzak yedek age
+  ile şifreli.
+- Kilit mesajındaki süre Go biçiminde (`2m0s`).

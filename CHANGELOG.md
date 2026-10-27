@@ -5,6 +5,25 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### Added
+
+- Two-step sign-in (K-155). With TOTP on, an admin key alone can no longer manage the server:
+  `kadran login` exchanges a code from an authenticator app for an 8-hour session token, bound to
+  the signing-in key. `kadran totp enable|disable|status` manage it, `kadran logout` deletes the
+  local token, and the desktop uses the same saved session. TOTP is off until you turn it on,
+  and deploy-only CI keys are never affected. See the [TOTP guide](docs/guides/totp.md).
+- Lockout and alarms: after 5 wrong codes a key is locked for 1 minute, doubling up to 1 hour.
+  Each attempt is counted before the code is checked. A lock or a used recovery code raises a
+  warning alarm, and every sign-in, failure and change goes into the audit log, never with the
+  code, secret or token.
+- 10 single-use recovery codes per enrollment. Turning TOTP off and re-enrolling need a fresh
+  code on top of the session.
+- `kadran totp reset [-sudo] root@server` turns TOTP off through root when the phone and the
+  recovery codes are both lost. On the server it runs `kadrand -totp-reset` as the `kadran`
+  user, and the daemon keeps running.
+- The protocol stays 3: older clients talking to a server with TOTP on are told to upgrade and
+  sign in, and a newer client talking to an older server says the server does not support TOTP.
+
 ### Fixed
 
 - The startup alarm's detail carried a Turkish fragment in the middle of its English sentence

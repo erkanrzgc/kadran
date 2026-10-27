@@ -390,9 +390,16 @@ func TestSuccessfulLoginClearsLockAlarm(t *testing.T) {
 	for i := range 5 {
 		_, _ = c.Login(context.Background(), &kadranv1.LoginRequest{Code: "00000" + string(rune('1'+i))})
 	}
+	// Kurulumun onayı da aynı alarmı kapatıyor; yalnız girişin etkisi sayılsın.
+	d.alarm.mu.Lock()
+	d.alarm.cleared = nil
+	d.alarm.mu.Unlock()
 	d.now = d.now.Add(61 * time.Second)
 	if _, err := c.Login(context.Background(), &kadranv1.LoginRequest{Code: totp.CodeAt(d.sir, d.now)}); err != nil {
 		t.Fatalf("kilit bitince doğru kod: %v", err)
+	}
+	if f, err := d.db.LoginFailureFor(context.Background(), yonetici.Fingerprint); err != nil || f.Count != 0 {
+		t.Fatalf("başarılı giriş sayacı silmedi: %+v (%v)", f, err)
 	}
 	found := false
 	for _, id := range d.alarm.cleared {

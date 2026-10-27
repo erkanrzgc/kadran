@@ -253,6 +253,10 @@ A root domain also gets its `www` partner by default: `www.example.com` redirect
 | `audit list\|verify` | Read and verify both audit chains |
 | `bootstrap root@server` | Install or upgrade the server |
 | `key add\|list\|remove root@server` | Manage deploy-only keys for CI |
+| `login [-recovery]` | Sign in with a TOTP code (or a recovery code) when TOTP is on; lasts 8 hours |
+| `logout` | Delete the saved session on this machine |
+| `totp status\|enable\|disable` | Manage two-step sign-in ([guide](docs/guides/totp.md)) |
+| `totp reset root@server` | Turn TOTP off through root when the phone and recovery codes are lost |
 
 Targets: empty means the local socket; `user@host[:port]` or `host` means SSH, with
 `kadran-client` as the default user. Exit codes: `0` success · `1` error · `2` usage ·
@@ -414,6 +418,29 @@ which would let the client tunnel to **every TCP port on the server**. `restrict
 forced command closes that class entirely.
 
 </details>
+
+### A stolen key is not enough: TOTP
+
+Without TOTP, an admin key can do everything, including reading environment values through
+the API. With TOTP on (`kadran totp enable`), admin calls also need a session token, which
+`kadran login` exchanges for a code from an authenticator app (RFC 6238). The token lasts 8 hours.
+It travels in gRPC metadata, which the client controls, so the server accepts it only on a
+connection whose preamble carries the same key fingerprint it was issued to.
+
+- After 5 wrong codes, a key is locked: 1 minute, doubling up to 1 hour, with a warning alarm.
+  Each attempt is counted before the code is checked, in one transaction, so parallel
+  connections cannot get extra guesses.
+- An accepted code cannot be used again, even by a second connection at the same moment.
+- Turning TOTP off or replacing its secret needs a fresh code on top of the session.
+- 10 single-use recovery codes are shown once. If they are gone too, root on the server turns
+  TOTP off (`kadran totp reset`, the same root path as `bootstrap`).
+- Deploy-only CI keys are not affected. Admin commands over the server's local socket are
+  refused while TOTP is on, because that caller has no key to bind a token to.
+
+The secret sits in the daemon's database, because the daemon must read it to check codes and
+the vault only lets it seal values, not open them. Whoever can read `kadran.db` or a local
+backup can generate codes; offsite backups are encrypted. [TOTP guide](docs/guides/totp.md),
+K-155.
 
 ### Secrets are sealed with the executor's key
 
@@ -621,8 +648,12 @@ Tracked in the open rather than hidden. Each is a real limitation today.
 - **Dockerfile builds only.** No buildpacks. [Private GitHub builds](docs/guides/private-git.md)
   require a root credential file, repository allowlist and explicit executor network opt-in;
   deploy an exact commit. The archive path does not clone submodules or support symlinks.
-- **Single node.** No TOTP on destructive actions, no rate limiting, no Cloudflare
-  integration.
+- **TOTP is a sign-in, not a per-action check.** For 8 hours a session covers every admin
+  call, destructive ones included; only turning TOTP off and replacing its secret ask for a fresh
+  code. Tokens cannot be revoked one by one: `logout` deletes the local copy, and invalidating
+  all of them takes a re-enroll or `totp reset`. The desktop has no code prompt yet: sign in
+  with the CLI.
+- **Single node.** No rate limiting on app traffic, no Cloudflare integration.
 
 ## Roadmap
 
@@ -631,7 +662,7 @@ Tracked in the open rather than hidden. Each is a real limitation today.
 | **0** | Foundation: proto contract, store, audit chain, executor, SSH transport, bootstrap, CI | ✅ done, verified on a real server |
 | **1** | Deployment loop: Docker driver, build engine, blue-green deploy, Caddy, rollback, live logs, health supervisor | ✅ done, verified on a real server |
 | — | Operations: env vars, scaling, pruning, log caps | ✅ done |
-| 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes and the secret vault done |
+| 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes, the secret vault and TOTP done |
 | 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarms, Telegram delivery, crash notices and an external heartbeat done |
 | 4 | Webhook receiver, deploy-on-push, cron manager | 🔨 deploy-on-push through CI with deploy-only keys done |
 | 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots and volume backups done |

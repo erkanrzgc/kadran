@@ -70,6 +70,8 @@ func run() error {
 			"scheduled backup interval (0 = off)")
 		restoreFrom = flag.String("restore", "",
 			"restore the given backup and exit (the daemon must be STOPPED)")
+		totpReset = flag.Bool("totp-reset", false,
+			"disable TOTP and invalidate every session, then exit (root's way back in, K-155)")
 
 		diskEvery = flag.Duration("disk-check-interval", defaultDiskInterval,
 			"disk usage check interval (0 = off)")
@@ -106,6 +108,10 @@ func run() error {
 	// açıklanması zor bir arıza.
 	if *restoreFrom != "" {
 		return runRestore(*dbPath, *socketPath, *restoreFrom)
+	}
+	// Root kontrolünden SONRA, aynı sebeple: veritabanı kadran'ın.
+	if *totpReset {
+		return runTOTPReset(context.Background(), *dbPath, os.Stdout)
 	}
 
 	clientGID, err := lookupGID(*clientGroup)

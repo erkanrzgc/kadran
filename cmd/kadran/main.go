@@ -90,6 +90,8 @@ type cli struct {
 	keys keyManager
 	// TOTP oturum jetonları (Dir boş: kullanıcının yapılandırma dizini).
 	sessions client.SessionStore
+	// `totp reset`: root yolundan sıfırlama (nil: gerçek ssh).
+	totpReset func(ctx context.Context, opts bootstrap.KeyOptions, out io.Writer) error
 
 	// target, connect'e verilen ham hedef: oturum hatasında "kadran login
 	// <hedef>" ipucu için.
@@ -130,7 +132,7 @@ func commands() []command {
 		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
 		{"login", "[-recovery] [target]", "signs in with a TOTP code (when TOTP is on)", (*cli).runLogin},
 		{"logout", "[target]", "deletes the saved sign-in for a server", (*cli).runLogout},
-		{"totp", "<status|enable|disable> [target]", "manages two-step sign-in", (*cli).runTotp},
+		{"totp", "<status|enable|disable|reset> [target]", "manages two-step sign-in", (*cli).runTotp},
 		{"version", "", "prints version information", (*cli).runVersion},
 	}
 }

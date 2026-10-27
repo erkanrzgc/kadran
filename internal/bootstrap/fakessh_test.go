@@ -26,23 +26,24 @@ import (
 // gerçek sunucuda (K-127) ölçülüyor.
 
 const (
-	fakeSSHEnv        = "KADRAN_TEST_FAKE_SSH"
-	fakeSSHLogEnv     = "KADRAN_TEST_FAKE_SSH_LOG"
-	fakeSSHUIDEnv     = "KADRAN_TEST_FAKE_SSH_UID"
-	fakeSudoFailEnv   = "KADRAN_TEST_FAKE_SUDO_FAIL"
-	fakeRemoteEnv     = "KADRAN_TEST_FAKE_REMOTE"
-	fakeCutOnceEnv    = "KADRAN_TEST_FAKE_CUT_ONCE"
-	fakeCutAlwaysEnv  = "KADRAN_TEST_FAKE_CUT_ALWAYS"
-	fakeCutFirstEnv   = "KADRAN_TEST_FAKE_CUT_FIRST"
-	fakeCorruptEnv    = "KADRAN_TEST_FAKE_CORRUPT"
-	fakeShortEnv      = "KADRAN_TEST_FAKE_SHORT"
-	fakeStartRCEnv    = "KADRAN_TEST_FAKE_START_RC"
-	fakeDiedEnv       = "KADRAN_TEST_FAKE_DIED"
-	fakeFollowCutEnv  = "KADRAN_TEST_FAKE_FOLLOW_CUT"
-	fakeInstallRCEnv  = "KADRAN_TEST_FAKE_INSTALL_RC"
-	fakeInstallLogEnv = "KADRAN_TEST_FAKE_INSTALL_LOG"
-	fakeDirEnv        = "KADRAN_TEST_FAKE_DIR"
-	fakeReportedDir   = "/home/sahte/.kadran-upload"
+	fakeSSHEnv         = "KADRAN_TEST_FAKE_SSH"
+	fakeSSHLogEnv      = "KADRAN_TEST_FAKE_SSH_LOG"
+	fakeSSHUIDEnv      = "KADRAN_TEST_FAKE_SSH_UID"
+	fakeSudoFailEnv    = "KADRAN_TEST_FAKE_SUDO_FAIL"
+	fakeRemoteEnv      = "KADRAN_TEST_FAKE_REMOTE"
+	fakeCutOnceEnv     = "KADRAN_TEST_FAKE_CUT_ONCE"
+	fakeCutAlwaysEnv   = "KADRAN_TEST_FAKE_CUT_ALWAYS"
+	fakeCutFirstEnv    = "KADRAN_TEST_FAKE_CUT_FIRST"
+	fakeCorruptEnv     = "KADRAN_TEST_FAKE_CORRUPT"
+	fakeShortEnv       = "KADRAN_TEST_FAKE_SHORT"
+	fakeStartRCEnv     = "KADRAN_TEST_FAKE_START_RC"
+	fakeDiedEnv        = "KADRAN_TEST_FAKE_DIED"
+	fakeFollowCutEnv   = "KADRAN_TEST_FAKE_FOLLOW_CUT"
+	fakeInstallRCEnv   = "KADRAN_TEST_FAKE_INSTALL_RC"
+	fakeInstallLogEnv  = "KADRAN_TEST_FAKE_INSTALL_LOG"
+	fakeDirEnv         = "KADRAN_TEST_FAKE_DIR"
+	fakeTOTPResetRCEnv = "KADRAN_TEST_FAKE_TOTP_RESET_RC"
+	fakeReportedDir    = "/home/sahte/.kadran-upload"
 )
 
 func TestMain(m *testing.M) {
@@ -272,6 +273,15 @@ func fakeSSHMain() {
 		done, _ := os.ReadFile(filepath.Join(remoteDir, args[1]+".done"))
 		rc, _ := strconv.Atoi(strings.TrimSpace(string(done)))
 		os.Exit(rc)
+
+	case remoteTOTPReset:
+		fakeLog("totp-reset" + tag)
+		if rc := os.Getenv(fakeTOTPResetRCEnv); rc != "" {
+			n, _ := strconv.Atoi(rc)
+			fmt.Fprintln(os.Stderr, "sunucu dedi ki")
+			os.Exit(n)
+		}
+		fmt.Println("TOTP disabled; every session is invalid")
 
 	default:
 		fakeLog("TANINMAYAN betik")

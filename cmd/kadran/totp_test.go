@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/erkanrzgc/kadran/internal/bootstrap"
 	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
@@ -373,6 +375,39 @@ func TestTotpStatusPrints(t *testing.T) {
 	}
 	if !strings.Contains(d.errOut.String(), "kadran totp enable") {
 		t.Fatalf("az kurtarma kodu uyarısı yok: %q", d.errOut)
+	}
+}
+
+// TestTotpResetUsesRootPath: sıfırlama kadran-client'tan değil, anahtar
+// işlemleriyle aynı root yolundan (root@ ya da -sudo) gidiyor.
+func TestTotpResetUsesRootPath(t *testing.T) {
+	d := totpCLI(t, "", true)
+	var got bootstrap.KeyOptions
+	d.c.totpReset = func(_ context.Context, o bootstrap.KeyOptions, w io.Writer) error {
+		got = o
+		_, err := io.WriteString(w, "TOTP disabled; every session is invalid\n")
+		return err
+	}
+	if code := d.calistir(t, "totp", "reset", "-sudo", "erkan@srv.example:2222"); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	if got != (bootstrap.KeyOptions{Host: "erkan@srv.example", Port: 2222, Sudo: true}) {
+		t.Fatalf("seçenekler %+v", got)
+	}
+	if !strings.Contains(d.out.String(), "every session is invalid") || len(d.conns) != 0 {
+		t.Fatalf("çıktı %q, kadran-client bağlantısı %d", d.out, len(d.conns))
+	}
+
+	d = totpCLI(t, "", true)
+	d.c.totpReset = func(context.Context, bootstrap.KeyOptions, io.Writer) error {
+		t.Fatal("yerel hedefle sıfırlama çağrıldı")
+		return nil
+	}
+	if code := d.calistir(t, "totp", "reset"); code != exitUsage {
+		t.Fatalf("hedefsiz: çıkış %d", code)
+	}
+	if code := d.calistir(t, "totp", "reset", "/run/kadran/api.sock"); code != exitError {
+		t.Fatalf("yerel soket: çıkış %d", code)
 	}
 }
 

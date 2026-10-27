@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/kadran/internal/bootstrap"
 	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
@@ -196,15 +197,21 @@ func (c *cli) runLogout(_ context.Context, args []string) int {
 	return exitOK
 }
 
+const totpUsage = "usage:\n" +
+	"  kadran totp status|enable|disable [target]\n" +
+	"  kadran totp reset [-sudo] root@server   (lost phone and recovery codes)"
+
 // runTotp, TOTP'yi yönetir.
 func (c *cli) runTotp(ctx context.Context, args []string) int {
-	const usage = "usage: kadran totp <status|enable|disable> [target]"
 	if len(args) == 0 {
-		return c.usageError(usage)
+		return c.usageError("%s", totpUsage)
+	}
+	if args[0] == "reset" {
+		return c.runTotpReset(ctx, args[1:])
 	}
 	raw, ok := singleTarget(args[1:])
 	if !ok {
-		return c.usageError(usage)
+		return c.usageError("%s", totpUsage)
 	}
 	switch args[0] {
 	case "status":
@@ -214,8 +221,37 @@ func (c *cli) runTotp(ctx context.Context, args []string) int {
 	case "disable":
 		return c.runTotpDisable(ctx, raw)
 	default:
-		return c.usageError("unknown totp subcommand %q — status, enable or disable", args[0])
+		return c.usageError("unknown totp subcommand %q — status, enable, disable or reset", args[0])
 	}
+}
+
+// runTotpReset, kökün kaçış yolu: TOTP'yi sunucudaki root olarak kapatır.
+// kadran-client'tan değil, anahtar işlemleriyle aynı root yolundan gider;
+// TOTP o yolu korumuyor (SSH anahtarı + root ya da parolasız sudo).
+func (c *cli) runTotpReset(ctx context.Context, args []string) int {
+	fs := c.newFlagSet("totp reset")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	if err := fs.Parse(args); err != nil {
+		return exitUsage
+	}
+	if fs.NArg() != 1 {
+		return c.usageError("%s", totpUsage)
+	}
+	opts, err := rootTarget("totp reset", fs.Arg(0), *sudo, c.totpReset != nil)
+	if err != nil {
+		return c.fail(err)
+	}
+	reset := c.totpReset
+	if reset == nil {
+		reset = bootstrap.ResetTOTP
+	}
+	ctx, cancel := context.WithTimeout(ctx, keyTimeout)
+	defer cancel()
+	if err := reset(ctx, opts, c.stdout); err != nil {
+		return c.fail(err)
+	}
+	fmt.Fprintln(c.stdout, "turn it back on with kadran totp enable (new secret, new recovery codes)")
+	return exitOK
 }
 
 func (c *cli) runTotpStatus(ctx context.Context, raw string) int {

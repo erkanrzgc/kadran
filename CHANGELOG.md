@@ -3,6 +3,22 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Changed
+
+- `kadran totp enable` shows a QR code to scan with the authenticator app, and the setup key in
+  one piece. When TOTP was first turned on for real, an app rejected the key grouped with spaces
+  (K-156). On a dark terminal the QR shows as light squares on the dark background, with no white
+  box; it leaves out the default parameters (SHA1, 6 digits, 30 seconds) to stay small. The key
+  and the complete `otpauth://` link are still printed below it, for apps that cannot read a
+  light-on-dark code.
+- The code prompt reads `6-digit code from the app`. Input that is not 6 digits (the setup key, a
+  recovery code, a typo) is no longer sent to the server, so it does not count toward the lock:
+  kadran says what it looks like and asks again, up to 3 times (K-156).
+- The `kadran` client now includes `rsc.io/qr` (BSD-3-Clause), listed in
+  `THIRD_PARTY_LICENSES.txt`. The server programs do not.
+
 ## v0.9.0 — 2026-10-28
 
 Two-step sign-in with TOTP (K-155) and a strict check of the reverse proxy's live config

@@ -54,13 +54,16 @@ func (f *fakeTotpRPC) Login(_ context.Context, in *kadranv1.LoginRequest, _ ...g
 	return &kadranv1.LoginResponse{SessionToken: totpYeniJton, ExpiresAt: bitis()}, nil
 }
 
+// fakeOtpauthURI, sunucunun yazdığı biçimde (internal/totp.OTPAuthURI).
+const fakeOtpauthURI = "otpauth://totp/Kadran:srv?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=JBSWY3DPEHPK3PXP"
+
 func (f *fakeTotpRPC) BeginTotpEnrollment(_ context.Context, in *kadranv1.BeginTotpEnrollmentRequest, _ ...grpc.CallOption) (*kadranv1.BeginTotpEnrollmentResponse, error) {
 	f.begin = in
 	if f.beginErr != nil {
 		return nil, f.beginErr
 	}
 	return &kadranv1.BeginTotpEnrollmentResponse{
-		OtpauthUri:   "otpauth://totp/Kadran:srv?secret=JBSWY3DPEHPK3PXP&issuer=Kadran",
+		OtpauthUri:   fakeOtpauthURI,
 		SecretBase32: "JBSWY3DPEHPK3PXP",
 		ExpiresAt:    timestamppb.New(time.Now().Add(10 * time.Minute)),
 	}, nil
@@ -142,7 +145,7 @@ func TestLoginSavesSession(t *testing.T) {
 	if got := d.kayitli(t); got != totpYeniJton {
 		t.Fatalf("kayıtlı jeton %q", got)
 	}
-	if !strings.Contains(d.out.String(), "signed in until ") || !strings.Contains(d.errOut.String(), "code: ") {
+	if !strings.Contains(d.out.String(), "signed in until ") || !strings.Contains(d.errOut.String(), "6-digit code from the app: ") {
 		t.Fatalf("çıktı: %q / %q", d.out, d.errOut)
 	}
 }
@@ -278,7 +281,7 @@ func TestEnablePrintsRecoveryCodesOnce(t *testing.T) {
 		t.Fatalf("istekler: %+v %+v", d.rpc.begin, d.rpc.confirm)
 	}
 	out := d.out.String()
-	for _, want := range []string{"JBSW Y3DP EHPK 3PXP", "otpauth://totp/Kadran:srv", "recovery codes (shown once, store them offline):"} {
+	for _, want := range []string{"JBSWY3DPEHPK3PXP", "otpauth://totp/Kadran:srv", "recovery codes (shown once, store them offline):"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("çıktıda %q yok:\n%s", want, out)
 		}
@@ -304,8 +307,129 @@ func TestReenrollSendsCurrentCode(t *testing.T) {
 	if d.rpc.begin.GetCurrentCode() != "111111" || d.rpc.confirm.GetCode() != "222222" {
 		t.Fatalf("istekler: %+v %+v", d.rpc.begin, d.rpc.confirm)
 	}
-	if !strings.Contains(d.errOut.String(), "current code: ") {
+	if !strings.Contains(d.errOut.String(), "current 6-digit code from the app: ") {
 		t.Fatalf("istem: %q", d.errOut)
+	}
+}
+
+// ── Kurulum ve kod istemi (K-156) ────────────────────────────────────
+//
+// Canlıda (K-155, GCP) kurulum zordu: doğrulayıcı uygulama boşlukla
+// gruplanmış anahtarı kabul etmedi, kullanıcı anahtarı "code:" istemine
+// yazdı ve üç onay kilit sayacına eklendi.
+
+// TestEnableShowsQRAndWholeKey: anahtar TEK PARÇA, yanında kısa linkin QR'ı;
+// talimat anahtarın değil uygulamanın kodunun yazılacağını söylüyor.
+func TestEnableShowsQRAndWholeKey(t *testing.T) {
+	d := totpCLI(t, "123456\n", false)
+	if code := d.calistir(t, "totp", "enable", totpHedef); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	out := d.out.String()
+	if !strings.Contains(out, "JBSWY3DPEHPK3PXP") || strings.Contains(out, "JBSW Y3DP") {
+		t.Fatalf("anahtar tek parça değil:\n%s", out)
+	}
+	// QR'da varsayılanları atılmış kısa link; yazılan link sunucununki, tam.
+	q, err := qrBlock("otpauth://totp/Kadran:srv?issuer=Kadran&secret=JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, q) {
+		t.Fatalf("QR kısa linkin QR'ı değil:\n%s", out)
+	}
+	if !strings.Contains(out, "link: "+fakeOtpauthURI+"\n") {
+		t.Fatalf("link tam değil:\n%s", out)
+	}
+	if !strings.Contains(out, "(not the key)") || !strings.Contains(d.errOut.String(), "6-digit code from the app: ") {
+		t.Fatalf("talimat ya da istem: %q / %q", out, d.errOut)
+	}
+}
+
+// TestSetupKeyTypedAsCodeIsAskedAgain: anahtar sunucuya GİTMİYOR (onay
+// kilide sayılırdı); ne olduğu söylenip yeniden soruluyor ve aynı kurulum
+// sürüyor. Yeniden çalıştırmak yeni bir sır, telefonda yeni bir kayıt demekti.
+func TestSetupKeyTypedAsCodeIsAskedAgain(t *testing.T) {
+	d := totpCLI(t, "JBSW Y3DP EHPK 3PXP\n123456\n", false)
+	if code := d.calistir(t, "totp", "enable", totpHedef); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	if d.rpc.confirm.GetCode() != "123456" {
+		t.Fatalf("onaya giden kod %q", d.rpc.confirm.GetCode())
+	}
+	if !strings.Contains(d.errOut.String(), "that is the setup key") {
+		t.Fatalf("ipucu yok: %q", d.errOut)
+	}
+	if n := strings.Count(d.errOut.String(), "6-digit code from the app: "); n != 2 {
+		t.Fatalf("istem %d kez soruldu", n)
+	}
+}
+
+// TestMalformedCodeNeverReachesServer: 6 rakam olmayan giriş sunucuya hiç
+// gitmiyor (kilit sayacına eklenmiyor); üç denemeden sonra komut duruyor.
+func TestMalformedCodeNeverReachesServer(t *testing.T) {
+	d := totpCLI(t, "12345\n1234567\n12345a\n", true)
+	if code := d.calistir(t, "login", totpHedef); code != exitError {
+		t.Fatalf("çıkış %d", code)
+	}
+	if d.rpc.login != nil || len(d.conns) != 0 {
+		t.Fatalf("bozuk kod sunucuya gitti: %+v (%d bağlantı)", d.rpc.login, len(d.conns))
+	}
+	if n := strings.Count(d.errOut.String(), "6-digit code from the app: "); n != 3 {
+		t.Fatalf("istem %d kez soruldu", n)
+	}
+	if !strings.Contains(d.errOut.String(), "a code is 6 digits") {
+		t.Fatalf("ipucu yok: %q", d.errOut)
+	}
+}
+
+// TestRecoveryShapedCodeSuggestsFlag: kurtarma kodu biçimindeki giriş
+// sunucuya gitmiyor, -recovery öneriliyor.
+func TestRecoveryShapedCodeSuggestsFlag(t *testing.T) {
+	d := totpCLI(t, "ABCDE-FGHIJ\n123456\n", true)
+	if code := d.calistir(t, "login", totpHedef); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	if d.rpc.login.GetCode() != "123456" {
+		t.Fatalf("Login kodu %q", d.rpc.login.GetCode())
+	}
+	if !strings.Contains(d.errOut.String(), "run the command again with -recovery") {
+		t.Fatalf("ipucu yok: %q", d.errOut)
+	}
+}
+
+// TestSpacedCodeIsSentWithoutSpaces: uygulamaların gösterdiği biçim (123
+// 456) geçiyor ve boşluksuz gidiyor; sunucu da aynı boşlukları atıyor (K-155).
+func TestSpacedCodeIsSentWithoutSpaces(t *testing.T) {
+	d := totpCLI(t, "123 456\n", true)
+	if code := d.calistir(t, "login", totpHedef); code != exitOK {
+		t.Fatalf("çıkış %d: %s", code, d.errOut)
+	}
+	if d.rpc.login.GetCode() != "123456" {
+		t.Fatalf("Login kodu %q", d.rpc.login.GetCode())
+	}
+}
+
+// TestCodePromptStopsAtEOF: borudan gelen girdi bitince istem döngüsü
+// biter, takılmaz.
+func TestCodePromptStopsAtEOF(t *testing.T) {
+	d := totpCLI(t, "abc", true)
+	if code := d.calistir(t, "login", totpHedef); code != exitError {
+		t.Fatalf("çıkış %d", code)
+	}
+	if d.rpc.login != nil {
+		t.Fatalf("Login çağrıldı: %+v", d.rpc.login)
+	}
+}
+
+// TestDisableChecksCodeShape: kapatmanın kodu da aynı denetimden geçiyor;
+// -recovery ise geçmiyor (TestDisableWithRecoveryFlag).
+func TestDisableChecksCodeShape(t *testing.T) {
+	d := totpCLI(t, "JBSWY3DPEHPK3PXP\n", true)
+	if code := d.calistir(t, "totp", "disable", totpHedef); code != exitError {
+		t.Fatalf("çıkış %d", code)
+	}
+	if d.rpc.disable != nil {
+		t.Fatalf("DisableTotp çağrıldı: %+v", d.rpc.disable)
 	}
 }
 

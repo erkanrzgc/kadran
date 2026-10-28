@@ -9,6 +9,7 @@ require (
 	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	modernc.org/sqlite v1.54.0
+	rsc.io/qr v0.2.0
 )
 
 require (

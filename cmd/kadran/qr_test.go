@@ -10,7 +10,7 @@ import (
 
 // ── Kurulum QR'ı (K-156) ─────────────────────────────────────────────
 
-// geriOku, yarım blok çizimini modül satırlarına geri çevirir (true = açık).
+// geriOku, yarım blok çizimini modül satırlarına geri çevirir (true = blok).
 // Her metin satırı iki modül satırı taşır.
 func geriOku(t *testing.T, s string) [][]bool {
 	t.Helper()
@@ -36,17 +36,17 @@ func geriOku(t *testing.T, s string) [][]bool {
 	return rows
 }
 
-// TestQRBlockMatchesCode: çizim kodun modüllerini birebir taşıyor. Açık
-// modüller blok, koyular boşluk (koyu zeminli terminal); çevrede 4 modül
-// açık sessiz bölge; modül sayısı tek olduğu için son satırın alt yarısı
-// boş (terminal zemini).
+// TestQRBlockMatchesCode: çizim kodun modüllerini birebir taşıyor. Koyu
+// modüller blok, açıklar boşluk (ters çizim, beyaz kutu yok); çevrede 4
+// modül boş sessiz bölge; modül sayısı tek olduğu için son satırın alt
+// yarısı boş. Hata düzeltme L: kod M'deki kadar büyümüyor.
 func TestQRBlockMatchesCode(t *testing.T) {
 	const uri = "otpauth://totp/Kadran:srv.example?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
 	s, err := qrBlock(uri)
 	if err != nil {
 		t.Fatal(err)
 	}
-	code, err := qr.Encode(uri, qr.M)
+	code, err := qr.Encode(uri, qr.L)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,14 +62,14 @@ func TestQRBlockMatchesCode(t *testing.T) {
 		}
 		for x := 0; x < n; x++ {
 			cx, cy := x-quiet, y-quiet
-			want := cx < 0 || cy < 0 || cx >= code.Size || cy >= code.Size || !code.Black(cx, cy)
+			want := cx >= 0 && cy >= 0 && cx < code.Size && cy < code.Size && code.Black(cx, cy)
 			if got[y][x] != want {
-				t.Fatalf("modül (%d,%d): açık=%v, beklenen %v", x, y, got[y][x], want)
+				t.Fatalf("modül (%d,%d): blok=%v, beklenen %v", x, y, got[y][x], want)
 			}
 		}
 	}
-	for x, light := range got[n] {
-		if light {
+	for x, dark := range got[n] {
+		if dark {
 			t.Fatalf("son yarım satır boş olmalı, %d. sütun dolu", x)
 		}
 	}
@@ -87,6 +87,26 @@ func TestQRBlockFitsTerminal(t *testing.T) {
 	for i, line := range strings.Split(strings.TrimSuffix(s, "\n"), "\n") {
 		if w := utf8.RuneCountInString(line); w > 80 {
 			t.Fatalf("satır %d %d sütun", i, w)
+		}
+	}
+}
+
+// TestQRLinkDropsOnlyDefaults: QR'a giden linkten yalnız Key URI
+// varsayılanına EŞİT parametreler atılıyor; başka bir değer (8 hane, 60
+// saniye, SHA256) atılsaydı uygulama yanlış kod üretirdi.
+func TestQRLinkDropsOnlyDefaults(t *testing.T) {
+	const base = "otpauth://totp/Kadran:srv"
+	for _, tc := range []struct{ in, want string }{
+		{base + "?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=JBSW",
+			base + "?issuer=Kadran&secret=JBSW"},
+		{base + "?algorithm=SHA256&digits=8&issuer=Kadran&period=60&secret=JBSW",
+			base + "?algorithm=SHA256&digits=8&issuer=Kadran&period=60&secret=JBSW"},
+		{base + "?digits=6&digits=8&secret=JBSW", base + "?digits=6&digits=8&secret=JBSW"},
+		{base, base},
+		{base + "?secret=%zz&digits=6", base + "?secret=%zz&digits=6"}, // bozuk: dokunulmuyor
+	} {
+		if got := qrLink(tc.in); got != tc.want {
+			t.Errorf("qrLink(%q) = %q, beklenen %q", tc.in, got, tc.want)
 		}
 	}
 }

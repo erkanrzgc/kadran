@@ -9,8 +9,10 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 - `kadran totp enable` shows a QR code to scan with the authenticator app, and the setup key in
   one piece. When TOTP was first turned on for real, an app rejected the key grouped with spaces
-  (K-156). The QR is drawn for a dark terminal; the key and the `otpauth://` link are still
-  printed below it.
+  (K-156). On a dark terminal the QR shows as light squares on the dark background, with no white
+  box; it leaves out the default parameters (SHA1, 6 digits, 30 seconds) to stay small. The key
+  and the complete `otpauth://` link are still printed below it, for apps that cannot read a
+  light-on-dark code.
 - The code prompt reads `6-digit code from the app`. Input that is not 6 digits (the setup key, a
   recovery code, a typo) is no longer sent to the server, so it does not count toward the lock:
   kadran says what it looks like and asks again, up to 3 times (K-156).

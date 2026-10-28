@@ -54,13 +54,16 @@ func (f *fakeTotpRPC) Login(_ context.Context, in *kadranv1.LoginRequest, _ ...g
 	return &kadranv1.LoginResponse{SessionToken: totpYeniJton, ExpiresAt: bitis()}, nil
 }
 
+// fakeOtpauthURI, sunucunun yazdığı biçimde (internal/totp.OTPAuthURI).
+const fakeOtpauthURI = "otpauth://totp/Kadran:srv?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=JBSWY3DPEHPK3PXP"
+
 func (f *fakeTotpRPC) BeginTotpEnrollment(_ context.Context, in *kadranv1.BeginTotpEnrollmentRequest, _ ...grpc.CallOption) (*kadranv1.BeginTotpEnrollmentResponse, error) {
 	f.begin = in
 	if f.beginErr != nil {
 		return nil, f.beginErr
 	}
 	return &kadranv1.BeginTotpEnrollmentResponse{
-		OtpauthUri:   "otpauth://totp/Kadran:srv?secret=JBSWY3DPEHPK3PXP&issuer=Kadran",
+		OtpauthUri:   fakeOtpauthURI,
 		SecretBase32: "JBSWY3DPEHPK3PXP",
 		ExpiresAt:    timestamppb.New(time.Now().Add(10 * time.Minute)),
 	}, nil
@@ -315,8 +318,8 @@ func TestReenrollSendsCurrentCode(t *testing.T) {
 // gruplanmış anahtarı kabul etmedi, kullanıcı anahtarı "code:" istemine
 // yazdı ve üç onay kilit sayacına eklendi.
 
-// TestEnableShowsQRAndWholeKey: anahtar TEK PARÇA, yanında QR; talimat
-// anahtarın değil uygulamanın kodunun yazılacağını söylüyor.
+// TestEnableShowsQRAndWholeKey: anahtar TEK PARÇA, yanında kısa linkin QR'ı;
+// talimat anahtarın değil uygulamanın kodunun yazılacağını söylüyor.
 func TestEnableShowsQRAndWholeKey(t *testing.T) {
 	d := totpCLI(t, "123456\n", false)
 	if code := d.calistir(t, "totp", "enable", totpHedef); code != exitOK {
@@ -326,8 +329,16 @@ func TestEnableShowsQRAndWholeKey(t *testing.T) {
 	if !strings.Contains(out, "JBSWY3DPEHPK3PXP") || strings.Contains(out, "JBSW Y3DP") {
 		t.Fatalf("anahtar tek parça değil:\n%s", out)
 	}
-	if !strings.Contains(out, "█") {
-		t.Fatalf("QR yok:\n%s", out)
+	// QR'da varsayılanları atılmış kısa link; yazılan link sunucununki, tam.
+	q, err := qrBlock("otpauth://totp/Kadran:srv?issuer=Kadran&secret=JBSWY3DPEHPK3PXP")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, q) {
+		t.Fatalf("QR kısa linkin QR'ı değil:\n%s", out)
+	}
+	if !strings.Contains(out, "link: "+fakeOtpauthURI+"\n") {
+		t.Fatalf("link tam değil:\n%s", out)
 	}
 	if !strings.Contains(out, "(not the key)") || !strings.Contains(d.errOut.String(), "6-digit code from the app: ") {
 		t.Fatalf("talimat ya da istem: %q / %q", out, d.errOut)

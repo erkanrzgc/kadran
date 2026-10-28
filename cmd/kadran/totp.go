@@ -445,14 +445,14 @@ func (c *cli) printEnrollment(b *kadranv1.BeginTotpEnrollmentResponse) {
 		localTime(b.GetExpiresAt().AsTime()))
 	fmt.Fprintln(c.stdout, "  1. scan this QR code with the app:")
 	fmt.Fprintln(c.stdout)
-	if q, err := qrBlock(b.GetOtpauthUri()); err != nil {
+	if q, err := qrBlock(qrLink(b.GetOtpauthUri())); err != nil {
 		fmt.Fprintln(c.stderr, progName+": warning: could not draw the QR code:", err)
 	} else {
 		fmt.Fprint(c.stdout, q)
 	}
 	fmt.Fprintln(c.stdout)
-	fmt.Fprintln(c.stdout, "     if it does not scan (it is drawn for a dark terminal), add an account")
-	fmt.Fprintln(c.stdout, "     by hand, time based, with this key:")
+	fmt.Fprintln(c.stdout, "     if the app does not scan it (some cannot read light-on-dark codes),")
+	fmt.Fprintln(c.stdout, "     add an account by hand, time based, with this key:")
 	fmt.Fprintf(c.stdout, "       %s\n", b.GetSecretBase32())
 	fmt.Fprintf(c.stdout, "     link: %s\n", b.GetOtpauthUri())
 	fmt.Fprintln(c.stdout, "  2. type the 6-digit code the app shows (not the key)")

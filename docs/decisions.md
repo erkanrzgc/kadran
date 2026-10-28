@@ -11884,9 +11884,14 @@ görüntüsünde sır göründü.
   sunucuya GÖNDERİLMİYOR, yani kilit sayacına eklenmiyor; neye benzediği söyleniyor (kurulum
   anahtarı, kurtarma kodu, diğer) ve en çok 3 kez soruluyor. Kurulumda yeniden sormak aynı sırla
   devam etmek demek. `-recovery` yollarına uygulanmıyor; kurtarma kodunu sunucu denetliyor.
-- QR: `rsc.io/qr` v0.2.0, seviye M, 4 modül sessiz bölge, yarım blok karakterleri. Açık modüller
-  blok, koyular boşluk: koyu zeminli terminal varsayımı. Renk kaçış kodu yok, çünkü her Windows
-  konsolu işlemiyor. Açık zeminde renkler ters döner; anahtar ve bağlantı bu yüzden altında.
+- QR: `rsc.io/qr` v0.2.0, seviye L, 4 modül sessiz bölge, yarım blok karakterleri. KOYU modüller
+  blok, açıklar ve sessiz bölge boşluk: koyu zeminli terminalde kod ters renkli (koyu zeminde
+  açık kareler), etrafında beyaz kutu yok; açık zeminli terminalde normal renkli. Renk kaçış kodu
+  yok, çünkü her Windows konsolu işlemiyor. Ters kodu okumayan uygulama için anahtar ve bağlantı
+  altında.
+- QR'a giden bağlantıdan Key URI varsayılanına EŞİT parametreler (`algorithm=SHA1`, `digits=6`,
+  `period=30`) atılıyor (`qrLink`); başka bir değer, tekrarlanan ya da bozuk parametre olduğu gibi
+  kalıyor. Ekrana yazılan bağlantı sunucununki, tam.
 - Bağımlılık yalnız istemcide: `kadrand`, `kadran-exec`, `kadran-proxy`, `kadran-vault` ve
   `kadran-connect`'in `go list -deps`'inde yok (`GOOS=linux`, ölçüldü). `tools/thirdparty`
   lisansını "Used by: kadran" ile topluyor.
@@ -11898,21 +11903,49 @@ görüntüsünde sır göründü.
 bir yazarın ayrı bir kod tabanı. Kodlamayı (Reed-Solomon, maskeleme) kendimiz yazmak daha büyük
 bir risk olurdu. Terminale çizim ise bizim (`cmd/kadran/qr.go`).
 
+### Çizim nasıl seçildi
+
+İlk sürüm (PR'daki ilk commit) normal renkliydi: açık modüller ve sessiz bölge blok, yani koyu
+terminalde büyük beyaz bir kare. Telefonla okundu ama kullanıcı beyaz kutuyu beğenmedi. Aynı
+sahte bağlantıyla çizilen seçenekler Google Authenticator'la (Windows Terminal, koyu zemin)
+denendi:
+
+| Seçenek | Modül (24 karakterlik ana bilgisayar adı) | Sonuç |
+|---|---|---|
+| Normal renk, M (ilk commit) | 49 | okundu; beyaz kutu beğenilmedi |
+| Normal renk, M, 2 modül sessiz bölge | 49 | sonucu bildirilmedi |
+| Ters, M | 49 | daha çok beğenildi, "daha küçük olsun"; okunduğu ayrıca bildirilmedi |
+| Ters, L | 41 | sonucu bildirilmedi |
+| Ters, L, kısa bağlantı | 37 | okundu, **seçildi** |
+| Ters, L, kısa, çeyrek blok | 19 sütun × 19 satır | çizildi, taranmadı; kullanıcı yarım blokta kaldı |
+
+37 modül bu veri için alt sınır: 32 karakterlik sır ve ad L seviyesinde sürüm 5'e (37) sığıyor,
+sürüm 4'e (33) değil. Çeyrek blok (2×2 modül bir karakterde) genişliği yarıya indiriyor ama
+karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
+İki boyutta da küçültmenin yolu tarama sırasında terminali küçültmek (Ctrl + -).
+
 ### Ölçüm
 
-- 9 yeni test (`qr_test.go` 2, `totp_test.go` 7), 3 test yeni metne güncellendi. Çizim, kodun
+- 10 yeni test (`qr_test.go` 3, `totp_test.go` 7), 3 test yeni metne güncellendi. Çizim, kodun
   modüllerine geri okunarak sınanıyor: renk yönü, sessiz bölge, tek sayıdaki son satırın boş alt
-  yarısı. 64 karakterlik ana bilgisayar adıyla bile 80 sütuna sığıyor.
-- `mutate-totp.sh`'a 10 mutant (istemci ve QR); betik 35/35. Yerel koşuda bir geri yükleme
-  Windows dosya kilidiyle düştü ("Permission denied"), yani bir mutant öncekinin üstüne
-  uygulanmış olabilirdi. O mutant (anahtar gruplanıyor) temiz dosyada tek başına yeniden ölçüldü:
-  `TestEnableShowsQRAndWholeKey` kırmızı. CI Linux'ta koşuyor.
+  yarısı, seviye L. 64 karakterlik ana bilgisayar adıyla bile 80 sütuna sığıyor. `qrLink` yalnız
+  varsayılana eşit parametreyi atıyor (8 hane, 60 sn, SHA256, tekrarlanan ve bozuk parametre
+  korunuyor); `enable` çıktısındaki QR kısa bağlantının, yazılan bağlantı tam.
+- `mutate-totp.sh`'a 13 mutant (istemci, QR çizimi, QR bağlantısı); betik bu commit'in koduyla,
+  tek başına 38/38. O koşuda bir mutant önce derlenmedi (mutant `v`'yi kullanılmaz bırakıyordu;
+  derleme kapısı yakaladı); düzeltilip betik baştan koşuldu. İlk commit'in yerel koşusunda bir
+  geri yükleme Windows dosya kilidiyle düşmüştü ("Permission denied"), yani bir mutant öncekinin
+  üstüne uygulanmış olabilirdi. O mutant (anahtar gruplanıyor) temiz dosyada tek başına yeniden
+  ölçüldü: `TestEnableShowsQRAndWholeKey` kırmızı. CI Linux'ta koşuyor.
 - `gofmt`, `go vet ./...`, `golangci-lint` (0 bulgu), `go test ./...` ve Linux derlemesi yeşil.
-- **Telefonla tarandı:** aynı fonksiyonla çizilen sahte bir bağlantı Windows Terminal'de (koyu
-  zemin) Google Authenticator'la okundu.
+- **Telefonla tarandı:** sahte bir bağlantının ters, L, kısa bağlantılı çizimi Windows
+  Terminal'de (koyu zemin) Google Authenticator'la okundu ("Kadran-K"). Okunan, `qrBlock`'un
+  bu commit'teki çizim kuralıyla aynı kuralla geçici bir testte çizildi.
 
 ### Açık
 
-- Açık zeminli terminalde QR ters; ölçülmedi.
+- Ters (koyu zeminde açık) QR yalnız Google Authenticator'la ölçüldü. Ters kodu okumayan
+  uygulamalar var; onlar için anahtar ve bağlantı altında. Açık zeminli terminalde QR normal
+  renkli çıkmalı; ölçülmedi.
 - Gerçek sunucuda `totp enable` akışı v0.9.1'in istemcisiyle ölçülecek; sunucu yükseltmesi
   gerekmiyor.

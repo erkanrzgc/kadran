@@ -211,16 +211,28 @@ mutate "kurulumda QR yazılmıyor" "$KCL" \
     "s=s.replace('\t\tfmt.Fprint(c.stdout, q)','\t\t_ = q',1)" \
     "./cmd/kadran/"
 
-mutate "QR renkleri ters (koyu modül blok)" "$KQR" \
-    "s=s.replace('return !code.Black(x, y)','return code.Black(x, y)',1)" \
+mutate "QR'a tam link giriyor (varsayılanlar atılmıyor, kod büyüyor)" "$KCL" \
+    "s=s.replace('qrBlock(qrLink(b.GetOtpauthUri()))','qrBlock(b.GetOtpauthUri())',1)" \
+    "./cmd/kadran/"
+
+mutate "QR normal renkli (açık modül blok, beyaz kutu)" "$KQR" \
+    "s=s.replace('return code.Black(x-qrQuiet, y-qrQuiet)','return !code.Black(x-qrQuiet, y-qrQuiet)',1)" \
     "./cmd/kadran/"
 
 mutate "QR sessiz bölgesi 4 değil 1 modül" "$KQR" \
     "s=s.replace('const qrQuiet = 4','const qrQuiet = 1',1)" \
     "./cmd/kadran/"
 
-mutate "tek sayıdaki son satırın alt yarısı açık çiziliyor" "$KQR" \
-    "s=s.replace('\t\tif y >= n {','\t\tif false && y >= n {',1)" \
+mutate "QR hata düzeltmesi M (kod büyüyor)" "$KQR" \
+    "s=s.replace('qr.Encode(text, qr.L)','qr.Encode(text, qr.M)',1)" \
+    "./cmd/kadran/"
+
+mutate "QR linkinden varsayılan olmayan değer de atılıyor (8 hane)" "$KQR" \
+    "s=s.replace('if len(q[k]) == 1 && q[k][0] == v {','if len(q[k]) == 1 && (q[k][0] == v || true) {',1)" \
+    "./cmd/kadran/"
+
+mutate "bozuk link QR için yeniden yazılıyor" "$KQR" \
+    "s=s.replace('\tif err != nil {\n\t\treturn uri','\tif false && err != nil {\n\t\treturn uri',1)" \
     "./cmd/kadran/"
 
 restore

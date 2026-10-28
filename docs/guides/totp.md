@@ -33,17 +33,21 @@ add this server to your authenticator app (confirm before 2026-10-28 14:10 +03):
 
   <QR code>
 
-     if it does not scan (it is drawn for a dark terminal), add an account
-     by hand, time based, with this key:
+     if the app does not scan it (some cannot read light-on-dark codes),
+     add an account by hand, time based, with this key:
        JBSWY3DPEHPK3PXP...
      link: otpauth://totp/Kadran:<server hostname>?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=...
   2. type the 6-digit code the app shows (not the key)
 6-digit code from the app:
 ```
 
-1. Scan the QR code with an authenticator app (Aegis, Google Authenticator, 1Password, ...). The
-   QR is drawn for a dark terminal. On a light terminal, or if it does not scan, add the account
-   by hand: time based, with the key in one piece (some apps reject a key with spaces).
+1. Scan the QR code with an authenticator app (Aegis, Google Authenticator, 1Password, ...). On
+   a dark terminal the QR shows as light squares on the dark background, with no white box
+   around it; on a light terminal it shows the usual way. To keep it small, the QR leaves out the
+   parameters that already have their default values (SHA1, 6 digits, 30 seconds); the link
+   printed below it is complete. If your app does not scan it (some cannot read light-on-dark
+   codes), add the account by hand: time based, with the key in one piece (some apps reject a
+   key with spaces).
 2. Type the 6-digit code the app shows, not the key. You have 10 minutes. After that, run
    `enable` again. If what you type is not 6 digits, kadran says what it looks like (the setup
    key, a recovery code) and asks again, up to 3 times. Such input is never sent to the server,

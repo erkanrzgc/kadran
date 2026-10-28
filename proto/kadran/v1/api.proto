@@ -182,6 +182,35 @@ service KadranService {
   // listeye düşüyor; Telegram/webhook YOK. Sebep ölçüldü: kadrand'nin
   // systemd birimi IPAddressDeny=any taşıyor ve dışarı çıkamıyor.
   rpc ListAlarms(ListAlarmsRequest) returns (ListAlarmsResponse);
+
+  // ── İki aşamalı giriş (K-155) ─────────────────────────────────────
+  //
+  // TOTP açıkken yönetici rolünün her çağrısı (Ping ve Login hariç)
+  // `kadran-session` metadata'sında geçerli bir oturum jetonu ister.
+  // Jeton bir taşıyıcı kimlik bilgisi: metadata'yı uzak istemci yazıyor,
+  // bu yüzden kadrand onu ancak bağlantının önsözdeki parmak iziyle
+  // birlikte kabul ediyor. Dağıtım rolü (CI) muaf.
+
+  // Login, bir TOTP ya da kurtarma koduyla oturum jetonu alır.
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  // BeginTotpEnrollment, onay bekleyen bir kurulum başlatır. TOTP açıksa
+  // (yeniden kurulum) oturumun yanında GÜNCEL bir kod ister: çalınmış bir
+  // jeton sırrı değiştirip sahibini dışarıda bırakamasın. Eski sır onaya
+  // kadar geçerli.
+  rpc BeginTotpEnrollment(BeginTotpEnrollmentRequest) returns (BeginTotpEnrollmentResponse);
+
+  // ConfirmTotpEnrollment, bekleyen kurulumu bir kodla onaylar. Kurtarma
+  // kodları YALNIZ burada, bir kez döner.
+  rpc ConfirmTotpEnrollment(ConfirmTotpEnrollmentRequest) returns (ConfirmTotpEnrollmentResponse);
+
+  // DisableTotp, TOTP'yi kapatır. Oturumun yanında TAZE bir kod ister:
+  // çalınmış bir jeton TOTP'yi kapatamasın.
+  rpc DisableTotp(DisableTotpRequest) returns (DisableTotpResponse);
+
+  // GetTotpStatus, TOTP durumunu, kalan kurtarma kodunu ve kilitli
+  // anahtarları döner.
+  rpc GetTotpStatus(GetTotpStatusRequest) returns (GetTotpStatusResponse);
 }
 
 // AlarmSeverity, alarmın aciliyetidir.
@@ -285,6 +314,10 @@ message PingResponse {
   google.protobuf.Timestamp server_time = 3;
   // Boş değilse istemciye gösterilecek uyumluluk uyarısı.
   string compatibility_warning = 4;
+  // TOTP açıksa true: istemci reddi beklemeden `kadran login` önerebilir.
+  // `optional`: eski sunucu alanı hiç yazmaz, "bilinmiyor" ile "kapalı"
+  // ayrılabilsin.
+  optional bool totp_required = 5;
 }
 
 message GetSystemInfoRequest {}
@@ -913,4 +946,73 @@ message PruneAppResponse {
   // Budama uygulama başına çalışıyor ve yetimlerin app_id'si artık
   // hiçbir kayda karşılık gelmiyor — bu RPC onları göremez.
   bool orphans_out_of_scope = 6;
+}
+
+// ── İki aşamalı giriş (K-155) ───────────────────────────────────────
+
+message LoginRequest {
+  // Doğrulayıcı uygulamanın gösterdiği 6 hane. recovery_code ile birlikte
+  // verilemez.
+  string code = 1;
+  // Kurtarma kodu (XXXXX-XXXXX); büyük/küçük harf ve tire farkı önemsiz.
+  string recovery_code = 2;
+}
+
+message LoginResponse {
+  string session_token = 1;
+  google.protobuf.Timestamp expires_at = 2;
+}
+
+message BeginTotpEnrollmentRequest {
+  // Yeniden kurulumda ŞU ANKİ sırrın kodu; TOTP kapalıyken yok sayılır.
+  string current_code = 1;
+  // current_code yerine bir kurtarma kodu: telefonu kaybolan kullanıcı
+  // yeni telefonu kökü beklemeden kurabilsin. İkisinden yalnız biri.
+  string recovery_code = 2;
+}
+
+message BeginTotpEnrollmentResponse {
+  // Doğrulayıcı uygulamaya eklenecek adres.
+  string otpauth_uri = 1;
+  // Elle giriş için base32 sır.
+  string secret_base32 = 2;
+  // Bu ana kadar onaylanmazsa kurulum geçersiz.
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message ConfirmTotpEnrollmentRequest {
+  string code = 1;
+}
+
+message ConfirmTotpEnrollmentResponse {
+  // Tek kullanımlık kurtarma kodları. Sunucu yalnız özetlerini saklar;
+  // bir daha gösterilmezler.
+  repeated string recovery_codes = 1;
+  string session_token = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
+
+message DisableTotpRequest {
+  // Taze bir TOTP kodu.
+  string code = 1;
+  // code yerine bir kurtarma kodu. İkisinden yalnız biri.
+  string recovery_code = 2;
+}
+
+message DisableTotpResponse {}
+
+message GetTotpStatusRequest {}
+
+message GetTotpStatusResponse {
+  bool enabled = 1;
+  google.protobuf.Timestamp confirmed_at = 2;
+  uint32 recovery_remaining = 3;
+  repeated LockedLogin locked = 4;
+}
+
+// LockedLogin, çok fazla yanlış kod yüzünden kilitli bir anahtardır.
+message LockedLogin {
+  string key_fingerprint = 1;
+  google.protobuf.Timestamp until = 2;
+  uint32 failures = 3;
 }

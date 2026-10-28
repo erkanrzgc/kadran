@@ -371,12 +371,19 @@ func runKeys(ctx context.Context, opts KeyOptions, stdout io.Writer, args ...str
 		return nil
 	case keysDuplicate, keysLastAdmin, keysNotFound, keysNoFile, keysBadLine, keysUnreadable:
 		return errors.New(msg)
-	case sshTransportFailure:
-		return fmt.Errorf("could not connect to the server: %s", msg)
 	default:
-		if opts.Sudo && msg != "" {
-			return fmt.Errorf("key operation failed (code %d; -sudo NEVER asks for a password, NOPASSWD is needed): %s", code, msg)
-		}
-		return fmt.Errorf("key operation failed (code %d): %s", code, msg)
+		return remoteFailure("key operation", opts.Sudo, code, msg)
 	}
+}
+
+// remoteFailure, ayrıcalıklı bir uzak komutun beklenmeyen çıkışını hataya
+// çevirir. -sudo'da en olası sebep parolalı sudo: ipucu onu söylüyor.
+func remoteFailure(what string, sudo bool, code int, msg string) error {
+	if code == sshTransportFailure {
+		return fmt.Errorf("could not connect to the server: %s", msg)
+	}
+	if sudo && msg != "" {
+		return fmt.Errorf("%s failed (code %d; -sudo NEVER asks for a password, NOPASSWD is needed): %s", what, code, msg)
+	}
+	return fmt.Errorf("%s failed (code %d): %s", what, code, msg)
 }

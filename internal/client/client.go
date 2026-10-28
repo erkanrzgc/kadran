@@ -229,6 +229,9 @@ type Client struct {
 	conn   *grpc.ClientConn
 	rpc    kadranv1.KadranServiceClient
 	target Target
+
+	mu      sync.Mutex
+	session string // TOTP oturum jetonu; boşsa metadata eklenmez
 }
 
 // Dial, hedefe bağlanır.
@@ -241,20 +244,25 @@ func Dial(target Target) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+	return dialWith(target, dialer)
+}
 
+// dialWith, verilen bağlantı kurucuyla bir istemci kurar. Önleyiciler
+// SetSession'la ayarlanan jetonu her çağrıya ekler.
+func dialWith(target Target, dialer func(context.Context, string) (net.Conn, error)) (*Client, error) {
+	c := &Client{target: target}
 	conn, err := grpc.NewClient("passthrough:///kadran",
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(dialer),
+		grpc.WithUnaryInterceptor(c.unarySession),
+		grpc.WithStreamInterceptor(c.streamSession),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("client: could not connect: %w", err)
 	}
-
-	return &Client{
-		conn:   conn,
-		rpc:    kadranv1.NewKadranServiceClient(conn),
-		target: target,
-	}, nil
+	c.conn = conn
+	c.rpc = kadranv1.NewKadranServiceClient(conn)
+	return c, nil
 }
 
 // Close, bağlantıyı ve varsa SSH alt sürecini kapatır.

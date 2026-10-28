@@ -291,6 +291,7 @@ func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, t
 	if err != nil {
 		return nil, connectFailure(err)
 	}
+	s.refreshSession(conn, p.Target)
 
 	if err := ctx.Err(); err != nil {
 		return nil, &rpcError{Code: codeInternalError, Message: "call timed out before execution", Data: err.Error()}
@@ -304,6 +305,19 @@ func (s *sidecar) withConnTimeout(ctx context.Context, params json.RawMessage, t
 		return nil, callFailure(err)
 	}
 	return result, nil
+}
+
+// refreshSession, kayıtlı TOTP oturumunu her çağrıda yeniden okuyup
+// bağlantıya koyar (K-155): masaüstü açıkken CLI'da yapılan `kadran login`
+// ya da logout, önbellekteki bağlantının bir sonraki çağrısında geçerli.
+// Bağlantı açıkken TOTP açılmış olabileceğinden Ping'e bakılmıyor; TOTP
+// kapalı sunucu jetonu yok sayar. Okunamayan dosya çağrıyı durdurmaz.
+func (s *sidecar) refreshSession(conn *client.Client, rawTarget string) {
+	tok, err := s.cli.loadSession(rawTarget)
+	if err != nil && s.cli != nil && s.cli.stderr != nil {
+		fmt.Fprintln(s.cli.stderr, progName+": warning:", err)
+	}
+	conn.SetSession(tok)
 }
 
 // connectFailure ve callFailure, masaüstüne giden hata biçiminin TEK

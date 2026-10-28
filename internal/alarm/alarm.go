@@ -38,6 +38,12 @@ const (
 	KindBackupFailed      = "backup_failed"
 	KindProxyUnreconciled = "proxy_unreconciled"
 	KindDiskLow           = "disk_low"
+	// KindLoginLockout, çok fazla yanlış TOTP kodu yüzünden kilitlenen bir
+	// anahtardır (K-155); hedef anahtarın parmak izi.
+	KindLoginLockout = "login_lockout"
+	// KindLoginRecovery, bir kurtarma kodunun kullanıldığını bildirir:
+	// telefon kaybolmuş ya da kodlar çalınmış olabilir.
+	KindLoginRecovery = "login_recovery"
 )
 
 // Store, yöneticinin ihtiyaç duyduğu depo davranışıdır.

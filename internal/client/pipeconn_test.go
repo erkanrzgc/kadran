@@ -108,6 +108,35 @@ func (s *stubService) ListBackups(
 	return nil, errors.New("stubService: ListBackups beklenmiyordu")
 }
 
+// TOTP RPC'leri de sessizce başarı dönmüyor; gerekçe PruneApp'ta.
+func (s *stubService) Login(context.Context, *kadranv1.LoginRequest) (*kadranv1.LoginResponse, error) {
+	return nil, errors.New("stubService: Login beklenmiyordu")
+}
+
+func (s *stubService) BeginTotpEnrollment(
+	context.Context, *kadranv1.BeginTotpEnrollmentRequest,
+) (*kadranv1.BeginTotpEnrollmentResponse, error) {
+	return nil, errors.New("stubService: BeginTotpEnrollment beklenmiyordu")
+}
+
+func (s *stubService) ConfirmTotpEnrollment(
+	context.Context, *kadranv1.ConfirmTotpEnrollmentRequest,
+) (*kadranv1.ConfirmTotpEnrollmentResponse, error) {
+	return nil, errors.New("stubService: ConfirmTotpEnrollment beklenmiyordu")
+}
+
+func (s *stubService) DisableTotp(
+	context.Context, *kadranv1.DisableTotpRequest,
+) (*kadranv1.DisableTotpResponse, error) {
+	return nil, errors.New("stubService: DisableTotp beklenmiyordu")
+}
+
+func (s *stubService) GetTotpStatus(
+	context.Context, *kadranv1.GetTotpStatusRequest,
+) (*kadranv1.GetTotpStatusResponse, error) {
+	return nil, errors.New("stubService: GetTotpStatus beklenmiyordu")
+}
+
 func (s *stubService) Ping(context.Context, *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
 	s.pingCalls++
 	return &kadranv1.PingResponse{

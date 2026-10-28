@@ -79,11 +79,14 @@ func deny(id connproto.Identity, method, why string) error {
 	return status.Errorf(codes.PermissionDenied, "%s (%s)", why, method)
 }
 
-// AuthzUnaryInterceptor, tekli RPC'lerde yetkiyi uygular.
-func AuthzUnaryInterceptor() grpc.UnaryServerInterceptor {
+// AuthzUnaryInterceptor, tekli RPC'lerde yetkiyi ve oturumu (K-155) uygular.
+func AuthzUnaryInterceptor(gate SessionGate) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		id, check, err := authorize(ctx, info.FullMethod)
 		if err != nil {
+			return nil, err
+		}
+		if err := gate.CheckSession(ctx, id, info.FullMethod); err != nil {
 			return nil, err
 		}
 		if check != nil && !check(id, req) {
@@ -99,10 +102,13 @@ func AuthzUnaryInterceptor() grpc.UnaryServerInterceptor {
 // RecvMsg çağırınca okunuyor. Üretilen işleyici RecvMsg'i srv.Deploy'dan
 // ÖNCE çağırıyor (api_grpc.pb.go); sarmalayıcı her mesajı orada denetler,
 // yani kapsam dışı bir istekte Deploy'un tek satırı bile çalışmaz.
-func AuthzStreamInterceptor() grpc.StreamServerInterceptor {
+func AuthzStreamInterceptor(gate SessionGate) grpc.StreamServerInterceptor {
 	return func(srv any, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
 		id, check, err := authorize(ss.Context(), info.FullMethod)
 		if err != nil {
+			return err
+		}
+		if err := gate.CheckSession(ss.Context(), id, info.FullMethod); err != nil {
 			return err
 		}
 		if check != nil {
@@ -136,8 +142,8 @@ func (s *scopedStream) RecvMsg(m any) error {
 func NewGRPCServer(service *Server, creds credentials.TransportCredentials) *grpc.Server {
 	server := grpc.NewServer(
 		grpc.Creds(creds),
-		grpc.ChainUnaryInterceptor(LoggingInterceptor(), AuthzUnaryInterceptor()),
-		grpc.ChainStreamInterceptor(AuthzStreamInterceptor()),
+		grpc.ChainUnaryInterceptor(LoggingInterceptor(), AuthzUnaryInterceptor(service)),
+		grpc.ChainStreamInterceptor(AuthzStreamInterceptor(service)),
 	)
 	kadranv1.RegisterKadranServiceServer(server, service)
 	return server

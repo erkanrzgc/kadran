@@ -79,14 +79,21 @@ func (c *cli) runKey(ctx context.Context, args []string) int {
 
 // keyTarget, son argümanı root yetkili SSH hedefi olarak çözer.
 func (c *cli) keyTarget(raw string, sudo bool) (bootstrap.KeyOptions, error) {
+	return rootTarget("key", raw, sudo, c.keys != nil)
+}
+
+// rootTarget, root yetkisi isteyen bir komutun (key, totp reset) hedefini
+// çözer: root@sunucu ya da -sudo kullanıcı@sunucu. faked: test sahtesi
+// kurulu, ssh aranmaz.
+func rootTarget(cmd, raw string, sudo, faked bool) (bootstrap.KeyOptions, error) {
 	target, err := client.ParseTarget(raw)
 	if err != nil {
 		return bootstrap.KeyOptions{}, err
 	}
 	if target.IsLocal() {
-		return bootstrap.KeyOptions{}, errors.New("`key` needs a remote target (root@server or -sudo user@server), not a local socket")
+		return bootstrap.KeyOptions{}, fmt.Errorf("`%s` needs a remote target (root@server or -sudo user@server), not a local socket", cmd)
 	}
-	if c.keys == nil && !client.SSHAvailable() {
+	if !faked && !client.SSHAvailable() {
 		return bootstrap.KeyOptions{}, errors.New("`ssh` not found — the OpenSSH client is required")
 	}
 	return bootstrap.KeyOptions{

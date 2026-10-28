@@ -17,6 +17,7 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/erkanrzgc/kadran/internal/audit"
@@ -38,8 +39,19 @@ type Server struct {
 	rollout     Rollout
 	reconciler  Reconciler
 	coordinator *deploy.Coordinator
-	startedAt   time.Time
-	runAsUser   string
+	alarms      Alarms
+	// now, TOTP adımlarının ve jeton sürelerinin saati; testler sabitler.
+	now       func() time.Time
+	startedAt time.Time
+	runAsUser string
+}
+
+// Alarms, TOTP kilidinin ve kurtarma kodu kullanımının bildirildiği
+// alarm yöneticisidir (*alarm.Manager). Nil olabilir: o zaman alarm
+// üretilmez, denetim kaydı yine yazılır.
+type Alarms interface {
+	Raise(ctx context.Context, a store.Alarm)
+	Clear(ctx context.Context, id string)
 }
 
 // Executor, kadrand'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
@@ -98,6 +110,10 @@ type ServerOptions struct {
 	// olmaz, komut "başarılı" der. Kullanıcı trafiğin taşındığını sanır
 	// ve bunu ancak yeni alan adı cevap vermeyince fark eder.
 	Reconciler Reconciler
+
+	// İsteğe bağlı: TOTP kilidini ve kurtarma kodu kullanımını bildirir
+	// (K-155). kadrand gerçek yöneticiyi veriyor.
+	Alarms Alarms
 }
 
 // Rollout, derlenmiş bir sürümü ayağa kaldırıp trafiği ona çevirir.
@@ -158,6 +174,8 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		rollout:     opts.Rollout,
 		reconciler:  opts.Reconciler,
 		coordinator: opts.Coordinator,
+		alarms:      opts.Alarms,
+		now:         time.Now,
 		startedAt:   time.Now(),
 		runAsUser:   runAs,
 	}, nil
@@ -203,11 +221,16 @@ func checkNotTypedNil(v any, what string) error {
 }
 
 // Ping, bağlantı canlılığını ve sürüm uyumunu doğrular.
-func (s *Server) Ping(_ context.Context, req *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
+func (s *Server) Ping(ctx context.Context, req *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
 	resp := &kadranv1.PingResponse{
 		DaemonVersion:   version.Version,
 		ProtocolVersion: version.Protocol,
 		ServerTime:      timestamppb.Now(),
+	}
+	// Okunamazsa alan boş kalır ("bilinmiyor"): Ping bunun yüzden düşmez,
+	// zorlama zaten her çağrıda durumu kendisi okuyor.
+	if st, err := s.store.TOTP(ctx); err == nil {
+		resp.TotpRequired = proto.Bool(st.Enabled())
 	}
 
 	// İstemci sürümü farklıysa engellemeyiz ama uyarırız: protokol sürümü

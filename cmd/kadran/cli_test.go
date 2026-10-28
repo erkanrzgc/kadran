@@ -3,20 +3,26 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
-// newTestCLI, çıktısı yakalanabilen bir cli üretir.
+// newTestCLI, çıktısı yakalanabilen bir cli üretir. Oturum dizini geçici
+// bir yer: hiçbir test geliştiricinin gerçek oturumlarını okuyup yazmasın.
+// Oturum dosyasına bakan testler t.TempDir() verir.
 func newTestCLI(stdin string) (*cli, *bytes.Buffer, *bytes.Buffer) {
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	return &cli{
-		stdin:  strings.NewReader(stdin),
-		stdout: out,
-		stderr: errOut,
+		stdin:    strings.NewReader(stdin),
+		stdout:   out,
+		stderr:   errOut,
+		sessions: client.SessionStore{Dir: filepath.Join(os.TempDir(), "kadran-cli-test-sessions")},
 	}, out, errOut
 }
 

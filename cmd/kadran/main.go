@@ -88,6 +88,14 @@ type cli struct {
 	sleep func(ctx context.Context, d time.Duration) error
 	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
 	keys keyManager
+	// TOTP oturum jetonları (Dir boş: kullanıcının yapılandırma dizini).
+	sessions client.SessionStore
+	// `totp reset`: root yolundan sıfırlama (nil: gerçek ssh).
+	totpReset func(ctx context.Context, opts bootstrap.KeyOptions, out io.Writer) error
+
+	// target, connect'e verilen ham hedef: oturum hatasında "kadran login
+	// <hedef>" ipucu için.
+	target string
 }
 
 func main() {
@@ -122,6 +130,9 @@ func commands() []command {
 		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
 		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
 		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
+		{"login", "[-recovery] [target]", "signs in with a TOTP code (when TOTP is on)", (*cli).runLogin},
+		{"logout", "[target]", "deletes the saved sign-in for a server", (*cli).runLogout},
+		{"totp", "<status|enable|disable|reset> [target]", "manages two-step sign-in", (*cli).runTotp},
 		{"version", "", "prints version information", (*cli).runVersion},
 	}
 }
@@ -194,11 +205,25 @@ func (c *cli) newFlagSet(name string) *flag.FlagSet {
 	return fs
 }
 
-// connect, hedefi çözümler, bağlanır ve protokol uyumunu doğrular.
+// connect, hedefi çözümler, bağlanır ve protokol uyumunu doğrular. Sunucu
+// TOTP istiyorsa kayıtlı oturum jetonunu bağlantıya ekler (K-155).
+func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
+	c.target = rawTarget
+	conn, ping, err := c.dialTarget(ctx, rawTarget)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ping.GetTotpRequired() {
+		c.attachSession(conn, rawTarget)
+	}
+	return conn, ping, nil
+}
+
+// dialTarget, bağlanır ve protokol uyumunu doğrular.
 //
 // Protokol denetimi ilk iş olarak yapılır: uyumsuz sürümlerle konuşup
 // yarı anlaşılmış yanıtlar üretmektense hemen durmak daha güvenli.
-func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
+func (c *cli) dialTarget(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
 	if c.dial != nil {
 		return c.dial(ctx, rawTarget)
 	}
@@ -225,9 +250,16 @@ func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *k
 	return conn, ping, nil
 }
 
-// fail, hatayı stderr'e yazar ve hata çıkış kodu döndürür.
+// fail, hatayı stderr'e yazar ve hata çıkış kodu döndürür. Oturum
+// hatasında (TOTP) ne yazılacağını da söyler; sunucunun kendisinde (yerel
+// soket) jeton alınamadığından orada login ipucu verilmez.
 func (c *cli) fail(err error) int {
 	fmt.Fprintln(c.stderr, progName+":", err)
+	if client.IsSessionError(err) {
+		if t, perr := client.ParseTarget(c.target); perr == nil && !t.IsLocal() {
+			fmt.Fprintf(c.stderr, "  run: %s login %s\n", progName, c.target)
+		}
+	}
 	return exitError
 }
 

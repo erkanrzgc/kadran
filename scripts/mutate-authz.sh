@@ -90,10 +90,10 @@ fi
 echo "== Kablolama =="
 
 mutate_in "$AUTHZ" "akış önleyicisi kaydedilmiyor" \
-    "s=s.replace('\t\tgrpc.ChainStreamInterceptor(AuthzStreamInterceptor()),\n','',1)"
+    "s=s.replace('\t\tgrpc.ChainStreamInterceptor(AuthzStreamInterceptor(service)),\n','',1)"
 
 mutate_in "$AUTHZ" "tekli yetki önleyicisi kaydedilmiyor" \
-    "s=s.replace('grpc.ChainUnaryInterceptor(LoggingInterceptor(), AuthzUnaryInterceptor())','grpc.ChainUnaryInterceptor(LoggingInterceptor())',1)"
+    "s=s.replace('grpc.ChainUnaryInterceptor(LoggingInterceptor(), AuthzUnaryInterceptor(service))','grpc.ChainUnaryInterceptor(LoggingInterceptor())',1)"
 
 echo "== İzin listesi =="
 

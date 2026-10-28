@@ -11625,8 +11625,8 @@ mutant yakalandı. "`Current` katı yolu atlıyor" mutantını yalnız Linux tes
 
 ## K-155 — İki aşamalı giriş: TOTP ve kısa ömürlü oturum jetonu (2026-10-28)
 
-**Durum:** PR #20 ile main'de (`21a80cb`), v0.9.0'da yayımlandı. Canlı ölçüm her adım ayrı
-onayla (önce GCP).
+**Durum:** PR #20 ile main'de (`21a80cb`), v0.9.0'da yayımlandı. GCP'de canlı ölçüldü (28
+Ekim); Hetzner ve masaüstü sidecar'ı ölçülmedi.
 **Tasarım:** `docs/specs/2026-10-24-totp-design.md`. **Plan:** `docs/plans/2026-10-24-totp.md`.
 
 ### Neden
@@ -11792,17 +11792,50 @@ yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybol
 `totp_required`'ı boşsa jeton gönderilmiyor; "-1 left" alarm metni; boş sıfırlamadan sonra da
 "turn it back on" satırı; yeniden kurulum oturum olup olmadığını bilmeden kod soruyor.
 
-### Canlıda ölçülecek (henüz ölçülmedi)
+### Canlıda (GCP, 28 Ekim, kullanıcı onayıyla, her adım ayrı)
 
-- v0.8.0 sunucunun bilinmeyen yönteme `Unimplemented` döndüğü (grpc-go'da kayıtsız yöntem
-  önleyiciye uğramıyor; varsayım) ve CLI'ın "does not support TOTP" demesi.
-- `totp reset -sudo`'nun gerçek sunucuda `kadrand -totp-reset`'i `kadran` olarak koşturması ve
-  WAL dosyalarının sahipliğinin bozulmaması.
-- Gerçek bir doğrulayıcı uygulamanın kodu ve telefon saati.
+- **Yükseltme:** v0.9.0 yayın dosyalarından (geri indirilip `sha256sum -c`; sunucu tar'ı boş
+  dizine açılıp hem `-repo` hem `-binaries` oldu), `bootstrap -sudo`, 238 sn. Kurulum sonrası
+  denetimin tamamı ✓; ters vekil yeniden başlamadı (md5 `197423ba26e6` aynı). Site yarım
+  saniyede bir yoklandı: 123/123 `200`. Göç `0011_totp` uygulandı (3 tablo), öncesinde
+  `kadran.db.pre-0011_totp` alındı; `authorized_keys` özeti önce/sonra aynı; iki zincir geçerli.
+- **Eski sunucu:** yükseltmeden ÖNCE v0.9.0 CLI ile v0.8.0'a `totp status`: "this server does
+  not support TOTP; upgrade it with kadran bootstrap", çıkış 1. Bu mesaj yalnız `Unimplemented`
+  gelince basılıyor; kayıtsız yöntemin önleyiciye uğramadığı varsayımı böylece ölçüldü.
+- **Açma:** kullanıcının kendi terminalinde ve telefonundaki doğrulayıcıyla (sır ve kurtarma
+  kodları transkripte girmesin diye). Telefonun kodu kabul edildi, saat sorunu çıkmadı.
+  Denetimde 5 `totp.enroll`, 3 başarısız ve 1 başarılı `totp.confirm`; 3 hata kilide varmadı,
+  doğru kod sayacı sildi.
+- **Zorlama:** kayıtlı oturumla `status` ve `totp status` çalışıyor. Oturumsuz (boş yapılandırma
+  dizini) `status` ve `app list` `Unauthenticated` alıyor, altında "run: kadran login …".
+- **Giriş:** `logout` sunucuya kayıt düşmüyor (karar 11). `login` → `auth.login SUCCESS`, oturum
+  dosyası yeniden yazıldı. Bir deneme mobil ağda SSH zaman aşımıyla düştü; kod sunucuya
+  varmadı, sayılmadı.
+- **Kilit:** boş yapılandırma diziniyle 5 farklı yanlış kod; beşi de aynı mesajı aldı (karar
+  1). 6. deneme `ResourceExhausted` "too many failed codes for this key: try again in 1m0s";
+  sayaç 5'te kaldı (kilitliyken deneme sayılmıyor), süre 1 dk. `login_lockout` uyarısı açıldı;
+  `totp status` kilitli anahtarı ve bitişini gösteriyor. Kilitliyken AÇIK oturum çalışmaya
+  devam etti: kilit yalnız yeni girişi durduruyor. Kilit bitince doğru kodla giriş alarmı
+  kapattı, kilit listesi boşaldı.
+- **Kurtarma kodu:** `login -recovery` → `auth.login SUCCESS`, 9 kod kaldı, `login_recovery`
+  uyarısı ("9 left").
+- **Sıfırlama:** `kadran totp reset -sudo panely-kurulum@…` → "TOTP disabled; every session is
+  invalid". `totp status` off, oturumsuz çağrılar yeniden açık, kurtarma alarmı kapandı,
+  `totp.reset`'in aktörü `root`. `kadrand` aynı PID'de, `NRestarts=0`; veritabanı dosyaları (WAL
+  dahil) `kadran:kadran 600`, kökün yeni dosyası 0; iki zincir geçerli.
+- **Atlanan:** "aynı jeton başka anahtarla". Sunucuda tek yönetici satırı var ve `key add`
+  yalnız dağıtım anahtarı ekliyor; ikinci bir yönetici anahtarı `authorized_keys`'i
+  değiştirmeyi gerektirirdi. Bağ testlerde ölçülü (parmak izi uyuşmazlığı).
+- **Kullanıcı deneyimi bulgusu:** kurulum zordu. Doğrulayıcı uygulama boşlukla gruplanmış sırrı
+  kabul etmedi; `code:` istemi neyin yazılacağını söylemiyor (kullanıcı önce sırrı yazdı); QR
+  yok. Bir ekran görüntüsünde sır göründü, kurulum onaylanmadan yeniden başlatıldı (yeni sır).
+  İyileştirme v0.9.1'e.
+- GCP'de TOTP şimdi KAPALI.
+
+### Canlıda ölçülmeyen
+
 - Masaüstünün gerçek sidecar'ı ile CLI'da alınan oturumu kullanması.
-- Sıra (tasarımdaki gibi): yükselt → enable → login → status → aynı jeton başka anahtarla →
-  yanlış kodla kilit → kurtarma kodu → `reset -sudo`. Önce GCP; Hetzner'de TOTP ancak kullanıcı
-  isterse açık kalır.
+- Hetzner (v0.8.0'da). Yükseltme ayrı adım; TOTP orada ancak kullanıcı isterse açık kalır.
 
 ### Açık
 

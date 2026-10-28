@@ -28,6 +28,12 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ### Fixed
 
+- The proxy broker's live readback now decodes Caddy's config strictly. A field Kadran does
+  not model, a key spelled in a different case, or trailing data fails the check instead of
+  being dropped. Before, a config with `abort`, a `transport`, a file-reading
+  `handle_response` or a file-writing log `writer` added through the raw admin socket passed
+  as safe. Exploiting it needs write access to that socket, so this is defence in depth; a
+  tampered config now raises the critical proxy alarm (K-154).
 - The startup alarm's detail carried a Turkish fragment in the middle of its English sentence
   ("rotalanamayan uygulama var:"); it now reads "some apps could not be routed:" (K-153).
 - Backup audit records use the parameter keys `file` and `bytes`, like the other records; they

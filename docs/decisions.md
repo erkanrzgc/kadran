@@ -11626,7 +11626,7 @@ mutant yakalandı. "`Current` katı yolu atlıyor" mutantını yalnız Linux tes
 ## K-155 — İki aşamalı giriş: TOTP ve kısa ömürlü oturum jetonu (2026-10-28)
 
 **Durum:** PR #20 ile main'de (`21a80cb`), v0.9.0'da yayımlandı. GCP'de canlı ölçüldü (28
-Ekim); Hetzner ve masaüstü sidecar'ı ölçülmedi.
+Ekim); Hetzner v0.9.0'a yükseltildi (TOTP kapalı); masaüstü sidecar'ı ölçülmedi.
 **Tasarım:** `docs/specs/2026-10-24-totp-design.md`. **Plan:** `docs/plans/2026-10-24-totp.md`.
 
 ### Neden
@@ -11832,10 +11832,25 @@ yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybol
   İyileştirme v0.9.1'e.
 - GCP'de TOTP şimdi KAPALI.
 
+### Canlıda (Hetzner, 28 Ekim, yalnız yükseltme, kullanıcı onayıyla)
+
+- Aynı yayın dosyalarından `bootstrap root@…`, 202 sn. Kurulum sonrası denetimin tamamı ✓; ters
+  vekil yeniden başlamadı (aynı PID, 23 Ekim'den beri), üç konteyner "Up 4 days". Göç `0011`
+  uygulandı; `authorized_keys` özeti önce/sonra aynı (yönetici + portfolio dağıtım satırı);
+  `--allow-repo` drop-in'i duruyor ve çalışan `kadran-exec`'in argümanında; üç zamanlayıcı
+  etkin; başarısız birim 0; uyarı günlüğü boş; alarm yok; iki zincir geçerli; TOTP kapalı.
+- **Kesinti ölçülemedi.** Yoklama bu kez mobil bağlantıdan yapıldı ve paket yüklenirken bağlantı
+  doydu: 37 örneğin 14'ü `000` (curl yanıt alamadı). İlki kurulum BAŞLAMADAN (yükleme öncesi)
+  geldi. Sunucu tarafında kesinti izi yok: Caddy aynı süreç, pencerede error/warn 0, aracının
+  10 sn'lik geri okumaları kesintisiz yanıtlandı, yalnız iki "config is unchanged". Hemen
+  sonra GCP'den Hetzner'e 20/20 `200`, aynı anda bu makineden 19/20. Yani `000`'lar yerel ağın;
+  ama bu bir çıkarım, kesintisizlik bu yükseltmede ÖLÇÜLMEDİ. Yoklamayı bağımsız bir noktadan
+  (örn. diğer sunucudan) yapmak gerekirdi.
+
 ### Canlıda ölçülmeyen
 
 - Masaüstünün gerçek sidecar'ı ile CLI'da alınan oturumu kullanması.
-- Hetzner (v0.8.0'da). Yükseltme ayrı adım; TOTP orada ancak kullanıcı isterse açık kalır.
+- Hetzner'de TOTP (kapalı; ancak kullanıcı isterse açılır).
 
 ### Açık
 

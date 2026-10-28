@@ -11732,6 +11732,10 @@ bağlantısı. Bu yüzden "giriş" bir kodla alınan 8 saatlik bir jeton.
   onay da aynı alarmı kapatıyor ve "kapatılanlar" listesi daha kurulumda doluyordu; giriş hiç
   silmese de test yeşildi. Liste girişten önce boşaltılıyor ve sayaç da denetleniyor; mutant
   artık ölüyor.
+- **CI'ın bulduğu:** `mutate-authz.sh`'in iki kablolama iğnesi bayatlamıştı. Önleyiciler artık
+  `service` alıyor (`AuthzUnaryInterceptor(service)`), iğneler ise argümansız hâli arıyordu.
+  Yerelde yalnız `mutate-totp.sh` koşmuştu; CI'daki tek eşleşme kapısı ("MUTASYON
+  UYGULANAMADI") yakaladı, ölçüm sessizce boşa düşmedi. İğneler güncellendi, betik yerelde 31/31.
 - **Review Focus**, her test kendi mutantına karşı TEK BAŞINA koşuldu:
 
   | Odak | Test | Mutant | Sonuç |

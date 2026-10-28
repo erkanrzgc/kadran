@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/binary"
 	"io"
+	"math/rand/v2"
 	"net"
 	"net/netip"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -148,22 +150,42 @@ func TestAskAuthoritativeSkipsNonPublicNameserverAddresses(t *testing.T) {
 	}
 }
 
-// listenUDPAndTCP, aynı yerel portta UDP ve TCP açar. Port UDP'de seçilir; TCP
-// o portu başka bir süreç almışsa baştan denenir (çakışma testi bozmasın).
+// Ortak port denemesi: dinamik aralık (IANA 49152–65535) ve deneme sayısı.
+const (
+	dynamicPortFirst      = 49152
+	dynamicPortCount      = 65536 - dynamicPortFirst
+	sameLocalPortAttempts = 100
+)
+
+// listenUDPAndTCP, aynı yerel portta UDP ve TCP açar. Port ":0" ile işletim
+// sistemine BIRAKILMAZ, dinamik aralıktan rastgele seçilir. Windows geçici
+// portları protokol başına SIRAYLA dağıtır ve TCP ile UDP'nin dışlanmış port
+// aralıkları farklıdır (Hyper-V/WinNAT, `netsh int ipv4 show
+// excludedportrange`). UDP sayacı TCP'nin dışladığı bir bloğa girince ":0" ile
+// alınan her port TCP'de "erişim izni yok" verir ve art arda denemelerin hepsi
+// aynı bloğa düşer; deneme sayısını artırmak ya da beklemek sayacı bloktan
+// çıkarmaz, TCP'den başlamak da aynı tuzağı UDP'nin dışladığı blokta kurar.
+// Rastgele seçimde denemeler birbirinden bağımsızdır: meşgul ya da dışlanmış
+// port yalnız o denemeyi harcar.
 func listenUDPAndTCP(t *testing.T) (net.PacketConn, net.Listener) {
 	t.Helper()
-	for range 20 {
-		udp, err := net.ListenPacket("udp", "127.0.0.1:0")
+	var lastErr error
+	for range sameLocalPortAttempts {
+		port := dynamicPortFirst + rand.IntN(dynamicPortCount)
+		addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		udp, err := net.ListenPacket("udp", addr)
 		if err != nil {
-			t.Fatal(err)
+			lastErr = err
+			continue
 		}
-		tcp, err := net.Listen("tcp", udp.LocalAddr().String())
+		tcp, err := net.Listen("tcp", addr)
 		if err == nil {
 			return udp, tcp
 		}
+		lastErr = err
 		_ = udp.Close()
 	}
-	t.Fatal("UDP ve TCP için aynı yerel port bulunamadı")
+	t.Fatalf("UDP ve TCP için aynı yerel port bulunamadı (son hata: %v)", lastErr)
 	return nil, nil
 }
 

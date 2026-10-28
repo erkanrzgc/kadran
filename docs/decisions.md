@@ -11865,7 +11865,8 @@ yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybol
 
 ## K-156 — TOTP kurulumu: QR, tek parça anahtar, yerel kod denetimi (2026-10-28)
 
-**Durum:** dal `totp-setup`, PR bekliyor. Yalnız `kadran` istemcisi değişiyor (v0.9.1).
+**Durum:** PR #22 ile main'de (`03935bf`), v0.9.1'de yayımlandı (2026-10-29). Yalnız `kadran`
+istemcisi değişti.
 
 ### Neden
 

@@ -3,7 +3,12 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.9.1 — 2026-10-29
+
+Easier TOTP setup, found when two-step sign-in was first turned on for real (K-156). The protocol
+is unchanged (3). Only the `kadran` client changed: the server programs are rebuilt with the new
+version number and nothing else, so upgrading the server is optional and a v0.9.1 client works
+with a v0.9.0 server.
 
 ### Changed
 

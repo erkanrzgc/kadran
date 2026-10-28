@@ -11625,7 +11625,8 @@ mutant yakalandı. "`Current` katı yolu atlıyor" mutantını yalnız Linux tes
 
 ## K-155 — İki aşamalı giriş: TOTP ve kısa ömürlü oturum jetonu (2026-10-28)
 
-**Durum:** dal `totp`, PR #20 bekliyor. Canlı ölçüm sürümden sonra, her adım ayrı onayla (önce GCP).
+**Durum:** PR #20 ile main'de (`21a80cb`), v0.9.0'da yayımlandı. Canlı ölçüm her adım ayrı
+onayla (önce GCP).
 **Tasarım:** `docs/specs/2026-10-24-totp-design.md`. **Plan:** `docs/plans/2026-10-24-totp.md`.
 
 ### Neden

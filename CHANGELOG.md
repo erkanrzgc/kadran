@@ -3,7 +3,14 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.9.0 — 2026-10-28
+
+Two-step sign-in with TOTP (K-155) and a strict check of the reverse proxy's live config
+(K-154). The protocol is unchanged (3), so v0.8.x clients keep working; once TOTP is on, their
+admin commands are refused with a message to upgrade and sign in, while deploy-only keys are
+not affected. TOTP is off after the upgrade: turn it on with `kadran totp enable` once every
+workstation runs a v0.9.0 client. Upgrade the server with `bootstrap` as usual. Before going
+back to v0.8.x, read "Rolling back to v0.8.x" below. Building from source needs Go 1.26.10.
 
 ### Added
 
@@ -25,6 +32,13 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   user, and the daemon keeps running.
 - The protocol stays 3: older clients talking to a server with TOTP on are told to upgrade and
   sign in, and a newer client talking to an older server says the server does not support TOTP.
+
+### Rolling back to v0.8.x
+
+An older `kadrand` does not know TOTP and does not enforce it: every admin key works again
+without a session. The database is left as it is, because an older `kadrand` skips the
+migrations it does not know, so upgrading again turns TOTP back on with the same secret and
+recovery codes (K-155).
 
 ### Fixed
 

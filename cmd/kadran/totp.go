@@ -15,6 +15,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/bootstrap"
 	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/totp"
 )
 
 // ── İki aşamalı giriş komutları (K-155) ───────────────────────────────
@@ -112,6 +113,56 @@ func (c *cli) prompt(in *bufio.Reader, label string) (string, error) {
 	return "", fmt.Errorf("no %s entered", label)
 }
 
+// codeLabel, doğrulayıcı uygulamanın kodu için istemdir (K-156). Yalnız
+// "code" canlıda kurulum anahtarıyla karıştırıldı (K-155, GCP).
+const codeLabel = "6-digit code from the app"
+
+// maxCodeTries, biçimi bozuk girişte istemin en çok kaç kez sorulacağıdır.
+const maxCodeTries = 3
+
+// promptCode, uygulamanın 6 haneli kodunu sorar (K-156). Biçimi bozuk bir
+// giriş sunucuya GÖNDERİLMEZ, yani kilit sayacına eklenmez: neye benzediği
+// söylenip yeniden sorulur. Kurulumda çıkmak yeni bir sır, telefonda yeni
+// bir kayıt demekti. Boşluklar sunucudaki gibi atılır ("123 456", K-155).
+func (c *cli) promptCode(in *bufio.Reader, label string) (string, error) {
+	for try := 1; ; try++ {
+		raw, err := c.prompt(in, label)
+		if err != nil {
+			return "", err
+		}
+		code := strings.ReplaceAll(raw, " ", "")
+		if len(code) == totp.Digits && strings.Trim(code, "0123456789") == "" {
+			return code, nil
+		}
+		hint := codeHint(code)
+		if try == maxCodeTries {
+			return "", errors.New(hint)
+		}
+		fmt.Fprintln(c.stderr, hint)
+	}
+}
+
+// codeHint, 6 haneli olmayan bir girişin neye benzediğini söyler.
+func codeHint(code string) string {
+	switch {
+	case len(code) == 11 && strings.Count(code, "-") == 1: // XXXXX-XXXXX
+		return "that looks like a recovery code: to use it, run the command again with -recovery"
+	case len(code) >= 16 && strings.Trim(strings.ToUpper(code), "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567") == "":
+		return "that is the setup key, which goes into the app: type the 6-digit code the app shows"
+	default:
+		return "a code is 6 digits: type the number your authenticator app shows"
+	}
+}
+
+// promptProof, bir kodu ya da (-recovery ile) kurtarma kodunu sorar.
+// Kurtarma kodu olduğu gibi gider; biçimini sunucu denetliyor.
+func (c *cli) promptProof(in *bufio.Reader, recovery bool, label string) (string, error) {
+	if recovery {
+		return c.prompt(in, "recovery code")
+	}
+	return c.promptCode(in, label)
+}
+
 // totpErr, TOTP'yi bilmeyen eski bir sunucunun cevabını anlaşılır yapar.
 func totpErr(what string, err error) error {
 	if status.Code(err) == codes.Unimplemented {
@@ -148,11 +199,7 @@ func (c *cli) runLogin(ctx context.Context, args []string) int {
 
 	// Kod bağlanmadan önce soruluyor: kullanıcı telefonunu ararken bir
 	// çağrı süresi işlemesin.
-	label := "code"
-	if *recovery {
-		label = "recovery code"
-	}
-	code, err := c.prompt(bufio.NewReader(c.stdin), label)
+	code, err := c.promptProof(bufio.NewReader(c.stdin), *recovery, codeLabel)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -233,14 +280,6 @@ func (c *cli) runTotp(ctx context.Context, args []string) int {
 	default:
 		return c.usageError("unknown totp subcommand %q — status, enable, disable or reset", args[0])
 	}
-}
-
-// proofLabel, adım yükseltmede sorulan kanıtın istemidir.
-func proofLabel(recovery bool, code string) string {
-	if recovery {
-		return "recovery code"
-	}
-	return code
 }
 
 // runTotpReset, kökün kaçış yolu: TOTP'yi sunucudaki root olarak kapatır.
@@ -324,7 +363,7 @@ func (c *cli) runTotpEnable(ctx context.Context, raw string, recovery bool) int 
 		// Yeniden kurulum: oturumun yanında şu anki sırrın kodu ya da bir
 		// kurtarma kodu (K-155).
 		fmt.Fprintln(c.stderr, "TOTP is already on: replacing it needs a code from your current authenticator, or a recovery code with -recovery")
-		proof, err := c.prompt(in, proofLabel(recovery, "current code"))
+		proof, err := c.promptProof(in, recovery, "current "+codeLabel)
 		if err != nil {
 			return c.fail(err)
 		}
@@ -343,11 +382,8 @@ func (c *cli) runTotpEnable(ctx context.Context, raw string, recovery bool) int 
 		return c.fail(totpErr("totp enable", err))
 	}
 
-	fmt.Fprintln(c.stdout, "add this to your authenticator app, then enter the code it shows")
-	fmt.Fprintf(c.stdout, "  secret: %s\n", groupSecret(b.GetSecretBase32()))
-	fmt.Fprintf(c.stdout, "  uri:    %s\n", b.GetOtpauthUri())
-	fmt.Fprintf(c.stdout, "  (confirm before %s)\n", localTime(b.GetExpiresAt().AsTime()))
-	code, err := c.prompt(in, "code")
+	c.printEnrollment(b)
+	code, err := c.promptCode(in, codeLabel)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -375,7 +411,7 @@ func (c *cli) runTotpEnable(ctx context.Context, raw string, recovery bool) int 
 // runTotpDisable, TOTP'yi kapatır; sunucu oturumun yanında taze bir kod (ya
 // da kurtarma kodu) ister.
 func (c *cli) runTotpDisable(ctx context.Context, raw string, recovery bool) int {
-	proof, err := c.prompt(bufio.NewReader(c.stdin), proofLabel(recovery, "code"))
+	proof, err := c.promptProof(bufio.NewReader(c.stdin), recovery, codeLabel)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -401,14 +437,23 @@ func (c *cli) runTotpDisable(ctx context.Context, raw string, recovery bool) int
 	return exitOK
 }
 
-// groupSecret, base32 sırrı elle girmek için dörtlü gruplara ayırır.
-func groupSecret(s string) string {
-	var b strings.Builder
-	for i, r := range s {
-		if i > 0 && i%4 == 0 {
-			b.WriteByte(' ')
-		}
-		b.WriteRune(r)
+// printEnrollment, yeni sırrı doğrulayıcı uygulamaya eklemenin yollarını
+// yazar (K-156): QR, tek parça anahtar ve bağlantı. Anahtar boşlukla
+// GRUPLANMIYOR: canlıda bir uygulama gruplu hâlini kabul etmedi (K-155).
+func (c *cli) printEnrollment(b *kadranv1.BeginTotpEnrollmentResponse) {
+	fmt.Fprintf(c.stdout, "add this server to your authenticator app (confirm before %s):\n",
+		localTime(b.GetExpiresAt().AsTime()))
+	fmt.Fprintln(c.stdout, "  1. scan this QR code with the app:")
+	fmt.Fprintln(c.stdout)
+	if q, err := qrBlock(b.GetOtpauthUri()); err != nil {
+		fmt.Fprintln(c.stderr, progName+": warning: could not draw the QR code:", err)
+	} else {
+		fmt.Fprint(c.stdout, q)
 	}
-	return b.String()
+	fmt.Fprintln(c.stdout)
+	fmt.Fprintln(c.stdout, "     if it does not scan (it is drawn for a dark terminal), add an account")
+	fmt.Fprintln(c.stdout, "     by hand, time based, with this key:")
+	fmt.Fprintf(c.stdout, "       %s\n", b.GetSecretBase32())
+	fmt.Fprintf(c.stdout, "     link: %s\n", b.GetOtpauthUri())
+	fmt.Fprintln(c.stdout, "  2. type the 6-digit code the app shows (not the key)")
 }

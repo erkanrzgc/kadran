@@ -11862,3 +11862,57 @@ yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybol
 - Kilit mesajındaki süre Go biçiminde (`2m0s`).
 - Açılmış bir akış (günlük takibi, dağıtım) jetonun süresi dolunca kesilmiyor; denetim akışın
   başında.
+
+## K-156 — TOTP kurulumu: QR, tek parça anahtar, yerel kod denetimi (2026-10-28)
+
+**Durum:** dal `totp-setup`, PR bekliyor. Yalnız `kadran` istemcisi değişiyor (v0.9.1).
+
+### Neden
+
+K-155'in GCP ölçümünde kurulum zordu. Doğrulayıcı uygulama boşlukla gruplanmış anahtarı kabul
+etmedi. `code:` istemi neyin yazılacağını söylemiyordu; kullanıcı anahtarı yazdı. QR yoktu,
+anahtar elle girildi. Her yanlış onay kilit sayacına eklendi ve komuttan çıkmak yeni bir sır,
+telefonda yeni bir kayıt demekti: denetimde 5 `totp.enroll`, 3 başarısız `totp.confirm`. Bir ekran
+görüntüsünde sır göründü.
+
+### Ne yapıldı
+
+- `totp enable` önce QR'ı (otpauth bağlantısı), altında tek parça anahtarı ve bağlantıyı basıyor;
+  talimat iki adımlı ("not the key"). İstem `6-digit code from the app`; aynısı `login`, yeniden
+  kurulum (`current …`) ve kapatmada.
+- `promptCode`: boşluklar sunucudaki gibi atılıyor (`123 456`). 6 ASCII rakam olmayan giriş
+  sunucuya GÖNDERİLMİYOR, yani kilit sayacına eklenmiyor; neye benzediği söyleniyor (kurulum
+  anahtarı, kurtarma kodu, diğer) ve en çok 3 kez soruluyor. Kurulumda yeniden sormak aynı sırla
+  devam etmek demek. `-recovery` yollarına uygulanmıyor; kurtarma kodunu sunucu denetliyor.
+- QR: `rsc.io/qr` v0.2.0, seviye M, 4 modül sessiz bölge, yarım blok karakterleri. Açık modüller
+  blok, koyular boşluk: koyu zeminli terminal varsayımı. Renk kaçış kodu yok, çünkü her Windows
+  konsolu işlemiyor. Açık zeminde renkler ters döner; anahtar ve bağlantı bu yüzden altında.
+- Bağımlılık yalnız istemcide: `kadrand`, `kadran-exec`, `kadran-proxy`, `kadran-vault` ve
+  `kadran-connect`'in `go list -deps`'inde yok (`GOOS=linux`, ölçüldü). `tools/thirdparty`
+  lisansını "Used by: kadran" ile topluyor.
+
+### Neden bu kütüphane
+
+`rsc.io/qr` tek modül, bağımlılıksız, saf Go; lisansı BSD-3-Clause ("The Go Authors").
+`github.com/mdp/qrterminal` onun üstüne kurulu ve bir modül daha ekliyor; `skip2/go-qrcode` ayrı
+bir yazarın ayrı bir kod tabanı. Kodlamayı (Reed-Solomon, maskeleme) kendimiz yazmak daha büyük
+bir risk olurdu. Terminale çizim ise bizim (`cmd/kadran/qr.go`).
+
+### Ölçüm
+
+- 9 yeni test (`qr_test.go` 2, `totp_test.go` 7), 3 test yeni metne güncellendi. Çizim, kodun
+  modüllerine geri okunarak sınanıyor: renk yönü, sessiz bölge, tek sayıdaki son satırın boş alt
+  yarısı. 64 karakterlik ana bilgisayar adıyla bile 80 sütuna sığıyor.
+- `mutate-totp.sh`'a 10 mutant (istemci ve QR); betik 35/35. Yerel koşuda bir geri yükleme
+  Windows dosya kilidiyle düştü ("Permission denied"), yani bir mutant öncekinin üstüne
+  uygulanmış olabilirdi. O mutant (anahtar gruplanıyor) temiz dosyada tek başına yeniden ölçüldü:
+  `TestEnableShowsQRAndWholeKey` kırmızı. CI Linux'ta koşuyor.
+- `gofmt`, `go vet ./...`, `golangci-lint` (0 bulgu), `go test ./...` ve Linux derlemesi yeşil.
+- **Telefonla tarandı:** aynı fonksiyonla çizilen sahte bir bağlantı Windows Terminal'de (koyu
+  zemin) Google Authenticator'la okundu.
+
+### Açık
+
+- Açık zeminli terminalde QR ters; ölçülmedi.
+- Gerçek sunucuda `totp enable` akışı v0.9.1'in istemcisiyle ölçülecek; sunucu yükseltmesi
+  gerekmiyor.

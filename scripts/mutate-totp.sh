@@ -18,7 +18,9 @@ HND=internal/api/totp.go
 AUZ=internal/api/authz.go
 CLI=internal/client/session.go
 RST=cmd/kadrand/totpreset.go
-FILES="$VRF $REC $STO $SES $HND $AUZ $CLI $RST"
+KCL=cmd/kadran/totp.go
+KQR=cmd/kadran/qr.go
+FILES="$VRF $REC $STO $SES $HND $AUZ $CLI $RST $KCL $KQR"
 PKGS="./internal/totp/ ./internal/store/ ./internal/api/"
 
 BAK=$(mktemp -d)
@@ -31,7 +33,7 @@ fail=0
 # Taban YEŞİL olmalı: kırmızı bir taban her mutantı "yakalandı" gösterirdi.
 restore
 # shellcheck disable=SC2086
-if ! go test $PKGS ./internal/client/ ./cmd/kadrand/ -count=1 >/dev/null 2>&1; then
+if ! go test $PKGS ./internal/client/ ./cmd/kadrand/ ./cmd/kadran/ -count=1 >/dev/null 2>&1; then
     echo "!! TABAN KIRMIZI: mutasyonsuz kodda testler düşüyor — ölçüm YAPILMADI"
     exit 1
 fi
@@ -178,6 +180,48 @@ echo "== İstemci =="
 mutate "sarılmış oturum hatası tanınmıyor (login ipucu kaybolur)" "$CLI" \
     "s=s.replace('\tvar gs interface{ GRPCStatus() *status.Status }\n\tif !errors.As(err, &gs) {\n\t\treturn false\n\t}\n\tst := gs.GRPCStatus()','\tst, ok := status.FromError(err)\n\tif !ok || err == nil {\n\t\treturn false\n\t}',1)" \
     "./internal/client/"
+
+echo "== Kurulum ve kod istemi (K-156) =="
+
+mutate "6 rakam olmayan kod sunucuya gidiyor (kilide sayılır)" "$KCL" \
+    "s=s.replace('if len(code) == totp.Digits && strings.Trim(code, \"0123456789\") == \"\" {','if true || len(code) == totp.Digits && strings.Trim(code, \"0123456789\") == \"\" {',1)" \
+    "./cmd/kadran/"
+
+mutate "boşluklu kod (123 456) yerelde reddediliyor" "$KCL" \
+    "s=s.replace('code := strings.ReplaceAll(raw, \" \", \"\")','code := raw',1)" \
+    "./cmd/kadran/"
+
+mutate "bozuk girişte yeniden sorulmuyor (kurulumda yeni sır gerekir)" "$KCL" \
+    "s=s.replace('if try == maxCodeTries {','if true {',1)" \
+    "./cmd/kadran/"
+
+mutate "kurulum anahtarı koda yazılınca söylenmiyor" "$KCL" \
+    "s=s.replace('case len(code) >= 16 &&','case false && len(code) >= 16 &&',1)" \
+    "./cmd/kadran/"
+
+mutate "kurtarma kodu da 6 hane denetiminden geçiyor" "$KCL" \
+    "s=s.replace('\tif recovery {\n\t\treturn c.prompt(in, \"recovery code\")','\tif false && recovery {\n\t\treturn c.prompt(in, \"recovery code\")',1)" \
+    "./cmd/kadran/"
+
+mutate "kurulum anahtarı boşlukla gruplanıyor (canlıda uygulama reddetti)" "$KCL" \
+    "s=s.replace('b.GetSecretBase32())','b.GetSecretBase32()[:4]+\" \"+b.GetSecretBase32()[4:])',1)" \
+    "./cmd/kadran/"
+
+mutate "kurulumda QR yazılmıyor" "$KCL" \
+    "s=s.replace('\t\tfmt.Fprint(c.stdout, q)','\t\t_ = q',1)" \
+    "./cmd/kadran/"
+
+mutate "QR renkleri ters (koyu modül blok)" "$KQR" \
+    "s=s.replace('return !code.Black(x, y)','return code.Black(x, y)',1)" \
+    "./cmd/kadran/"
+
+mutate "QR sessiz bölgesi 4 değil 1 modül" "$KQR" \
+    "s=s.replace('const qrQuiet = 4','const qrQuiet = 1',1)" \
+    "./cmd/kadran/"
+
+mutate "tek sayıdaki son satırın alt yarısı açık çiziliyor" "$KQR" \
+    "s=s.replace('\t\tif y >= n {','\t\tif false && y >= n {',1)" \
+    "./cmd/kadran/"
 
 restore
 if [[ $fail -ne 0 ]]; then

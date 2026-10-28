@@ -28,16 +28,26 @@ kadran totp enable kadran-client@your-server
 ```
 
 ```
-add this to your authenticator app, then enter the code it shows
-  secret: JBSW Y3DP EHPK 3PXP ...
-  uri:    otpauth://totp/Kadran:<server hostname>?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=...
-  (confirm before 2026-10-28 14:10 +03)
-code:
+add this server to your authenticator app (confirm before 2026-10-28 14:10 +03):
+  1. scan this QR code with the app:
+
+  <QR code>
+
+     if it does not scan (it is drawn for a dark terminal), add an account
+     by hand, time based, with this key:
+       JBSWY3DPEHPK3PXP...
+     link: otpauth://totp/Kadran:<server hostname>?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=...
+  2. type the 6-digit code the app shows (not the key)
+6-digit code from the app:
 ```
 
-1. Add the secret to an authenticator app (Aegis, Google Authenticator, 1Password, ...). There
-   is no QR code, so type the secret in by hand.
-2. Type the 6-digit code the app shows. You have 10 minutes. After that, run `enable` again.
+1. Scan the QR code with an authenticator app (Aegis, Google Authenticator, 1Password, ...). The
+   QR is drawn for a dark terminal. On a light terminal, or if it does not scan, add the account
+   by hand: time based, with the key in one piece (some apps reject a key with spaces).
+2. Type the 6-digit code the app shows, not the key. You have 10 minutes. After that, run
+   `enable` again. If what you type is not 6 digits, kadran says what it looks like (the setup
+   key, a recovery code) and asks again, up to 3 times. Such input is never sent to the server,
+   so it does not count toward the lock.
 3. Kadran prints **10 recovery codes once**. Store them offline (on paper, or in a password
    manager that is not on this machine). Each code works once.
 
@@ -47,7 +57,7 @@ You are now signed in for 8 hours.
 
 ```bash
 kadran login kadran-client@your-server
-code: 123456
+6-digit code from the app: 123456
 signed in until 2026-10-28 22:10 +03
 ```
 
@@ -96,7 +106,7 @@ This uses up a second recovery code, and enrolling gives you 10 new ones.
 ```bash
 kadran totp enable kadran-client@your-server
 TOTP is already on: replacing it needs a code from your current authenticator
-current code: 123456
+current 6-digit code from the app: 123456
 ```
 
 Re-enrolling needs a valid session **and** a current code (or a recovery code, with `-recovery`),
@@ -128,7 +138,7 @@ not told, since that would reveal that a guessed code is about to become valid.
 
 ```bash
 kadran totp disable kadran-client@your-server
-code: 123456
+6-digit code from the app: 123456
 TOTP is off
 ```
 
@@ -177,5 +187,8 @@ tokens never go into audit records, logs or alarm texts.
 | `code already used: wait for the next one` | Each code works once. Wait for the next 30-second code |
 | `this server does not support TOTP; upgrade it with kadran bootstrap` | The server is older than the client |
 | `warning: saved session is damaged ...` | The token file is unreadable. `kadran login` rewrites it |
+| `that is the setup key, which goes into the app ...` | You typed the key at the code prompt. Type the app's 6-digit code |
+| `that looks like a recovery code: ... -recovery` | Run the same command with `-recovery` to use it |
+| `a code is 6 digits ...` | Type the number the app shows. Nothing was sent to the server |
 
-Design and measurements: [K-155 in `docs/decisions.md`](../decisions.md).
+Design and measurements: [K-155 and K-156 in `docs/decisions.md`](../decisions.md).

@@ -11990,7 +11990,9 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
 
 ## K-157 — TOTP kaydının adında kurulum günü (2026-10-29)
 
-**Durum:** dal `totp-label-date`'te, yerelde yeşil; PR açılmadı.
+**Durum:** PR #23 ile main'de (`bc1875a`); yayımlanmadı, iki sunucu hâlâ v0.9.1. main'de zorunlu
+kontrol olmadığı için `gh pr merge --auto` CI'ı beklemeden birleştirdi; CI sonra PR'da (13/13) ve
+main'de yeşil bitti.
 
 ### Neden
 

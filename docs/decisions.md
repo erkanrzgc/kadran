@@ -11866,8 +11866,8 @@ yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybol
 ## K-156 — TOTP kurulumu: QR, tek parça anahtar, yerel kod denetimi (2026-10-28)
 
 **Durum:** PR #22 ile main'de (`03935bf`), v0.9.1'de yayımlandı (2026-10-29). Yalnız `kadran`
-istemcisi değişti. İki sunucu da v0.9.1'e yükseltildi; iki noktadan yoklandı, kesinti yok. TOTP
-ikisinde de kapalı.
+istemcisi değişti. İki sunucu da v0.9.1'e yükseltildi; iki noktadan yoklandı, kesinti yok.
+29 Ekim'de iki sunucuda da TOTP v0.9.1 istemcisiyle açıldı; kurulum ikisinde de ilk denemede.
 
 ### Neden
 
@@ -11960,10 +11960,23 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
   boş; TOTP kapalı. Hetzner'de `--allow-repo` drop-in'i duruyor ve çalışan `kadran-exec`'in
   argümanında; kök ve `kadran.*` adları `308` ile www'ye gidiyor.
 
+### Gerçek sunucuda kurulum (29 Ekim, kullanıcı onayıyla)
+
+- Kullanıcı `totp enable`'ı kendi terminalinde, yayından indirilip `SHA256SUMS`'u doğrulanan
+  v0.9.1 istemcisiyle koştu; sır ve kurtarma kodları bu oturuma girmedi. Önce salt okunur
+  denetlendi: iki sunucu v0.9.1, TOTP kapalı, alarm yok.
+- GCP: denetimde bir `totp.enroll` (17:45:41 UTC) ve hemen ardından başarılı `totp.confirm`
+  (17:47:15). QR'ı telefon sorunsuz okudu (kullanıcının bildirimi). K-155'te aynı iş 5 enroll ve
+  3 başarısız confirm sürmüştü.
+- Hetzner: bir `totp.enroll` (17:50:01) ve hemen ardından başarılı `totp.confirm` (17:50:15).
+- Denetimde iki sunucuda da arada başarısız onay yok. Yerelde reddedilen giriş sunucuya gitmediği
+  için denetime düşmez; yani bu, kullanıcının hiç yanlış yazmadığını değil, kilit sayacına hiçbir
+  şey eklenmediğini gösteriyor.
+- Sonra ikisinde de: `totp status` açık, 10 kurtarma kodu; alarm yok; iki zincir geçerli.
+
 ### Açık
 
 - Ters (koyu zeminde açık) QR yalnız Google Authenticator'la ölçüldü. Ters kodu okumayan
   uygulamalar var; onlar için anahtar ve bağlantı altında. Açık zeminli terminalde QR normal
   renkli çıkmalı; ölçülmedi.
-- Gerçek sunucuda `totp enable` akışı v0.9.1'in istemcisiyle henüz ölçülmedi; iki sunucuda da
-  TOTP kapalı.
+- `login`'in v0.9.1'deki istemi ve yerel kod denetimi gerçek sunucuda ölçülmedi.

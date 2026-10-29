@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base32"
 	"net"
+	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -456,6 +458,32 @@ func TestPendingEnrollmentExpires(t *testing.T) {
 	durumMesaj(t, err, codes.FailedPrecondition, "enrollment expired: run kadran totp enable again")
 	if st, err := d.db.TOTP(context.Background()); err != nil || st.Enabled() {
 		t.Fatalf("süresi dolan kurulum TOTP'yi açtı: %+v (%v)", st, err)
+	}
+}
+
+// TestEnrollmentLabelHasDate: uygulamadaki kaydın adı sunucu adı ve
+// kurulumun UTC günü (K-157). Saat UTC'de önceki güne düşen bir yerel
+// saat: yerel gün yazılsaydı test kırmızı olurdu.
+func TestEnrollmentLabelHasDate(t *testing.T) {
+	d := totpKur(t)
+	d.now = time.Date(2026, 10, 30, 1, 30, 0, 0, time.FixedZone("TR", 3*60*60))
+	b, err := d.istemci(yonetici).BeginTotpEnrollment(context.Background(), &kadranv1.BeginTotpEnrollmentRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(b.GetOtpauthUri())
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		host = "server"
+	}
+	if want := "/Kadran:" + host + " 2026-10-29"; u.Path != want {
+		t.Fatalf("etiket %q, beklenen %q", u.Path, want)
+	}
+	if got := u.Query().Get("issuer"); got != "Kadran" {
+		t.Fatalf("issuer %q", got)
 	}
 }
 

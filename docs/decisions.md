@@ -11986,8 +11986,47 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
   renkli çıkmalı; ölçülmedi.
 - `login`'in yerel kod denetimi (6 rakam olmayan girişin sunucuya gitmemesi) gerçek sunucuda
   denenmedi.
-- **Aynı adlı iki kayıt.** QR etiketi `Kadran:<sunucu adı>` (`internal/api/totp.go`). Aynı
-  sunucuda TOTP sıfırlanıp yeniden kurulunca telefonda aynı adlı ikinci bir kayıt oluşuyor;
-  eskisi bir daha hiç geçmiyor ama yenisinden ayırt edilemiyor (GCP'de 28 Ekim kaydı). Kadran
-  telefondaki kaydı silemez. Seçenekler, karar verilmedi: etikete kurulum tarihini eklemek ya da
-  `enable`'ın eski kaydın silinmesini söylemesi.
+- ~~**Aynı adlı iki kayıt.**~~ K-157'de etikete kurulum tarihi eklendi.
+
+## K-157 — TOTP kaydının adında kurulum günü (2026-10-29)
+
+**Durum:** dal `totp-label-date`'te, yerelde yeşil; PR açılmadı.
+
+### Neden
+
+K-156'nın canlı denemesinde (29 Ekim) kullanıcı `login`'de üç kez telefondaki eski deneme
+kayıtlarının kodunu yazdı. Bunların adı farklıydı; asıl tuzak aynı adlı kayıt: QR etiketi
+`Kadran:<sunucu adı>`, yani TOTP sıfırlanıp aynı sunucuda yeniden kurulunca telefonda aynı adlı
+ikinci bir kayıt oluşuyor. Eskisi bir daha hiç geçmiyor ama yenisinden ayırt edilemiyor (GCP'de 28
+Ekim kaydı). Kadran telefondaki kaydı silemez.
+
+### Ne yapıldı
+
+- Etiket `Kadran:<sunucu adı> <gün>`, örneğin `Kadran:instance-20260920-201551 2026-10-29`
+  (`enrollmentLabel`, `internal/api/totp.go`). Gün UTC ve kurulumun başladığı an: sunucunun saat
+  dilimi etiketi değiştirmesin. Ayırıcı boşluk: parantez QR'a 6 bayt daha ekliyor.
+- Etiketi sunucu üretiyor; istemci ve protokol değişmedi. Telefonda zaten olan kayıtların adı
+  değişmez, gün yalnız yeni kurulumlarda. Aynı gün iki kurulum yine aynı adı alır.
+- Rehber (`docs/guides/totp.md`) kaydın adını ve yeniden kurulumdan sonra eski kaydın
+  silinmesini söylüyor.
+
+### QR boyutu (gerçek kodlayıcıyla ölçüldü, kısa bağlantı, seviye L)
+
+| Sunucu adı | Önce | Günle |
+|---|---|---|
+| `instance-20260920-201551` (24 karakter) | 37 modül | 41 modül |
+| `panely-test` (11 karakter) | 37 | 37 |
+| 64 karakter | 45 | 45 |
+
+K-156'da "37 modül alt sınır" denen ad GCP'ninkiydi; gün onu 41'e çıkarıyor (2 metin satırı, 4
+sütun). En kötü durum (64 karakterlik ad, gün, kısaltılmamış bağlantı) 49 modül, sessiz bölgeyle
+57 sütun; `TestQRBlockFitsTerminal` bu bağlantıyla 80 sütunu sınıyor.
+
+### Ölçüm
+
+- `TestEnrollmentLabelHasDate`: önce kırmızı (`etiket "/Kadran:<ad>", beklenen "/Kadran:<ad>
+  2026-10-29"`), sonra yeşil. Saat `+03`'te 30 Ekim 01:30, yani UTC'de 29 Ekim: yerel gün
+  yazılsaydı test kırmızı olurdu.
+- `mutate-totp.sh`'a 2 mutant (gün yok; gün yerel saatten): betik tek başına 40/40. Koşudan sonra
+  korunan dosyalarda fark kalmadı.
+- `gofmt`, `go vet ./...`, `golangci-lint` (0 bulgu), `go test ./...` ve Linux derlemesi yeşil.

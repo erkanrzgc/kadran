@@ -75,10 +75,11 @@ func TestQRBlockMatchesCode(t *testing.T) {
 	}
 }
 
-// TestQRBlockFitsTerminal: en uzun ana bilgisayar adıyla (64 karakter) bile
-// QR 80 sütuna satır kaydırmadan sığıyor. Kaymış bir QR okunmaz.
+// TestQRBlockFitsTerminal: en uzun ana bilgisayar adıyla (64 karakter) ve
+// etiketteki kurulum tarihiyle (K-157) bile QR 80 sütuna satır kaydırmadan
+// sığıyor. Kaymış bir QR okunmaz.
 func TestQRBlockFitsTerminal(t *testing.T) {
-	uri := "otpauth://totp/Kadran:" + strings.Repeat("h", 64) +
+	uri := "otpauth://totp/Kadran:" + strings.Repeat("h", 64) + "%202026-10-29" +
 		"?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=" + strings.Repeat("A", 32)
 	s, err := qrBlock(uri)
 	if err != nil {

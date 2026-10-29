@@ -235,6 +235,14 @@ mutate "bozuk link QR için yeniden yazılıyor" "$KQR" \
     "s=s.replace('\tif err != nil {\n\t\treturn uri','\tif false && err != nil {\n\t\treturn uri',1)" \
     "./cmd/kadran/"
 
+echo "== Kurulum etiketi (K-157) =="
+
+mutate "etikette kurulum tarihi yok (yeniden kurulum aynı adlı kayıt bırakır)" "$HND" \
+    "s=s.replace('return host + \" \" + now.UTC().Format(time.DateOnly)','return host',1)"
+
+mutate "etiketteki gün UTC değil, sunucunun yerel saati" "$HND" \
+    "s=s.replace('now.UTC().Format(time.DateOnly)','now.Format(time.DateOnly)',1)"
+
 restore
 if [[ $fail -ne 0 ]]; then
     echo

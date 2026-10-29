@@ -99,15 +99,22 @@ func (s *Server) BeginTotpEnrollment(
 		return nil, status.Error(codes.Internal, "could not store the TOTP enrollment")
 	}
 
+	return &kadranv1.BeginTotpEnrollmentResponse{
+		OtpauthUri:   totp.OTPAuthURI(secret, totpIssuer, enrollmentLabel(now)),
+		SecretBase32: totp.EncodeSecret(secret),
+		ExpiresAt:    timestamppb.New(now.Add(pendingEnrollmentTTL)),
+	}, nil
+}
+
+// enrollmentLabel, doğrulayıcı uygulamadaki kaydın adıdır: sunucu adı ve
+// kurulumun UTC günü (K-157). Sıfırlanıp yeniden kurulan sunucunun yeni
+// kaydı, telefonda kalan ve artık hiç geçmeyen eskisinden ayırt edilsin.
+func enrollmentLabel(now time.Time) string {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
 		host = "server"
 	}
-	return &kadranv1.BeginTotpEnrollmentResponse{
-		OtpauthUri:   totp.OTPAuthURI(secret, totpIssuer, host),
-		SecretBase32: totp.EncodeSecret(secret),
-		ExpiresAt:    timestamppb.New(now.Add(pendingEnrollmentTTL)),
-	}, nil
+	return host + " " + now.UTC().Format(time.DateOnly)
 }
 
 // ConfirmTotpEnrollment, bekleyen kurulumu bir kodla etkin yapar.

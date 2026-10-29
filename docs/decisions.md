@@ -11973,10 +11973,21 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
   için denetime düşmez; yani bu, kullanıcının hiç yanlış yazmadığını değil, kilit sayacına hiçbir
   şey eklenmediğini gösteriyor.
 - Sonra ikisinde de: `totp status` açık, 10 kurtarma kodu; alarm yok; iki zincir geçerli.
+- **Giriş (GCP):** kayıtlı oturum `logout` ile silindi, sonra `login`. Dört ayrı çalıştırma (dört
+  SSH bağlantısı): 18:09:49, 18:09:59 ve 18:10:09 UTC'de `auth.login` FAILED, sunucu günlüğünde
+  `code rejected: check that the code is current and your phone's clock is correct`; 18:10:19'da
+  SUCCESS, oturum 8 saat. Sebep: kullanıcı telefondaki eski deneme kayıtlarının kodlarını yazdı.
+  Kilit 5'te, sayaç 3'te kaldı ve başarılı giriş sıfırladı; alarm yok.
 
 ### Açık
 
 - Ters (koyu zeminde açık) QR yalnız Google Authenticator'la ölçüldü. Ters kodu okumayan
   uygulamalar var; onlar için anahtar ve bağlantı altında. Açık zeminli terminalde QR normal
   renkli çıkmalı; ölçülmedi.
-- `login`'in v0.9.1'deki istemi ve yerel kod denetimi gerçek sunucuda ölçülmedi.
+- `login`'in yerel kod denetimi (6 rakam olmayan girişin sunucuya gitmemesi) gerçek sunucuda
+  denenmedi.
+- **Aynı adlı iki kayıt.** QR etiketi `Kadran:<sunucu adı>` (`internal/api/totp.go`). Aynı
+  sunucuda TOTP sıfırlanıp yeniden kurulunca telefonda aynı adlı ikinci bir kayıt oluşuyor;
+  eskisi bir daha hiç geçmiyor ama yenisinden ayırt edilemiyor (GCP'de 28 Ekim kaydı). Kadran
+  telefondaki kaydı silemez. Seçenekler, karar verilmedi: etikete kurulum tarihini eklemek ya da
+  `enable`'ın eski kaydın silinmesini söylemesi.

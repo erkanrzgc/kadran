@@ -36,7 +36,7 @@ add this server to your authenticator app (confirm before 2026-10-28 14:10 +03):
      if the app does not scan it (some cannot read light-on-dark codes),
      add an account by hand, time based, with this key:
        JBSWY3DPEHPK3PXP...
-     link: otpauth://totp/Kadran:<server hostname>?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=...
+     link: otpauth://totp/Kadran:<server hostname>%20<setup day>?algorithm=SHA1&digits=6&issuer=Kadran&period=30&secret=...
   2. type the 6-digit code the app shows (not the key)
 6-digit code from the app:
 ```
@@ -54,6 +54,9 @@ add this server to your authenticator app (confirm before 2026-10-28 14:10 +03):
    so it does not count toward the lock.
 3. Kadran prints **10 recovery codes once**. Store them offline (on paper, or in a password
    manager that is not on this machine). Each code works once.
+
+The app names the entry after the server and the day you set it up (UTC), for example
+`Kadran: myhost 2026-10-29`.
 
 You are now signed in for 8 hours.
 
@@ -118,6 +121,9 @@ so a stolen token cannot swap in a new secret. The old secret keeps working unti
 new one. Confirming also replaces the key that signs session tokens. Every token issued before it
 is rejected with "session expired", and an old copy of the database can no longer be used to
 create new ones.
+
+The old entry stays in your app and never works again; delete it. The new entry's name ends with
+the day you set it up, so you can tell the two apart (unless both were set up on the same day).
 
 ## Wrong codes and lockout
 

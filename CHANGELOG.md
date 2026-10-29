@@ -3,6 +3,16 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Changed
+
+- The authenticator app entry is named after the server and the day TOTP was set up (UTC), for
+  example `Kadran: myhost 2026-10-29`. After TOTP is reset and set up again on the same server,
+  the old entry stays on the phone and never works again; it used to have the same name as the
+  new one (K-157). Only new setups get the date; existing entries keep their name. The label is
+  made by the server, so this needs the server upgraded.
+
 ## v0.9.1 — 2026-10-29
 
 Easier TOTP setup, found when two-step sign-in was first turned on for real (K-156). The protocol

@@ -11866,7 +11866,8 @@ yükseltme istiyor); onaydan sonra denetim yazılamazsa kurtarma kodları kaybol
 ## K-156 — TOTP kurulumu: QR, tek parça anahtar, yerel kod denetimi (2026-10-28)
 
 **Durum:** PR #22 ile main'de (`03935bf`), v0.9.1'de yayımlandı (2026-10-29). Yalnız `kadran`
-istemcisi değişti.
+istemcisi değişti. İki sunucu da v0.9.1'e yükseltildi; iki noktadan yoklandı, kesinti yok. TOTP
+ikisinde de kapalı.
 
 ### Neden
 
@@ -11943,10 +11944,26 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
   Terminal'de (koyu zemin) Google Authenticator'la okundu ("Kadran-K"). Okunan, `qrBlock`'un
   bu commit'teki çizim kuralıyla aynı kuralla geçici bir testte çizildi.
 
+### Canlıda (iki sunucu v0.9.1'e, 28/29 Ekim gecesi, kullanıcı onayıyla)
+
+- Yayından geri indirilip `SHA256SUMS`'u doğrulanan sunucu paketi açıldı. Caddy ikilisi ve
+  `deploy/` v0.9.0'dakiyle birebir aynı; değişen yalnız Kadran programları (sürüm numarası).
+- Önce GCP: `bootstrap -sudo`, 23:58:55–00:00:21 UTC, 86 sn, çıkış 0. Sonra Hetzner:
+  `bootstrap root@…`, 00:01:55–00:02:34 UTC, 39 sn, çıkış 0. Kurulum sonrası denetimin tamamı ✓.
+- **Kesinti ölçüldü, iki noktadan.** K-155'teki Hetzner yoklaması mobil ağda boğulmuştu; bu kez
+  hem bu makineden hem DİĞER sunucudan, 0,5 sn arayla, `--resolve` ile doğrudan sunucuya
+  yoklandı. Yoklama her iki kurulumda da başlangıçtan ~10 sn önce başladı, bitişten ~20 sn sonra
+  durdu. GCP 106 + 123, Hetzner 84 + 73 örnek: hepsi `200`.
+- İki sunucuda da: dört servisin çalışan ikilisi paketteki md5'le aynı (`/proc/<pid>/exe`);
+  ters vekil yeniden başlamadı (aynı PID, 23 Ekim'den beri); alarm yok; iki zincir geçerli;
+  `authorized_keys` özeti önce/sonra aynı; başarısız birim 0; ordering cycle 0; uyarı günlüğü
+  boş; TOTP kapalı. Hetzner'de `--allow-repo` drop-in'i duruyor ve çalışan `kadran-exec`'in
+  argümanında; kök ve `kadran.*` adları `308` ile www'ye gidiyor.
+
 ### Açık
 
 - Ters (koyu zeminde açık) QR yalnız Google Authenticator'la ölçüldü. Ters kodu okumayan
   uygulamalar var; onlar için anahtar ve bağlantı altında. Açık zeminli terminalde QR normal
   renkli çıkmalı; ölçülmedi.
-- Gerçek sunucuda `totp enable` akışı v0.9.1'in istemcisiyle ölçülecek; sunucu yükseltmesi
-  gerekmiyor.
+- Gerçek sunucuda `totp enable` akışı v0.9.1'in istemcisiyle henüz ölçülmedi; iki sunucuda da
+  TOTP kapalı.

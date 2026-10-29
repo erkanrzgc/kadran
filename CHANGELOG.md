@@ -3,7 +3,12 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.9.2 — 2026-10-29
+
+The authenticator entry's name now tells two setups of the same server apart (K-157). The protocol
+is unchanged (3). Only `kadrand` changed: the other programs, the `kadran` client included, are
+rebuilt with the new version number and nothing else, so a v0.9.1 client works with a v0.9.2
+server.
 
 ### Changed
 

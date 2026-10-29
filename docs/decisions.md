@@ -11990,7 +11990,8 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
 
 ## K-157 — TOTP kaydının adında kurulum günü (2026-10-29)
 
-**Durum:** PR #23 ile main'de (`bc1875a`); yayımlanmadı, iki sunucu hâlâ v0.9.1. main'de zorunlu
+**Durum:** PR #23 ile main'de (`bc1875a`), v0.9.2'de yayımlandı (2026-10-29); iki sunucu henüz
+v0.9.1. Yalnız `kadrand` değişti (`go list -deps`: `internal/api`'ye yalnız o bağlı). main'de zorunlu
 kontrol olmadığı için `gh pr merge --auto` CI'ı beklemeden birleştirdi; CI sonra PR'da (13/13) ve
 main'de yeşil bitti.
 

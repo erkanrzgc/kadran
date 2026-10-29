@@ -11990,10 +11990,10 @@ karakter hücresi iki kat uzun olduğu için yükseklik aynı kalıyor.
 
 ## K-157 — TOTP kaydının adında kurulum günü (2026-10-29)
 
-**Durum:** PR #23 ile main'de (`bc1875a`), v0.9.2'de yayımlandı (2026-10-29); iki sunucu henüz
-v0.9.1. Yalnız `kadrand` değişti (`go list -deps`: `internal/api`'ye yalnız o bağlı). main'de zorunlu
-kontrol olmadığı için `gh pr merge --auto` CI'ı beklemeden birleştirdi; CI sonra PR'da (13/13) ve
-main'de yeşil bitti.
+**Durum:** PR #23 ile main'de (`bc1875a`), v0.9.2'de yayımlandı (2026-10-29). İki sunucu da
+v0.9.2'ye yükseltildi; iki noktadan yoklandı, kesinti yok. Yalnız `kadrand` değişti (`go list
+-deps`: `internal/api`'ye yalnız o bağlı). main'de zorunlu kontrol olmadığı için `gh pr merge
+--auto` CI'ı beklemeden birleştirdi; CI sonra PR'da (13/13) ve main'de yeşil bitti.
 
 ### Neden
 
@@ -12033,3 +12033,48 @@ sütun). En kötü durum (64 karakterlik ad, gün, kısaltılmamış bağlantı)
 - `mutate-totp.sh`'a 2 mutant (gün yok; gün yerel saatten): betik tek başına 40/40. Koşudan sonra
   korunan dosyalarda fark kalmadı.
 - `gofmt`, `go vet ./...`, `golangci-lint` (0 bulgu), `go test ./...` ve Linux derlemesi yeşil.
+
+### Canlıda (iki sunucu v0.9.2'ye, 29/30 Ekim gecesi, kullanıcı onayıyla)
+
+- Paket iki ayrı LF klonda derlendi, iki `SHA256SUMS` aynı; taslak yayından geri indirilen 10
+  dosya doğrulandı. Sunucu paketinde caddy ikilisi ve `deploy/` v0.9.1'dekiyle aynı. Kod yalnız
+  `kadrand`'da değişti ama sürüm numarası her ikiliye gömülü: `kadran-exec` ve `kadran-proxy`'nin
+  md5'i de değişiyor, onlar da yeniden başlıyor. Ters vekil başlamıyor.
+- Önce GCP: `bootstrap -sudo`, 20:37:04–20:38:19 UTC, 75 sn, çıkış 0. Sonra Hetzner:
+  `bootstrap root@…`, 21:22:59–21:23:36 UTC, 37 sn, çıkış 0. Kurulum sonrası denetimin tamamı ✓.
+- Kesinti iki noktadan ölçüldü (bu makine ve diğer sunucu, 0,5 sn arayla, kurulumdan ~10 sn önce
+  başlayıp ~20 sn sonra durdu): GCP 96 + 114, Hetzner 70 + 72 örnek, hepsi `200`.
+- İki sunucuda da: üç servisin çalışan ikilisi paketteki md5'le aynı; alarm yok; iki zincir
+  geçerli; `authorized_keys` özeti önce/sonra aynı; başarısız birim 0; uyarı günlüğü boş. TOTP
+  açık kaldı, 10 kurtarma kodu duruyor; yükseltmeden önce açılmış oturum sonra da geçti. Hetzner'de
+  `--allow-repo` drop-in'i ve çalışan `kadran-exec`'in argümanı aynı.
+
+### Canlıda bulunan: ters vekili `needrestart` yeniden başlatıyor (K-157'den bağımsız)
+
+Hetzner'in yükseltme öncesi ölçümünde `kadran-caddy` ve `kadran-proxy` 29 Ekim 06:51:31 UTC'den
+beri çalışıyordu; v0.9.1 kurulumu 00:02'deydi. Günlük:
+
+- 06:51:29'da `unattended-upgrade` `libbrotli1`'i yükseltti. 06:51:30'da proxy, sonra caddy
+  durdu; 06:51:31'de ikisi de başladı. Proxy `Requires=kadran-caddy.service` taşıyor, caddy'yle
+  birlikte düşüyor. Sunucuda `needrestart` kurulu ve ayarı varsayılan. Günlükte adı geçmiyor ama
+  durdurma apt'den 1 sn sonra; durduran büyük olasılıkla o.
+- Neden caddy: `install.sh` caddy ikilisini içerik aynıyken de `install` ediyor (yeni dosya).
+  Kurulum caddy'yi yeniden başlatmıyor (md5 aynı, K-112), çalışan süreç silinmiş dosyadan
+  çalışmaya devam ediyor: `/proc/<pid>/exe` → `kadran-caddy (deleted)`. `needrestart` silinmiş
+  ikiliden çalışan servisi eski sayıp yeniden başlatır.
+- Kanıt (aynı caddy süreci, 23 Ekim'den beri): 28 Ekim 17:37'de, v0.9.0 kurulumundan önce, `exe`
+  silinmemiş; 17:42'deki kurulumdan sonra ve v0.9.1 kurulumunun önce/sonrasında `(deleted)`.
+  06:51'de başlayan yeni süreç silinmemiş dosyada; v0.9.2 kurulumundan hemen sonra yine
+  `(deleted)`. 25 Ekim 06:01'deki `zlib1g` yükseltmesinde caddy başlamadı: 23–28 Ekim arasında
+  systemd yeniden yüklenmesi ve `kadrand` yeniden başlaması yok, kurulum koşmamıştı.
+- Etki: kurulumun "reverse proxy unchanged — not restarted, traffic not interrupted" sözü
+  ertelenmiş oluyor: caddy sonraki paket yükseltmesinin saatinde ~1 sn duruyor (günlükten; trafik
+  o an yoklanmıyordu).
+- GCP'de de `needrestart` ve `unattended-upgrades` kurulu; caddy 23 Ekim'den beri aynı süreç, en
+  az 28 Ekim'den beri `(deleted)`, ama yeniden başlamadı. Debian'ın ayarı farklı olabilir;
+  ölçülmedi.
+
+### Açık
+
+- K-158 adayı: `install.sh` caddy ikilisini yalnız içeriği değiştiyse yazsın; çalışan süreç
+  `(deleted)` kalmasın.

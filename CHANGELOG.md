@@ -3,6 +3,16 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Fixed
+
+- `kadran bootstrap` no longer rewrites a server program whose content has not changed; it only
+  resets its owner and mode. Rewriting left a service that was not restarted, such as the reverse
+  proxy, running from a deleted file. Ubuntu's `needrestart` then restarted it, and the proxy
+  broker with it, at the next package upgrade: the proxy stopped for about a second at that
+  hour (K-158).
+
 ## v0.9.2 — 2026-10-29
 
 The authenticator entry's name now tells two setups of the same server apart (K-157). The protocol

@@ -12076,5 +12076,48 @@ beri çalışıyordu; v0.9.1 kurulumu 00:02'deydi. Günlük:
 
 ### Açık
 
-- K-158 adayı: `install.sh` caddy ikilisini yalnız içeriği değiştiyse yazsın; çalışan süreç
-  `(deleted)` kalmasın.
+- ~~K-158 adayı: `install.sh` caddy ikilisini yalnız içeriği değiştiyse yazsın.~~ K-158'de
+  düzeltildi.
+
+## K-158 — Kurulum aynı ikiliyi yeniden yazmıyor (2026-10-30)
+
+**Durum:** dal `install-same-binary`'de, yerelde yeşil; PR açılmadı.
+
+### Neden
+
+K-157'nin canlı yükseltmesinde bulundu (kanıt K-157'de, "Canlıda bulunan"): `install.sh`
+ikilileri içerik aynıyken de `install` ediyordu. Yeniden başlatılmayan ters vekil (K-112) silinmiş
+dosyada kalıyor, Ubuntu'nun `needrestart`'ı onu ilk paket yükseltmesinde yeniden başlatıyordu
+(Hetzner, 29 Ekim 06:51 UTC); proxy de `Requires=` ile birlikte. Kurulumun "traffic not
+interrupted" sözü sonraki paket yükseltmesine erteleniyordu.
+
+### Ne yapıldı
+
+- `ikili_kur <kaynak> <hedef>` (`install.sh`): hedef düz bir dosyaysa ve içeriği aynıysa
+  (`cmp -s`) yeniden yazılmıyor; sahibi ve izni yerinde `root:root 0755`'e çekiliyor. Dosya
+  değişmediği için çalışan süreç silinmiş dosyada kalmıyor. Aksi hâlde eskisi gibi
+  `install -m 0755 -o root -g root`. Bağ izlenmiyor: `install` bağı düz bir dosyayla değiştiriyor
+  (ölçüldü, aşağıda).
+- "Binaries" adımındaki yedi dosyanın hepsi bununla kuruluyor, yalnız caddy değil: aynı sürümle
+  yeniden kurulumda `kadrand`, `kadran-exec` ve `kadran-proxy` da md5 aynı olduğu için yeniden
+  başlamıyor ve aynı duruma düşerdi.
+- İçerik değişmişse davranış aynı: yeni dosya, servis md5 farkıyla yeniden başlıyor (K-112).
+- İki sunucudaki caddy şu an zaten `(deleted)`; düzeltme bunu iyileştirmez. Caddy bir kez daha
+  başlayınca (needrestart ya da sunucunun yeniden açılışı) geçer. Etkisi sonraki sürümle.
+
+### Ölçüm
+
+- `check-install-sh.sh`'a root bölümü (CI'da sudo ile zorunlu): aynı içerik, izin 0700 ve sahip
+  65534 iken (dosyanın aynı kaldığını ikinci bir sabit bağ ve `-ef` gösteriyor; sonra
+  `root:root 0755`); farklı içerik; hedef yok; hedef bağ (bağın hedefi kaynakla AYNI içerikte,
+  sahibi ve izni değişmiyor); kontrol grubu: düz `install` aynı içerikte de dosyayı yeniliyor.
+- Önce kırmızı: fonksiyon yokken betik "çıkarılamadı" dedi. Sonra `ikili_kur` eski davranışla
+  (düz `install`) yazıldı: yalnız "aynı içerik" kırmızı; bağ senaryosu ve kontrol yeşil, yani eski
+  kod da bağı izlemiyordu. Düzeltmeyle hepsi yeşil (WSL Ubuntu 24.04, root,
+  `KADRAN_TEST_REQUIRE_ROOT=1`).
+- `mutate-install.sh`'a 4 root mutantı (hep yaz; izin düzeltilmiyor; sahip düzeltilmiyor; bağ
+  izleniyor): dördü de yakalandı, mevcut mutantların hepsi de. Koşudan sonra `install.sh`'ın md5'i
+  aynı.
+- Root'suz: K-158 bölümü atlandığını yazıyor ve betik yeşil; `KADRAN_TEST_REQUIRE_ROOT=1` ile
+  root'suz kırmızı. `bash -n`, `check-install-order.sh`, `go test ./internal/bootstrap/...
+  ./cmd/kadran/...` yeşil.

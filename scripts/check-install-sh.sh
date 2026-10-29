@@ -17,7 +17,7 @@ dene() {
 
 FN="$(mktemp)"
 trap 'rm -f "$FN"' EXIT
-FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle)
+FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur)
 for f in "${FONKS[@]}"; do
     sed -n "/^$f() {/,/^}/p" internal/bootstrap/install.sh >> "$FN"
 done
@@ -204,6 +204,54 @@ else
         fail=1
     else
         echo "  - K-139 bölümü root ister (useradd, setpriv); CI bunu sudo ile koşturuyor"
+    fi
+fi
+
+echo
+echo "== ikili_kur: aynı ikili yeniden YAZILMIYOR (K-158) =="
+# `install` her koşuda yeni bir dosya açar. Yeniden başlatılmayan servis
+# silinmiş dosyada kalır ve needrestart onu ilk paket yükseltmesinde
+# yeniden başlatır (Hetzner, 29 Ekim: ters vekil). Dosyanın yenilenip
+# yenilenmediğini ikinci bir sabit bağ gösteriyor: yenilenirse bağ eski
+# dosyada kalır, çalışan sürecin tuttuğu gibi, ve `-ef` yanlış olur.
+#
+# root:root sahipliği root ister. CI bu betiği bir kez de sudo ile
+# koşturuyor ve orada bu bölüm ZORUNLU (KADRAN_TEST_REQUIRE_ROOT=1).
+if [ "$(id -u)" -eq 0 ]; then
+    B="$(mktemp -d)"
+    printf 'ikili-v2\n' > "$B/kaynak"
+    cp "$B/kaynak" "$B/ayni"
+    chmod 0700 "$B/ayni"
+    chown 65534:65534 "$B/ayni"
+    ln "$B/ayni" "$B/ayni.ilk"
+    dene "aynı içerik: dosya YENİLENMİYOR, sahip ve izin root:root 0755'e dönüyor" \
+        "$(ys "ikili_kur '$B/kaynak' '$B/ayni'; [ '$B/ayni' -ef '$B/ayni.ilk' ]; [ \"\$(stat -c '%u:%g %a' '$B/ayni')\" = '0:0 755' ]; cmp -s '$B/kaynak' '$B/ayni'")"
+    printf 'ikili-v1\n' > "$B/farkli"
+    dene "farklı içerik: yenisi root:root 0755 yazılıyor" \
+        "$(ys "ikili_kur '$B/kaynak' '$B/farkli'; cmp -s '$B/kaynak' '$B/farkli'; [ \"\$(stat -c '%u:%g %a' '$B/farkli')\" = '0:0 755' ]")"
+    dene "hedef yokken kuruluyor" \
+        "$(ys "ikili_kur '$B/kaynak' '$B/yeni'; cmp -s '$B/kaynak' '$B/yeni'; [ \"\$(stat -c '%u:%g %a' '$B/yeni')\" = '0:0 755' ]")"
+    # Bağın hedefi kaynakla AYNI içerikte: karşılaştırma bağı izleseydi
+    # sahip ve izin düzeltmesi bağın hedefini değiştirirdi.
+    cp "$B/kaynak" "$B/kurban"
+    chmod 0600 "$B/kurban"
+    chown 65534:65534 "$B/kurban"
+    ln -s "$B/kurban" "$B/bag"
+    dene "hedef bağsa izlenmiyor: bağın hedefi aynı kalıyor, yerine düz dosya" \
+        "$(ys "ikili_kur '$B/kaynak' '$B/bag'; [ ! -L '$B/bag' ]; cmp -s '$B/kaynak' '$B/bag'; [ \"\$(stat -c '%u:%g %a' '$B/kurban')\" = '65534:65534 600' ]")"
+    # Kontrol grubu: düz `install` aynı içerikte de dosyayı yeniliyor —
+    # yoksa ilk ölçüm bir şey kanıtlamıyor olurdu.
+    cp "$B/kaynak" "$B/kontrol"
+    ln "$B/kontrol" "$B/kontrol.ilk"
+    dene "KONTROL: düz install aynı içerikte de dosyayı yeniliyor" \
+        "install -m 0755 -o root -g root '$B/kaynak' '$B/kontrol'; [ ! '$B/kontrol' -ef '$B/kontrol.ilk' ]"
+    rm -rf "$B"
+else
+    if [ "${KADRAN_TEST_REQUIRE_ROOT:-}" = 1 ]; then
+        echo "  ✗ K-158 bölümü root ister ve KADRAN_TEST_REQUIRE_ROOT=1 — ölçüm YAPILMADI"
+        fail=1
+    else
+        echo "  - K-158 bölümü root ister (chown root:root); CI bunu sudo ile koşturuyor"
     fi
 fi
 

@@ -40,6 +40,21 @@ calisan_ayni_mi() {
     [ -n "$calisan" ] && [ "$calisan" = "$kurulan" ]
 }
 
+# ikili_kur <kaynak> <hedef> — ikiliyi root:root 0755 kurar. Hedefte aynı
+# içerikte düz bir dosya varsa onu YENİDEN YAZMAZ, yalnız sahibini ve
+# iznini düzeltir (K-158). `install` her koşuda yeni bir dosya açar:
+# yeniden başlatılmayan servis (ters vekil, K-112) silinmiş dosyada kalır
+# ve needrestart onu ilk paket yükseltmesinde yeniden başlatır. Bağ
+# izlenmez: `install` onu düz bir dosyayla değiştirir.
+ikili_kur() {
+    if [ -f "$2" ] && [ ! -L "$2" ] && cmp -s "$1" "$2"; then
+        chown root:root "$2"
+        chmod 0755 "$2"
+        return 0
+    fi
+    install -m 0755 -o root -g root "$1" "$2"
+}
+
 # vekil_parmak_izi — ters vekilin yapılandırma ve birim dosyalarının özeti.
 # Yeniden kurulumda bunlar değişmediyse (ve ikili aynıysa) ters vekil
 # yeniden başlatılmıyor: o trafiğin yolu (K-112).
@@ -345,19 +360,19 @@ for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-proxy kadra
 done
 
 # kadran-exec root çalışır ve yalnızca root yazabilmeli.
-install -m 0755 -o root -g root "$STAGE/kadrand"       "$LIB_DIR/kadrand"
-install -m 0755 -o root -g root "$STAGE/kadran-exec"   "$LIB_DIR/kadran-exec"
+ikili_kur "$STAGE/kadrand"        "$LIB_DIR/kadrand"
+ikili_kur "$STAGE/kadran-exec"    "$LIB_DIR/kadran-exec"
 # kadran-connect'i kadran-client çalıştırır; yazma yetkisi yine yalnızca root.
-install -m 0755 -o root -g root "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect"
+ikili_kur "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect"
 # Ters vekil. Yazma yetkisi yalnızca root: bu binary bir GÜVENLİK SINIRI
 # taşıyor (K-050) ve çalıştıran kullanıcının onu değiştirebilmesi sınırı
 # anlamsız kılardı.
-install -m 0755 -o root -g root "$STAGE/kadran-caddy"  "$LIB_DIR/kadran-caddy"
-install -m 0755 -o root -g root "$STAGE/kadran-proxy"  "$LIB_DIR/kadran-proxy"
+ikili_kur "$STAGE/kadran-caddy"   "$LIB_DIR/kadran-caddy"
+ikili_kur "$STAGE/kadran-proxy"   "$LIB_DIR/kadran-proxy"
 # Kasa anahtarını üretir (K-123). Yalnız kurulumda, root olarak koşuyor.
-install -m 0755 -o root -g root "$STAGE/kadran-vault"  "$LIB_DIR/kadran-vault"
+ikili_kur "$STAGE/kadran-vault"   "$LIB_DIR/kadran-vault"
 # Kasanın geri dönüşü (v0.4.x'e inmeden önce elle çalıştırılır).
-install -m 0755 -o root -g root "$STAGE/kasa-coz.sh"   "$LIB_DIR/kadran-kasa-coz.sh"
+ikili_kur "$STAGE/kasa-coz.sh"    "$LIB_DIR/kadran-kasa-coz.sh"
 
 say "installed into $LIB_DIR"
 "$LIB_DIR/kadrand" -version || die "could not run kadrand — the architecture may not match"

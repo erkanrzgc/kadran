@@ -186,6 +186,25 @@ else
     echo "  ölçülmedi (root yok): K-139'un üç root mutantı — root'la ya da KADRAN_TEST_REAL_SUDO=1 ile koşturun (CI öyle)"
 fi
 
+echo "== İkililer: aynısı yeniden yazılmıyor (K-158) =="
+
+# Sahiplik root ister: check-install-sh.sh bu bölümü yalnız root'ta koşar.
+if [ "$KOK_OLCULUR" != 0 ]; then
+    mutate_in "$INST" "aynı ikili her kurulumda yeniden yazılıyor (çalışan servis silinmiş dosyada kalır)" \
+        "s=s.replace('    if [ -f \"\$2\" ] && [ ! -L \"\$2\" ] && cmp -s \"\$1\" \"\$2\"; then','    if false; then',1)"
+
+    mutate_in "$INST" "aynı ikilide izin düzeltilmiyor" \
+        "s=s.replace('        chmod 0755 \"\$2\"\n','',1)"
+
+    mutate_in "$INST" "aynı ikilide sahip düzeltilmiyor" \
+        "s=s.replace('        chown root:root \"\$2\"\n','',1)"
+
+    mutate_in "$INST" "ikili_kur bağı izliyor (bağın hedefinin sahibi ve izni değişir)" \
+        "s=s.replace(' && [ ! -L \"\$2\" ] && cmp -s',' && cmp -s',1)"
+else
+    echo "  ölçülmedi (root yok): K-158'in dört root mutantı — root'la ya da KADRAN_TEST_REAL_SUDO=1 ile koşturun (CI öyle)"
+fi
+
 echo "== Erişim: tek satır (K-131) =="
 
 mutate_in "$INST" "iki satırlı anahtar dosyası kabul ediliyor" \

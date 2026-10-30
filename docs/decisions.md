@@ -12166,8 +12166,8 @@ yalnız bozulmayı yakalar. Yayını değiştirebilen onu da değiştirir.
   (ölçüldü): yalnız ilk 12 hane, özetten önce açma, `..`, mutlak ad ve ters bölü. Son ikisini izinli
   kök denetimi gizliyordu. Testler güçlendirildi. Ters bölü Windows'ta kaçış olurdu: `path.Clean` onu
   ayırıcı saymıyor, `filepath.Join` sayıyor.
-- **Kurulum betikleri:** `check-get-kadran.sh` 17, `.ps1` 17 denetim, ikincisi pwsh 7.6 ve Windows
-  PowerShell 5.1'de. Elle 9 ve 12 mutant, hepsi yakalandı (betik olarak commit edilmedi).
+- **Kurulum betikleri:** `check-get-kadran.sh` 18, `.ps1` 17 denetim, ikincisi pwsh 7.6 ve Windows
+  PowerShell 5.1'de. `mutate-get-kadran.sh` 10/10, `.ps1` 12/12 yakaladı; ikisi de CI'da koşuyor.
 - **Gerçek yayın:** iki betik de gerçek v0.9.2'yi kurdu, `kadran version` `v0.9.2` dedi (`sh` WSL
   Ubuntu'da son sürüm ve açık sürümle; `.ps1` iki kabukta).
 - **Gerçek yayın bir tuzak gösterdi:** yayınlar Git Bash'te derlendiği için `SHA256SUMS` `*ad`
@@ -12175,9 +12175,26 @@ yalnız bozulmayı yakalar. Yayını değiştirebilen onu da değiştirir.
 - **Ölçüm düzeneğimin iki hatası:** `if ( set -e; … )` koşul içinde `set -e`'yi etkisiz kılar ve
   betik yokken dört denetim yeşil çıktı. `File.Replace`'e `$null` boş metin olarak gidiyordu ve
   "in use" iletisi bunu örtüyordu; ileti artık yalnız G/Ç ve erişim hatasında çıkıyor.
+- **Bağımsız dal incelemesi üç şey buldu**, hepsi kırmızı görülüp düzeltildi:
+  - "Yerinde değiştirme" denetimi onu ölçmüyordu: sahte yayınla koştuğu için betik özet aşamasında
+    düşüyordu ve yerinde yazan mutant 17 denetimden sağ çıktı. Denetim artık çalışan gerçek bir ELF'in
+    yerine kuruyor; mutant `ETXTBSY` ile düşüyor. Elle koşulan mutantlarım bunu kaçırmıştı.
+  - Paketin tar listesi ile bootstrap'ın okuduğu dosyalar birbirinden habersizdi. CI artık gerçek
+    paketi `FetchRelease` ve `buildArchive`'den geçiriyor; `kadran-exec.service`'i silinmiş pakette
+    düşüyor, gerçek pakette (iki mimari) geçiyor.
+  - Öz denetim yer değiştirmiş özetleri görmüyordu (o yayında her bootstrap reddedilirdi).
+    `package-release.sh` artık bu makinede çalışan istemciye sorup satırları karşılaştırıyor:
+    yer değiştirilmiş klonda çıkış 1, iki temiz klonda 0 ve `SHA256SUMS` aynı.
+- **Kurulumdan sonraki ilk komut:** dizin PATH'te yoksa `kadran bootstrap` "command not found" verir.
+  Betik artık yapıştırılacak `export` satırını basıyor.
 
 ### Açık
 
+- **İlk bağlantı:** `BatchMode=yes` yüzünden bilinmeyen sunucu anahtarı kurulumu durdurur. README
+  önce `ssh` ile bağlanmayı söylüyor; Kadran'ın kendi `known_hosts`'u filonun 2. parçası.
+- **Eski istemci yeni sunucuyu sessizce düşürebilir:** bootstrap her zaman istemcinin sürümünü kurar
+  ve bugün sürüm denetimi yok (bu daldan önce de böyleydi; okundu, sunucuda koşulmadı). Filo
+  parçalarından önce karar gerekiyor.
 - **Sıra önemli:** README bu dal birleşince tek satırı gösteriyor, ama `curl | sh` v0.9.3 çıkana
   kadar v0.9.2 kurar ve onun `bootstrap`'ı sürümden kuramaz. Birleştirmeden hemen sonra v0.9.3
   yayımlanmalı.

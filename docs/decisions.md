@@ -12187,6 +12187,11 @@ yalnız bozulmayı yakalar. Yayını değiştirebilen onu da değiştirir.
     yer değiştirilmiş klonda çıkış 1, iki temiz klonda 0 ve `SHA256SUMS` aynı.
 - **Kurulumdan sonraki ilk komut:** dizin PATH'te yoksa `kadran bootstrap` "command not found" verir.
   Betik artık yapıştırılacak `export` satırını basıyor.
+- **CI denetimin kendisini yakaladı:** `ubuntu-latest` artık Ubuntu 26.04 ve yerinde yazan mutant orada
+  sağ çıktı (24.04'te yakalanıyordu). Denetim kopyalanan `sleep`in çalıştığını hiç sormuyordu. Muhtemel
+  sebep 26.04'ün Rust coreutils'i: adı değişince hemen çıkan bir `sleep`. Bu 26.04'te ölçülmedi, yerelde
+  taklitle aynı sonuç alındı. Denetim artık `bash` kopyalıyor ve sürecin kurulum boyunca yaşadığını çıkış
+  kodundan (143) kanıtlıyor; yalnız ETXTBSY'ye bakan ilk düzeltmem kapanan süreçte de geçti.
 
 ### Açık
 

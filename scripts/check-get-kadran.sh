@@ -89,14 +89,29 @@ dene "dizin PATH'te değilse söyler, varsa susar" c_path
 c_calisan() {
     # Gerçek bir ELF şart: çalışan ikilinin üstüne yazmak ETXTBSY verir, ama
     # kabuk betiğinin üstüne yazılabilir ve denetim hiçbir şey ölçmezdi.
+    # `sleep` değil bash: CI'da (Ubuntu 26.04) kopyalanan `sleep`le mutant sağ
+    # çıktı; `bash -c 'sleep …'` de kendini sleep'e çevirir, o yüzden `read`.
     mkdir -p "$T/bin1c"
-    cp "$(command -v sleep)" "$T/bin1c/kadran"
-    "$T/bin1c/kadran" 30 &
-    local p=$! rc=0
-    sleep 0.2
+    cp "$BASH" "$T/bin1c/kadran"
+    mkfifo "$T/bekle"
+    "$T/bin1c/kadran" -c 'exec 3<>"$1"; read -r -t 30 _ <&3' _ "$T/bekle" &
+    local p=$! rc=0 i=0 st=0
+    # ETXTBSY alana kadar exec bitmemiştir, üstüne yazmak serbesttir. `>>`
+    # içeriğe dokunmaz.
+    while ( : >>"$T/bin1c/kadran" ) 2>/dev/null; do
+        i=$((i + 1))
+        if [ "$i" -ge 50 ]; then
+            kill "$p" 2>/dev/null || true
+            return 1
+        fi
+        sleep 0.1
+    done
     kur "$T/iyi" "$T/bin1c" || rc=$?
     kill "$p" 2>/dev/null || true
-    wait "$p" 2>/dev/null || true
+    wait "$p" 2>/dev/null || st=$?
+    # 143: kurulum boyunca yaşıyordu, onu biz öldürdük. Kapanan süreç de bir an
+    # ETXTBSY veriyor, yukarıdaki döngü bunu tek başına kanıtlamaz.
+    [ "$st" -eq 143 ]
     [ "$rc" -eq 0 ]
     [ "$(cat "$T/bin1c/kadran")" = binary-v9 ]
 }

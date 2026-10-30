@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AuditTable } from "../components/AuditTable.tsx";
 import { ChainCard } from "../components/ChainCard.tsx";
-import { SetupHelp } from "../components/SetupHelp.tsx";
-import { InfoCard } from "../components/InfoCard.tsx";
+import { KeyValues } from "../components/KeyValues.tsx";
+import type { Profile } from "../bridge.ts";
 import { Sparkline } from "../components/Sparkline.tsx";
 import { Tile } from "../components/Tile.tsx";
 import { useAudit } from "../hooks/useAudit.ts";
@@ -11,14 +11,16 @@ import type { ServerApi } from "../hooks/useServer.ts";
 import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
 import { auditPlaceholderKey } from "../lib/audit-view.ts";
 import { chainView, worstTone } from "../lib/chain.ts";
-import { formatTime, humanDuration, memoryText } from "../lib/format.ts";
+import { diskUsedPercent } from "../lib/fleet.ts";
+import { formatTime, humanBytes, humanDuration, memoryText } from "../lib/format.ts";
+import { providerView } from "../lib/providers.ts";
 import { statusMetaKeys } from "../lib/health.ts";
 
 /** Coolify'daki gibi: açıkken her 10 saniyede yenile. Varsayılan kapalı. */
 const LIVE_INTERVAL_MS = 10_000;
 const PREVIEW_SIZE = 10;
 
-export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll: () => void }) {
+export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: ServerApi; profile: Profile | null; onEdit: (target: string) => void; onSeeAll: () => void }) {
   const t = useT();
   const language = useLanguage();
   const { target, status, verify, rtt, memorySamples, rttSamples, stale, verifiedAt, verifyStale } = server.state;
@@ -60,7 +62,7 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
     return () => clearInterval(id);
   }, [live, target, reload]);
 
-  if (!target || !status) return <SetupHelp />;
+  if (!target || !status) return null;
 
   const host = status.host;
   const reachable = status.executor_reachable;
@@ -69,6 +71,7 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
   const execStatus = verifyStale && verify?.executor_status === "CHAIN_STATUS_VALID" ? undefined : verify?.executor_status;
   const daemonChain = chainView(daemonStatus);
   const execChain = chainView(execStatus);
+  const disk = diskUsedPercent(host);
   const previewKey = auditPlaceholderKey({
     total: audit.records.length,
     shown: audit.records.length,
@@ -79,7 +82,7 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
   return (
     <div className="screen" data-testid="screen-status">
       <header className="stage-head">
-        <p className="eyebrow">{stale ? t("status.eyebrow_stale") : t("status.eyebrow")}</p>
+        {stale ? <p className="eyebrow">{t("status.eyebrow_stale")}</p> : null}
         <h1 className="title mono">{target}</h1>
         {statusMetaKeys(stale, reachable).map((k) => (
           <p key={k} className="meta">
@@ -87,6 +90,46 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
           </p>
         ))}
       </header>
+
+      <section className="panel glass">
+        <div className="panel-head">
+          <div>
+            <h2 className="section-title">{t("status.summary")}</h2>
+            <p className="panel-sub">{reachable ? t("status.summary_ok") : t("status.meta_down")}</p>
+          </div>
+        </div>
+        <KeyValues
+          testId="server-summary"
+          rows={[
+            { label: t("row.os"), value: host?.os || "—" },
+            { label: t("row.architecture"), value: host?.architecture || "—", mono: true },
+            { label: t("row.kernel"), value: host?.kernel_version || "—", mono: true },
+            { label: t("row.kadran"), value: status.daemon_version || "—", mono: true },
+            { label: t("row.executor"), value: status.executor_version || "—", mono: true },
+            { label: t("row.docker"), value: host?.docker_version || t("value.none"), mono: true },
+            { label: t("row.name"), value: status.hostname || "—", mono: true },
+            { label: t("row.disk"), value: disk === null ? "—" : `${disk}% · ${humanBytes(host!.disk_total_bytes)}`, mono: true },
+            root
+              ? { label: t("row.user"), value: t("value.broken_install", { user: "root" }), tone: "bad" }
+              : { label: t("row.user"), value: status.running_as_user || "—", mono: true },
+          ]}
+        />
+      </section>
+
+      <section className="panel glass">
+        <div className="panel-head">
+          <h2 className="section-title">{t("status.connection")}</h2>
+          <button type="button" className="btn btn-ghost" disabled={!profile} onClick={() => onEdit(target)} data-testid="server-edit">{t("fleet.edit")}</button>
+        </div>
+        <KeyValues
+          testId="server-connection"
+          rows={[
+            { label: t("fleet.name"), value: profile?.name ?? target },
+            { label: t("fleet.provider"), value: profile?.provider ? providerView(profile.provider).name : t("fleet.no_provider") },
+            { label: t("rail.target_label"), value: target, mono: true },
+          ]}
+        />
+      </section>
 
       <section className="panel glass">
         <div className="panel-head">
@@ -122,39 +165,6 @@ export function StatusScreen({ server, onSeeAll }: { server: ServerApi; onSeeAll
             testId="tile-chains"
           />
         </div>
-      </section>
-
-      <section className="cards">
-        <InfoCard
-          title={t("card.daemon")}
-          rows={[
-            { label: t("row.version"), value: status.daemon_version || "—" },
-            { label: t("row.uptime"), value: humanDuration(status.daemon_uptime_seconds) },
-            root
-              ? { label: t("row.user"), value: t("value.broken_install", { user: "root" }), tone: "bad" }
-              : { label: t("row.user"), value: status.running_as_user || "—" },
-          ]}
-        />
-        <InfoCard
-          title={t("card.executor")}
-          rows={[
-            {
-              label: t("row.state"),
-              value: reachable ? t("value.reachable") : t("value.unreachable"),
-              tone: reachable ? "ok" : "warn",
-            },
-            { label: t("row.version"), value: status.executor_version || "—" },
-            { label: t("row.docker"), value: host?.docker_version || t("value.none") },
-          ]}
-        />
-        <InfoCard
-          title={t("card.host")}
-          rows={[
-            { label: t("row.name"), value: status.hostname || "—" },
-            { label: t("row.kernel"), value: host?.kernel_version || "—" },
-            { label: t("row.memory"), value: memoryText(host) },
-          ]}
-        />
       </section>
 
       <section className="chains">

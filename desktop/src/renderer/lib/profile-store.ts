@@ -25,6 +25,8 @@ export interface ProfileStore {
   load: () => Promise<void>;
   add: (profile: Profile) => Promise<void>;
   remove: (target: string) => Promise<void>;
+  /** Adı ve sağlayıcıyı değiştirir; hedef sabittir. Boş sağlayıcı alanı siler. */
+  update: (target: string, change: { name: string; provider: string }) => Promise<void>;
 }
 
 export function createProfileStore(io: ProfileIO): ProfileStore {
@@ -55,6 +57,12 @@ export function createProfileStore(io: ProfileIO): ProfileStore {
         const list = await loaded();
         if (!list.some((p) => p.target === target)) return;
         apply(await io.save(list.filter((p) => p.target !== target)));
+      }),
+    update: (target, { name, provider }) =>
+      serial(async () => {
+        const list = await loaded();
+        if (!list.some((p) => p.target === target)) return;
+        apply(await io.save(list.map((p) => (p.target === target ? { name, target, ...(provider ? { provider } : {}) } : p))));
       }),
   };
 }

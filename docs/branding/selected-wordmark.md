@@ -1,5 +1,10 @@
 # KΛDRΛN — seçilen marka
 
+> **31 Ekim 2026 (K-161):** kullanıcı taslaktaki yazıyı yeni logo seçti. Masaüstünde logo artık
+> kalın, `.22em` aralıklı metin (Segoe UI, sistem yazı tipi); dış hatları yeniden dağıtılamadığı
+> için SVG'ye çevrilmedi. Aşağıdaki Bahnschrift kaydı ve simge dosyaları geçmiş olarak duruyor;
+> uygulama simgesi değişmedi.
+
 12 Ekim 2026. Kullanıcı üç font arasından **02: Bahnschrift Light
 SemiCondensed** seçti. Eksenler `wght=300`, `wdth=87.5`; harf aralığı
 `0.07 em`. İki Λ harfi de fontun kendi glifidir.

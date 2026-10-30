@@ -23,7 +23,7 @@ test("kaydırıcılar 0–1 aralığına, vurgu RGB üçlüsüne", () => {
 
 test("fontStack: takma ad yoksa yedek yığın", () => {
   assert.equal(fontStack(null, UI_FALLBACK), UI_FALLBACK);
-  assert.match(CODE_FALLBACK, /^"JetBrains Mono Bundled"/);
+  assert.match(CODE_FALLBACK, /^Consolas, "JetBrains Mono Bundled"/);
 });
 
 test("applyAppearance değişkenleri ve öznitelikleri yazar", () => {
@@ -31,7 +31,7 @@ test("applyAppearance değişkenleri ve öznitelikleri yazar", () => {
   const target = { style: { setProperty: (k: string, v: string) => props.set(k, v) }, dataset: {} as Record<string, string | undefined> };
   applyAppearance(target, A, STACKS);
   assert.equal(props.get("--tint"), "0.48");
-  assert.equal(target.dataset.mode, "acrylic");
+  assert.equal(target.dataset.mode, "glass");
   assert.equal(target.dataset.tone, "light");
 });
 

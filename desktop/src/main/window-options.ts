@@ -13,6 +13,8 @@ import type { BrowserWindowConstructorOptions, Rectangle } from "electron";
 import type { WindowMode } from "../shared/appearance.ts";
 
 export const SOLID_BACKGROUND = "#0e1016";
+/** Renkli camın zemini yüklenene kadar görünen renk. */
+export const GLASS_BACKGROUND = "#0e1422";
 const CLEAR = "#00000000";
 
 export interface WindowState {
@@ -47,8 +49,8 @@ export function windowOptions(
     platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
 
   switch (mode) {
-    case "clear":
-      return { ...base, ...chrome, transparent: true, backgroundColor: CLEAR };
+    case "glass":
+      return { ...base, ...chrome, backgroundColor: GLASS_BACKGROUND };
     case "acrylic":
     case "mica":
       return { ...base, ...chrome, backgroundColor: CLEAR, backgroundMaterial: mode };
@@ -59,9 +61,10 @@ export function windowOptions(
   }
 }
 
-/** needsRecreate: yalnız Acrylic ↔ Mica (backgroundMaterial) yerinde değişebilir. */
+/** needsRecreate: Acrylic ↔ Mica yerinde değişir; Renkli cam ↔ Solid yalnız CSS'tir. */
 export function needsRecreate(from: WindowMode, to: WindowMode): boolean {
   if (from === to) return false;
   const live = (m: WindowMode) => m === "acrylic" || m === "mica";
-  return !(live(from) && live(to));
+  const opaque = (m: WindowMode) => m === "glass" || m === "solid";
+  return !((live(from) && live(to)) || (opaque(from) && opaque(to)));
 }

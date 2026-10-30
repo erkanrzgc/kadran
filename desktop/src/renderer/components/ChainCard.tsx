@@ -22,7 +22,7 @@ export function ChainCard({ name, status, checked, detail, testId }: Props) {
   return (
     <article className={`chain glass is-${view.tone}`} data-testid={testId}>
       <div className="chain-top">
-        <h4 className="chain-name mono">{name}</h4>
+        <h3 className="chain-name mono">{name}</h3>
         <span className={`badge is-${view.tone}`}>{view.label}</span>
       </div>
       <p className="chain-count">

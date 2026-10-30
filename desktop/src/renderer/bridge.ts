@@ -11,6 +11,8 @@ import type { AppSpec, AppUpdate, AppsListPayload, AppGetPayload, AppWritePayloa
 export interface Profile {
   name: string;
   target: string;
+  /** Elle seçilen sağlayıcı etiketi; kart gruplarını belirler. */
+  provider?: string;
 }
 
 export interface AppearanceBundle {
@@ -44,6 +46,7 @@ export interface KadranBridge {
   saveAppearance(appearance: Appearance): Promise<Appearance>;
   windowControl(action: WindowAction): Promise<void>;
   copyText(text: string): Promise<void>;
+  userName(): Promise<string>;
 }
 
 declare global {

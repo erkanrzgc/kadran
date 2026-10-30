@@ -47,8 +47,8 @@ export function AuditScreen({ target }: { target: string | null }) {
   return (
     <div className="screen" data-testid="screen-audit">
       <header className="stage-head">
-        <p className="eyebrow">{t("audit.eyebrow")}</p>
         <h1 className="title">{t("audit.title")}</h1>
+        <p className="meta">{t("audit.subtitle")}</p>
       </header>
 
       <section className="panel glass">

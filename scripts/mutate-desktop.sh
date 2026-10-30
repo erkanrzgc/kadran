@@ -120,8 +120,8 @@ mutate_in src/main/window-options.ts "sandbox kapalı" \
     "s=s.replace('sandbox: true,','sandbox: false,',1)"
 mutate_in src/main/window-options.ts "contextIsolation kapalı" \
     "s=s.replace('contextIsolation: true,','contextIsolation: false,',1)"
-mutate_in src/main/window-options.ts "Clear geçişi yeniden kurmuyor" \
-    "s=s.replace('return !(live(from) && live(to));','return false;',1)"
+mutate_in src/main/window-options.ts "malzeme ailesi değişince pencere yeniden kurulmuyor" \
+    "s=s.replace('return !((live(from) && live(to)) || (opaque(from) && opaque(to)));','return false;',1)"
 mutate_in src/main/permissions.ts "her izin kontrolüne evet" \
     "s=s.replace('return ALLOWED_CHECKS.has(permission);','return true;',1)"
 mutate_in src/main/permissions.ts "her izin isteğine evet" \

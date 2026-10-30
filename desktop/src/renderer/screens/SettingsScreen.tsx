@@ -29,7 +29,6 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
   return (
     <div className="screen" data-testid="screen-settings">
       <header className="stage-head">
-        <p className="eyebrow">{t("settings.title")}</p>
         <h1 className="title">{t("settings.appearance")}</h1>
         <p className="meta">{t("settings.appearance_meta")}</p>
       </header>
@@ -43,10 +42,13 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
             onChange={(mode) => update({ mode })}
           />
         </SetRow>
+        <details className="advanced">
+          <summary data-testid="settings-advanced">{t("settings.advanced")}</summary>
         <RangeRow title={t("settings.tint")} hint={t("settings.tint_hint")} id="tint" value={a.tint} min={LIMITS.tint[0]} max={LIMITS.tint[1]} onChange={(tint) => update({ tint })} />
         <RangeRow title={t("settings.panel")} hint={t("settings.panel_hint")} id="panel" value={a.panel} min={LIMITS.panel[0]} max={LIMITS.panel[1]} onChange={(panel) => update({ panel })} />
         <RangeRow title={t("settings.edge")} hint={t("settings.edge_hint")} id="edge" value={a.edge} min={LIMITS.edge[0]} max={LIMITS.edge[1]} onChange={(edge) => update({ edge })} />
         <RangeRow title={t("settings.glow")} hint={t("settings.glow_hint")} id="glow" value={a.glow} min={LIMITS.glow[0]} max={LIMITS.glow[1]} onChange={(glow) => update({ glow })} />
+        </details>
         <SetRow title={t("settings.accent")} hint={t("settings.accent_hint")}>
           <Segmented
             label={t("settings.accent")}
@@ -69,7 +71,7 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
             family={a.uiFont.family}
             weight={nearestWeight(uiFaces, a.uiFont.weight)}
             weights={weightsOf(uiFaces)}
-            defaultLabel={t("font.system")}
+            defaultLabel={t("font.default")}
             label={t("settings.ui_font")}
             weightLabel={t("font.weight_of", { font: t("settings.ui_font") })}
             onFamily={(family) => update({ uiFont: { family, weight: nearestWeight(families.get(family) ?? [], 400) } })}
@@ -83,7 +85,7 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
             family={a.codeFont.family}
             weight={nearestWeight(codeFaces, a.codeFont.weight)}
             weights={weightsOf(codeFaces)}
-            defaultLabel={t("font.bundled")}
+            defaultLabel={t("font.default")}
             label={t("settings.code_font")}
             weightLabel={t("font.weight_of", { font: t("settings.code_font") })}
             onFamily={(family) => update({ codeFont: { family, weight: nearestWeight(families.get(family) ?? [], 400) } })}

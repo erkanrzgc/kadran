@@ -28,7 +28,7 @@ function BackupList({ target }: { target: string }) {
     setCreated(result);
     await query.reload();
   };
-  return <div className="screen" data-testid="screen-backups"><header className="stage-head resource-head"><div><p className="eyebrow">{t("backups.eyebrow")}</p><h1 className="title">{t("backups.title")}</h1><p className="meta">{t("backups.subtitle")}</p></div><button type="button" className="btn btn-primary" disabled={operation.pending} onClick={() => void create()} data-testid="backup-create">{operation.pending ? t("operation.running") : t("backups.create")}</button></header>
+  return <div className="screen" data-testid="screen-backups"><header className="stage-head resource-head"><div><h1 className="title">{t("backups.title")}</h1><p className="meta">{t("backups.subtitle")}</p></div><button type="button" className="btn btn-primary" disabled={operation.pending} onClick={() => void create()} data-testid="backup-create">{operation.pending ? t("operation.running") : t("backups.create")}</button></header>
     <p className="scope-banner glass" data-testid="backups-scope">{t("backups.volumes_excluded")}</p>
     {operation.notice ? <p className="scope-note" role="status" data-testid="operation-notice">{operation.notice}</p> : null}
     {operation.error ? <p className="operation-message is-bad" role="alert" data-testid="backup-error">{operation.error}</p> : null}

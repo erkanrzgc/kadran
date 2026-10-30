@@ -62,6 +62,7 @@ test("şablonlu t(`…`) çağrılarının her ailesi tanımlı ve üyeleri en+t
     "mode.${}": ALL_MODES,
     "accent.${}": ACCENTS,
     "tone.${}": TONES,
+    "nav.${}": ["dashboard", "servers", "apps", "alarms", "audit", "settings"], // TopBar.tsx FLEET_VIEWS
   };
 
   const found = new Set<string>();

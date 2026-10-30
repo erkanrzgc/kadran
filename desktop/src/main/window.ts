@@ -1,11 +1,11 @@
 /**
  * Pencereyi kurar ve görünüm modu değişince uygular.
  *
- * Saydamlık (Clear) pencere KURULURKEN verilir, sonradan açılıp
- * kapanamaz. Bu yüzden Clear ile diğerleri arasında yeni bir pencere
- * kurulur: konum, boyut ve büyütülmüş hâl taşınır, arayüz Settings
- * ekranında açılır (mod yalnız oradan değiştiriliyor). Acrylic ↔ Mica
- * yerinde değişir.
+ * Yerel malzeme (Acrylic, Mica, Vibrancy) pencere KURULURKEN verilir. Bu
+ * yüzden malzeme ailesi değişince yeni bir pencere kurulur: konum, boyut ve
+ * büyütülmüş hâl taşınır, arayüz Settings ekranında açılır (mod yalnız oradan
+ * değiştiriliyor). Acrylic ↔ Mica yerinde değişir; Renkli cam ↔ Solid yalnız
+ * CSS'tir, pencereye dokunmaz.
  *
  * Uygulama İÇİNDE gezinme yok. Bir bağlantıya tıklanırsa kullanıcının
  * tarayıcısında açılır; pencere hiçbir zaman uzak bir içeriğe dönüşemez.
@@ -64,7 +64,7 @@ export function createWindowHost(opts: WindowHostOptions): WindowHost {
   function applyMode(next: WindowMode): void {
     if (!win || !mode || next === mode) return;
     if (!needsRecreate(mode, next)) {
-      win.setBackgroundMaterial(next === "mica" ? "mica" : "acrylic");
+      if (next === "mica" || next === "acrylic") win.setBackgroundMaterial(next);
       mode = next;
       return;
     }

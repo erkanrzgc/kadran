@@ -37,6 +37,7 @@ export const EXPECTED_BRIDGE = [
   "saveAppearance",
   "saveProfiles",
   "status",
+  "userName",
   "version",
   "windowControl",
 ];
@@ -46,29 +47,46 @@ const ROOT_TIMEOUT_MS = 5_000;
 
 /**
  * prepareSmokeUserData, testi kullanıcının gerçek verisinden ayırır:
- * geçici bir kullanıcı verisi dizini, iki sahte profil ve Solid mod
- * (CI'daki sanal ekranda saydamlık yok). `whenReady`'den ÖNCE çağrılmalı.
+ * geçici bir kullanıcı verisi dizini, sahte profiller ve Renkli cam (yerel
+ * malzeme gerektirmez, CI'daki sanal ekranda da aynı). `whenReady`'den ÖNCE çağrılmalı.
  */
+/** Çok uzun ad ve hedef: kartta, sekmede ve menüde taşma olmamalı. */
+const LONG_NAME = "uzun-" + "ad".repeat(60);
+const LONG_TARGET = "fake@" + "uzun-hedef.".repeat(11) + "example";
+
 export function prepareSmokeUserData(): string {
   const dir = mkdtempSync(join(tmpdir(), "kadran-smoke-"));
   writeFileSync(
     join(dir, "profiles.json"),
     JSON.stringify([
-      { name: "fake", target: "fake@test" },
-      { name: "down", target: "fake@down" },
-      { name: "badseq", target: "fake@badseq" },
+      { name: "fake", target: "fake@test", provider: "hetzner" },
+      { name: "down", target: "fake@down", provider: "hetzner" },
+      { name: "badseq", target: "fake@badseq", provider: "google-cloud" },
+      { name: "totp", target: "fake@totp", provider: "hostinger" },
       { name: "flaky", target: "fake@flaky" },
       { name: "verifyfail", target: "fake@verifyfail" },
       { name: "slow", target: "fake@slow" },
+      { name: LONG_NAME, target: LONG_TARGET, provider: "kendi-sunucum" },
     ]),
   );
-  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ mode: process.env.KADRAN_SMOKE_MODE === "clear" ? "clear" : "solid" }));
+  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ mode: "glass" }));
   app.setPath("userData", dir);
   return dir;
 }
 
+const EVALUATE_TIMEOUT_MS = 30_000;
+
+/** Sınırlı: takılan arayüz CI'ı sonsuza dek asmaz, neyin takıldığını söyleyerek düşer. */
 export async function evaluate<T>(win: BrowserWindow, code: string): Promise<T> {
-  return (await win.webContents.executeJavaScript(code, true)) as T;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`renderer did not answer: ${code.slice(0, 120)}`)), EVALUATE_TIMEOUT_MS);
+  });
+  try {
+    return (await Promise.race([win.webContents.executeJavaScript(code, true), timeout])) as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -114,7 +132,7 @@ async function fill(win: BrowserWindow, selector: string, value: string): Promis
 }
 
 async function noHorizontalOverflow(win: BrowserWindow, label: string): Promise<void> {
-  const offenders = await evaluate<string[]>(win, `(() => { const nodes = [...document.querySelectorAll('.app, .stage, .rail, .panel, .table-wrap, .settings, .resource-card, .operation-dialog')]; return nodes.filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth); })()`);
+  const offenders = await evaluate<string[]>(win, `(() => { const nodes = [...document.querySelectorAll('.app, .main, .stage, .rail, .panel, .table-wrap, .settings, .resource-card, .kart, .operation-dialog')]; return nodes.filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth); })()`);
   expect(offenders.length === 0, `${label} horizontal overflow: ${offenders.join(", ")}`);
 }
 
@@ -127,64 +145,110 @@ async function screenshot(win: BrowserWindow, name: string): Promise<void> {
   expect(!capture.isEmpty(), `empty screenshot: ${name}`);
   const path = join(dir, `${name}.png`);
   writeFileSync(path, capture.toPNG());
-  if (process.env.KADRAN_SMOKE_MODE === "clear") {
-    const bitmap = capture.toBitmap();
-    let translucent = 0;
-    let visible = 0;
-    for (let index = 3; index < bitmap.length; index += 4) { if (bitmap[index]! > 0) visible++; if (bitmap[index]! > 0 && bitmap[index]! < 255) translucent++; }
-    expect(visible > 1000 && translucent > 1000, `Clear mode does not retain visible translucent pixels (${visible}, ${translucent})`);
-    console.log(`Clear alpha evidence: ${translucent} translucent pixels`);
-  }
   console.log(`UI evidence: ${path}`);
 }
 
 async function checkWordmark(win: BrowserWindow): Promise<string> {
-  const mark = await evaluate<{ readable: boolean; color: string; fill: string; duplicate: boolean }>(win, `(() => {
-    const svg = ${q('[data-testid="brand-logo"]')};
-    if (!(svg instanceof SVGSVGElement)) return { readable: false, color: '', fill: '', duplicate: false };
-    const rect = svg.getBoundingClientRect();
-    const geometry = svg.getBBox();
-    return { readable: rect.width >= 100 && rect.height >= 20 && geometry.width > 0 && geometry.height > 0,
-      color: getComputedStyle(svg).color, fill: getComputedStyle(svg.querySelector('path')).fill,
-      duplicate: Boolean(document.querySelector('.tb-brand img, .tb-brand .wordmark')) };
+  const mark = await evaluate<{ readable: boolean; color: string; weight: string; spacing: string; text: string }>(win, `(() => {
+    const el = ${q('[data-testid="brand-logo"]')};
+    if (!(el instanceof HTMLElement)) return { readable: false, color: '', weight: '', spacing: '', text: '' };
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    return { readable: rect.width >= 60 && rect.height >= 12, color: style.color, weight: style.fontWeight, spacing: style.letterSpacing, text: el.textContent };
   })()`);
-  expect(mark.readable && !mark.duplicate, "selected wordmark is missing, too small or duplicated");
-  expect(mark.fill === mark.color, `wordmark did not follow foreground color (${mark.fill}, ${mark.color})`);
+  expect(mark.readable && mark.text === "KΛDRΛN", "wordmark is missing or too small");
+  expect(mark.weight === "700" && parseFloat(mark.spacing) > 2.5, `wordmark lost its style: ${mark.weight} ${mark.spacing}`);
   return mark.color;
 }
 
+/** Logo rengi yalnız temaya bağlı; vurgu rengi değiştirmez. Kontrast hesabı test/style-rules.test.ts'te. */
 async function checkBrandContrast(win: BrowserWindow): Promise<void> {
-  const snapshot = await evaluate<{ tone: string | undefined; tint: string; accent: string }>(win,
-    `({ tone: document.documentElement.dataset.tone, tint: document.documentElement.style.getPropertyValue('--tint'), accent: document.documentElement.style.getPropertyValue('--acc') })`);
+  const snapshot = await evaluate<{ tone: string | undefined; accent: string }>(win,
+    `({ tone: document.documentElement.dataset.tone, accent: document.documentElement.style.getPropertyValue('--acc') })`);
   try {
     for (const tone of ["dark", "light"]) {
-      await evaluate(win, `document.documentElement.dataset.tone = '${tone}'; document.documentElement.style.setProperty('--tint', '0')`);
+      await evaluate(win, `document.documentElement.dataset.tone = '${tone}'`);
       for (const accent of ["125, 211, 252", "255, 176, 32", "126, 224, 138", "236, 235, 230"]) {
         await evaluate(win, `document.documentElement.style.setProperty('--acc', '${accent}')`);
         const ink = await checkWordmark(win);
-        expect(ink === (tone === "light" ? "rgb(0, 0, 0)" : "rgb(237, 241, 245)"), `${tone} wordmark changed with accent: ${ink}`);
-        const background = await evaluate<string>(win, "getComputedStyle(document.querySelector('.titlebar')).backgroundColor");
-        const rgba = background.match(/[\d.]+/g)?.map(Number);
-        expect(rgba?.length === 4 && rgba[3]! >= 0.7 && rgba[3]! < 1, `titlebar lost its translucent contrast guard: ${background}`);
-        const luminance = (rgb: number[]): number => rgb.map((v) => v / 255).map((v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i]!, 0);
-        const fg = luminance(tone === "light" ? [0, 0, 0] : [237, 241, 245]);
-        for (const wallpaper of [0, 255]) {
-          const bg = luminance(rgba!.slice(0, 3).map((v) => v * rgba![3]! + wallpaper * (1 - rgba![3]!)));
-          const contrast = (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
-          expect(contrast >= 4.5, `${tone} wordmark contrast at zero tint is only ${contrast.toFixed(2)}:1`);
-        }
+        expect(ink === (tone === "light" ? "rgb(0, 0, 0)" : "rgb(245, 248, 252)"), `${tone} wordmark changed with accent: ${ink}`);
       }
     }
-    console.log("wordmark contrast passed: both tones, four accents, zero tint, black/white backdrops");
+    console.log("wordmark passed: both tones, four accents");
   } finally {
-    await evaluate(win, `(() => { const root = document.documentElement; const saved = ${JSON.stringify(snapshot)}; if (saved.tone) root.dataset.tone = saved.tone; else delete root.dataset.tone; for (const [name, value] of [['--tint', saved.tint], ['--acc', saved.accent]]) { if (value) root.style.setProperty(name, value); else root.style.removeProperty(name); } })()`);
+    await evaluate(win, `(() => { const root = document.documentElement; const saved = ${JSON.stringify(snapshot)}; if (saved.tone) root.dataset.tone = saved.tone; else delete root.dataset.tone; if (saved.accent) root.style.setProperty('--acc', saved.accent); else root.style.removeProperty('--acc'); })()`);
   }
+}
+
+/**
+ * openServer: kullanıcı gibi panodaki karta basar. Pano ekranda değilse önce
+ * panoya döner; sekmeden değil karttan açmak kart testid'lerini de sınar.
+ */
+async function openServer(win: BrowserWindow, target: string): Promise<void> {
+  const card = `[data-testid="server-${target}"]`;
+  if (!(await evaluate<boolean>(win, `Boolean(${q(card)})`))) await click(win, '[data-testid="tab-fleet"]');
+  await waitFor(win, q(card), `card ${target}`);
+  await click(win, card);
+}
+
+/** Pano: gerçek çağrılardan kart, grup ve son işlemler. */
+async function dashboardJourney(win: BrowserWindow): Promise<void> {
+  await waitFor(win, q('[data-testid="screen-dashboard"]'), "dashboard");
+  await waitFor(win, `${q('[data-testid="card-fake@test"]')}?.dataset.state === "ready"`, "ready card");
+  await waitFor(win, `${q('[data-testid="card-fake@down"]')}?.dataset.state === "unreachable"`, "unreachable card");
+  await waitFor(win, `${q('[data-testid="card-fake@totp"]')}?.dataset.state === "totp"`, "TOTP card");
+  expect((await text(win, '[data-testid="card-fake@totp"]')).includes("kadran login"), "TOTP card does not tell the real next step");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="toast"]')})`)), "fleet polling raised a toast for an unreachable server");
+  const groups = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="server-groups"] > section')].map((s) => s.dataset.testid)`);
+  expect(groups[0] === "group-hetzner" && groups.at(-1) === "group-none", `provider groups: ${groups.join(",")}`);
+  expect(await evaluate<boolean>(win, `${q('[data-testid="group-hetzner"]')}.classList.contains("is-wide")`), "multi-card provider group is not full width");
+  expect((await text(win, '[data-testid="card-fake@test"]')).includes("2 applications"), "card does not show the real application count");
+  await waitFor(win, `document.querySelectorAll('[data-testid="recent-ops-row"]').length === 5`, "recent operations");
+  const actions = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="recent-ops-row"] td:nth-child(3)')].map((c) => c.textContent)`);
+  expect(actions.every((a) => a === "deployment" || a === "rollback"), `recent operations contain ${actions.join(",")}`);
+  const wrapped = await evaluate<number>(win, `[...document.querySelectorAll('[data-testid="recent-ops-row"] .pill')].filter((p) => p.getBoundingClientRect().height > 24).length`);
+  expect(wrapped === 0, `status pill wrapped in ${wrapped} rows`);
+  await waitFor(win, `${q('[data-testid="ops-failed"]')}?.textContent.includes("badseq")`, "unreadable server named");
+  const buttonFill = await evaluate<string>(win, `getComputedStyle(${q(".kart")}).backgroundColor`);
+  expect(buttonFill === "rgba(0, 0, 0, 0)", `glass card has an opaque fill: ${buttonFill}`);
+  const glass = await evaluate<string>(win, `getComputedStyle(${q(".kart")}).backdropFilter`);
+  expect(glass.includes("blur"), `server card has no real backdrop blur: ${glass}`);
+  await noHorizontalOverflow(win, "dashboard");
+  await screenshot(win, "dashboard-dark-1180x780");
+
+  await click(win, '[data-testid="rail-alarms"]');
+  await waitFor(win, q('[data-testid="fleet-alarm-row"]'), "merged alarms");
+  expect((await text(win, '[data-testid="rail-alarms"]')).length > 0, "alarm item is empty");
+  await click(win, '[data-testid="rail-apps"]');
+  await waitFor(win, q('[data-testid="fleet-app-row"]'), "merged applications");
+  await click(win, '[data-testid="rail-audit"]');
+  await waitFor(win, q('[data-testid="fleet-audit-row"]'), "merged audit");
+  await click(win, '[data-testid="rail-servers"]');
+  await waitFor(win, q('[data-testid="servers-section"]'), "servers screen");
+
+  // Sağlayıcı etiketi diske gider ve kart gruba geçer.
+  await click(win, '[data-testid="card-edit-fake@verifyfail"]');
+  await waitFor(win, q('[data-testid="server-dialog"]'), "server settings");
+  await evaluate(win, `(() => { const el = ${q('[data-testid="server-provider"]')}; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(el, "aws"); el.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await click(win, '[data-testid="connect"]');
+  await waitFor(win, q('[data-testid="group-aws"] [data-testid="card-fake@verifyfail"]'), "provider group after edit");
+
+  // Yeni sunucu önce bağlanır; bağlanamayan kaydedilmez.
+  await click(win, '[data-testid="server-add"]');
+  await fill(win, '[data-testid="target-input"]', "fake@down");
+  await click(win, '[data-testid="connect"]');
+  await waitFor(win, q('[data-testid="toast"]'), "add failure");
+  expect(await evaluate<boolean>(win, `Boolean(${q('[data-testid="server-dialog"]')})`), "failed add closed the dialog");
+  await click(win, '[data-testid="server-cancel"]');
+  await click(win, ".toast-close");
 }
 
 async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
   const darkWordmarkColor = await checkWordmark(win);
+  const cardFill = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backgroundColor`);
+  expect(cardFill === "rgba(0, 0, 0, 0)", `application card has an opaque fill: ${cardFill}`);
   const glass = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backdropFilter`);
   expect(glass.includes("blur"), `glass surfaces have no real backdrop blur (${glass}); ${await evaluate<string>(win, "JSON.stringify({spaced:CSS.supports('backdrop-filter','blur(24px) saturate(135%)'),minified:CSS.supports('backdrop-filter','blur(24px)saturate(135%)'),rules:[...document.styleSheets].flatMap(s=>[...s.cssRules]).filter(r=>r.selectorText==='.glass').map(r=>r.cssText)})")}`);
   await screenshot(win, "apps-dark-1180x780");
@@ -278,18 +342,18 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await waitFor(win, `document.querySelectorAll('[data-testid="backup-row"]').length === 2`, "backup refreshed list");
   await noHorizontalOverflow(win, "backups at 760x520");
 
-  await click(win, '[data-testid="server-fake@slow"]');
+  await openServer(win, "fake@slow");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "slow server connected");
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="screen-apps"]'), "slow application read started");
-  await click(win, '[data-testid="server-fake@test"]');
+  await openServer(win, "fake@test");
   await waitFor(win, q('[data-testid="app-card-hello"]'), "new server application list");
   await new Promise((r) => setTimeout(r, 1900));
   expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-card-old-only"]')})`)), "old-server response overwrote new application list");
   await noHorizontalOverflow(win, "apps at 760x520");
 
+  await openServer(win, "fake@verifyfail");
   await click(win, '[data-testid="nav-status"]');
-  await click(win, '[data-testid="server-fake@verifyfail"]');
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "initial successful verification");
   const verifiedAt = await text(win, '[data-testid="verification-time"]');
   expect(verifiedAt.includes("Last verified:"), "last verification time missing");
@@ -309,14 +373,13 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="tone-light"]');
   await waitFor(win, "document.documentElement.dataset.tone === 'light'", "light appearance");
   expect((await checkWordmark(win)) !== darkWordmarkColor, "light theme retained the dark theme wordmark color");
-  await click(win, '[data-testid="server-fake@test"]');
+  await openServer(win, "fake@test");
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "light application list");
   await noHorizontalOverflow(win, "light apps at 760x520");
   await screenshot(win, "apps-light-760x520");
   await click(win, '[data-testid="nav-settings"]');
   await click(win, '[data-testid="tone-dark"]');
-  await click(win, '[data-testid="nav-status"]');
   win.setSize(1180, 780);
 }
 
@@ -340,7 +403,8 @@ async function journey(win: BrowserWindow): Promise<void> {
   const fonts = await evaluate<number>(win, "window.queryLocalFonts ? queryLocalFonts().then((l) => l.length) : -1");
   expect(fonts > 0, `font list is empty or missing (${fonts}); the local-fonts permission may be denied`);
 
-  await click(win, '[data-testid="server-fake@test"]');
+  await dashboardJourney(win);
+  await openServer(win, "fake@test");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Attention required"`, "health pill");
   await waitFor(win, `${q('[data-testid="chain-executor"] .badge')}?.textContent === "UNVERIFIABLE"`, "executor chain");
 
@@ -369,8 +433,8 @@ async function journey(win: BrowserWindow): Promise<void> {
   await managementJourney(win);
 
   // Bozuk latest_seq HATA olmalı, "zincirde kayıt yok" değil.
+  await openServer(win, "fake@badseq");
   await click(win, '[data-testid="nav-status"]');
-  await click(win, '[data-testid="server-fake@badseq"]');
   await waitFor(
     win,
     `${q('[data-testid="audit-preview"] [data-testid="audit-placeholder"]')}?.textContent === "Could not load audit records."`,
@@ -378,7 +442,7 @@ async function journey(win: BrowserWindow): Promise<void> {
   );
 
   // Bağlantı koptuktan sonra yenileme: ekran bayat işaretlenmeli.
-  await click(win, '[data-testid="server-fake@flaky"]');
+  await openServer(win, "fake@flaky");
   await waitFor(win, q('[data-testid="screen-status"]'), "status screen for fake@flaky");
   // fake@flaky sağlıklı başlar; bayatlık "Healthy"i düşürmeli (yalnız "Healthy değil" boş bir iddia olurdu).
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "healthy pill for fake@flaky");
@@ -390,16 +454,12 @@ async function journey(win: BrowserWindow): Promise<void> {
 
   await click(win, '[data-testid="nav-settings"]');
   await waitFor(win, q('[data-testid="screen-settings"]'), "settings screen");
-  // İkon animasyonu: Motion'ın yazdığı her şey CSP'ye takılmamalı.
-  await evaluate(win, `${q('[data-testid="nav-status"]')}.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))`);
-  await new Promise((r) => setTimeout(r, 800));
-
   await click(win, '[data-testid="lang-tr"]');
   await waitFor(win, `${q('[data-testid="nav-settings"]')}?.textContent === "Ayarlar"`, "Turkish UI");
 
   // İnceleme odağı 5: Türkçe arayüzde İngilizce sunucu hatası tam ve düz metin.
   // Önceki hata bildirimleri ekranda kalmış olabilir; TÜM bildirimler aranır.
-  await click(win, '[data-testid="server-fake@down"]');
+  await openServer(win, "fake@down");
   const downToast = `[...document.querySelectorAll('[data-testid="toast"] .toast-text')].find((el) => el.textContent.includes("Connection refused"))`;
   await waitFor(win, downToast, "error toast");
   const toast = await evaluate<string>(win, `${downToast}.textContent`);

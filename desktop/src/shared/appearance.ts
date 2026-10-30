@@ -7,7 +7,7 @@
  * doğrulanır; geçersiz alan varsayılana döner, geçerli alanlar korunur.
  */
 
-export type WindowMode = "clear" | "acrylic" | "mica" | "vibrancy" | "solid";
+export type WindowMode = "glass" | "acrylic" | "mica" | "vibrancy" | "solid";
 export type Accent = "ice" | "amber" | "phosphor" | "paper";
 export type Tone = "dark" | "light";
 export type Language = "en" | "tr";
@@ -38,7 +38,7 @@ export interface PlatformInfo {
   release: string;
 }
 
-export const ALL_MODES: readonly WindowMode[] = ["clear", "acrylic", "mica", "vibrancy", "solid"];
+export const ALL_MODES: readonly WindowMode[] = ["glass", "acrylic", "mica", "vibrancy", "solid"];
 export const ACCENTS: readonly Accent[] = ["ice", "amber", "phosphor", "paper"];
 export const TONES: readonly Tone[] = ["dark", "light"];
 export const LANGUAGE_CODES: readonly Language[] = ["en", "tr"];
@@ -63,25 +63,27 @@ export function isWindows11(info: PlatformInfo): boolean {
 }
 
 export function modesFor(info: PlatformInfo): readonly WindowMode[] {
-  if (info.platform === "win32") return isWindows11(info) ? ["clear", "acrylic", "mica", "solid"] : ["clear", "solid"];
-  if (info.platform === "darwin") return ["clear", "vibrancy", "solid"];
-  return ["clear", "solid"];
+  if (info.platform === "win32") return isWindows11(info) ? ["glass", "acrylic", "mica", "solid"] : ["glass", "solid"];
+  if (info.platform === "darwin") return ["glass", "vibrancy", "solid"];
+  return ["glass", "solid"];
 }
 
-export function defaultMode(info: PlatformInfo): WindowMode {
-  if (isWindows11(info)) return "acrylic";
-  if (info.platform === "win32") return "clear";
-  if (info.platform === "darwin") return "vibrancy";
-  return "solid";
+/**
+ * Renkli cam (`glass`) zeminini uygulama kendi çizer: her sistemde aynı görünür.
+ * Clear kaldırıldı: `backdrop-filter` masaüstünü bulanıklaştıramaz, duvar kâğıdı
+ * yazının arkasında net kalıyordu. Kayıtlı `clear` değeri varsayılana döner.
+ */
+export function defaultMode(_info: PlatformInfo): WindowMode {
+  return "glass";
 }
 
 export function defaultAppearance(info: PlatformInfo): Appearance {
   return {
     version: 1,
     mode: defaultMode(info),
-    tint: 60,
+    tint: 22,
     panel: 7,
-    edge: 22,
+    edge: 16,
     glow: 60,
     accent: "ice",
     tone: "dark",

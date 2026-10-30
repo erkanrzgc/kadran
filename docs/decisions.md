@@ -12298,3 +12298,37 @@ görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi 
 - Gecelik kırmızıyı yalnız GitHub'ın e-postası duyuruyor. GitHub 60 gün etkinlik olmayan depoda
   zamanlanmış koşuyu kapatır.
 - "Sürüm öncesi tam koşu" kodla zorlanmıyor; sürüm yordamına yazılı kural.
+
+## K-161 — Masaüstü görünümü: taslağa birebir, 2. parçadan önce (2026-10-31)
+
+**Durum:** dal `desktop-look`, yerelde yeşil (birim 301, duman yolculuğu); kullanıcı onayı ve CI bekleniyor.
+
+### Neden
+
+Kullanıcı masaüstünü açtırınca "rezil" buldu: 30 Ekim'de onaylanan Coolify + puslu cam tasarımı koda hiç girmemişti, arayüz kodunun son commit'i 13 Ekim'di. Taslağın ekran görüntüsünü gönderip "birebir" dedi. Sıra değişti: görünüm ortak sunucu listesinden (2. parça) önce geldi.
+
+### Ölçülen
+
+- **Yazı tipi:** taslak bu makinede Inter ile çizilmiyor: Inter yüklü değil, ölçülen genişlik Segoe UI'ninkiyle aynı (418,5), mono değerler Consolas. Beğenilen görünüm ve KΛDRΛN yazısı bu ikisi. Spec'teki Inter + JetBrains Mono kararı bu yüzden kalktı; JetBrains Mono yalnız Consolas olmayan sistemlerde yedek.
+- **Pus:** Acrylic bu makinede (yapı 26300) çalışıyor; Mica neredeyse opak. CSS `backdrop-filter` masaüstünü bulanıklaştıramaz, Clear modunda duvar kâğıdı yazının arkasında net kalıyordu.
+- **Renk lekeleri:** ekran görüntüsündeki lekeler kullanıcının duvar kâğıdı değil, taslağın kendi zemini.
+
+### Karar
+
+- Yeni varsayılan **Renkli cam** (`glass`): zemini uygulama çizer, her sistemde aynı görünür, yerel malzeme istemez. Acrylic, Mica, Vibrancy, Solid seçenek. **Clear kalktı**; kayıtlı `clear` varsayılana döner.
+- **Logo metin**, SVG değil: Segoe UI'nin dış hatları yeniden dağıtılamaz. Kalın, `.22em` aralıklı `KΛDRΛN`; macOS ve Linux'ta sistem yazı tipiyle çizilir. Yazı tipinden bağımsız bir dosya gerekirse Inter'den (OFL) çıkarılır.
+- Pencere düğmeleri taslaktaki gibi solda renkli noktalar. Kısayol etiketi Windows ve Linux'ta `Ctrl`, çünkü bu klavyelerde ⌘ yok.
+- Pano mevcut çağrılardan (`status`, `apps.list`, `alarms.list`, `audit.list`) gelir, sunucu değişmedi. Sahte veri yok: bölge sunucudan gelmediği için kartta yok; yükseltmeler sunucuda kayıt bırakmadığı için "Son işlemler"de yok.
+- İşlevi olmayan öğeler yerinde, soluk ve "Yakında" ipucuyla: Ara, Anahtarlar, Bildirimler, Hepsini yükselt, TOTP ve oturum, Yükseltme, Budama. TOTP gereken kartta "Kodu gir" yerine gerçek yol: terminalde `kadran login`.
+- Sağlayıcı, profilde elle seçilen etiket; 2. parçada `servers.json`'a taşınır.
+- Yoklama yalnız filo ekranında: 15 sn; pencere gizliyken yok. Hata bildirim değil karta yazılır.
+
+### Bulunanlar
+
+- Bağlanamayan sunucuda denetim kaydı bağlantıdan önce okunuyor, fazladan bildirim düşüyordu: sunucu ekranları artık bağlantıdan sonra veri ister.
+- `<button>` olan cam kartın varsayılan gri dolgusu camı örtüyordu; ekran görüntüsünde görüldü, duman yolculuğuna iddia eklendi.
+- Sidecar başlamayınca duman testi sonsuza dek asılı kaldı: `evaluate` artık 30 sn ile sınırlı.
+
+### Ölçülmedi
+
+macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri" kapalıyken `prefers-reduced-transparency` (ayarı değiştirmek sistem ayarı, yalnız kural var).

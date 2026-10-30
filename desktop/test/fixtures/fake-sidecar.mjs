@@ -13,7 +13,10 @@
  *   de olduğu gibi görünmeli).
  * - `fake@badseq`: audit.list bozuk bir latest_seq döner; arayüz bunu
  *   "zincirde kayıt yok" diye DEĞİL hata diye göstermeli.
- * - `fake@flaky`: ilk status çağrısı başarılı, sonrakiler hata; arayüz
+ * - `fake@totp`: sunucunun gerçek TOTP mesajını döner; kart "erişilemiyor"
+ *   değil "TOTP girişi gerekli" demeli.
+ * - `fake@flaky`: zincir doğrulanana (bağlanılana) dek status başarılı, sonra
+ *   hata; pano yoklaması bağlantıyı tüketmesin diye çağrı sayılmaz. Arayüz
  *   bayat veriyi "bağlantı koptu" diye işaretlemeli. Bu hedef SAĞLIKLI
  *   başlar (executor erişilebilir, iki zincir VALID): bayatlığın "Healthy"
  *   hapını düşürdüğü ancak böyle ölçülebilir.
@@ -40,9 +43,10 @@ export const LATEST = 1284;
 export const DOWN_MESSAGE =
   "ssh: connect to host down port 22: Connection refused; " +
   "check that the server is running and that this key is allowed in /home/kadran-client/.ssh/authorized_keys";
+export const TOTP_MESSAGE = 'TOTP is on for this server: sign in with "kadran login" (upgrade kadran if it has no login command)';
 export const FLAKY_MESSAGE = "rpc error: code = Unavailable desc = connection reset by peer";
 
-const ACTIONS = ["deploy", "app.update", "rollback", "backup.create", "app.delete"];
+const ACTIONS = ["app.deploy", "app.update", "app.rollback", "backup.create", "app.delete"];
 const OUTCOMES = ["AUDIT_OUTCOME_SUCCESS", "AUDIT_OUTCOME_SUCCESS", "AUDIT_OUTCOME_SUCCESS", "AUDIT_OUTCOME_FAILURE", "AUDIT_OUTCOME_DENIED"];
 
 function record(seq) {
@@ -60,8 +64,8 @@ function auditList(params) {
   return { records, latest_seq: String(LATEST) };
 }
 
-// fake@flaky için status çağrı sayacı (süreç başına).
-let flakyStatusCalls = 0;
+// fake@flaky bağlandı mı? (süreç başına)
+let flakyConnected = false;
 let verificationCalls = 0;
 let backupCalls = 0;
 const appSpec = (id) => ({ app_id: id, git_host: "github.com", git_owner: "team", git_repo: "site", git_branch: "main", dockerfile_path: "Dockerfile", container_port: 3000, replicas: 1, health_path: "/healthz", domain: `${id}.example.com`, limits: { memory_bytes: "536870912", cpu_millis: 1000, blkio_weight: 100 }, build_args: {}, env: { MODE: "old", OLD: "remove" }, volumes: [{ name: "data", mount_path: "/app/data", read_only: false }] });
@@ -87,13 +91,17 @@ rl.on("line", (line) => {
     reply(rpcFail("connect", DOWN_MESSAGE));
     return;
   }
+  if (params.target === "fake@totp") {
+    reply(rpcFail("call", TOTP_MESSAGE));
+    return;
+  }
   switch (req.method) {
     case "version":
       reply({ result: { version: "0.5.1", commit: "fake", protocol: 3 } });
       return;
     case "status":
       if (params.target === "fake@flaky") {
-        if (++flakyStatusCalls > 1) reply(rpcFail("call", FLAKY_MESSAGE));
+        if (flakyConnected) reply(rpcFail("call", FLAKY_MESSAGE));
         else reply({ result: healthyStatus });
         return;
       }
@@ -104,6 +112,7 @@ rl.on("line", (line) => {
       reply({ result: auditList(params) });
       return;
     case "audit.verify":
+      if (params.target === "fake@flaky") flakyConnected = true;
       if (params.target === "fake@verifyfail" && ++verificationCalls > 1) { reply(rpcFail("call", "verification connection lost")); return; }
       reply({ result: ["fake@flaky", "fake@verifyfail", "fake@slow"].includes(params.target) ? healthyVerify : verify });
       return;

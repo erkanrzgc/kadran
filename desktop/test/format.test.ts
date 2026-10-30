@@ -13,6 +13,7 @@ import {
   humanBytes,
   humanDuration,
   memoryText,
+  relativeTime,
   memoryUsedGiB,
   shortFingerprint,
   versionLabel,
@@ -90,4 +91,15 @@ test("versionLabel: CI etiketi zaten v ile başlar, iki kez v yazılmaz", () => 
   // Etiketsiz yerel derleme: "dev" ya da kısa commit; başına v konmaz.
   assert.equal(versionLabel("dev"), "dev");
   assert.equal(versionLabel("0c91e9c"), "0c91e9c");
+});
+
+test("göreli zaman: bozuk ya da eksikse tire, gelecek 'şimdi' olur", () => {
+  const now = Date.UTC(2026, 9, 31, 12, 0, 0);
+  assert.equal(relativeTime(null, now, "en"), "—");
+  assert.equal(relativeTime("bozuk", now, "en"), "—");
+  assert.equal(relativeTime("2026-10-29T12:00:00Z", now, "en"), "2 days ago");
+  assert.equal(relativeTime("2026-10-28T12:00:00Z", now, "tr"), "3 gün önce");
+  assert.equal(relativeTime("2026-10-31T09:00:00Z", now, "tr"), "3 saat önce");
+  assert.equal(relativeTime("2026-10-31T11:58:00Z", now, "en"), "2 minutes ago");
+  assert.equal(relativeTime("2026-10-31T13:00:00Z", now, "en"), "now");
 });

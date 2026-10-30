@@ -49,6 +49,7 @@ const CHANNELS = {
   saveAppearance: "kadran:appearance-save",
   windowControl: "kadran:window",
   copyText: "kadran:copy",
+  userName: "kadran:user-name",
 };
 
 contextBridge.exposeInMainWorld("kadran", {
@@ -96,7 +97,7 @@ contextBridge.exposeInMainWorld("kadran", {
 
   /**
    * Görünümü kaydeder. Ana süreç doğrular; mod değiştiyse pencereyi
-   * yeniden kurabilir (Clear ↔ diğerleri) ya da yerinde değiştirir.
+   * yeniden kurabilir (malzeme ailesi değişince) ya da yerinde değiştirir.
    */
   saveAppearance: (appearance) => ipcRenderer.invoke(CHANNELS.saveAppearance, appearance),
 
@@ -105,4 +106,7 @@ contextBridge.exposeInMainWorld("kadran", {
 
   /** Parmak izi gibi kısa bir metni panoya yazar (en fazla 1024 karakter). */
   copyText: (text) => ipcRenderer.invoke(CHANNELS.copyText, text),
+
+  /** Bu bilgisayardaki kullanıcı adı; kenar çubuğunun altında yazar. */
+  userName: () => ipcRenderer.invoke(CHANNELS.userName),
 });

@@ -119,19 +119,19 @@ export function useServer() {
   }, [verifyFlight, runVerify]);
 
   const connect = useCallback(
-    async (target: string): Promise<boolean> => {
+    async (target: string): Promise<"connected" | "failed" | "superseded"> => {
       current.current = target;
       setState({ ...EMPTY, target, connecting: true });
       const ok = await loadStatus(target);
-      if (current.current !== target) return false;
+      if (current.current !== target) return "superseded";
       if (!ok) {
         current.current = null;
         setState(EMPTY);
-        return false;
+        return "failed";
       }
       setState((s) => ({ ...s, connecting: false }));
       await verifyChains();
-      return true;
+      return "connected";
     },
     [loadStatus, verifyChains],
   );

@@ -68,6 +68,30 @@ test("üst üste iki silme ikisini de uygular", async () => {
   assert.deepEqual(seen.at(-1), ["c"]);
 });
 
+test("güncelleme yalnız istenen profili değiştirir, sırayı korur", async () => {
+  const saved: Profile[][] = [];
+  const store = createProfileStore({
+    load: async () => [p("a"), p("b")],
+    save: async (list) => { saved.push(list); return list; },
+    onChange: () => undefined,
+  });
+  await store.update("b", { name: "ana", provider: "hetzner" });
+  assert.deepEqual(saved, [[p("a"), { name: "ana", target: "b", provider: "hetzner" }]]);
+});
+
+test("olmayan profil güncellenmez, sağlayıcı boşsa alan silinir", async () => {
+  const saved: Profile[][] = [];
+  const store = createProfileStore({
+    load: async () => [{ name: "a", target: "a", provider: "aws" }],
+    save: async (list) => { saved.push(list); return list; },
+    onChange: () => undefined,
+  });
+  await store.update("zzz", { name: "x", provider: "" });
+  assert.deepEqual(saved, []);
+  await store.update("a", { name: "a", provider: "" });
+  assert.deepEqual(saved, [[{ name: "a", target: "a" }]]);
+});
+
 test("varsa eklemez, yoksa silmez", async () => {
   const { store, saves } = fakeDisk(async () => [p("a")]);
   await store.add(p("a"));

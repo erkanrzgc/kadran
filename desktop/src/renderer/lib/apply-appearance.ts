@@ -17,8 +17,8 @@ export const ACCENT_RGB: Readonly<Record<Accent, string>> = {
   paper: "236, 235, 230",
 };
 
-export const UI_FALLBACK = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
-export const CODE_FALLBACK = '"JetBrains Mono Bundled", ui-monospace, Consolas, monospace';
+export const UI_FALLBACK = '"Segoe UI", -apple-system, system-ui, sans-serif';
+export const CODE_FALLBACK = 'Consolas, "JetBrains Mono Bundled", ui-monospace, monospace';
 
 export type FontAlias = "kadran-ui" | "kadran-code";
 

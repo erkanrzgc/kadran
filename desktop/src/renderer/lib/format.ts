@@ -93,6 +93,24 @@ export function formatTime(ts: string | null, locale: string): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
 }
 
+const RELATIVE_STEPS: ReadonlyArray<readonly [number, Intl.RelativeTimeFormatUnit]> = [
+  [86_400, "day"],
+  [3_600, "hour"],
+  [60, "minute"],
+];
+
+/** relativeTime: "2 gün önce". Zaman yok ya da bozuksa "—"; gelecekteki saat kayması "şimdi" olur. */
+export function relativeTime(ts: string | null, now: number, locale: string): string {
+  const then = ts ? new Date(ts).getTime() : Number.NaN;
+  if (Number.isNaN(then)) return "—";
+  const seconds = Math.max(0, Math.floor((now - then) / 1000));
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  for (const [size, unit] of RELATIVE_STEPS) {
+    if (seconds >= size) return format.format(-Math.floor(seconds / size), unit);
+  }
+  return format.format(0, "second");
+}
+
 export function formatCount(n: number, locale: string): string {
   return n.toLocaleString(locale);
 }

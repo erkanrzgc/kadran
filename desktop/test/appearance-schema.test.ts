@@ -28,24 +28,25 @@ test("Windows 11 ayrımı yapı numarasından (22H2 = 22621)", () => {
 });
 
 test("her sistemde sunulan modlar ve varsayılan", () => {
-  assert.deepEqual(modesFor(WIN11), ["clear", "acrylic", "mica", "solid"]);
-  assert.deepEqual(modesFor(WIN10), ["clear", "solid"]);
-  assert.deepEqual(modesFor(MAC), ["clear", "vibrancy", "solid"]);
-  assert.deepEqual(modesFor(LINUX), ["clear", "solid"]);
-  assert.equal(defaultAppearance(WIN11).mode, "acrylic");
-  assert.equal(defaultAppearance(WIN10).mode, "clear");
-  assert.equal(defaultAppearance(MAC).mode, "vibrancy");
-  assert.equal(defaultAppearance(LINUX).mode, "solid");
+  assert.deepEqual(modesFor(WIN11), ["glass", "acrylic", "mica", "solid"]);
+  assert.deepEqual(modesFor(WIN10), ["glass", "solid"]);
+  assert.deepEqual(modesFor(MAC), ["glass", "vibrancy", "solid"]);
+  assert.deepEqual(modesFor(LINUX), ["glass", "solid"]);
+  for (const info of [WIN11, WIN10, MAC, LINUX]) assert.equal(defaultAppearance(info).mode, "glass");
+});
+
+test("kaldırılan Clear kayıtlı dosyada varsayılana döner", () => {
+  assert.equal(sanitizeAppearance({ mode: "clear" }, WIN11).mode, "glass");
 });
 
 test("varsayılan değerler spec ile aynı", () => {
   const d = defaultAppearance(WIN11);
   assert.deepEqual(d, {
     version: 1,
-    mode: "acrylic",
-    tint: 60,
+    mode: "glass",
+    tint: 22,
     panel: 7,
-    edge: 22,
+    edge: 16,
     glow: 60,
     accent: "ice",
     tone: "dark",
@@ -67,15 +68,15 @@ test("sınır dışı sayılar kırpılır, sayı olmayanlar varsayılana döner
   assert.equal(a.panel, 0);
   assert.equal(a.edge, 60);
   assert.equal(a.glow, 60);
-  assert.equal(sanitizeAppearance({ tint: Number.NaN }, WIN11).tint, 60);
+  assert.equal(sanitizeAppearance({ tint: Number.NaN }, WIN11).tint, 22);
   assert.equal(sanitizeAppearance({ tint: 33.4 }, WIN11).tint, 33);
 });
 
 test("bu sistemde olmayan mod varsayılana döner", () => {
-  assert.equal(sanitizeAppearance({ mode: "acrylic" }, WIN10).mode, "clear");
-  assert.equal(sanitizeAppearance({ mode: "vibrancy" }, WIN11).mode, "acrylic");
+  assert.equal(sanitizeAppearance({ mode: "acrylic" }, WIN10).mode, "glass");
+  assert.equal(sanitizeAppearance({ mode: "vibrancy" }, WIN11).mode, "glass");
   assert.equal(sanitizeAppearance({ mode: "mica" }, WIN11).mode, "mica");
-  assert.equal(sanitizeAppearance({ mode: "holographic" }, WIN11).mode, "acrylic");
+  assert.equal(sanitizeAppearance({ mode: "holographic" }, WIN11).mode, "glass");
 });
 
 test("bilinmeyen seçimler varsayılana döner", () => {
@@ -95,10 +96,10 @@ test("yazı tipi: uzun ad reddedilir, kalınlık 100–900", () => {
 });
 
 test("geçerli kısmi nesne kendi alanlarını korur", () => {
-  const a = sanitizeAppearance({ tint: 48, panel: 6, edge: 8, mode: "clear" }, WIN11);
+  const a = sanitizeAppearance({ tint: 48, panel: 6, edge: 8, mode: "solid" }, WIN11);
   assert.equal(a.tint, 48);
   assert.equal(a.panel, 6);
   assert.equal(a.edge, 8);
-  assert.equal(a.mode, "clear");
+  assert.equal(a.mode, "solid");
   assert.equal(a.version, 1);
 });

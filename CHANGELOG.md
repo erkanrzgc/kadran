@@ -5,6 +5,11 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+Desktop: new look (K-161). A dashboard with recent operations and server cards grouped by provider,
+browser-like tabs, a sectioned sidebar, hazy glass with squared corners and a new wordmark. All your
+saved servers are read at once using the existing calls, so the server does not change. The new
+default window is Color glass; Clear is gone because it could not blur the desktop behind the text.
+
 ## v0.9.3 — 2026-10-30
 
 Install from a release: no checkout and no Go on your machine (K-159). The protocol is unchanged

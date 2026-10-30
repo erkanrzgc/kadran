@@ -15,7 +15,7 @@
 
 import { app, BrowserWindow, clipboard, ipcMain, session } from "electron";
 import { spawn } from "node:child_process";
-import { release } from "node:os";
+import { release, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -101,6 +101,7 @@ function registerHandlers(): void {
   ipcMain.handle(CHANNELS.copyText, (_event, text: unknown) => {
     clipboard.writeText(requireCopyText(text));
   });
+  ipcMain.handle(CHANNELS.userName, () => userInfo().username);
 }
 
 // ── Yaşam döngüsü ────────────────────────────────────────────────────

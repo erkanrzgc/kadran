@@ -275,6 +275,14 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 	}
 	fmt.Fprintf(c.stdout, progName+" %s (%s)\nprotocol %d\n",
 		version.Version, version.Commit, version.Protocol)
+	for _, b := range []struct{ arch, sum string }{
+		{"amd64", version.ServerSHA256Amd64},
+		{"arm64", version.ServerSHA256Arm64},
+	} {
+		if b.sum != "" {
+			fmt.Fprintf(c.stdout, "server bundle linux/%s sha256 %s\n", b.arch, b.sum)
+		}
+	}
 	return exitOK
 }
 

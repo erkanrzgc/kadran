@@ -11,6 +11,17 @@ var Version = "dev"
 // Commit, derlemenin yapıldığı git commit'i. ldflags ile doldurulur.
 var Commit = "unknown"
 
+// ServerSHA256Amd64 ve ServerSHA256Arm64, bu istemciyle AYNI yayındaki
+// sunucu paketlerinin (kadran-server-<sürüm>-linux-<mimari>.tar.gz) SHA256
+// özetleri, küçük harf onaltılık (K-159). scripts/package-release.sh önce
+// paketleri derleyip sonra istemciye -X ile yazıyor. Bootstrap indirdiği
+// paketi YALNIZ bunlarla karşılaştırır: yayındaki SHA256SUMS aynı yerden
+// geldiği için sahteciliği yakalamaz. Geliştirme derlemesinde boş.
+var (
+	ServerSHA256Amd64 = ""
+	ServerSHA256Arm64 = ""
+)
+
 // Protocol, istemci ↔ kadrand ↔ executor arasındaki sözleşme sürümüdür.
 //
 // Üç binary aynı anda güncellenmeyebilir: bootstrap sunucuyu günceller ama

@@ -11,6 +11,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // newTestCLI, çıktısı yakalanabilen bir cli üretir. Oturum dizini geçici
@@ -94,6 +95,47 @@ func TestVersionPrintsProtocol(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "protocol") {
 		t.Errorf("protokol sürümü yazılmadı: %s", out.String())
+	}
+}
+
+// TestVersionPrintsServerBundleHashes: yayın istemcisi, kuracağı sunucu
+// paketlerinin özetlerini gösteriyor (K-159). Kullanıcı aynı değeri yayının
+// SHA256SUMS'uyla karşılaştırabilir.
+func TestVersionPrintsServerBundleHashes(t *testing.T) {
+	defer func(a, b string) {
+		version.ServerSHA256Amd64, version.ServerSHA256Arm64 = a, b
+	}(version.ServerSHA256Amd64, version.ServerSHA256Arm64)
+	version.ServerSHA256Amd64 = strings.Repeat("a", 64)
+	version.ServerSHA256Arm64 = strings.Repeat("b", 64)
+
+	c, out, _ := newTestCLI("")
+	if code := c.run(context.Background(), []string{"version"}); code != exitOK {
+		t.Fatalf("çıkış kodu = %d", code)
+	}
+	for _, want := range []string{
+		"server bundle linux/amd64 sha256 " + strings.Repeat("a", 64),
+		"server bundle linux/arm64 sha256 " + strings.Repeat("b", 64),
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("%q yok:\n%s", want, out.String())
+		}
+	}
+}
+
+// TestVersionOmitsEmptyServerBundleHashes: geliştirme derlemesinde özet
+// yok; boş bir satır basılmıyor.
+func TestVersionOmitsEmptyServerBundleHashes(t *testing.T) {
+	defer func(a, b string) {
+		version.ServerSHA256Amd64, version.ServerSHA256Arm64 = a, b
+	}(version.ServerSHA256Amd64, version.ServerSHA256Arm64)
+	version.ServerSHA256Amd64, version.ServerSHA256Arm64 = "", ""
+
+	c, out, _ := newTestCLI("")
+	if code := c.run(context.Background(), []string{"version"}); code != exitOK {
+		t.Fatalf("çıkış kodu = %d", code)
+	}
+	if strings.Contains(out.String(), "server bundle") {
+		t.Errorf("boş özet basıldı:\n%s", out.String())
 	}
 }
 

@@ -89,16 +89,15 @@ Every claim here has a test or a measurement on a real server, recorded in
 ## Quick start
 
 ```bash
-# 1. Build (the protobuf code is generated locally, never uploaded)
-git clone https://github.com/erkanrzgc/kadran && cd kadran
-buf generate && scripts/build-release.sh
+# 1. Install the client, without sudo (Windows: see Install)
+curl -fsSL https://raw.githubusercontent.com/erkanrzgc/kadran/main/scripts/get-kadran.sh | sh
 
 # 2. Install on a server: once, as root or with passwordless sudo
-bin/kadran bootstrap root@your-server
+kadran bootstrap root@your-server
 
 # 3. Deploy: day to day, as the unprivileged kadran-client user
-bin/kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site kadran-client@your-server
-bin/kadran deploy site kadran-client@your-server
+kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site kadran-client@your-server
+kadran deploy site kadran-client@your-server
 ```
 
 Point the domain's DNS at the server first, so that Let's Encrypt can reach it. [Domain setup guide](docs/guides/domains.md) covers ~50 DNS hosts step by step. The
@@ -145,8 +144,8 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
   2 GB swap, where a Node build peaked with 237 MiB free, K-121), both x86_64. arm64
   binaries are built and CI runs the tests on real ARM hardware, but no arm64 server has
   been installed yet.
-- **Workstation:** Go 1.26.10+, an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is
-  used by default; `-client-key` picks another.
+- **Workstation:** an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is used by
+  default; `-client-key` picks another. Building from source also needs Go 1.26.10+.
 - **Ports 80 and 443** must be free. The installer stops if `caddy`, `nginx`, `apache2`,
   `httpd` or `lighttpd` is running.
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`): use
@@ -160,7 +159,26 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
 
 </details>
 
-### 1. Build
+### 1. Install the client
+
+Linux and macOS, into `~/.local/bin`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/erkanrzgc/kadran/main/scripts/get-kadran.sh | sh
+```
+
+Windows, into `%LOCALAPPDATA%\Programs\kadran`, added to your user `Path`:
+
+```powershell
+irm https://raw.githubusercontent.com/erkanrzgc/kadran/main/scripts/get-kadran.ps1 | iex
+```
+
+Neither needs administrator rights. Both check the download against the release's `SHA256SUMS`
+and leave an existing `kadran` untouched if anything fails. `KADRAN_VERSION` picks a release and
+`KADRAN_INSTALL_DIR` another directory.
+
+<details>
+<summary><b>Build from source instead</b></summary>
 
 Generated protobuf code is not committed. The plugins are local on purpose: the schema is
 the security boundary and is never uploaded to a remote code generator.
@@ -175,17 +193,30 @@ buf generate
 scripts/build-release.sh          # bin/linux-{amd64,arm64}/… and bin/kadran
 ```
 
+Then use `bin/kadran` in place of `kadran`. A source build has no release to download, so its
+`bootstrap` installs from `bin/` and the current directory; `-binaries <dir>` and `-repo <dir>`
+pick others.
+
+</details>
+
 ### 2. Bootstrap the server
 
 ```bash
-bin/kadran bootstrap root@your-server          # root SSH with a key
-bin/kadran bootstrap -sudo you@your-server     # or passwordless sudo; root SSH stays closed
+kadran bootstrap root@your-server          # root SSH with a key
+kadran bootstrap -sudo you@your-server     # or passwordless sudo; root SSH stays closed
 ```
 
-`bootstrap` copies the binaries and systemd units, creates the unprivileged users, installs
-your public key for `kadran-client` **bound to a forced command**, and then checks its own
-work, for example that the daemon's user cannot reach Docker. It is idempotent, and the
-same command upgrades an existing install. After this you never need root day to day.
+`bootstrap` downloads the server files of the client's own version from the GitHub release and
+refuses them unless they match a hash built into the client (`kadran version` prints it). So you
+only have to trust the client: a checksum file in the same release would catch a corrupted
+download but not a forged one. `KADRAN_RELEASE_BASE` points it at a mirror, and the hash is still
+checked.
+
+It then copies the binaries and systemd units, creates the unprivileged users, installs your public
+key for `kadran-client` **bound to a forced command**, and checks its own work, for example that
+the daemon's user cannot reach Docker. It is idempotent, and the same command upgrades an existing
+install: run the one-liner above for the new client, then `bootstrap` again. After this you never
+need root day to day.
 
 <details>
 <summary><b>What bootstrap guarantees along the way</b></summary>
@@ -216,9 +247,9 @@ Optional hardening: limit builds to specific repositories with the executor's
 ### 3. Deploy an app
 
 ```bash
-bin/kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site kadran-client@your-server
-bin/kadran deploy site kadran-client@your-server
-bin/kadran status kadran-client@your-server
+kadran app create -repo github.com/you/site -domain site.example.com -port 8080 site kadran-client@your-server
+kadran deploy site kadran-client@your-server
+kadran status kadran-client@your-server
 ```
 
 Without `-domain` an app is reachable only from the server's internal network.
@@ -532,9 +563,9 @@ What the scope does and does not protect is in [SECURITY.md](SECURITY.md) (K-131
 
 ```bash
 ssh-keygen -t ed25519 -N '' -C ci@github -f ci_deploy
-bin/kadran key add -deploy site ci_deploy.pub root@your-server   # or -sudo you@your-server
-bin/kadran key list root@your-server
-bin/kadran key remove SHA256:... root@your-server
+kadran key add -deploy site ci_deploy.pub root@your-server   # or -sudo you@your-server
+kadran key list root@your-server
+kadran key remove SHA256:... root@your-server
 ```
 
 `key add` refuses a key that already has a line (sshd uses the first matching line, so one

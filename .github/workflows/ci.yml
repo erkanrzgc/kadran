@@ -177,6 +177,18 @@ jobs:
           KADRAN_TEST_REQUIRE_KASA_TOOLS: ${{ runner.os == 'Linux' && '1' || '' }}
         run: go test -race -count=1 ./...
 
+      # İstemciyi kuran `irm | iex` betiği sahte bir yayına karşı koşuyor
+      # (K-159). İki kabukta: kullanıcıların çoğunda hazır olan 5.1'dir.
+      - name: İstemci kurulum betiği (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/check-get-kadran.ps1
+
+      - name: İstemci kurulum betiği (Windows PowerShell 5.1)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./scripts/check-get-kadran.ps1
+
   build:
     name: Derleme (linux/${{ matrix.arch }})
     runs-on: ubuntu-latest

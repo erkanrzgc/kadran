@@ -367,9 +367,9 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 }
 
 // useRelease, bootstrap'ın sunucu dosyalarını istemcinin kendi sürümünün
-// yayınından alıp almayacağını söyler (K-159). Geliştirme derlemesi ve
-// yerel dosya isteyen kullanıcı (-binaries, -repo, KADRAN_BINARY_DIR) eski
-// yolda kalır: geri.sh ve e2e betikleri ona dayanıyor.
+// yayınından alıp almayacağını söyler (K-159). Geliştirme derlemesinin yayını
+// yok; yerel dosya isteyen kullanıcı (-binaries, -repo, KADRAN_BINARY_DIR)
+// da eski yolda kalır.
 func useRelease(ver string, explicit map[string]bool, binaryDirEnv string) bool {
 	return ver != "dev" && !explicit["binaries"] && !explicit["repo"] && binaryDirEnv == ""
 }

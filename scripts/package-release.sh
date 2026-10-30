@@ -88,6 +88,15 @@ for t in $CLIENT_PLATFORMS; do
     done
 done
 
+# grep özetlerin yer değiştirmesini göremez; o yayında her bootstrap reddedilirdi.
+# Bu makinede çalışan istemciye sor: hangi mimarinin hangi özeti taşıdığını söylesin.
+ext=
+[ "$(go env GOHOSTOS)" = windows ] && ext=.exe
+surum="$("$OUT/kadran-$V-$(go env GOHOSTOS)-$(go env GOHOSTARCH)$ext" version | tr -d '\r')"
+for satir in "server bundle linux/amd64 sha256 $amd64" "server bundle linux/arm64 sha256 $arm64"; do
+    grep -qxF "$satir" <<<"$surum" || die "client version does not print: $satir"
+done
+
 (cd "$OUT" && sha256sum -- * > SHA256SUMS)
 echo "commit: $COMMIT"
 echo "kadran-caddy amd64 md5: $(md5sum bin/linux-amd64/kadran-caddy | cut -c1-12)"

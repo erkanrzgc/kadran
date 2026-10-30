@@ -100,6 +100,10 @@ kadran app create -repo github.com/you/site -domain site.example.com -port 8080 
 kadran deploy site kadran-client@your-server
 ```
 
+If the installer says its directory is not on your `PATH`, run the line it prints. Connect to the
+server once with plain `ssh` before step 2, to check and accept its host key: Kadran never prompts,
+so an unknown host key stops it.
+
 Point the domain's DNS at the server first, so that Let's Encrypt can reach it. [Domain setup guide](docs/guides/domains.md) covers ~50 DNS hosts step by step. The
 [install guide](#install) covers requirements, the `-sudo` mode and what `bootstrap`
 checks on the way.

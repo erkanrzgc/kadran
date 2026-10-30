@@ -136,7 +136,10 @@ main() {
     echo "installed kadran $ver to $target"
     case ":$PATH:" in
         *":$dir:"*) ;;
-        *) echo "add $dir to your PATH" ;;
+        *)
+            echo "add $dir to your PATH, for example:"
+            printf '  export PATH="%s:$PATH"\n' "$dir"
+            ;;
     esac
 }
 

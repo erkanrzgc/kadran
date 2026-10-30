@@ -80,10 +80,27 @@ c_path() {
     out="$(kur "$T/iyi" "$T/bin1p" PATH="$PATH")"
     [[ "$out" == *"installed kadran v9.9.9 to $T/bin1p/kadran"* ]]
     [[ "$out" == *"add $T/bin1p to your PATH"* ]]
+    [[ "$out" == *"export PATH=\"$T/bin1p:\$PATH\""* ]]
     out="$(kur "$T/iyi" "$T/bin1p" PATH="$T/bin1p:$PATH")"
     [[ "$out" != *"to your PATH"* ]]
 }
 dene "dizin PATH'te değilse söyler, varsa susar" c_path
+
+c_calisan() {
+    # Gerçek bir ELF şart: çalışan ikilinin üstüne yazmak ETXTBSY verir, ama
+    # kabuk betiğinin üstüne yazılabilir ve denetim hiçbir şey ölçmezdi.
+    mkdir -p "$T/bin1c"
+    cp "$(command -v sleep)" "$T/bin1c/kadran"
+    "$T/bin1c/kadran" 30 &
+    local p=$! rc=0
+    sleep 0.2
+    kur "$T/iyi" "$T/bin1c" || rc=$?
+    kill "$p" 2>/dev/null || true
+    wait "$p" 2>/dev/null || true
+    [ "$rc" -eq 0 ]
+    [ "$(cat "$T/bin1c/kadran")" = binary-v9 ]
+}
+dene "çalışan eski ikilinin yerine kurar (geçici ad + yeniden adlandırma)" c_calisan
 
 echo "== Özet denetimi =="
 

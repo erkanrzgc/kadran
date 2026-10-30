@@ -9,7 +9,7 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 - `kadran bootstrap` installs from the GitHub release of the client's own version: no checkout and
   no Go on your machine. It refuses the server bundle unless it matches a SHA-256 built into the
-  client, and sends nothing to the server before that check. `-binaries`, `-repo`,
+  client, and sends no files to the server before that check. `-binaries`, `-repo`,
   `KADRAN_BINARY_DIR` and source builds keep installing from local files; `KADRAN_RELEASE_BASE`
   points it at a mirror, and the hash is still checked (K-159).
 - `kadran version` prints the server bundle hashes built into the client (K-159).

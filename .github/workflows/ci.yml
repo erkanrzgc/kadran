@@ -305,6 +305,20 @@ jobs:
           done
           ls -la
 
+      # Birim testleri sahte bir ağaç kullanıyor; paketin tar listesi ile
+      # bootstrap'ın okuduğu dosyalar birbirinden habersiz (K-159). Eksik bir
+      # dosya o sürümün BÜTÜN kurulumlarını düşürürdü ve özet sonradan
+      # değişmez. Testin adı değişirse `-run` hiçbir şey koşmadan yeşil
+      # dönmesin diye sonuç satırı aranıyor.
+      - name: Bootstrap gerçek paketi kurabiliyor mu
+        env:
+          KADRAN_TEST_RELEASE_DIR: ${{ runner.temp }}/rel
+        run: |
+          set -o pipefail
+          export KADRAN_TEST_RELEASE_VERSION="ci-${GITHUB_SHA::12}"
+          go test -count=1 -v -run '^TestRealReleaseBundle$' ./internal/bootstrap | tee "$RUNNER_TEMP/gercek-paket.txt"
+          grep -q -- '--- PASS: TestRealReleaseBundle' "$RUNNER_TEMP/gercek-paket.txt"
+
   e2e:
     name: Uçtan uca (gerçek kadrand)
     runs-on: ubuntu-latest
@@ -622,6 +636,19 @@ jobs:
           fi
           echo "code=$code"
           echo "code=$code" >> "$GITHUB_OUTPUT"
+
+  # Aşağıdaki iş Linux'ta; Windows kurulum betiğinin denetimi Windows ister
+  # (K-159). Elle çalıştırılan bir mutasyon guard değildir.
+  mutation-windows:
+    name: Mutasyon (Windows kurulum betiği)
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: mutate-get-kadran.ps1
+        shell: pwsh
+        run: ./scripts/mutate-get-kadran.ps1
 
   # ══════════════════════════════════════════════════════════════════
   #  Mutasyon: testlerin GERÇEKTEN bir şey koruduğunu sına

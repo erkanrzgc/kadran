@@ -12252,7 +12252,8 @@ zincir geçerli, uygulamalar duruyor, TOTP oturumu yeniden başlatmayı geçti, 
 
 ## K-160 — Süreci hafifletme: PR'da seçilen mutasyon, tamamı gecelik (2026-10-30)
 
-**Durum:** dal `lighter-ci`'da, yerelde yeşil; CI'da henüz koşmadı.
+**Durum:** PR #26 → `d0f73b7`, main'de; CI 14/14 yeşil (Linux mutasyonu bütün betiklerle 1 sa 16 dk).
+Dar seçim gerçek bir PR'da, gecelik koşu da ilk gecesinde henüz görülmedi.
 
 ### Neden
 

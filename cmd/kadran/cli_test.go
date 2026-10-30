@@ -139,6 +139,28 @@ func TestVersionOmitsEmptyServerBundleHashes(t *testing.T) {
 	}
 }
 
+// TestUseRelease: yayın kipi yalnız yayın derlemesinde ve kullanıcı yerel
+// dosya istemediğinde (K-159). geri.sh'in ve e2e betiklerinin
+// -binaries/-repo yolu olduğu gibi kalmalı.
+func TestUseRelease(t *testing.T) {
+	for _, tc := range []struct {
+		ver      string
+		explicit map[string]bool
+		env      string
+		want     bool
+	}{
+		{"v0.9.3", map[string]bool{}, "", true},
+		{"dev", map[string]bool{}, "", false},
+		{"v0.9.3", map[string]bool{"binaries": true}, "", false},
+		{"v0.9.3", map[string]bool{"repo": true}, "", false},
+		{"v0.9.3", map[string]bool{}, "/x", false},
+	} {
+		if got := useRelease(tc.ver, tc.explicit, tc.env); got != tc.want {
+			t.Errorf("useRelease(%q, %v, %q) = %v, beklenen %v", tc.ver, tc.explicit, tc.env, got, tc.want)
+		}
+	}
+}
+
 func TestAuditRequiresSubcommand(t *testing.T) {
 	c, _, errOut := newTestCLI("")
 

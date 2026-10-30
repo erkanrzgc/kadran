@@ -112,6 +112,11 @@ type Options struct {
 	// sudo'suyla yapar (K-122).
 	Sudo bool
 
+	// Release doluysa sunucu dosyaları yerel dizinlerden değil, istemcinin
+	// kendi sürümünün yayınından gelir ve gömülü özetle doğrulanır (K-159);
+	// BinaryDir ve RepoRoot yok sayılır.
+	Release *Release
+
 	// Stdout/Stderr, uzak betiğin çıktısının aktarılacağı akışlar.
 	Stdout io.Writer
 	Stderr io.Writer
@@ -134,6 +139,21 @@ func Run(ctx context.Context, opts Options) error {
 	}
 	if opts.Sudo {
 		fmt.Fprintln(opts.Stdout, "==> Privilege: root through passwordless sudo (no SSH as root)")
+	}
+
+	// Paket yetki denetiminden SONRA indiriliyor: yetkisi olmayan bir
+	// hedef için ~30 MiB boşuna inmesin. Özet tutmazsa sunucuya yalnız
+	// iki salt okunur yoklama gitmiş olur.
+	if opts.Release != nil {
+		dir, cleanup, err := FetchRelease(ctx, *opts.Release, arch, opts.Stdout)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		opts.BinaryDir, opts.RepoRoot = filepath.Join(dir, "bin"), dir
+		fmt.Fprintf(opts.Stdout, "==> Server files: release %s (verified)\n", opts.Release.Version)
+	} else {
+		fmt.Fprintf(opts.Stdout, "==> Server files: local (%s, %s)\n", opts.BinaryDir, opts.RepoRoot)
 	}
 
 	archive, err := buildArchive(opts, arch)

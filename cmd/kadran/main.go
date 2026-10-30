@@ -275,6 +275,14 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 	}
 	fmt.Fprintf(c.stdout, progName+" %s (%s)\nprotocol %d\n",
 		version.Version, version.Commit, version.Protocol)
+	for _, b := range []struct{ arch, sum string }{
+		{"amd64", version.ServerSHA256Amd64},
+		{"arm64", version.ServerSHA256Arm64},
+	} {
+		if b.sum != "" {
+			fmt.Fprintf(c.stdout, "server bundle linux/%s sha256 %s\n", b.arch, b.sum)
+		}
+	}
 	return exitOK
 }
 
@@ -286,8 +294,10 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 // günlük kullanım yetkisiz `kadran-client` üzerinden yürür.
 func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("bootstrap")
-	binaryDir := fs.String("binaries", defaultBinaryDir(), "directory holding the linux binaries")
-	repoRoot := fs.String("repo", ".", "repository root to read the systemd units from")
+	binaryDir := fs.String("binaries", defaultBinaryDir(),
+		"install the linux binaries from this directory instead of the release")
+	repoRoot := fs.String("repo", ".",
+		"read the systemd units from this repository root instead of the release")
 	clientKey := fs.String("client-key", defaultClientKey(), "PUBLIC key to authorize on the server")
 	// 30 dakika: kurulum paketi ~75 MiB. Taze sunucu testinde (K-112)
 	// aynı ev hattından bir koşu 5 dakikada yalnızca 28 MB gönderdi ve 10
@@ -321,6 +331,21 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fmt.Fprintln(c.stdout,
 		"No password or private key is asked for; `ssh` does the authentication.")
 
+	explicit := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	var release *bootstrap.Release
+	if useRelease(version.Version, explicit, os.Getenv("KADRAN_BINARY_DIR")) {
+		base := os.Getenv("KADRAN_RELEASE_BASE")
+		if base == "" {
+			base = bootstrap.DefaultReleaseBase
+		}
+		release = &bootstrap.Release{
+			Version: version.Version,
+			BaseURL: base,
+			SHA256:  map[string]string{"amd64": version.ServerSHA256Amd64, "arm64": version.ServerSHA256Arm64},
+		}
+	}
+
 	err = bootstrap.Run(ctx, bootstrap.Options{
 		Host:          target.SSHUser + "@" + target.SSHHost,
 		Port:          target.SSHPort,
@@ -328,6 +353,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		RepoRoot:      *repoRoot,
 		ClientKeyPath: *clientKey,
 		Sudo:          *sudo,
+		Release:       release,
 		Stdout:        c.stdout,
 		Stderr:        c.stderr,
 	})
@@ -338,6 +364,14 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fmt.Fprintf(c.stdout, "\nTo verify:\n  kadran status %s@%s\n",
 		client.DefaultSSHUser, target.SSHHost)
 	return exitOK
+}
+
+// useRelease, bootstrap'ın sunucu dosyalarını istemcinin kendi sürümünün
+// yayınından alıp almayacağını söyler (K-159). Geliştirme derlemesinin yayını
+// yok; yerel dosya isteyen kullanıcı (-binaries, -repo, KADRAN_BINARY_DIR)
+// da eski yolda kalır.
+func useRelease(ver string, explicit map[string]bool, binaryDirEnv string) bool {
+	return ver != "dev" && !explicit["binaries"] && !explicit["repo"] && binaryDirEnv == ""
 }
 
 // defaultBinaryDir, derlenmiş linux binary'lerinin varsayılan yeri.

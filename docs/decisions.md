@@ -12081,7 +12081,7 @@ beri çalışıyordu; v0.9.1 kurulumu 00:02'deydi. Günlük:
 
 ## K-158 — Kurulum aynı ikiliyi yeniden yazmıyor (2026-10-30)
 
-**Durum:** dal `install-same-binary`'de, yerelde yeşil; PR açılmadı.
+**Durum:** PR #24 ile main'de (`45ff87e`); henüz yayımlanmadı.
 
 ### Neden
 
@@ -12121,3 +12121,90 @@ interrupted" sözü sonraki paket yükseltmesine erteleniyordu.
 - Root'suz: K-158 bölümü atlandığını yazıyor ve betik yeşil; `KADRAN_TEST_REQUIRE_ROOT=1` ile
   root'suz kırmızı. `bash -n`, `check-install-order.sh`, `go test ./internal/bootstrap/...
   ./cmd/kadran/...` yeşil.
+
+## K-159 — Sürümden kurulum: gömülü özetle doğrulanan sunucu paketi (2026-10-30)
+
+**Durum:** dal `release-install`'da, yerelde yeşil; PR açılmadı. Canlı ölçüm v0.9.3'ü bekliyor.
+Tasarım: `docs/specs/2026-10-30-filo-design.md` (1. parça); plan:
+`docs/plans/2026-10-30-filo-1-surumden-kurulum.md`.
+
+### Neden
+
+Kullanıcı kararı (30 Ekim): Kadran açık kaynak ürün olacak, öncelikler çoklu sunucu ve kurulum
+kolaylığı. Sunucu kurmak bugün Go, `buf`, üç eklenti ve bir klon istiyor; ilk engel bu.
+
+Asıl soru tedarik zinciri: paket indirip root olarak kuruyoruz. Aynı yayındaki `SHA256SUMS`
+yalnız bozulmayı yakalar. Yayını değiştirebilen onu da değiştirir.
+
+### Ne yapıldı
+
+- **Özet istemcinin içinde.** `package-release.sh` önce sunucu paketlerini derliyor, özetlerini
+  `-X` ile istemcilere gömüyor (`version.ServerSHA256Amd64/Arm64`). Paketler deterministik olduğu
+  için döngü yok. İstemciye güvenen kuracağı sunucuya da güvenmiş olur; ek anahtar yok.
+- **`bootstrap` sürümden kuruyor.** Kendi sürümünün paketini indirir, özet tutmazsa reddeder.
+  Sunucuya bu denetimden önce yalnız `uname` ve yetki denetimi gider, dosya gitmez. Paket açılırken
+  ikinci savunma: yalnız dizin ve düz dosya, yalnız izinli kökler, paketin dışına çıkan ad yok,
+  boyut sınırlı.
+- **Yerel kurulum aynen duruyor.** `-binaries`, `-repo`, `KADRAN_BINARY_DIR` ve `dev` derlemesi
+  eskisi gibi. Sürümü damgalı ama özeti olmayan istemci indirmez, `-binaries` önerir.
+- **`get-kadran.sh` ve `get-kadran.ps1`.** Yönetici hakkı istemeden istemciyi kurar. Aynı dizinde
+  geçici ad + yeniden adlandırma: başarısızlıkta eski ikili sağlam.
+- **`irm | iex` kullanıcının oturumunda koşuyor.** Bu yüzden `exit` yalnız dosya olarak koşunca
+  (oturumu kapatırdı), bütün kod tek betik bloğunda (ayar ve işlev sızmaz, yarım inen betik
+  ayrıştırılamaz). Kullanıcı `Path`'i kayıt defterinden okunup yazılıyor: `[Environment]` API'si
+  `%VAR%` girdilerini genişletip `REG_SZ` yazar ve onları kalıcı bozar.
+
+### Ölçüm
+
+- **İki temiz LF klon:** `SHA256SUMS` aynı. Windows istemcisinin `version` çıktısındaki iki özet,
+  paketlerin `sha256sum`'ıyla aynı. Gerçek pakette 36 girdi: 31 düz dosya, 5 dizin, tekrar yok,
+  kökler izinli.
+- **Plan yanılmıştı:** öz denetim `go version -m` okuyacaktı ama `-trimpath` varken `-ldflags`
+  derleme bilgisine yazılmıyor (ölçüldü: 0 eşleşme, ikilide özetlerin her biri 1 kez). Denetim
+  artık ikilinin içinde arıyor; damgalı ikili geçti, gerçek v0.9.2 ikilisi geçmedi.
+- **Mutasyon:** `mutate-release.sh` 9/9 yakaladı. Aynı betik önceki testlerle 4 mutantı kaçırdı
+  (ölçüldü): yalnız ilk 12 hane, özetten önce açma, `..`, mutlak ad ve ters bölü. Son ikisini izinli
+  kök denetimi gizliyordu. Testler güçlendirildi. Ters bölü Windows'ta kaçış olurdu: `path.Clean` onu
+  ayırıcı saymıyor, `filepath.Join` sayıyor.
+- **Kurulum betikleri:** `check-get-kadran.sh` 18, `.ps1` 17 denetim, ikincisi pwsh 7.6 ve Windows
+  PowerShell 5.1'de. `mutate-get-kadran.sh` 10/10, `.ps1` 12/12 yakaladı; ikisi de CI'da koşuyor.
+- **Gerçek yayın:** iki betik de gerçek v0.9.2'yi kurdu, `kadran version` `v0.9.2` dedi (`sh` WSL
+  Ubuntu'da son sürüm ve açık sürümle; `.ps1` iki kabukta).
+- **Gerçek yayın bir tuzak gösterdi:** yayınlar Git Bash'te derlendiği için `SHA256SUMS` `*ad`
+  biçiminde; iki betik de bunu okuyor ve test ediyor.
+- **Ölçüm düzeneğimin iki hatası:** `if ( set -e; … )` koşul içinde `set -e`'yi etkisiz kılar ve
+  betik yokken dört denetim yeşil çıktı. `File.Replace`'e `$null` boş metin olarak gidiyordu ve
+  "in use" iletisi bunu örtüyordu; ileti artık yalnız G/Ç ve erişim hatasında çıkıyor.
+- **Bağımsız dal incelemesi üç şey buldu**, hepsi kırmızı görülüp düzeltildi:
+  - "Yerinde değiştirme" denetimi onu ölçmüyordu: sahte yayınla koştuğu için betik özet aşamasında
+    düşüyordu ve yerinde yazan mutant 17 denetimden sağ çıktı. Denetim artık çalışan gerçek bir ELF'in
+    yerine kuruyor; mutant `ETXTBSY` ile düşüyor. Elle koşulan mutantlarım bunu kaçırmıştı.
+  - Paketin tar listesi ile bootstrap'ın okuduğu dosyalar birbirinden habersizdi. CI artık gerçek
+    paketi `FetchRelease` ve `buildArchive`'den geçiriyor; `kadran-exec.service`'i silinmiş pakette
+    düşüyor, gerçek pakette (iki mimari) geçiyor.
+  - Öz denetim yer değiştirmiş özetleri görmüyordu (o yayında her bootstrap reddedilirdi).
+    `package-release.sh` artık bu makinede çalışan istemciye sorup satırları karşılaştırıyor:
+    yer değiştirilmiş klonda çıkış 1, iki temiz klonda 0 ve `SHA256SUMS` aynı.
+- **Kurulumdan sonraki ilk komut:** dizin PATH'te yoksa `kadran bootstrap` "command not found" verir.
+  Betik artık yapıştırılacak `export` satırını basıyor.
+- **CI denetimin kendisini yakaladı:** `ubuntu-latest` artık Ubuntu 26.04 ve yerinde yazan mutant orada
+  sağ çıktı (24.04'te yakalanıyordu). Denetim kopyalanan `sleep`in çalıştığını hiç sormuyordu. Muhtemel
+  sebep 26.04'ün Rust coreutils'i: adı değişince hemen çıkan bir `sleep`. Bu 26.04'te ölçülmedi, yerelde
+  taklitle aynı sonuç alındı. Denetim artık `bash` kopyalıyor ve sürecin kurulum boyunca yaşadığını çıkış
+  kodundan (143) kanıtlıyor; yalnız ETXTBSY'ye bakan ilk düzeltmem kapanan süreçte de geçti.
+
+### Açık
+
+- **İlk bağlantı:** `BatchMode=yes` yüzünden bilinmeyen sunucu anahtarı kurulumu durdurur. README
+  önce `ssh` ile bağlanmayı söylüyor; Kadran'ın kendi `known_hosts`'u filonun 2. parçası.
+- **Eski istemci yeni sunucuyu sessizce düşürebilir:** bootstrap her zaman istemcinin sürümünü kurar
+  ve bugün sürüm denetimi yok (bu daldan önce de böyleydi; okundu, sunucuda koşulmadı). Filo
+  parçalarından önce karar gerekiyor.
+- **Sıra önemli:** README bu dal birleşince tek satırı gösteriyor, ama `curl | sh` v0.9.3 çıkana
+  kadar v0.9.2 kurar ve onun `bootstrap`'ı sürümden kuramaz. Birleştirmeden hemen sonra v0.9.3
+  yayımlanmalı.
+- İstemcinin kendisi imzasız: tek satır GitHub'a ve TLS'e güveniyor. İmza sonraki iş (tasarımda).
+- Sürüm yolu gerçek sunucuda koşmadı; yayınlanmış bir sürüm ister (planın 9. görevi, her adım
+  kullanıcı onayıyla). Boş sunucuda kabul testi kiralama ister, kullanıcıya sorulacak.
+- `kadran-server` paketi sunucuya yine iş istasyonundan gidiyor; ev hattından yavaş yükleme
+  (K-119) değişmedi.

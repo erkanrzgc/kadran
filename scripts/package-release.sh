@@ -16,6 +16,9 @@
 #   LICENSE, THIRD_PARTY_LICENSES.txt           tek başına ikililer için
 #   SHA256SUMS
 #
+# Sıra: önce sunucu paketleri, sonra istemciler. İstemciler paketlerin
+# SHA256'sını taşır ve bootstrap yalnız onlara güvenir (K-159).
+#
 # Paket DETERMİNİSTİK: ad sırası, sabit zaman (commit'in), sabit sahip ve
 # kip, gzip başlığında ad/zaman yok. Aynı commit'ten iki koşu aynı
 # SHA256SUMS'u vermeli; yayından önce bu karşılaştırılıyor (K-118).
@@ -46,16 +49,6 @@ LDFLAGS="-s -w -X $MOD/internal/version.Version=$V -X $MOD/internal/version.Comm
 
 KADRAN_VERSION="$V" bash scripts/build-release.sh > /dev/null
 
-# Platform listesi tools/thirdparty'deki clientPlatforms ile aynı olmalı
-# (TestReleasePlatformsMatch).
-CLIENT_PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
-for t in $CLIENT_PLATFORMS; do
-    os=${t%/*}; arch=${t#*/}; ext=
-    [ "$os" = windows ] && ext=.exe
-    GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" \
-        -o "$OUT/kadran-$V-$os-$arch$ext" ./cmd/kadran
-done
-
 go run ./tools/thirdparty -o "$OUT/THIRD_PARTY_LICENSES.txt"
 cp LICENSE "$OUT/"
 
@@ -70,6 +63,38 @@ for arch in amd64 arm64; do
     tar "${tarflags[@]}" --mode=u=rwX,go=rX -rf "$tarball" deploy/systemd deploy/caddy deploy/notify deploy/offsite
     tar "${tarflags[@]}" --mode=0644 -rf "$tarball" -C "$OUT" LICENSE THIRD_PARTY_LICENSES.txt
     gzip -n -9 "$tarball"
+done
+
+# İstemciler sunucu paketlerinin özetini taşıyor (K-159): bootstrap indirdiği
+# paketi YALNIZ bunlarla karşılaştırır. Paketler bu yüzden istemcilerden
+# ÖNCE derleniyor; deterministik oldukları için döngü yok.
+amd64="$(sha256sum "$OUT/kadran-server-$V-linux-amd64.tar.gz" | cut -c1-64)"
+arm64="$(sha256sum "$OUT/kadran-server-$V-linux-arm64.tar.gz" | cut -c1-64)"
+CLIENT_LDFLAGS="$LDFLAGS -X $MOD/internal/version.ServerSHA256Amd64=$amd64 -X $MOD/internal/version.ServerSHA256Arm64=$arm64"
+
+# Platform listesi tools/thirdparty'deki clientPlatforms ile aynı olmalı
+# (TestReleasePlatformsMatch).
+CLIENT_PLATFORMS="linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64"
+for t in $CLIENT_PLATFORMS; do
+    os=${t%/*}; arch=${t#*/}; ext=
+    [ "$os" = windows ] && ext=.exe
+    f="$OUT/kadran-$V-$os-$arch$ext"
+    GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$CLIENT_LDFLAGS" -o "$f" ./cmd/kadran
+    # Yanlış bir -X yolu HATASIZ yok sayılır (K-130): özetin gerçekten ikiliye
+    # girdiğini ikilinin kendisinde ara. `go version -m` işe yaramaz: -trimpath
+    # varken -ldflags derleme bilgisine yazılmıyor (ölçüldü, K-159).
+    for h in "$amd64" "$arm64"; do
+        grep -qa "$h" "$f" || die "client $(basename "$f") does not carry server bundle hash $h"
+    done
+done
+
+# grep özetlerin yer değiştirmesini göremez; o yayında her bootstrap reddedilirdi.
+# Bu makinede çalışan istemciye sor: hangi mimarinin hangi özeti taşıdığını söylesin.
+ext=
+[ "$(go env GOHOSTOS)" = windows ] && ext=.exe
+surum="$("$OUT/kadran-$V-$(go env GOHOSTOS)-$(go env GOHOSTARCH)$ext" version | tr -d '\r')"
+for satir in "server bundle linux/amd64 sha256 $amd64" "server bundle linux/arm64 sha256 $arm64"; do
+    grep -qxF "$satir" <<<"$surum" || die "client version does not print: $satir"
 done
 
 (cd "$OUT" && sha256sum -- * > SHA256SUMS)

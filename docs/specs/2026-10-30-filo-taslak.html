@@ -1,0 +1,272 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kadran filo taslağı</title>
+<!-- Görsel referans: docs/specs/2026-10-30-filo-design.md, "Görsel dil". Tarayıcıda açın. -->
+<body style="margin:0;padding:24px;background:#1b1e25;color:#e6ebf2;font-family:system-ui,sans-serif">
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-pano" viewBox="0 0 16 16"><path d="M2.5 7.2 8 2.8l5.5 4.4V13a.5.5 0 0 1-.5.5h-3.2V9.8H6.2v3.7H3a.5.5 0 0 1-.5-.5z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-sunucu" viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><rect x="2.5" y="9" width="11" height="4.5" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="5" cy="4.75" r=".7" fill="currentColor"/><circle cx="5" cy="11.25" r=".7" fill="currentColor"/></symbol>
+    <symbol id="i-uyg" viewBox="0 0 16 16"><path d="M8 2.2 13.5 5 8 7.8 2.5 5z M2.5 8 8 10.8 13.5 8 M2.5 11 8 13.8 13.5 11" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-alarm" viewBox="0 0 16 16"><path d="M4 11.5V7.2a4 4 0 0 1 8 0v4.3l1 1H3z M6.6 13.8a1.5 1.5 0 0 0 2.8 0" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-anahtar" viewBox="0 0 16 16"><circle cx="5.5" cy="10.5" r="2.8" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m7.5 8.5 5.5-5.5M11 5l1.6 1.6M9.6 6.4l1.2 1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-zincir" viewBox="0 0 16 16"><path d="M6.8 9.2a2.5 2.5 0 0 0 3.5 0l2.2-2.2a2.5 2.5 0 0 0-3.5-3.5l-.8.8 M9.2 6.8a2.5 2.5 0 0 0-3.5 0L3.5 9a2.5 2.5 0 0 0 3.5 3.5l.8-.8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-zarf" viewBox="0 0 16 16"><rect x="2.5" y="3.5" width="11" height="9" rx="1" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m3 4.5 5 4 5-4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-ayar" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 1.8v1.7M8 12.5v1.7M1.8 8h1.7M12.5 8h1.7M3.6 3.6l1.2 1.2M11.2 11.2l1.2 1.2M3.6 12.4l1.2-1.2M11.2 4.8l1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-ara" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="m10.2 10.2 3.3 3.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+    <symbol id="i-arti" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></symbol>
+    <symbol id="i-yukari" viewBox="0 0 16 16"><path d="M8 13V3.5M4 7.5l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-yenile" viewBox="0 0 16 16"><path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.8v2.6h-2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-asagi" viewBox="0 0 16 16"><path d="m4.5 6.5 3.5 3.5 3.5-3.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-yedek" viewBox="0 0 16 16"><ellipse cx="8" cy="4" rx="5" ry="1.8" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8" fill="none" stroke="currentColor" stroke-width="1.2"/></symbol>
+    <symbol id="i-kalkan" viewBox="0 0 16 16"><path d="M8 2 13 4v4c0 3-2.2 5-5 6-2.8-1-5-3-5-6V4z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-makas" viewBox="0 0 16 16"><circle cx="4.5" cy="11.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/><circle cx="4.5" cy="4.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M6.2 5.6 13 12M6.2 10.4 13 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></symbol>
+  </defs>
+</svg>
+<style>
+  .pr { --yazi:#f5f8fc; --soluk:rgba(234,240,249,.74); --sonuk:rgba(222,231,244,.50); --cizgi:rgba(255,255,255,.11);
+        --iyi:#4ade80; --uyari:#fbbf24; --vurgu:#7dd3fc;
+        font-family:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--yazi); font-size:12.5px;
+        font-feature-settings:"cv11","ss01","tnum"; letter-spacing:-.003em; -webkit-font-smoothing:antialiased; }
+  .pr .mono { font-family:"JetBrains Mono",ui-monospace,Consolas,monospace; font-size:11.5px; letter-spacing:0; }
+  .pr svg.i { width:15px; height:15px; flex:none; opacity:.9; }
+
+  /* Puslu sıvı cam: güçlü bulanıklık + süt beyazı tül + ince doku + üst kenarda ışık */
+  .pr .cam { position:relative; isolation:isolate;
+     background:linear-gradient(180deg, rgba(255,255,255,.13), rgba(255,255,255,.07));
+     backdrop-filter:blur(30px) saturate(165%) brightness(1.06); -webkit-backdrop-filter:blur(30px) saturate(165%) brightness(1.06);
+     border:1px solid rgba(255,255,255,.16);
+     box-shadow: inset 0 1px 0 rgba(255,255,255,.32), inset 0 -1px 0 rgba(0,0,0,.12), 0 12px 32px -8px rgba(0,0,0,.45); }
+  .pr .cam::after { content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:-1; opacity:.07; mix-blend-mode:overlay;
+     background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .pr .koyu { background:linear-gradient(180deg, rgba(24,29,42,.46), rgba(18,22,33,.38)); }
+  .pr .duz { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); }
+  .pr .golge { text-shadow:0 1px 1px rgba(0,0,0,.35); }
+
+  .duvar { position:absolute; inset:0; overflow:hidden; background:#0e1422; }
+  .duvar i { position:absolute; border-radius:50%; }
+  .pencere { position:relative; border-radius:8px; overflow:hidden; border:1px solid rgba(255,255,255,.22);
+             box-shadow:0 50px 100px -20px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.4); }
+  .kabuk { position:relative; display:flex; min-height:580px; background:rgba(12,15,24,.22); }
+
+  .yan { width:212px; display:flex; flex-direction:column; padding:12px 10px; border:0; border-right:1px solid var(--cizgi); box-shadow:inset -1px 0 0 rgba(255,255,255,.05); }
+  .isik { display:flex; gap:8px; padding:2px 6px 14px; } .isik i { width:12px; height:12px; border-radius:50%; display:block; box-shadow:inset 0 0 0 .5px rgba(0,0,0,.25); }
+  .marka { display:flex; align-items:baseline; gap:7px; padding:0 8px 12px; font-weight:700; letter-spacing:.22em; font-size:12.5px; }
+  .marka span { letter-spacing:0; font-weight:500; color:var(--sonuk); }
+  .ara { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:4px; color:var(--sonuk); margin:0 0 8px; }
+  .ara .kbd { margin-left:auto; }
+  .kbd { font-size:10px; padding:0 5px; border-radius:3px; border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.06); color:var(--soluk); }
+  .bolum { font-size:10px; text-transform:uppercase; letter-spacing:.11em; color:var(--sonuk); padding:14px 8px 6px; font-weight:500; }
+  .oge { display:flex; align-items:center; gap:10px; padding:6px 8px; border-radius:4px; color:var(--soluk); border:1px solid transparent; }
+  .oge.on { color:#fff; background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.10); box-shadow:inset 0 1px 0 rgba(255,255,255,.08); }
+  .oge .say { margin-left:auto; font-size:10.5px; color:#1d1400; background:var(--uyari); border-radius:3px; padding:0 5px; font-weight:600; }
+  .ayak { margin-top:auto; display:flex; align-items:center; justify-content:space-between; padding:10px 4px 0; border-top:1px solid var(--cizgi); }
+  .kisi { display:flex; align-items:center; gap:8px; color:var(--soluk); }
+  .kisi b { width:22px; height:22px; border-radius:4px; display:grid; place-items:center; background:linear-gradient(135deg,#7dd3fc,#818cf8); color:#0a1020; font-size:10.5px; }
+
+  .sag { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .ust { display:flex; align-items:center; gap:4px; padding:9px 16px 9px; border-bottom:1px solid var(--cizgi); }
+  .sekme { display:flex; align-items:center; gap:7px; padding:5px 11px; border-radius:4px; color:var(--soluk); font-size:12px; border:1px solid transparent; }
+  .sekme.on { color:#fff; background:rgba(255,255,255,.09); border-color:rgba(255,255,255,.12); box-shadow:inset 0 1px 0 rgba(255,255,255,.1); }
+  .sekme .x { color:var(--sonuk); margin-left:2px; }
+  .nokta { width:6px; height:6px; border-radius:50%; display:inline-block; box-shadow:0 0 0 2px rgba(255,255,255,.06), 0 0 8px currentColor; }
+  .yol { display:flex; align-items:center; gap:8px; padding:11px 22px; border-bottom:1px solid var(--cizgi); color:var(--soluk); }
+  .yol .sec { color:#fff; display:inline-flex; align-items:center; gap:3px; font-weight:500; }
+  .yol .ayr { color:var(--sonuk); }
+  .icerik { padding:18px 22px; display:flex; flex-direction:column; gap:22px; }
+  .bas h3 { margin:0; font-size:15px; font-weight:600; letter-spacing:-.01em; } .bas p { margin:3px 0 0; color:var(--sonuk); font-size:12px; }
+  .bas-satir { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; }
+  .dugme { padding:6px 12px; border-radius:4px; font-size:12px; color:#fff; display:inline-flex; gap:7px; align-items:center; font-weight:500; }
+  .dugme.vurgu { color:#06223a; border:1px solid rgba(186,230,253,.7);
+     background:linear-gradient(180deg, #bae6fd, #7dd3fc 55%, #5cc0f0);
+     box-shadow:inset 0 1px 0 rgba(255,255,255,.7), 0 6px 18px -6px rgba(125,211,252,.7); text-shadow:none; }
+
+  .panel { border-radius:6px; overflow:hidden; }
+  .panel-bas { padding:12px 14px; border-bottom:1px solid var(--cizgi); display:flex; justify-content:space-between; align-items:center; }
+  .panel-bas b { font-weight:600; } .panel-bas .alt { color:var(--sonuk); font-size:11.5px; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-weight:500; color:var(--sonuk); font-size:10px; text-transform:uppercase; letter-spacing:.09em; padding:9px 14px; border-bottom:1px solid var(--cizgi); }
+  td { padding:10px 14px; border-bottom:1px solid rgba(255,255,255,.06); }
+  tr:last-child td { border-bottom:0; }
+  td.ad { font-weight:600; }
+  .hap { font-size:11px; padding:2px 8px 2px 7px; border-radius:999px; display:inline-flex; align-items:center; gap:6px; background:rgba(74,222,128,.10); border:1px solid rgba(74,222,128,.22); color:#c7f9d9; }
+
+  .grup-bas { display:flex; align-items:center; gap:8px; color:var(--soluk); font-size:11px; text-transform:uppercase; letter-spacing:.09em; margin:2px 0 9px; font-weight:500; }
+  .rozet { width:16px; height:16px; border-radius:3px; display:grid; place-items:center; font-size:9px; font-weight:700; color:#fff; letter-spacing:0; }
+  .izgara { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:16px; }
+  .kart { border-radius:6px; padding:12px; display:flex; flex-direction:column; gap:12px; }
+  .kart-ust { display:flex; gap:10px; align-items:flex-start; }
+  .ikon { width:30px; height:30px; border-radius:4px; display:grid; place-items:center; flex:none; color:var(--soluk); }
+  .kart .ad { font-weight:600; font-size:13px; display:flex; align-items:center; gap:7px; }
+  .kart .acik { color:var(--sonuk); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .kart-alt { display:flex; justify-content:space-between; align-items:center; color:var(--soluk); font-size:11.5px; padding-top:10px; border-top:1px solid rgba(255,255,255,.07); }
+  .eylem { display:flex; gap:5px; } .eylem span { width:22px; height:22px; border-radius:3px; display:grid; place-items:center; color:var(--soluk); }
+  .eylem svg { width:12px; height:12px; }
+
+  .ikinci { width:178px; padding:12px 10px; border-right:1px solid var(--cizgi); }
+  .kv { display:grid; grid-template-columns:repeat(3,1fr); gap:16px 18px; padding:14px; }
+  .kv .e { color:var(--sonuk); font-size:10px; text-transform:uppercase; letter-spacing:.09em; } .kv .d { margin-top:4px; }
+  .alan { display:grid; grid-template-columns:repeat(3,1fr); gap:12px 14px; padding:14px; }
+  .alan label { display:block; color:var(--soluk); font-size:11.5px; margin-bottom:5px; }
+  .girdi { padding:7px 10px; border-radius:4px; }
+</style>
+
+<h2>Daha köşeli, daha puslu, daha premium</h2>
+<p class="subtitle">Köşeler 8/6/4 px. Cam daha puslu: daha güçlü bulanıklık, süt beyazı tül, çok ince doku (grain). Metin karakteri simgeler yerine çizgi simgeler; rakamlar eşit genişlikte; tablo ve etiket başlıkları küçük büyük harf; ince çizgiler; ana düğmede ışık. Arkadaki renkler hâlâ duvar kâğıdının yerini tutuyor.</p>
+
+<div class="pr section">
+  <p class="label">Pano</p>
+  <div class="pencere">
+    <div class="duvar">
+      <i style="width:560px;height:560px;left:-140px;top:-180px;background:radial-gradient(circle at 40% 40%,#ef4444,#7f1d1d 70%)"></i>
+      <i style="width:480px;height:480px;right:-90px;top:-80px;background:radial-gradient(circle,#3b82f6,#1e3a8a 70%)"></i>
+      <i style="width:440px;height:440px;left:40%;bottom:-220px;background:radial-gradient(circle,#f59e0b,#78350f 70%)"></i>
+      <i style="width:260px;height:260px;right:16%;bottom:6%;background:radial-gradient(circle,#22d3ee,#155e75 70%)"></i>
+      <div style="position:absolute;left:-40px;right:-40px;top:52%;height:60px;transform:rotate(-7deg);background:repeating-linear-gradient(90deg,#0b0b0b 0 56px,#f8fafc 56px 112px);opacity:.8"></div>
+    </div>
+    <div class="kabuk cam" style="border:0;box-shadow:none;background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));backdrop-filter:blur(26px) saturate(150%) brightness(1.04);-webkit-backdrop-filter:blur(26px) saturate(150%) brightness(1.04)">
+      <div class="yan cam koyu golge">
+        <div class="isik"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+        <div class="marka">KΛDRΛN <span class="mono">v0.9.3</span></div>
+        <div class="ara duz"><svg class="i"><use href="#i-ara"/></svg>Ara<span class="kbd mono">⌘K</span></div>
+        <div class="bolum">Filo</div>
+        <div class="oge on"><svg class="i"><use href="#i-pano"/></svg>Pano</div>
+        <div class="oge"><svg class="i"><use href="#i-sunucu"/></svg>Sunucular</div>
+        <div class="oge"><svg class="i"><use href="#i-uyg"/></svg>Uygulamalar</div>
+        <div class="oge"><svg class="i"><use href="#i-alarm"/></svg>Alarmlar <span class="say">1</span></div>
+        <div class="bolum">Güvenlik</div>
+        <div class="oge"><svg class="i"><use href="#i-anahtar"/></svg>Anahtarlar</div>
+        <div class="oge"><svg class="i"><use href="#i-zincir"/></svg>Denetim</div>
+        <div class="bolum">Yönet</div>
+        <div class="oge"><svg class="i"><use href="#i-zarf"/></svg>Bildirimler</div>
+        <div class="oge"><svg class="i"><use href="#i-ayar"/></svg>Ayarlar</div>
+        <div class="ayak"><div class="kisi"><b>E</b>erkan</div><span class="kbd mono">⌘B</span></div>
+      </div>
+
+      <div class="sag golge">
+        <div class="ust">
+          <div class="sekme on"><svg class="i"><use href="#i-pano"/></svg>Pano</div>
+          <div class="sekme"><span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span>panely-test <span class="x">×</span></div>
+          <div class="sekme"><span class="nokta" style="color:var(--uyari);background:var(--uyari)"></span>gcp-1 <span class="x">×</span></div>
+        </div>
+        <div class="yol"><span class="sec">Filo <svg class="i" style="width:12px;height:12px;opacity:.6"><use href="#i-asagi"/></svg></span><span class="ayr">/</span><span class="sec">Pano <svg class="i" style="width:12px;height:12px;opacity:.6"><use href="#i-asagi"/></svg></span></div>
+        <div class="icerik">
+          <div>
+            <div class="bas-satir"><div class="bas"><h3>Son işlemler</h3><p>Bütün sunuculardaki dağıtım, geri alma ve yükseltmeler</p></div></div>
+            <div class="panel cam koyu">
+              <div class="panel-bas"><div><b>Son</b><div class="alt">En son tamamlanan işlemler</div></div><span class="dugme duz">Tümü</span></div>
+              <table>
+                <tr><th>Uygulama</th><th>Sunucu</th><th>İşlem</th><th>Durum</th><th>Başladı</th></tr>
+                <tr><td class="ad">portfolio</td><td>panely-test <span style="color:var(--sonuk)">· Hetzner</span></td><td class="mono">dağıtım #13</td><td><span class="hap"><span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span>Başarılı</span></td><td style="color:var(--soluk)">2 gün önce</td></tr>
+                <tr><td class="ad">—</td><td>gcp-1 <span style="color:var(--sonuk)">· Google Cloud</span></td><td class="mono">yükseltme v0.9.3</td><td><span class="hap"><span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span>Başarılı · 0 kesinti</span></td><td style="color:var(--soluk)">3 saat önce</td></tr>
+                <tr><td class="ad">api</td><td>hz-api <span style="color:var(--sonuk)">· Hetzner</span></td><td class="mono">geri alma #20→#19</td><td><span class="hap"><span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span>Başarılı</span></td><td style="color:var(--soluk)">dün</td></tr>
+              </table>
+            </div>
+          </div>
+
+          <div>
+            <div class="bas-satir"><div class="bas"><h3>Sunucular</h3><p>4 sunucu · 3 hazır · 1 uyarı · 11 uygulama</p></div>
+              <div style="display:flex;gap:8px"><span class="dugme duz"><svg class="i"><use href="#i-yukari"/></svg>Hepsini yükselt</span><span class="dugme vurgu"><svg class="i"><use href="#i-arti"/></svg>Sunucu ekle</span></div></div>
+            <div class="grup-bas"><span class="rozet" style="background:#d50c2d">H</span>Hetzner</div>
+            <div class="izgara">
+              <div class="kart cam koyu">
+                <div class="kart-ust"><span class="ikon duz"><svg class="i"><use href="#i-sunucu"/></svg></span><div style="min-width:0"><div class="ad">panely-test <span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span></div><div class="acik">nbg1 · Ubuntu 24.04 · disk %25</div></div></div>
+                <div class="kart-alt"><span>3 uygulama · <span class="mono">v0.9.3</span></span><span class="eylem"><span class="duz"><svg><use href="#i-arti"/></svg></span><span class="duz"><svg><use href="#i-ayar"/></svg></span></span></div>
+              </div>
+              <div class="kart cam koyu">
+                <div class="kart-ust"><span class="ikon duz"><svg class="i"><use href="#i-sunucu"/></svg></span><div style="min-width:0"><div class="ad">hz-api <span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span></div><div class="acik">fsn1 · Debian 13 · disk %41</div></div></div>
+                <div class="kart-alt"><span>5 uygulama · <span class="mono">v0.9.3</span></span><span class="eylem"><span class="duz"><svg><use href="#i-arti"/></svg></span><span class="duz"><svg><use href="#i-ayar"/></svg></span></span></div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <div class="grup-bas"><span class="rozet" style="background:#4285f4">G</span>Google Cloud</div>
+                <div class="kart cam koyu">
+                  <div class="kart-ust"><span class="ikon duz"><svg class="i"><use href="#i-sunucu"/></svg></span><div style="min-width:0"><div class="ad">gcp-1 <span class="nokta" style="color:var(--uyari);background:var(--uyari)"></span></div><div class="acik">us-central1 · Debian 13 · disk %63 · 1 alarm</div></div></div>
+                  <div class="kart-alt"><span>2 uygulama · <span class="mono">v0.9.3</span></span><span class="eylem"><span class="duz"><svg><use href="#i-arti"/></svg></span><span class="duz"><svg><use href="#i-ayar"/></svg></span></span></div>
+                </div>
+              </div>
+              <div>
+                <div class="grup-bas"><span class="rozet" style="background:#673de6">H</span>Hostinger</div>
+                <div class="kart cam koyu">
+                  <div class="kart-ust"><span class="ikon duz"><svg class="i"><use href="#i-sunucu"/></svg></span><div style="min-width:0"><div class="ad">vps-hst <span class="nokta" style="color:var(--soluk);background:var(--soluk)"></span></div><div class="acik">Ubuntu 24.04 · TOTP girişi gerekli</div></div></div>
+                  <div class="kart-alt"><span class="mono" style="color:var(--uyari)">v0.9.2 → v0.9.3</span><span style="color:var(--vurgu)">Kodu gir →</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="pr section">
+  <p class="label">Sunucu sayfası</p>
+  <div class="pencere">
+    <div class="duvar">
+      <i style="width:520px;height:520px;left:-120px;top:-160px;background:radial-gradient(circle,#ef4444,#7f1d1d 70%)"></i>
+      <i style="width:460px;height:460px;right:-80px;top:-60px;background:radial-gradient(circle,#3b82f6,#1e3a8a 70%)"></i>
+      <i style="width:380px;height:380px;left:45%;bottom:-200px;background:radial-gradient(circle,#f59e0b,#78350f 70%)"></i>
+    </div>
+    <div class="kabuk cam" style="min-height:460px;border:0;box-shadow:none;background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.04));backdrop-filter:blur(26px) saturate(150%) brightness(1.04);-webkit-backdrop-filter:blur(26px) saturate(150%) brightness(1.04)">
+      <div class="yan cam koyu golge">
+        <div class="isik"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+        <div class="marka">KΛDRΛN <span class="mono">v0.9.3</span></div>
+        <div class="ara duz"><svg class="i"><use href="#i-ara"/></svg>Ara<span class="kbd mono">⌘K</span></div>
+        <div class="bolum">Filo</div>
+        <div class="oge"><svg class="i"><use href="#i-pano"/></svg>Pano</div>
+        <div class="oge on"><svg class="i"><use href="#i-sunucu"/></svg>Sunucular</div>
+        <div class="oge"><svg class="i"><use href="#i-uyg"/></svg>Uygulamalar</div>
+        <div class="oge"><svg class="i"><use href="#i-alarm"/></svg>Alarmlar</div>
+      </div>
+      <div class="sag golge">
+        <div class="ust">
+          <div class="sekme"><svg class="i"><use href="#i-pano"/></svg>Pano</div>
+          <div class="sekme on"><span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span>panely-test <span class="x">×</span></div>
+          <div class="sekme"><span class="nokta" style="color:var(--uyari);background:var(--uyari)"></span>gcp-1 <span class="x">×</span></div>
+        </div>
+        <div class="yol"><span class="sec">Sunucular</span><span class="ayr">/</span><span class="sec">panely-test <svg class="i" style="width:12px;height:12px;opacity:.6"><use href="#i-asagi"/></svg></span><span class="hap"><span class="nokta" style="color:var(--iyi);background:var(--iyi)"></span>Hazır</span><span style="margin-left:auto" class="dugme vurgu">İşlemler <svg class="i" style="width:12px;height:12px"><use href="#i-asagi"/></svg></span></div>
+        <div style="display:flex;flex:1">
+          <div class="ikinci">
+            <div class="bolum">Sunucu</div>
+            <div class="oge on"><svg class="i"><use href="#i-sunucu"/></svg>Genel</div>
+            <div class="oge"><svg class="i"><use href="#i-uyg"/></svg>Uygulamalar</div>
+            <div class="oge"><svg class="i"><use href="#i-yedek"/></svg>Yedekler</div>
+            <div class="bolum">Güvenlik</div>
+            <div class="oge"><svg class="i"><use href="#i-kalkan"/></svg>TOTP ve oturum</div>
+            <div class="oge"><svg class="i"><use href="#i-zincir"/></svg>Denetim kaydı</div>
+            <div class="bolum">Bakım</div>
+            <div class="oge"><svg class="i"><use href="#i-yukari"/></svg>Yükseltme</div>
+            <div class="oge"><svg class="i"><use href="#i-makas"/></svg>Budama</div>
+          </div>
+          <div class="icerik" style="flex:1">
+            <div class="panel cam koyu">
+              <div class="panel-bas"><div><b>Sunucu özeti</b><div class="alt">Erişilebilir, doğrulanmış, uygulama çalıştırmaya hazır</div></div><span class="dugme duz"><svg class="i"><use href="#i-yenile"/></svg></span></div>
+              <div class="kv">
+                <div><div class="e">İşletim sistemi</div><div class="d">Ubuntu 24.04.4 LTS</div></div>
+                <div><div class="e">Mimari</div><div class="d mono">x86_64</div></div>
+                <div><div class="e">Çekirdek</div><div class="d mono">6.8.0-147-generic</div></div>
+                <div><div class="e">Kadran</div><div class="d mono">v0.9.3 · protokol 3</div></div>
+                <div><div class="e">Docker</div><div class="d mono">29.1.3</div></div>
+                <div><div class="e">Ayakta</div><div class="d mono">6 gün 11 dk</div></div>
+              </div>
+            </div>
+            <div class="panel cam koyu">
+              <div class="panel-bas"><b>Bağlantı</b><span class="dugme duz"><svg class="i"><use href="#i-yenile"/></svg>Bağlantıyı sına</span></div>
+              <div class="alan">
+                <div><label>Ad</label><div class="girdi duz">panely-test</div></div>
+                <div><label>Sağlayıcı</label><div class="girdi duz" style="display:flex;justify-content:space-between">Hetzner <svg class="i" style="width:12px;height:12px"><use href="#i-asagi"/></svg></div></div>
+                <div><label>Günlük erişim</label><div class="girdi duz mono">kadran-client@…:22</div></div>
+                <div><label>Yönetici erişimi</label><div class="girdi duz mono">kadran-admin · sudo</div></div>
+                <div><label>Sunucu parmak izi</label><div class="girdi duz mono">SHA256:KD9+…n99g <span style="color:var(--iyi)">✓</span></div></div>
+                <div><label>TOTP</label><div class="girdi duz">Açık · 10 kurtarma kodu</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

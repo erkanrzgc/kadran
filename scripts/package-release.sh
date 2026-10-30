@@ -80,13 +80,12 @@ for t in $CLIENT_PLATFORMS; do
     [ "$os" = windows ] && ext=.exe
     f="$OUT/kadran-$V-$os-$arch$ext"
     GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build -trimpath -ldflags "$CLIENT_LDFLAGS" -o "$f" ./cmd/kadran
-    # Yanlış bir -X yolu HATASIZ yok sayılır (K-130): özetin gerçekten
-    # ikiliye girdiğini derleme bilgisinden doğrula.
-    info="$(go version -m "$f")"
-    case "$info" in
-        *"ServerSHA256Amd64=$amd64"*"ServerSHA256Arm64=$arm64"*) ;;
-        *) die "client $(basename "$f") does not carry the server bundle hashes" ;;
-    esac
+    # Yanlış bir -X yolu HATASIZ yok sayılır (K-130): özetin gerçekten ikiliye
+    # girdiğini ikilinin kendisinde ara. `go version -m` işe yaramaz: -trimpath
+    # varken -ldflags derleme bilgisine yazılmıyor (ölçüldü, K-159).
+    for h in "$amd64" "$arm64"; do
+        grep -qa "$h" "$f" || die "client $(basename "$f") does not carry server bundle hash $h"
+    done
 done
 
 (cd "$OUT" && sha256sum -- * > SHA256SUMS)

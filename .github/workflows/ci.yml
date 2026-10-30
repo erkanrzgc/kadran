@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Gecelik tam mutasyon (K-160). Kod değişmese de koşar: `ubuntu-latest`'in
+  # değişmesi de bir denetimi sessizce boşa düşürebiliyor (K-159).
+  schedule:
+    - cron: "17 1 * * *"
 
 # Üretilen protobuf kodu depoya konmuyor (.gitignore: *.pb.go), bu yüzden
 # HER iş önce `buf generate` çalıştırmak zorunda. Ortak adımlar bir bileşik
@@ -13,8 +17,9 @@ on:
 permissions:
   contents: read
 
+# Olay adı grupta: main'e gelen bir push süren gecelik koşuyu iptal etmesin.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 env:
@@ -70,6 +75,10 @@ jobs:
       # journal'ına gerçekten düşen satırların biçiminde; ağa dokunmaz.
       - name: Alarm mesajı biçimlendiricisi
         run: bash scripts/check-notify-format.sh
+
+      # PR'da hangi mutasyon betiklerinin koşacağını seçen betik (K-160).
+      - name: Mutasyon seçicisi
+        run: bash scripts/check-mutation-select.sh
 
       # Hacim arşivleyicisi ve uzak yükleyici (K-111). rclone ve age sahte,
       # tar ve zstd gerçek. ROOT ile: iki betik de yapılandırmanın ve üst
@@ -589,24 +598,24 @@ jobs:
           fi
 
   # ══════════════════════════════════════════════════════════════════
-  #  Değişiklik türü: yalnız belge mi?
+  #  Değişiklik türü: hangi mutasyon betikleri koşacak?
   # ══════════════════════════════════════════════════════════════════
   #
-  # Mutasyon işi ~45 dk sürüyor ve belge değişikliğinde ölçtüğü hiçbir şey
-  # değişmiyor (betikler yalnız kod ve test mutasyonu yapar). Bu iş, değişen
-  # dosyaların HEPSİ belge izin listesindeyse `code=false` verir; mutasyon
-  # yalnız o durumda atlanır.
+  # Bütün betikler bir saatten uzun sürüyor. Bu iş değişen dosyalardan koşacak
+  # betikleri seçer (scripts/mutation-select.sh, K-160). Değişen dosyaların
+  # HEPSİ belgeyse (`*.md`, `docs/`) hiçbiri koşmaz: betikler yalnız kod ve
+  # test mutasyonu yapar. Belgeyi okuyan testler (privategit_guide_test.go)
+  # test işinde zaten koşuyor.
   #
-  # ⚠ Varsayılan KOŞMAK. İzin listesi dar (`*.md`, `docs/`) ve dışındaki her
-  # dosya — ci.yml, betikler, deploy/, desktop/, go.mod — işi koşturur.
-  # Fark alınamazsa (yeni dal, sıfır SHA, eksik commit, elle tetikleme) de
-  # koşar: belirsizlik atlama sebebi değil. Belgeyi okuyan testler
-  # (privategit_guide_test.go) test işinde zaten koşuyor.
+  # ⚠ Belirsizlikte HEPSİ koşar: fark alınamazsa (yeni dal, sıfır SHA, eksik
+  # commit), gecelik ve elle tetiklemede; ci.yml, proto ya da go.mod
+  # değişince de.
   changes:
     name: Değişiklik türü
     runs-on: ubuntu-latest
     outputs:
-      code: ${{ steps.diff.outputs.code }}
+      mutate_sh: ${{ steps.diff.outputs.mutate_sh }}
+      mutate_ps1: ${{ steps.diff.outputs.mutate_ps1 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -619,7 +628,7 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
         run: |
           set -uo pipefail
-          code=true
+          files=""
           case "$EVENT" in
             pull_request) base="$PR_BASE" ;;
             push) base="$PUSH_BEFORE" ;;
@@ -628,21 +637,26 @@ jobs:
           if [ -n "$base" ] && ! [[ "$base" =~ ^0+$ ]] \
              && files="$(git diff --name-only "$base" "$HEAD_SHA")" && [ -n "$files" ]; then
             echo "değişen dosyalar:"; printf '  %s\n' $files
-            if ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then
-              code=false
-            fi
           else
-            echo "fark alınamadı ya da boş (olay $EVENT, taban '${base}') — mutasyon koşar"
+            files=""
+            echo "fark alınamadı ya da boş (olay $EVENT, taban '${base}') — bütün mutasyonlar koşar"
           fi
-          echo "code=$code"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
+          if [ -n "$files" ] && ! printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then
+            secilen=""
+          elif ! secilen="$(printf '%s\n' "$files" | bash scripts/mutation-select.sh)"; then
+            echo "::error::mutasyon seçicisi düştü" >&2
+            exit 1
+          fi
+          echo "seçilen:"; printf '  %s\n' $secilen
+          echo "mutate_sh=$(printf '%s\n' $secilen | grep '\.sh$' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
+          echo "mutate_ps1=$(printf '%s\n' $secilen | grep '\.ps1$' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
   # Aşağıdaki iş Linux'ta; Windows kurulum betiğinin denetimi Windows ister
   # (K-159). Elle çalıştırılan bir mutasyon guard değildir.
   mutation-windows:
     name: Mutasyon (Windows kurulum betiği)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.mutate_ps1 != ''
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -661,10 +675,14 @@ jobs:
   #
   # ⚠ Betikler TEK TEK sayılmıyor, glob'la bulunuyor. Liste tutmak, yeni
   # bir betiğin unutulmasına davetiye olurdu — tam da bu işi doğuran hata.
+  #
+  # K-160: bütün betikler bir saatten uzun sürüyor. PR'da ve main'e push'ta
+  # yalnız değişikliğin seçtikleri koşar; tamamı gecelik ve elle tetiklenince
+  # (sürüm öncesi) koşar.
   mutation:
     name: Mutasyon (testler gerçekten koruyor mu)
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    if: needs.changes.outputs.mutate_sh != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -696,12 +714,13 @@ jobs:
       - name: Kasa geri dönüş araçları
         run: sudo apt-get update -qq && sudo apt-get install -y -qq sqlite3 age
 
-      - name: Bütün mutasyon betikleri
+      - name: Seçilen mutasyon betikleri
         # Sudo kipinin umask mutasyonunu yalnızca gerçek sudo testi
         # yakalıyor (mutate-bootstrapssh.sh, K-127).
         env:
           KADRAN_TEST_REAL_SUDO: "1"
           KADRAN_TEST_REQUIRE_KASA_TOOLS: "1"
+          SECILEN: ${{ needs.changes.outputs.mutate_sh }}
         run: |
           set -uo pipefail
 
@@ -749,8 +768,9 @@ jobs:
             exit 1
           fi
 
+          # Kapılar yukarıda BÜTÜN betiklere bakıyor, koşan yalnız seçilenler.
           fail=0
-          for s in "${scripts[@]}"; do
+          for s in $SECILEN; do
             echo "──────────────────────────────────────────"
             echo "▶ $s"
             if ! bash "$s"; then

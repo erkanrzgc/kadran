@@ -67,8 +67,12 @@ When you add an invariant, add a mutation for it. The mutant must compile — th
 scripts refuse to count a build failure as "caught", and CI checks that every
 script has that gate.
 
-CI runs the mutation scripts on every change except one that touches only
-documentation (`*.md` and `docs/`).
+On a pull request CI runs only the mutation scripts your change touches:
+`scripts/mutation-select.sh` picks them from the paths each script names, and picks
+all of them when `.github/`, `proto/` or a `go.mod` changes. A change to `*.md` and
+`docs/` alone runs none. All of them run every night, and on the commit to tag
+before a release (`gh workflow run ci.yml --ref main`), because together they take
+over an hour.
 
 `buf generate` succeeding does **not** mean `buf lint` will. Style rules —
 for example, a streaming RPC's response message must be named

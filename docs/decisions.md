@@ -12124,8 +12124,8 @@ interrupted" sözü sonraki paket yükseltmesine erteleniyordu.
 
 ## K-159 — Sürümden kurulum: gömülü özetle doğrulanan sunucu paketi (2026-10-30)
 
-**Durum:** PR #25 ile main'de (`6b94dc5`), v0.9.3'te. Hetzner'de yansıdan ölçüldü; GitHub'dan gerçek
-indirme ve GCP v0.9.3'ü bekliyor. Tasarım: `docs/specs/2026-10-30-filo-design.md` (1. parça); plan:
+**Durum:** PR #25 ile main'de (`6b94dc5`), v0.9.3'te yayımlandı (2026-10-30). İki sunucu v0.9.3'e
+sürüm yolundan yükseltildi. Boş sunucuda kabul testi ve macOS kaldı. Tasarım: `docs/specs/2026-10-30-filo-design.md` (1. parça); plan:
 `docs/plans/2026-10-30-filo-1-surumden-kurulum.md`.
 
 ### Neden
@@ -12209,7 +12209,27 @@ yansıdan (`KADRAN_RELEASE_BASE`).
   uygulama ve `--allow-repo` duruyor, `authorized_keys` özeti aynı. TOTP oturumu yeniden başlatmayı
   geçti, kurtarma kodları 10.
 
-Ölçülmeyen: GitHub'dan indirme, `-sudo` yolu, boş sunucu.
+### Canlıda (v0.9.3, 30 Ekim, kullanıcı onayıyla)
+
+Yayımlanmış istemciyle, `-repo` ve `-binaries` olmadan; paket GitHub'dan indi ve gömülü özetle
+doğrulandı. Sonrasında iki sunucuda da çalışan ikililer paketle aynı, `NRestarts=0`, alarm yok, iki
+zincir geçerli, uygulamalar duruyor, TOTP oturumu yeniden başlatmayı geçti, kurtarma kodları 10.
+`kadran-caddy` iki sunucuda da aynı PID (K-158), silinmiş dosyadan çalışması sürüyor.
+
+- **Tek satırlıklar:** `curl | sh` (WSL Ubuntu) ve `irm | iex` (PowerShell 7) gerçek yayından geçici
+  dizine kurdu; özetler `SHA256SUMS` ile aynı, PATH değişmedi. 5.1 ve macOS'ta bu deneme yapılmadı.
+- **Hetzner (`root`, `v0.9.3-rc1`'den):** 23 sn, çıkış 0. Yoklama bu makineden 71/71, GCP'den 58/58,
+  hepsi 200.
+- **GCP (`-sudo`, v0.9.2'den):** 229 sn, çıkış 0. Yükleme ev hattından koparken devam etti
+  (`Connection dropped (upload, attempt 1/6)`, `Resuming the upload: 20.8 MiB/33.5 MiB`).
+- **GCP yoklaması, tam olarak:** bu makineden 123 tane 200, 4 tane `000`. Dördü de servisler yeniden
+  başlamadan önce (19:06:25, 19:06:35, 19:09:10, 19:09:11 UTC). Son ikisinde Hetzner'dan gelen
+  yoklama 200 alıyordu ve aynı anda iki SSH bağlantım da koptu, yani kopan ev hattıydı. Hetzner'daki
+  yoklama bu kopmayla 19:09:12'de bitti (222/222, 200). Bu yüzden yeniden başlatma aralığı
+  (19:09:42-45) yalnız bu makineden ölçüldü: 19:09:31-19:10:07 arası 34/34, 200. Bağımsız ikinci
+  nokta bu aralığı görmedi.
+
+Ölçülmeyen: boş sunucu.
 
 ### Açık
 
@@ -12218,11 +12238,14 @@ yansıdan (`KADRAN_RELEASE_BASE`).
 - **Eski istemci yeni sunucuyu sessizce düşürebilir:** bootstrap her zaman istemcinin sürümünü kurar
   ve bugün sürüm denetimi yok (bu daldan önce de böyleydi; okundu, sunucuda koşulmadı). Filo
   parçalarından önce karar gerekiyor.
-- **Sıra önemli:** README bu dal birleşince tek satırı gösteriyor, ama `curl | sh` v0.9.3 çıkana
-  kadar v0.9.2 kurar ve onun `bootstrap`'ı sürümden kuramaz. Birleştirmeden hemen sonra v0.9.3
-  yayımlanmalı.
 - İstemcinin kendisi imzasız: tek satır GitHub'a ve TLS'e güveniyor. İmza sonraki iş (tasarımda).
-- Sürüm yolu GitHub'dan ve `-sudo` ile koşmadı; yayınlanmış bir sürüm ister (planın 9. görevi, her
-  adım kullanıcı onayıyla). Boş sunucuda kabul testi kiralama ister, kullanıcıya sorulacak.
+- Boş sunucuda kabul testi kiralama ister, kullanıcıya sorulacak.
+- **Ertelenen küçükler (incelemeden):** `get-kadran.ps1` çalışan exe'nin yerine kurunca
+  `kadran.exe~RF*.TMP` bırakıyor (eski ikili, ~13 MB); `-Command` altında başarısız `.ps1` çıkış 0
+  veriyor; `finally`'deki `Remove-Item` Stop altında koşuyor, antivirüs kilidi başarıyı 1'e çevirebilir
+  (okundu, ölçülmedi); `bootstrap` yardımı `default "bin"` diyor, varsayılan artık yayın;
+  `KADRAN_RELEASE_BASE` doğrulanmıyor, `file://` ham hata veriyor; takılan indirmenin boşta zaman
+  aşımı yok, `-timeout`u tüketiyor (okundu, ölçülmedi); başarılı kurulumdan sonra geçici dizinin
+  silinmesini test etmiyor (gerçekte doğru ölçüldü).
 - `kadran-server` paketi sunucuya yine iş istasyonundan gidiyor; ev hattından yavaş yükleme
   (K-119) değişmedi.

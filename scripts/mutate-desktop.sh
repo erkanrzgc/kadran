@@ -14,6 +14,8 @@
 # Hepsi birim düzeyinde ölçülüyor (npm test); Electron açılmıyor. Düzenek
 # diğer betiklerle aynı: tek eşleşme şartı (K-127), yeşil taban şartı,
 # derleme kapısı (K-096).
+#
+# kapsam: desktop/
 set -uo pipefail
 
 cd "$(dirname "$0")/../desktop"

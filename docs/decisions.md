@@ -12249,3 +12249,51 @@ zincir geçerli, uygulamalar duruyor, TOTP oturumu yeniden başlatmayı geçti, 
   silinmesini test etmiyor (gerçekte doğru ölçüldü).
 - `kadran-server` paketi sunucuya yine iş istasyonundan gidiyor; ev hattından yavaş yükleme
   (K-119) değişmedi.
+
+## K-160 — Süreci hafifletme: PR'da seçilen mutasyon, tamamı gecelik (2026-10-30)
+
+**Durum:** dal `lighter-ci`'da, yerelde yeşil; CI'da henüz koşmadı.
+
+### Neden
+
+Kullanıcı: "hep mutasyon CI hem release yükseltiyoz". Ölçülen: mutasyon işi her push'ta 1 sa 10 dk;
+3 günde dört sürüm (v0.9.0-v0.9.3); PR #25'in son push'unda değişen tek betiğin mutasyonu saniyelerle
+ölçülüyordu (`mutate-get-kadran.sh` önceki koşuda 7 sn).
+
+### Karar
+
+- **PR ve main push'u:** yalnız değişikliğin seçtiği betikler koşar. `scripts/mutation-select.sh`
+  kapsamı her betiğin metninde andığı dosya ve paketlerden çıkarıyor; liste elle tutulmuyor. Metinde
+  yol geçmeyen betik `# kapsam:` satırı taşır (`mutate-desktop.sh`). Kapsamı boş betik lint'te düşer.
+- **Belirsizlikte hepsi:** fark alınamazsa, `.github/`, `proto/`, `buf.*`, herhangi bir `go.mod`/`go.sum`
+  ya da seçicinin kendisi değişince.
+- **Gecelik ve elle tetikleme:** tamamı. Gecelik koşu kod değişmese de koşar, çünkü `ubuntu-latest`
+  değişimi bir denetimi sessizce boşa düşürebiliyor (K-159).
+- **Sürüm öncesi:** etiketlenecek commit'te tam koşu yeşil olmalı. O commit'te gecelik koştuysa yeniden
+  koşmaz; yoksa `gh workflow run ci.yml --ref main`.
+- Kapılar (K-096, K-127, taban) yine BÜTÜN betiklere bakıyor; koşan yalnız seçilenler. `concurrency`
+  grubunda olay adı var: main'e push süren gecelik koşuyu iptal etmesin.
+- **Çalışma kuralları (kod değil):** sürüm kullanıcının fark edeceği bir şey birikince çıkar; sunucu
+  yalnız sunucu kodu değişince yükseltilir; bir sürüm için tek onay, yayımlama ve canlı adımlar ayrı.
+
+### Bedeli
+
+Bir değişiklik, betiğin anmadığı bir paketteki korumayı bozarsa PR yeşil geçer ve bu ancak gecelik
+görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi (kullanıcı onayı, 30 Ekim).
+
+### Ölçüm
+
+- `check-mutation-select.sh` önce kırmızı (seçici yokken), sonra yeşil. İlk koşuda iki kırmızı testin
+  kendisindendi: `grep -q` erken çıkınca `pipefail` seçiciyi düşmüş sayıyordu.
+- `mutate-mutation-select.sh` 10/10. Sağ kalan bir mutant, `.go` dosyasından paket çıkaran kuralın
+  gereksiz olduğunu gösterdi: betikler paketi zaten `go test ./…` ile anıyor. Kural silindi.
+- Seçilen betik sayısı (36 içinden): `scripts/get-kadran.sh` 1, `scripts/get-kadran.ps1` 1,
+  `internal/api/totp.go` 10, `internal/bootstrap/install.sh` 7, `README.md` 0, `go.mod` 36, boş liste 36.
+
+### Açık
+
+- CI'da ilk koşu bu PR: `ci.yml` değiştiği için hepsi koşar. Seçimin küçük bir PR'da işlediği sonraki
+  PR'da görülecek; gecelik koşu da ilk kez sonraki gece.
+- Gecelik kırmızıyı yalnız GitHub'ın e-postası duyuruyor. GitHub 60 gün etkinlik olmayan depoda
+  zamanlanmış koşuyu kapatır.
+- "Sürüm öncesi tam koşu" kodla zorlanmıyor; sürüm yordamına yazılı kural.

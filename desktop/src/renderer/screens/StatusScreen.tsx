@@ -81,57 +81,73 @@ export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: Se
 
   return (
     <div className="screen" data-testid="screen-status">
-      <header className="stage-head">
-        {stale ? <p className="eyebrow">{t("status.eyebrow_stale")}</p> : null}
-        <h1 className="title mono">{target}</h1>
-        {statusMetaKeys(stale, reachable).map((k) => (
-          <p key={k} className="meta">
-            {t(k)}
-          </p>
-        ))}
+      <header className="stage-head resource-head">
+        <div>
+          {stale ? <p className="eyebrow">{t("status.eyebrow_stale")}</p> : null}
+          <h1 className="title">{profile?.name ?? target}</h1>
+          {statusMetaKeys(stale, reachable).map((k) => (
+            <p key={k} className="meta">
+              {t(k)}
+            </p>
+          ))}
+        </div>
+        <div className="head-actions">
+          {rtt !== null ? (
+            <span className="pill mono" title={t("topbar.rtt_title")} data-testid="rtt">
+              {t("topbar.rtt", { ms: rtt })}
+            </span>
+          ) : null}
+          <button type="button" className="btn btn-primary" disabled={server.state.verifying} onClick={() => void server.verifyChains()} data-testid="verify">
+            {server.state.verifying ? t("topbar.verifying") : t("topbar.verify")}
+          </button>
+        </div>
       </header>
 
-      <section className="panel glass">
+      <section className="panel">
         <div className="panel-head">
           <div>
             <h2 className="section-title">{t("status.summary")}</h2>
             <p className="panel-sub">{reachable ? t("status.summary_ok") : t("status.meta_down")}</p>
           </div>
         </div>
-        <KeyValues
-          testId="server-summary"
-          rows={[
-            { label: t("row.os"), value: host?.os || "—" },
-            { label: t("row.architecture"), value: host?.architecture || "—", mono: true },
-            { label: t("row.kernel"), value: host?.kernel_version || "—", mono: true },
-            { label: t("row.kadran"), value: status.daemon_version || "—", mono: true },
-            { label: t("row.executor"), value: status.executor_version || "—", mono: true },
-            { label: t("row.docker"), value: host?.docker_version || t("value.none"), mono: true },
-            { label: t("row.name"), value: status.hostname || "—", mono: true },
-            { label: t("row.disk"), value: disk === null ? "—" : `${disk}% · ${humanBytes(host!.disk_total_bytes)}`, mono: true },
-            root
-              ? { label: t("row.user"), value: t("value.broken_install", { user: "root" }), tone: "bad" }
-              : { label: t("row.user"), value: status.running_as_user || "—", mono: true },
-          ]}
-        />
+        <div className="well">
+          <KeyValues
+            testId="server-summary"
+            rows={[
+              { label: t("row.os"), value: host?.os || "—" },
+              { label: t("row.architecture"), value: host?.architecture || "—", mono: true },
+              { label: t("row.kernel"), value: host?.kernel_version || "—", mono: true },
+              { label: t("row.kadran"), value: status.daemon_version || "—", mono: true },
+              { label: t("row.executor"), value: status.executor_version || "—", mono: true },
+              { label: t("row.docker"), value: host?.docker_version || t("value.none"), mono: true },
+              { label: t("row.name"), value: status.hostname || "—", mono: true },
+              { label: t("row.disk"), value: disk === null ? "—" : `${disk}% · ${humanBytes(host!.disk_total_bytes)}`, mono: true },
+              root
+                ? { label: t("row.user"), value: t("value.broken_install", { user: "root" }), tone: "bad" }
+                : { label: t("row.user"), value: status.running_as_user || "—", mono: true },
+            ]}
+          />
+        </div>
       </section>
 
-      <section className="panel glass">
+      <section className="panel">
         <div className="panel-head">
           <h2 className="section-title">{t("status.connection")}</h2>
           <button type="button" className="btn btn-ghost" disabled={!profile} onClick={() => onEdit(target)} data-testid="server-edit">{t("fleet.edit")}</button>
         </div>
-        <KeyValues
-          testId="server-connection"
-          rows={[
-            { label: t("fleet.name"), value: profile?.name ?? target },
-            { label: t("fleet.provider"), value: profile?.provider ? providerView(profile.provider).name : t("fleet.no_provider") },
-            { label: t("rail.target_label"), value: target, mono: true },
-          ]}
-        />
+        <div className="well">
+          <KeyValues
+            testId="server-connection"
+            rows={[
+              { label: t("fleet.name"), value: profile?.name ?? target },
+              { label: t("fleet.provider"), value: profile?.provider ? providerView(profile.provider).name : t("fleet.no_provider") },
+              { label: t("rail.target_label"), value: target, mono: true },
+            ]}
+          />
+        </div>
       </section>
 
-      <section className="panel glass">
+      <section className="panel">
         <div className="panel-head">
           <h2 className="section-title">{t("status.overview")}</h2>
           <div className="panel-actions">
@@ -145,59 +161,72 @@ export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: Se
             </button>
           </div>
         </div>
-        <div className="tiles">
-          <Tile label={t("tile.uptime")} value={humanDuration(status.daemon_uptime_seconds)} />
-          <Tile label={t("tile.memory")} value={memoryText(host)}>
-            <Sparkline samples={memorySamples} label={t("tile.memory")} />
-          </Tile>
-          <Tile label={t("tile.rtt")} value={rtt === null ? "—" : t("topbar.rtt", { ms: rtt })}>
-            <Sparkline samples={rttSamples} label={t("tile.rtt")} />
-          </Tile>
-          <Tile
-            label={t("tile.executor")}
-            value={reachable ? t("value.reachable") : t("value.unreachable")}
-            tone={reachable ? "ok" : "warn"}
-          />
-          <Tile
-            label={t("tile.chains")}
-            value={`${daemonChain.label} · ${execChain.label}`}
-            tone={worstTone(daemonChain.tone, execChain.tone)}
-            testId="tile-chains"
-          />
+        <div className="well">
+          <div className="tiles">
+            <Tile label={t("tile.uptime")} value={humanDuration(status.daemon_uptime_seconds)} />
+            <Tile label={t("tile.memory")} value={memoryText(host)}>
+              <Sparkline samples={memorySamples} label={t("tile.memory")} />
+            </Tile>
+            <Tile label={t("tile.rtt")} value={rtt === null ? "—" : t("topbar.rtt", { ms: rtt })}>
+              <Sparkline samples={rttSamples} label={t("tile.rtt")} />
+            </Tile>
+            <Tile
+              label={t("tile.executor")}
+              value={reachable ? t("value.reachable") : t("value.unreachable")}
+              tone={reachable ? "ok" : "warn"}
+            />
+            <Tile
+              label={t("tile.chains")}
+              value={`${daemonChain.label} · ${execChain.label}`}
+              tone={worstTone(daemonChain.tone, execChain.tone)}
+              testId="tile-chains"
+            />
+          </div>
         </div>
       </section>
 
-      <section className="chains">
-        <ChainCard
-          name={t("chains.daemon")}
-          status={daemonStatus}
-          checked={verify?.records_checked}
-          detail={verify?.detail}
-          testId="chain-daemon"
-        />
-        <ChainCard
-          name={t("chains.executor")}
-          status={execStatus}
-          checked={verify?.executor_records_checked}
-          detail={verify?.executor_detail}
-          testId="chain-executor"
-        />
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2 className="section-title">{t("chains.title")}</h2>
+            <p className="panel-sub" data-testid="verification-time" role="status">{verifiedAt ? t("chains.verified_at", { time: formatTime(new Date(verifiedAt).toISOString(), language) }) : t("chains.never_verified")}{verifyStale ? ` ${t("chains.stale")}` : ""}</p>
+          </div>
+        </div>
+        <div className="well">
+          <div className="chains">
+            <ChainCard
+              name={t("chains.daemon")}
+              status={daemonStatus}
+              checked={verify?.records_checked}
+              detail={verify?.detail}
+              testId="chain-daemon"
+            />
+            <ChainCard
+              name={t("chains.executor")}
+              status={execStatus}
+              checked={verify?.executor_records_checked}
+              detail={verify?.executor_detail}
+              testId="chain-executor"
+            />
+          </div>
+          <p className="chain-note">{t("chains.note")}</p>
+        </div>
       </section>
-      <p className={verifyStale ? "chain-note is-warn" : "chain-note"} data-testid="verification-time" role="status">{verifiedAt ? t("chains.verified_at", { time: formatTime(new Date(verifiedAt).toISOString(), language) }) : t("chains.never_verified")}{verifyStale ? ` ${t("chains.stale")}` : ""}</p>
-      <p className="chain-note">{t("chains.note")}</p>
 
-      <section className="panel glass">
+      <section className="panel">
         <div className="panel-head">
           <h2 className="section-title">{t("audit.recent")}</h2>
-          <button type="button" className="btn btn-ghost" onClick={onSeeAll} data-testid="see-all">
+          <button type="button" className="panel-link" onClick={onSeeAll} data-testid="see-all">
             {t("audit.see_all")}
           </button>
         </div>
-        <AuditTable
-          records={audit.records}
-          testId="audit-preview"
-          placeholder={previewKey ? t(previewKey) : undefined}
-        />
+        <div className="well is-flush">
+          <AuditTable
+            records={audit.records}
+            testId="audit-preview"
+            placeholder={previewKey ? t(previewKey) : undefined}
+          />
+        </div>
       </section>
     </div>
   );

@@ -19,7 +19,7 @@ export function Tabs({ tabs, active, profiles, cards, onSelectFleet, onSelect, o
   return (
     <nav className="tabs" aria-label={t("tabs.label")}>
       <div className={active === null ? "tab is-on" : "tab"}>
-        <button type="button" className="tab-main" onClick={onSelectFleet} data-testid="tab-fleet"><LineIcon name="dashboard" /><span>{t("nav.dashboard")}</span></button>
+        <button type="button" className="tab-main" onClick={onSelectFleet} data-testid="tab-fleet"><span>{t("nav.dashboard")}</span></button>
       </div>
       {tabs.map((target) => {
         const name = profiles.find((p) => p.target === target)?.name ?? target;

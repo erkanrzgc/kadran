@@ -12,7 +12,6 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ACCENTS, ALL_MODES, TONES } from "../src/shared/appearance.ts";
 import { OUTCOME_KEYS } from "../src/renderer/lib/chain.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -59,9 +58,6 @@ test("şablonlu t(`…`) çağrılarının her ailesi tanımlı ve üyeleri en+t
     "alarm.${}": protoEnum(proto, "AlarmSeverity"),
     "release.${}": protoEnum(proto, "ReleaseStatus"),
     "apps.tab_${}": appTabs(appsSrc),
-    "mode.${}": ALL_MODES,
-    "accent.${}": ACCENTS,
-    "tone.${}": TONES,
     "nav.${}": ["dashboard", "servers", "apps", "alarms", "audit", "settings"], // TopBar.tsx FLEET_VIEWS
   };
 

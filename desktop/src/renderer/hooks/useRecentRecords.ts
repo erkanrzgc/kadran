@@ -36,11 +36,14 @@ export function useRecentRecords(profiles: readonly Profile[], active: boolean, 
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
+    // Geç biten eski tur yeni turun üstüne yazmasın.
+    let lastRound = 0;
     const list = targets ? targets.split("\n") : [];
     const round = async () => {
       if (document.hidden) return;
+      const id = ++lastRound;
       const results = await Promise.allSettled(list.map((t) => newest(t, size)));
-      if (cancelled) return;
+      if (cancelled || id !== lastRound) return;
       setState({
         servers: results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : [])),
         failed: list.filter((_, i) => results[i]!.status === "rejected"),

@@ -96,8 +96,7 @@ contextBridge.exposeInMainWorld("kadran", {
   loadAppearance: () => ipcRenderer.invoke(CHANNELS.loadAppearance),
 
   /**
-   * Görünümü kaydeder. Ana süreç doğrular; mod değiştiyse pencereyi
-   * yeniden kurabilir (malzeme ailesi değişince) ya da yerinde değiştirir.
+   * Ayarları kaydeder. Ana süreç doğrular.
    */
   saveAppearance: (appearance) => ipcRenderer.invoke(CHANNELS.saveAppearance, appearance),
 

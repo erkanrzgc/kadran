@@ -14,7 +14,7 @@
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 
-import { sanitizeAppearance, type Appearance, type PlatformInfo } from "../shared/appearance.ts"
+import { sanitizeAppearance, type Appearance } from "../shared/appearance.ts"
 
 export function appearancePath(userDataDir: string): string {
   return join(userDataDir, "appearance.json")
@@ -22,7 +22,6 @@ export function appearancePath(userDataDir: string): string {
 
 export async function loadAppearance(
   userDataDir: string,
-  info: PlatformInfo,
   onWarning?: (message: string) => void,
 ): Promise<Appearance> {
   let raw: string
@@ -32,18 +31,18 @@ export async function loadAppearance(
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       onWarning?.(`görünüm ayarları okunamadı: ${(err as Error).message}`)
     }
-    return sanitizeAppearance(null, info)
+    return sanitizeAppearance(null)
   }
   try {
-    return sanitizeAppearance(JSON.parse(raw) as unknown, info)
+    return sanitizeAppearance(JSON.parse(raw) as unknown)
   } catch (err) {
     onWarning?.(`görünüm dosyası çözümlenemedi, varsayılan kullanılıyor: ${(err as Error).message}`)
-    return sanitizeAppearance(null, info)
+    return sanitizeAppearance(null)
   }
 }
 
-export async function saveAppearance(userDataDir: string, raw: unknown, info: PlatformInfo): Promise<Appearance> {
-  const clean = sanitizeAppearance(raw, info)
+export async function saveAppearance(userDataDir: string, raw: unknown): Promise<Appearance> {
+  const clean = sanitizeAppearance(raw)
   const path = appearancePath(userDataDir)
   await mkdir(dirname(path), { recursive: true })
   const tmp = `${path}.${process.pid}.${Date.now()}.tmp`

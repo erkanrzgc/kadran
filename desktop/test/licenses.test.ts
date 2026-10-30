@@ -30,10 +30,8 @@ test("çalışma zamanı paketlerinin lisansı izinli", async () => {
   assert.deepEqual(bad, []);
 });
 
-test("kopyalanan ikon ve yazı tipi lisansları yerinde", async () => {
-  const icons = await readFile(join(root, "src", "renderer", "icons", "LICENSE"), "utf8");
-  assert.match(icons, /MIT License/);
-  assert.match(icons, /ISC License/);
+test("gömülü yazı tipinin lisansı yerinde", async () => {
   const ofl = await readFile(join(root, "src", "renderer", "fonts", "OFL.txt"), "utf8");
   assert.match(ofl, /SIL OPEN FONT LICENSE/i);
+  assert.match(ofl, /Geist/);
 });

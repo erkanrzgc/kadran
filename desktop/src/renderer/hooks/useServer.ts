@@ -26,7 +26,6 @@ export interface ServerState {
   rtt: number | null;
   memorySamples: readonly number[];
   rttSamples: readonly number[];
-  connecting: boolean;
   verifying: boolean;
   /** Son durum yenilemesi başarısız: ekrandaki değerler eski, "Healthy" gösterilmemeli. */
   stale: boolean;
@@ -41,7 +40,6 @@ const EMPTY: ServerState = {
   rtt: null,
   memorySamples: [],
   rttSamples: [],
-  connecting: false,
   verifying: false,
   stale: false,
 };
@@ -121,7 +119,7 @@ export function useServer() {
   const connect = useCallback(
     async (target: string): Promise<"connected" | "failed" | "superseded"> => {
       current.current = target;
-      setState({ ...EMPTY, target, connecting: true });
+      setState({ ...EMPTY, target });
       const ok = await loadStatus(target);
       if (current.current !== target) return "superseded";
       if (!ok) {
@@ -129,7 +127,6 @@ export function useServer() {
         setState(EMPTY);
         return "failed";
       }
-      setState((s) => ({ ...s, connecting: false }));
       await verifyChains();
       return "connected";
     },

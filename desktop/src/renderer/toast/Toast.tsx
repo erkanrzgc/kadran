@@ -21,7 +21,7 @@ export function Toast() {
 
   if (!message) return null;
   return (
-    <div className="toast glass" role="status" aria-live="polite" data-testid="toast">
+    <div className="toast" role="status" aria-live="polite" data-testid="toast">
       <p className="toast-text">{t(message.key, message.params)}</p>
       <button type="button" className="toast-close" aria-label={t("toast.dismiss")} onClick={dismiss}>
         ×

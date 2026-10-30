@@ -1,17 +1,16 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { MotionConfig } from "motion/react";
 
 import { App } from "./App.tsx";
 import { AppearanceProvider, useAppearance } from "./appearance/AppearanceProvider.tsx";
 import { bridge } from "./bridge.ts";
+import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { I18nProvider } from "./i18n/I18nProvider.tsx";
 import { Toast } from "./toast/Toast.tsx";
 import { ToastProvider } from "./toast/ToastProvider.tsx";
 import "./styles/tokens.css";
 import "./styles/base.css";
 import "./styles/fonts.css";
-import "./styles/glass.css";
 import "./styles/controls.css";
 import "./styles/focus.css";
 import "./styles/layout.css";
@@ -23,7 +22,9 @@ function Localized() {
   const { appearance } = useAppearance();
   return (
     <I18nProvider language={appearance.language}>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
       <Toast />
     </I18nProvider>
   );
@@ -37,12 +38,10 @@ const bundle = await bridge.loadAppearance();
 
 createRoot(root).render(
   <StrictMode>
-    <MotionConfig reducedMotion="user">
-      <ToastProvider>
-        <AppearanceProvider initial={bundle}>
-          <Localized />
-        </AppearanceProvider>
-      </ToastProvider>
-    </MotionConfig>
+    <ToastProvider>
+      <AppearanceProvider initial={bundle}>
+        <Localized />
+      </AppearanceProvider>
+    </ToastProvider>
   </StrictMode>,
 );

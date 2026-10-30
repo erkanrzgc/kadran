@@ -13,9 +13,12 @@
  *   de olduğu gibi görünmeli).
  * - `fake@badseq`: audit.list bozuk bir latest_seq döner; arayüz bunu
  *   "zincirde kayıt yok" diye DEĞİL hata diye göstermeli.
- * - `fake@totp`: sunucunun gerçek TOTP mesajını döner; kart "erişilemiyor"
+ * - `fake@noalarms`: alarm listesi okunamaz, gerisi çalışır; arayüz "alarm yok"
+ *   dememeli.
+ * - `fake@root`: daemon root ile çalışıyor (bozuk kurulum).
+ * - `fake@totp…`: sunucunun gerçek TOTP mesajını döner; kart "erişilemiyor"
  *   değil "TOTP girişi gerekli" demeli.
- * - `fake@flaky`: zincir doğrulanana (bağlanılana) dek status başarılı, sonra
+ * - `fake@flaky…`: zincir doğrulanana (bağlanılana) dek status başarılı, sonra
  *   hata; pano yoklaması bağlantıyı tüketmesin diye çağrı sayılmaz. Arayüz
  *   bayat veriyi "bağlantı koptu" diye işaretlemeli. Bu hedef SAĞLIKLI
  *   başlar (executor erişilebilir, iki zincir VALID): bayatlığın "Healthy"
@@ -64,8 +67,8 @@ function auditList(params) {
   return { records, latest_seq: String(LATEST) };
 }
 
-// fake@flaky bağlandı mı? (süreç başına)
-let flakyConnected = false;
+// Hangi fake@flaky… hedefine bağlanıldı? (süreç başına)
+const flakyConnected = new Set();
 let verificationCalls = 0;
 let backupCalls = 0;
 const appSpec = (id) => ({ app_id: id, git_host: "github.com", git_owner: "team", git_repo: "site", git_branch: "main", dockerfile_path: "Dockerfile", container_port: 3000, replicas: 1, health_path: "/healthz", domain: `${id}.example.com`, limits: { memory_bytes: "536870912", cpu_millis: 1000, blkio_weight: 100 }, build_args: {}, env: { MODE: "old", OLD: "remove" }, volumes: [{ name: "data", mount_path: "/app/data", read_only: false }] });
@@ -91,7 +94,7 @@ rl.on("line", (line) => {
     reply(rpcFail("connect", DOWN_MESSAGE));
     return;
   }
-  if (params.target === "fake@totp") {
+  if (typeof params.target === "string" && params.target.startsWith("fake@totp")) {
     reply(rpcFail("call", TOTP_MESSAGE));
     return;
   }
@@ -100,21 +103,22 @@ rl.on("line", (line) => {
       reply({ result: { version: "0.5.1", commit: "fake", protocol: 3 } });
       return;
     case "status":
-      if (params.target === "fake@flaky") {
-        if (flakyConnected) reply(rpcFail("call", FLAKY_MESSAGE));
+      if (String(params.target).startsWith("fake@flaky")) {
+        if (flakyConnected.has(params.target)) reply(rpcFail("call", FLAKY_MESSAGE));
         else reply({ result: healthyStatus });
         return;
       }
       if (["fake@verifyfail", "fake@slow"].includes(params.target)) { reply({ result: healthyStatus }); return; }
+      if (params.target === "fake@root") { reply({ result: { ...healthyStatus, running_as_user: "root" } }); return; }
       reply({ result: status });
       return;
     case "audit.list":
       reply({ result: auditList(params) });
       return;
     case "audit.verify":
-      if (params.target === "fake@flaky") flakyConnected = true;
+      if (String(params.target).startsWith("fake@flaky")) flakyConnected.add(params.target);
       if (params.target === "fake@verifyfail" && ++verificationCalls > 1) { reply(rpcFail("call", "verification connection lost")); return; }
-      reply({ result: ["fake@flaky", "fake@verifyfail", "fake@slow"].includes(params.target) ? healthyVerify : verify });
+      reply({ result: String(params.target).startsWith("fake@flaky") || ["fake@verifyfail", "fake@slow"].includes(params.target) ? healthyVerify : verify });
       return;
     case "apps.list":
       if (params.target === "fake@slow") { setTimeout(() => reply({ result: { apps: [app(appSpec("old-only"))] } }), 1800); return; }
@@ -164,6 +168,7 @@ rl.on("line", (line) => {
       reply({ result: { output: "Merhaba ✓\n<script id=\"unsafe-log\">throw new Error('unsafe')</script>\nServing traffic on r2\n", truncated: false } });
       return;
     case "alarms.list":
+      if (params.target === "fake@noalarms") { reply(rpcFail("call", "alarm store unavailable")); return; }
       reply({ result: { alarms: [{ id: "disk_low:host", kind: "disk_low", target: "host", severity: "ALARM_SEVERITY_WARNING", since_unix: "1791633600", detail: "Disk space is below the configured threshold; inspect application volumes and images." }], delivery_is_local_only: true } });
       return;
     case "backups.list":

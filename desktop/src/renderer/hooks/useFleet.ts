@@ -1,10 +1,10 @@
 /**
  * Filo kartlarının verisi: kayıtlı her sunucudan status, apps.list, alarms.list.
  *
- * Yoklama yalnız filo ekranı görünürken: 15 sn'de bir, pencere gizliyken hiç.
- * Aynı sunucuya aynı anda tek tur gider (lib/single-flight.ts). Hata bildirim
- * olarak fırlatılmaz, karta yazılır: bağlanamayan bir sunucu her 15 sn'de
- * ekrana bildirim düşürmesin.
+ * Filo ekranı görünürken 15 sn'de bir, sunucu sekmesindeyken 60 sn'de bir
+ * (sekme noktaları ve alarm sayısı bayatlamasın), pencere gizliyken hiç. Aynı
+ * sunucuya aynı anda tek tur gider (lib/single-flight.ts). Hata bildirim olarak
+ * fırlatılmaz, karta yazılır: bağlanamayan bir sunucu ekrana bildirim yağdırmasın.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,9 +14,10 @@ import { errorText } from "../lib/errors.ts";
 import { cardOf, type CardData, type FleetCard } from "../lib/fleet.ts";
 import { createSingleFlight } from "../lib/single-flight.ts";
 
-const POLL_MS = 15_000;
+const FAST_MS = 15_000;
+const SLOW_MS = 60_000;
 
-export function useFleet(profiles: readonly Profile[], active: boolean): { cards: FleetCard[]; refresh: () => void } {
+export function useFleet(profiles: readonly Profile[], foreground: boolean): FleetCard[] {
   const [data, setData] = useState<ReadonlyMap<string, CardData>>(new Map());
   const [flight] = useState(() => createSingleFlight<void>());
   const latest = useRef(profiles);
@@ -35,27 +36,20 @@ export function useFleet(profiles: readonly Profile[], active: boolean): { cards
     [flight],
   );
 
-  const refresh = useCallback(() => {
-    for (const p of latest.current) void load(p.target);
-  }, [load]);
-
   const targets = profiles.map((p) => p.target).join("\n");
   useEffect(() => {
-    if (!active) return;
-    refresh();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) refresh();
-    }, POLL_MS);
-    const onVisible = () => {
-      if (!document.hidden) refresh();
+    const refresh = () => {
+      if (document.hidden) return;
+      for (const p of latest.current) void load(p.target);
     };
-    document.addEventListener("visibilitychange", onVisible);
+    refresh();
+    const timer = window.setInterval(refresh, foreground ? FAST_MS : SLOW_MS);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
+      document.removeEventListener("visibilitychange", refresh);
     };
-  }, [active, targets, refresh]);
+  }, [foreground, targets, load]);
 
-  const cards = useMemo(() => profiles.map((p) => cardOf(p, data.get(p.target) ?? {})), [profiles, data]);
-  return { cards, refresh };
+  return useMemo(() => profiles.map((p) => cardOf(p, data.get(p.target) ?? {})), [profiles, data]);
 }

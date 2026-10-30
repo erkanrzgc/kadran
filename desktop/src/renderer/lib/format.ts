@@ -93,6 +93,12 @@ export function formatTime(ts: string | null, locale: string): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
 }
 
+/** formatUnix: saniye cinsinden sunucu zamanı. Bozuk ya da aralık dışıysa "—": arayüz düşmez. */
+export function formatUnix(seconds: number | string, locale: string): string {
+  const d = new Date(Number(seconds) * 1000);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
+}
+
 const RELATIVE_STEPS: ReadonlyArray<readonly [number, Intl.RelativeTimeFormatUnit]> = [
   [86_400, "day"],
   [3_600, "hour"],

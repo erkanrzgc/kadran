@@ -3,7 +3,8 @@
  * gelir (status, apps.list, alarms.list); yeni sunucu RPC'si yok.
  *
  * Okunamayan alan "yok" diye gösterilmez: alarm listesi gelmediyse kart
- * "alarm yok" iddia etmez, sayı null kalır ve kart uyarıya düşer.
+ * "alarm yok" iddia etmez, sayı null kalır ve kart uyarıya düşer. Toplu
+ * listeler de okunamayan sunucuları adıyla söyler (coverage).
  */
 
 import type { Profile } from "../bridge.ts";
@@ -32,16 +33,14 @@ export interface FleetCard {
   failure: string | null;
 }
 
-export interface ProviderGroup {
-  provider: string;
-  cards: FleetCard[];
-}
-
 export interface FleetSummary {
   servers: number;
   ready: number;
   warning: number;
-  unavailable: number;
+  /** Giriş gereken. */
+  signIn: number;
+  /** Ulaşılamayan ya da bozuk kurulum. */
+  failed: number;
   apps: number;
 }
 
@@ -55,16 +54,28 @@ export interface FleetOperation {
   record: AuditRecord;
 }
 
+export interface Coverage {
+  /** Henüz cevap vermemiş sunucu var: "yok" denemez. */
+  loading: boolean;
+  /** Bu listesi okunamayan sunucuların adları. */
+  unread: string[];
+}
+
 /** Sunucu değiştiren ve geçmişi olan işlemler; yükseltmeler sunucuda kayıt bırakmıyor. */
 export const OPERATION_ACTIONS: readonly string[] = ["app.deploy", "app.rollback"];
 
-/** Sunucunun TOTP mesajı "kadran login" der; hata metni tek ortak sinyal. */
+/** Sunucunun bütün TOTP mesajları "kadran login" der; "totp" sözcüğü sunucu adında da geçebilir. */
 export function classifyFailure(message: string): "totp" | "unreachable" {
-  return /totp|kadran login/i.test(message) ? "totp" : "unreachable";
+  return message.includes("kadran login") ? "totp" : "unreachable";
+}
+
+/** Bozuk kurulum: daemon root ile çalışıyor (Durum ekranıyla aynı ölçüt). */
+export function isBrokenInstall(status: StatusPayload | null | undefined): boolean {
+  return status?.running_as_user === "root";
 }
 
 function toneOf(state: CardState, data: CardData): Tone {
-  if (state === "unreachable") return "bad";
+  if (state === "unreachable" || isBrokenInstall(data.status)) return "bad";
   if (state !== "ready") return "muted";
   const healthy = data.status?.executor_reachable === true && data.alarms !== undefined && data.alarms.alarms.length === 0;
   return healthy ? "ok" : "warn";
@@ -97,15 +108,15 @@ export function diskUsedPercent(host: HostInfo | null): number | null {
   return Math.round(((total - available) / total) * 100);
 }
 
-/** Gruplar ilk görülme sırasında; etiketsiz sunucular en sonda. */
-export function groupByProvider(cards: readonly FleetCard[]): ProviderGroup[] {
+/** Aynı sağlayıcının kartları yan yana, ilk görülme sırasında; etiketsizler en sonda. */
+export function orderByProvider(cards: readonly FleetCard[]): FleetCard[] {
   const order = new Map<string, FleetCard[]>();
   for (const card of cards) {
     const key = card.profile.provider ?? "";
     order.set(key, [...(order.get(key) ?? []), card]);
   }
-  const groups = [...order].map(([provider, list]) => ({ provider, cards: list }));
-  return [...groups.filter((g) => g.provider !== ""), ...groups.filter((g) => g.provider === "")];
+  const groups = [...order];
+  return [...groups.filter(([key]) => key !== ""), ...groups.filter(([key]) => key === "")].flatMap(([, list]) => list);
 }
 
 export function summarize(cards: readonly FleetCard[]): FleetSummary {
@@ -113,8 +124,17 @@ export function summarize(cards: readonly FleetCard[]): FleetSummary {
     servers: cards.length,
     ready: cards.filter((c) => c.tone === "ok").length,
     warning: cards.filter((c) => c.tone === "warn").length,
-    unavailable: cards.filter((c) => c.state === "totp" || c.state === "unreachable").length,
+    signIn: cards.filter((c) => c.state === "totp").length,
+    failed: cards.filter((c) => c.tone === "bad").length,
     apps: cards.reduce((sum, c) => sum + (c.appCount ?? 0), 0),
+  };
+}
+
+/** Bir toplu liste için: kim okundu, kim okunamadı? */
+export function coverage(cards: readonly FleetCard[], list: "apps" | "alarms"): Coverage {
+  return {
+    loading: cards.some((c) => c.state === "loading"),
+    unread: cards.filter((c) => c.state !== "loading" && c[list] === null).map((c) => c.profile.name),
   };
 }
 
@@ -147,4 +167,10 @@ export function mergeOperations(servers: readonly ServerRecords[], actions: read
     )
     .sort((a, b) => timeOf(b.record) - timeOf(a.record))
     .slice(0, limit);
+}
+
+/** Denetim hedefi "app/<ad>/release/<id>" olabilir; tabloda yalnız uygulama adı. */
+export function appOfTarget(target: string): string {
+  const match = /^app\/([^/]+)/.exec(target);
+  return match ? match[1]! : target;
 }

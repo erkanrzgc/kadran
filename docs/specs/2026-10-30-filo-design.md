@@ -83,7 +83,7 @@ yiyor **(kullanıcı)**. Bütçeler ölçülerek konur ve CI'da sınanır:
 
 ## Görsel dil (kullanıcı, 30 Ekim)
 
-> **31 Ekim (K-161):** yazı tipi Segoe UI + Consolas oldu (taslağın gerçekte çizildiği); varsayılan pencere modu Renkli cam, Clear kalktı; arayüz Electron'da, 2. parçadan önce yapıldı.
+> **31 Ekim (K-161):** bu bölümün yerini aldı. Görünüm Coolify'ın `DESIGN.md`'sinin aynısı, üstünde gerçek masaüstü camı; tek görünüm, mod yok; Geist + Geist Mono; arayüz Electron'da, 2. parçadan önce yapıldı.
 
 Referans taslak: [`2026-10-30-filo-taslak.html`](2026-10-30-filo-taslak.html) (tarayıcıda açılır;
 pano ve sunucu sayfası). Kullanıcı dört taslak boyunca yönlendirdi; son hâli onayladı.

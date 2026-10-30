@@ -5,10 +5,11 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
-Desktop: new look (K-161). A dashboard with recent operations and server cards grouped by provider,
-browser-like tabs, a sectioned sidebar, hazy glass with squared corners and a new wordmark. All your
-saved servers are read at once using the existing calls, so the server does not change. The new
-default window is Color glass; Clear is gone because it could not blur the desktop behind the text.
+Desktop: new look (K-161). The layout follows Coolify's design language, with your real desktop
+blurred behind the window. There is a dashboard with recent operations and server cards, browser-like
+tabs and a new wordmark. All your saved servers are read at once using the existing calls, so the
+server does not change. Window modes, themes and glass sliders are gone: there is one look, and on
+systems without native blur it falls back to a solid dark window. Settings keep language and fonts.
 
 ## v0.9.3 — 2026-10-30
 

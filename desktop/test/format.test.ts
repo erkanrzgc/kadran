@@ -13,6 +13,7 @@ import {
   humanBytes,
   humanDuration,
   memoryText,
+  formatUnix,
   relativeTime,
   memoryUsedGiB,
   shortFingerprint,
@@ -102,4 +103,10 @@ test("göreli zaman: bozuk ya da eksikse tire, gelecek 'şimdi' olur", () => {
   assert.equal(relativeTime("2026-10-31T09:00:00Z", now, "tr"), "3 saat önce");
   assert.equal(relativeTime("2026-10-31T11:58:00Z", now, "en"), "2 minutes ago");
   assert.equal(relativeTime("2026-10-31T13:00:00Z", now, "en"), "now");
+});
+
+test("sunucu zamanı: aralık dışı ya da bozuk değer arayüzü düşürmez", () => {
+  assert.equal(formatUnix("9".repeat(30), "en"), "—");
+  assert.equal(formatUnix("abc", "en"), "—");
+  assert.notEqual(formatUnix("1791633600", "en"), "—");
 });

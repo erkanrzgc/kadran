@@ -1,55 +1,46 @@
-/* Tasarım belirteçleri (docs/specs/2026-10-30-filo-design.md). Kaydırıcıların değerlerini AppearanceProvider yazar. */
+/*
+ * Tasarım belirteçleri. Ölçüler Coolify'ın tasarım dili (coollabsio/coolify,
+ * DESIGN.md, Apache-2.0); renkler morsuz ve nötr, arka plan gerçek masaüstü.
+ * Karar: docs/decisions.md K-161.
+ */
 :root {
-  --tint: 0.22;
-  --panel: 0.07;
-  --edge: 0.16;
-  --glow: 0.6;
-  --acc: 125, 211, 252;
-  --ring: var(--acc);
-  --accent: rgb(var(--acc));
-  --on-accent: #06223a;
-  --tone: 12, 15, 24;
-  --surface: 24, 29, 42;
-  --glass: 255, 255, 255;
-  --fg: #f5f8fc;
-  --brand-ink: #f5f8fc;
-  --fg-dim: rgba(234, 240, 249, 0.74);
-  --fg-faint: rgba(222, 231, 244, 0.55);
-  --line: rgba(255, 255, 255, 0.11);
-  --line-soft: rgba(255, 255, 255, 0.06);
-  --flat: rgba(255, 255, 255, 0.06);
-  --flat-edge: rgba(255, 255, 255, 0.1);
-  --flat-on: rgba(255, 255, 255, 0.09);
-  --text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
+  /* Pencere tonu: Acrylic'in üstündeki koyu tül. */
+  --tint: 0.34;
+
+  --fg: #ffffff;
+  --brand-ink: #ffffff;
+  --fg-dim: rgba(255, 255, 255, 0.8);
+  --fg-faint: rgba(255, 255, 255, 0.62);
+  --line: rgba(255, 255, 255, 0.12);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --edge: rgba(255, 255, 255, 0.18);
+  --flat: rgba(255, 255, 255, 0.07);
+  --flat-on: rgba(255, 255, 255, 0.14);
+  --menu: rgb(34, 34, 38);
+  --depth: rgba(255, 255, 255, 0.1);
+
   --ok: #4ade80;
-  --warn: #fbbf24;
-  --bad: #f87171;
-  --muted: rgba(222, 231, 244, 0.55);
-  --radius: 6px;
-  --radius-sm: 4px;
-  --radius-xs: 3px;
-  --font-ui: "Segoe UI", -apple-system, system-ui, sans-serif;
-  --font-mono: Consolas, "JetBrains Mono Bundled", ui-monospace, monospace;
+  --warn: #fbd24e;
+  --bad: #fb7185;
+  --muted: rgba(255, 255, 255, 0.62);
+
+  /* Ana düğme: Coolify moru. Mor yalnız burada. */
+  --accent-top: #7317ff;
+  --accent-bottom: #5a12c7;
+  --accent-edge: #4a0fa3;
+  --accent-fg: #ffffff;
+  --focus: rgba(255, 255, 255, 0.85);
+
+  --radius-card: 12px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --font-ui: "Geist Bundled", "Segoe UI", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono Bundled", Consolas, ui-monospace, monospace;
   --w-ui: 400;
   --w-strong: 600;
   --w-mono: 400;
-}
-
-:root[data-tone="light"] {
-  --tone: 246, 247, 250;
-  --surface: 255, 255, 255;
-  --fg: #11141a;
-  --brand-ink: #000000;
-  --fg-dim: rgba(17, 20, 26, 0.74);
-  --fg-faint: rgba(17, 20, 26, 0.56);
-  --line: rgba(17, 20, 26, 0.12);
-  --line-soft: rgba(17, 20, 26, 0.07);
-  --flat: rgba(17, 20, 26, 0.05);
-  --flat-edge: rgba(17, 20, 26, 0.12);
-  --flat-on: rgba(17, 20, 26, 0.08);
-  --text-shadow: none;
-  --ok: #15803d;
-  --warn: #b45309;
-  --bad: #b91c1c;
-  --muted: rgba(17, 20, 26, 0.56);
 }

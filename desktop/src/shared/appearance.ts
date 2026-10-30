@@ -1,32 +1,24 @@
 /**
- * Görünüm ayarları: şema, işletim sistemine göre modlar, varsayılanlar ve
- * temizleme. Ana süreç (doğrulayıp diske yazmak için) ve arayüz (Reset ve
- * seçenekler için) aynı dosyayı kullanır; Node ya da DOM'a bağımlı değil.
+ * Kullanıcı ayarları: dil ve yazı tipleri. Görünüm tektir (K-161): pencere
+ * modu, tema ve cam ayarları kaldırıldı. Ana süreç (doğrulayıp diske yazmak
+ * için) ve arayüz aynı dosyayı kullanır; Node ya da DOM'a bağımlı değil.
  *
  * Dosya elle düzenlenebilir ya da bozulabilir. Her alan TEK TEK
  * doğrulanır; geçersiz alan varsayılana döner, geçerli alanlar korunur.
  */
 
-export type WindowMode = "glass" | "acrylic" | "mica" | "vibrancy" | "solid";
-export type Accent = "ice" | "amber" | "phosphor" | "paper";
-export type Tone = "dark" | "light";
 export type Language = "en" | "tr";
 
 export interface FontChoice {
-  /** Boş dize: arayüzde sistem yazı tipi, kodda gömülü JetBrains Mono. */
+  /** Boş dize: gömülü Geist. */
   family: string;
   weight: number;
 }
 
+export const APPEARANCE_VERSION = 2;
+
 export interface Appearance {
-  version: 1;
-  mode: WindowMode;
-  tint: number;
-  panel: number;
-  edge: number;
-  glow: number;
-  accent: Accent;
-  tone: Tone;
+  version: typeof APPEARANCE_VERSION;
   language: Language;
   uiFont: FontChoice;
   codeFont: FontChoice;
@@ -38,22 +30,18 @@ export interface PlatformInfo {
   release: string;
 }
 
-export const ALL_MODES: readonly WindowMode[] = ["glass", "acrylic", "mica", "vibrancy", "solid"];
-export const ACCENTS: readonly Accent[] = ["ice", "amber", "phosphor", "paper"];
-export const TONES: readonly Tone[] = ["dark", "light"];
+/** Pencerenin yerel malzemesi; arkada masaüstü bulanık görünür. `none`: opak koyu. */
+export type Material = "acrylic" | "vibrancy" | "none";
+
 export const LANGUAGE_CODES: readonly Language[] = ["en", "tr"];
 
 export const LIMITS = {
-  tint: [0, 100],
-  panel: [0, 30],
-  edge: [0, 60],
-  glow: [0, 100],
   weight: [100, 900],
 } as const satisfies Record<string, readonly [number, number]>;
 
 export const MAX_FONT_FAMILY = 200;
 
-/** Acrylic ve Mica (backgroundMaterial) Windows 11 22H2 (yapı 22621) ister. */
+/** Acrylic (backgroundMaterial) Windows 11 22H2 (yapı 22621) ister. */
 const WIN11_BUILD = 22621;
 
 export function isWindows11(info: PlatformInfo): boolean {
@@ -62,31 +50,15 @@ export function isWindows11(info: PlatformInfo): boolean {
   return Number.isFinite(build) && build >= WIN11_BUILD;
 }
 
-export function modesFor(info: PlatformInfo): readonly WindowMode[] {
-  if (info.platform === "win32") return isWindows11(info) ? ["glass", "acrylic", "mica", "solid"] : ["glass", "solid"];
-  if (info.platform === "darwin") return ["glass", "vibrancy", "solid"];
-  return ["glass", "solid"];
+export function materialFor(info: PlatformInfo): Material {
+  if (isWindows11(info)) return "acrylic";
+  if (info.platform === "darwin") return "vibrancy";
+  return "none";
 }
 
-/**
- * Renkli cam (`glass`) zeminini uygulama kendi çizer: her sistemde aynı görünür.
- * Clear kaldırıldı: `backdrop-filter` masaüstünü bulanıklaştıramaz, duvar kâğıdı
- * yazının arkasında net kalıyordu. Kayıtlı `clear` değeri varsayılana döner.
- */
-export function defaultMode(_info: PlatformInfo): WindowMode {
-  return "glass";
-}
-
-export function defaultAppearance(info: PlatformInfo): Appearance {
+export function defaultAppearance(): Appearance {
   return {
-    version: 1,
-    mode: defaultMode(info),
-    tint: 22,
-    panel: 7,
-    edge: 16,
-    glow: 60,
-    accent: "ice",
-    tone: "dark",
+    version: APPEARANCE_VERSION,
     language: "en",
     uiFont: { family: "", weight: 400 },
     codeFont: { family: "", weight: 400 },
@@ -110,22 +82,15 @@ function font(value: unknown, fallback: FontChoice): FontChoice {
   return { family, weight: clampInt(o.weight, LIMITS.weight, fallback.weight) };
 }
 
-/** sanitizeAppearance, güvenilmez bir değerden geçerli bir Appearance üretir. */
-export function sanitizeAppearance(raw: unknown, info: PlatformInfo): Appearance {
-  const d = defaultAppearance(info);
+/**
+ * sanitizeAppearance, güvenilmez bir değerden geçerli bir Appearance üretir.
+ * Eski sürümün kayıtlı yazı tipi yeni görünümü bozmasın: yalnız dil taşınır.
+ */
+export function sanitizeAppearance(raw: unknown): Appearance {
+  const d = defaultAppearance();
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return d;
   const o = raw as Record<string, unknown>;
-  return {
-    version: 1,
-    mode: pick(o.mode, modesFor(info), d.mode),
-    tint: clampInt(o.tint, LIMITS.tint, d.tint),
-    panel: clampInt(o.panel, LIMITS.panel, d.panel),
-    edge: clampInt(o.edge, LIMITS.edge, d.edge),
-    glow: clampInt(o.glow, LIMITS.glow, d.glow),
-    accent: pick(o.accent, ACCENTS, d.accent),
-    tone: pick(o.tone, TONES, d.tone),
-    language: pick(o.language, LANGUAGE_CODES, d.language),
-    uiFont: font(o.uiFont, d.uiFont),
-    codeFont: font(o.codeFont, d.codeFont),
-  };
+  const language = pick(o.language, LANGUAGE_CODES, d.language);
+  if (o.version !== APPEARANCE_VERSION) return { ...d, language };
+  return { version: APPEARANCE_VERSION, language, uiFont: font(o.uiFont, d.uiFont), codeFont: font(o.codeFont, d.codeFont) };
 }

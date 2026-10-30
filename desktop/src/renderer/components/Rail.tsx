@@ -7,7 +7,6 @@ import type { VersionPayload } from "../lib/types.ts";
 import { BrandWordmark } from "./BrandWordmark.tsx";
 import { LineIcon } from "./LineIcon.tsx";
 import { NavButton } from "./NavButton.tsx";
-import { WindowLights } from "./WindowLights.tsx";
 
 export type FleetView = "dashboard" | "servers" | "apps" | "alarms" | "audit" | "settings";
 
@@ -46,35 +45,40 @@ export function Rail({ view, serverOpen, alarmCount, version, onNavigate }: Prop
   const item = (name: FleetView) => ({ active: !serverOpen && view === name, onClick: () => onNavigate(name), testId: name === "settings" ? "nav-settings" : `rail-${name}` });
 
   return (
-    <aside className={collapsed ? "rail glass is-collapsed" : "rail glass"}>
-      <WindowLights />
+    <aside className={["rail", collapsed ? "is-collapsed" : "", isMac ? "is-mac" : ""].filter(Boolean).join(" ")}>
       <div className="rail-brand">
         <BrandWordmark label={t("brand.logo")} />
-        <span className="rail-version mono" data-testid="rail-version">{version ? versionLabel(version.version) : "…"}</span>
+        <span className="rail-version" data-testid="rail-version">{version ? versionLabel(version.version) : "…"}</span>
       </div>
       <button type="button" className="search" disabled title={soon}>
-        <LineIcon name="search" />
+        <LineIcon name="search" size={14} />
         <span>{t("nav.search")}</span>
         <span className="kbd">{isMac ? "⌘K" : "Ctrl K"}</span>
       </button>
 
-      <p className="nav-section">{t("nav.section_fleet")}</p>
-      <nav className="nav" aria-label={t("nav.label")}>
-        <NavButton icon="dashboard" label={t("nav.dashboard")} {...item("dashboard")} />
-        <NavButton icon="server" label={t("nav.servers")} {...item("servers")} active={serverOpen || (view === "servers")} />
-        <NavButton icon="layers" label={t("nav.apps")} {...item("apps")} />
-        <NavButton icon="bell" label={t("nav.alarms")} {...item("alarms")} count={alarmCount} />
-      </nav>
-      <p className="nav-section">{t("nav.section_security")}</p>
-      <nav className="nav" aria-label={t("nav.section_security")}>
-        <NavButton icon="key" label={t("nav.keys")} soon={soon} />
-        <NavButton icon="link" label={t("nav.audit")} {...item("audit")} />
-      </nav>
-      <p className="nav-section">{t("nav.section_manage")}</p>
-      <nav className="nav" aria-label={t("nav.section_manage")}>
-        <NavButton icon="mail" label={t("nav.notifications")} soon={soon} />
-        <NavButton icon="settings" label={t("nav.settings")} {...item("settings")} />
-      </nav>
+      <div className="nav-group">
+        <p className="nav-section">{t("nav.section_fleet")}</p>
+        <nav className="nav" aria-label={t("nav.label")}>
+          <NavButton icon="dashboard" label={t("nav.dashboard")} {...item("dashboard")} />
+          <NavButton icon="server" label={t("nav.servers")} {...item("servers")} active={serverOpen || view === "servers"} />
+          <NavButton icon="layers" label={t("nav.apps")} {...item("apps")} />
+          <NavButton icon="bell" label={t("nav.alarms")} {...item("alarms")} count={alarmCount} />
+        </nav>
+      </div>
+      <div className="nav-group">
+        <p className="nav-section">{t("nav.section_security")}</p>
+        <nav className="nav" aria-label={t("nav.section_security")}>
+          <NavButton icon="key" label={t("nav.keys")} soon={soon} />
+          <NavButton icon="shield" label={t("nav.audit")} {...item("audit")} />
+        </nav>
+      </div>
+      <div className="nav-group">
+        <p className="nav-section">{t("nav.section_manage")}</p>
+        <nav className="nav" aria-label={t("nav.section_manage")}>
+          <NavButton icon="mail" label={t("nav.notifications")} soon={soon} />
+          <NavButton icon="settings" label={t("nav.settings")} {...item("settings")} />
+        </nav>
+      </div>
 
       <div className="rail-foot">
         <div className="user" data-testid="rail-user">

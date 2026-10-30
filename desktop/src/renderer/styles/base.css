@@ -8,66 +8,36 @@ body {
   color: var(--fg);
   overflow: hidden;
   font-family: var(--font-ui);
-  font-size: 12.5px;
+  font-size: 13px;
+  line-height: 1.4;
   font-weight: var(--w-ui);
-  font-feature-settings: "tnum";
-  letter-spacing: -0.003em;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
 #root { height: 100%; }
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: var(--w-mono);
-  letter-spacing: 0;
   font-variant-numeric: tabular-nums;
 }
 
-/* Pencerenin kendisi. Köşeyi işletim sistemi yuvarlar. */
-.app {
-  position: relative;
-  height: 100%;
-  overflow: hidden;
-  background: rgb(var(--tone));
-}
-:root[data-mode="acrylic"] .app,
-:root[data-mode="mica"] .app,
-:root[data-mode="vibrancy"] .app { background: transparent; }
+.app { position: relative; height: 100%; overflow: hidden; }
 
-/* Kabuk: zeminin üstündeki ilk cam katman. */
-.shell {
-  position: relative;
-  display: flex;
-  height: 100%;
-  background: linear-gradient(180deg, rgba(var(--glass), 0.08), rgba(var(--glass), 0.04)), rgba(var(--tone), var(--tint));
-  backdrop-filter: blur(26px) saturate(150%) brightness(1.04);
-}
-/* Açık tema renkli zeminin üstünde okunmaz: ton tabanı var. */
-:root[data-tone="light"] .shell { background: rgba(var(--tone), max(var(--tint), 0.6)); }
-/* Yerel malzemede duvar kâğıdı beyaz olabilir: yazı okunur kalsın diye taban. */
-:root[data-mode="acrylic"] .shell,
-:root[data-mode="mica"] .shell,
-:root[data-mode="vibrancy"] .shell { background: rgba(var(--tone), max(var(--tint), 0.55)); backdrop-filter: none; }
-:root[data-mode="solid"] .shell { background: rgb(var(--tone)); backdrop-filter: none; }
+/* Kabuk: gerçek masaüstünün üstündeki koyu tül. Yerel malzeme yoksa opak. */
+.shell { display: flex; height: 100%; background: rgba(12, 12, 14, var(--tint)); }
+:root[data-material="none"] .shell { background: #16161a; }
 
-/* Renkli camın zemini: taslağın renk lekeleri ve şeridi. Yalnız bu modda görünür. */
-.backdrop { display: none; position: absolute; inset: 0; overflow: hidden; background: #0e1422; }
-:root[data-mode="glass"] .backdrop { display: block; }
-.backdrop i { position: absolute; border-radius: 50%; }
-.backdrop .blob-red { width: 46vw; height: 46vw; left: -11.5vw; top: -15vw; background: radial-gradient(circle at 40% 40%, #ef4444, #7f1d1d 70%); }
-.backdrop .blob-blue { width: 39.5vw; height: 39.5vw; right: -7.5vw; top: -6.5vw; background: radial-gradient(circle, #3b82f6, #1e3a8a 70%); }
-.backdrop .blob-amber { width: 36vw; height: 36vw; left: 40%; bottom: -18vw; background: radial-gradient(circle, #f59e0b, #78350f 70%); }
-.backdrop .blob-cyan { width: 21.5vw; height: 21.5vw; right: 16%; bottom: 6%; background: radial-gradient(circle, #22d3ee, #155e75 70%); }
-.backdrop .stripe {
-  position: absolute; left: -40px; right: -40px; top: 52%; height: 60px; transform: rotate(-7deg); opacity: 0.8;
-  background: repeating-linear-gradient(90deg, #0b0b0b 0 56px, #f8fafc 56px 112px);
+/* İşletim sisteminde "saydamlık efektleri" kapalıysa da yazı okunur kalsın. */
+@media (prefers-reduced-transparency: reduce) {
+  .shell { background: #16161a; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
 .is-ok { color: var(--ok); }

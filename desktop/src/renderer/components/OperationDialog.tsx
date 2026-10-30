@@ -19,7 +19,7 @@ export function OperationDialog({ action, appId, branch, pending, error, onConfi
     return () => { el?.close(); if (previous instanceof HTMLElement && previous.isConnected) previous.focus(); };
   }, []);
   return (
-    <dialog ref={dialog} className="operation-dialog glass" aria-labelledby="operation-title" onCancel={(event) => { event.preventDefault(); if (!pending) onClose(); }} data-testid="operation-dialog">
+    <dialog ref={dialog} className="operation-dialog" aria-labelledby="operation-title" onCancel={(event) => { event.preventDefault(); if (!pending) onClose(); }} data-testid="operation-dialog">
       <form onSubmit={(event) => { event.preventDefault(); if (!pending && confirmationMatches(appId, confirmation) && (action !== "deploy" || ref.trim())) onConfirm(ref.trim(), confirmation); }}>
         <p className="eyebrow">{t("operation.review")}</p>
         <h2 id="operation-title" className="title">{t(`operation.${action}_title`, { app: appId })}</h2>

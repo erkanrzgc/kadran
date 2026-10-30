@@ -12299,36 +12299,40 @@ görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi 
   zamanlanmış koşuyu kapatır.
 - "Sürüm öncesi tam koşu" kodla zorlanmıyor; sürüm yordamına yazılı kural.
 
-## K-161 — Masaüstü görünümü: taslağa birebir, 2. parçadan önce (2026-10-31)
+## K-161 — Masaüstü görünümü: Coolify'ın aynısı, üstünde gerçek cam (2026-10-31)
 
-**Durum:** dal `desktop-look`, yerelde yeşil (birim 301, duman yolculuğu); kullanıcı onayı ve CI bekleniyor.
+**Durum:** dal `desktop-look`, yerelde yeşil; kullanıcı pencerede görecek, CI henüz koşmadı.
 
 ### Neden
 
-Kullanıcı masaüstünü açtırınca "rezil" buldu: 30 Ekim'de onaylanan Coolify + puslu cam tasarımı koda hiç girmemişti, arayüz kodunun son commit'i 13 Ekim'di. Taslağın ekran görüntüsünü gönderip "birebir" dedi. Sıra değişti: görünüm ortak sunucu listesinden (2. parça) önce geldi.
-
-### Ölçülen
-
-- **Yazı tipi:** taslak bu makinede Inter ile çizilmiyor: Inter yüklü değil, ölçülen genişlik Segoe UI'ninkiyle aynı (418,5), mono değerler Consolas. Beğenilen görünüm ve KΛDRΛN yazısı bu ikisi. Spec'teki Inter + JetBrains Mono kararı bu yüzden kalktı; JetBrains Mono yalnız Consolas olmayan sistemlerde yedek.
-- **Pus:** Acrylic bu makinede (yapı 26300) çalışıyor; Mica neredeyse opak. CSS `backdrop-filter` masaüstünü bulanıklaştıramaz, Clear modunda duvar kâğıdı yazının arkasında net kalıyordu.
-- **Renk lekeleri:** ekran görüntüsündeki lekeler kullanıcının duvar kâğıdı değil, taslağın kendi zemini.
+Kullanıcı masaüstünü açtırınca "rezil" buldu: 30 Ekim'de onaylanan görsel dil koda hiç girmemişti, arayüz kodunun son commit'i 13 Ekim'di. Önce taslağı birebir uyguladım (`ddfad66`). Kullanıcı bunu geri çevirdi ve yönü netleştirdi: bütün pencere modları kalkacak, görünüm Coolify'ın tıpatıp aynısı olacak (reposundan), mor kenar çubuğu olmayacak, cam gerçek olacak yani arkada masaüstü görünecek ("attığım resimlerin arka planı mavi diye maviyi referans alma"), macOS'a göre değil Windows'a göre olacak. Seçili satır için "hap" dedi.
 
 ### Karar
 
-- Yeni varsayılan **Renkli cam** (`glass`): zemini uygulama çizer, her sistemde aynı görünür, yerel malzeme istemez. Acrylic, Mica, Vibrancy, Solid seçenek. **Clear kalktı**; kayıtlı `clear` varsayılana döner.
-- **Logo metin**, SVG değil: Segoe UI'nin dış hatları yeniden dağıtılamaz. Kalın, `.22em` aralıklı `KΛDRΛN`; macOS ve Linux'ta sistem yazı tipiyle çizilir. Yazı tipinden bağımsız bir dosya gerekirse Inter'den (OFL) çıkarılır.
-- Pencere düğmeleri taslaktaki gibi solda renkli noktalar. Kısayol etiketi Windows ve Linux'ta `Ctrl`, çünkü bu klavyelerde ⌘ yok.
-- Pano mevcut çağrılardan (`status`, `apps.list`, `alarms.list`, `audit.list`) gelir, sunucu değişmedi. Sahte veri yok: bölge sunucudan gelmediği için kartta yok; yükseltmeler sunucuda kayıt bırakmadığı için "Son işlemler"de yok.
-- İşlevi olmayan öğeler yerinde, soluk ve "Yakında" ipucuyla: Ara, Anahtarlar, Bildirimler, Hepsini yükselt, TOTP ve oturum, Yükseltme, Budama. TOTP gereken kartta "Kodu gir" yerine gerçek yol: terminalde `kadran login`.
-- Sağlayıcı, profilde elle seçilen etiket; 2. parçada `servers.json`'a taşınır.
-- Yoklama yalnız filo ekranında: 15 sn; pencere gizliyken yok. Hata bildirim değil karta yazılır.
+- **Kaynak:** `coollabsio/coolify` `DESIGN.md` Part 1 ("Portable design language"), commit `751ecb9`: 224 px kenar çubuğu, 48 px üst çubuk, kart + kuyu, 32 px denetim, 2 px alt kenarlı düğme, 40/48 px tablo, Geist + Geist Mono. Apache-2.0: uyarlama, atıf `THIRD_PARTY_NOTICES`'ta. Coolify'ın logosu ve adı kullanılmadı.
+- **Sapmalar, kullanıcının isteğiyle:** kenar çubuğunda mor ve dolgu yok, ince çizgi var. Seçili satır simge kutusu değil parlak cam hap (kullanıcının referansı), bu yüzden simge kutuları kalktı. Mor yalnız ana düğmede. Üst çubukta sekmeler var (30 Ekim kararı, Coolify'da yok).
+- **Tek görünüm:** pencere modları, tema, vurgu rengi ve cam kaydırıcıları kalktı. Windows 11'de Acrylic, macOS'ta Vibrancy; ikisi de yoksa opak koyu. `nativeTheme` koyu: sistem açık temada olsa da Acrylic koyu kalır.
+- **Ayar dosyası sürüm 2:** eski dosyadan yalnız dil taşınır. Eski yazı tipi seçimi atılır, yoksa görünümü bozardı. Yazı tipi seçimi Ayarlar'da duruyor.
+- **Pano** mevcut çağrılardan (`status`, `apps.list`, `alarms.list`, `audit.list`) gelir; sunucu değişmedi. Sahte veri yok: bölge sunucudan gelmediği için kartta yok; yükseltmeler sunucuda kayıt bırakmadığı için "Son işlemler"de yok.
+- **İşlevi olmayanlar** yerinde, soluk, "Yakında" ipucuyla: Ara, Anahtarlar, Bildirimler, Hepsini yükselt, TOTP ve oturum, Yükseltme, Budama. TOTP gereken kartta gerçek yol yazar: `kadran login`.
+- **Yoklama:** filo ekranında 15 sn, sunucu sekmesinde 60 sn, pencere gizliyken yok. Hata karta yazılır, bildirim olmaz.
 
-### Bulunanlar
+### Ölçülen
 
-- Bağlanamayan sunucuda denetim kaydı bağlantıdan önce okunuyor, fazladan bildirim düşüyordu: sunucu ekranları artık bağlantıdan sonra veri ister.
-- `<button>` olan cam kartın varsayılan gri dolgusu camı örtüyordu; ekran görüntüsünde görüldü, duman yolculuğuna iddia eklendi.
-- Sidecar başlamayınca duman testi sonsuza dek asılı kaldı: `evaluate` artık 30 sn ile sınırlı.
+- Tarayıcıda çizilen sayfa masaüstünü gösteremez; tasarım gerçek Acrylic pencerede ve kullanıcının duvar kâğıdı üstünde denendi.
+- **En kötü zemin:** pencerenin arkası bembeyazken (ton .34) zemin rgb(100,100,101) ölçüldü. Beyaz metin 5,9:1, `--fg-dim` 4,5:1, `--fg-faint` 3,4:1. Soluk etiket 4,5'in altında, kabul edildi: yalnız ikincil metinde.
+- Geist 83 KB; `motion` ve hareketli simgeler kalkınca arayüz JS'i 457 KB'tan 350 KB'a indi.
+
+### İncelemenin bulduğu ve kapatılanlar (`ddfad66` üstüne)
+
+- Okunamayan ya da yüklenen sunucu toplu listede "alarm yok" / "uygulama yok" diyordu: `coverage` artık adını söylüyor.
+- Root ile çalışan bozuk kurulum kartta yeşildi.
+- Açık sunucuya dönünce eski değer "Sağlıklı" kalıyordu: yeniden okunuyor.
+- Sunucu ekleme hatası kutunun arkasında kalıyordu: kutunun içinde. TOTP isteyen sunucu kaydediliyor, kart giriş ister.
+- Bozuk `since_unix`, `constructor` adlı eylem ve `__proto__` sağlayıcı beyaz ekran veriyordu: düzeltildi; ayrıca `ErrorBoundary` boş pencere bırakmaz.
+- Adında "totp" geçen ulaşılamaz sunucu giriş istiyor sanılıyordu.
+- Duman yolculuğu `el.click()` ile görünmeyen düğmeye de basabiliyordu: artık görünürlük ve üstte olma denetleniyor; dar pencerede ikinci menü tek bileşen.
 
 ### Ölçülmedi
 
-macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri" kapalıyken `prefers-reduced-transparency` (ayarı değiştirmek sistem ayarı, yalnız kural var).
+macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri" kapalıyken `prefers-reduced-transparency` (ayarı değiştirmek sistem ayarı, yalnız kural var); gerçek sunucuyla yeni arayüz.

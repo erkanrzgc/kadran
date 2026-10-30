@@ -1,5 +1,5 @@
 /**
- * Filo mantığı: kart durumu, sağlayıcı grupları ve "son işlemler".
+ * Filo mantığı: kart durumu, sağlayıcı sırası ve "son işlemler".
  * Bunlar saf; ekran doğruluğu duman yolculuğunda ayrıca ölçülür.
  */
 
@@ -8,12 +8,14 @@ import assert from "node:assert/strict";
 
 import {
   alarmCount,
+  appOfTarget,
   cardOf,
   classifyFailure,
+  coverage,
   diskUsedPercent,
-  groupByProvider,
   mergeOperations,
   OPERATION_ACTIONS,
+  orderByProvider,
   summarize,
   updateAvailable,
   type FleetCard,
@@ -36,22 +38,33 @@ const alarms = (n: number): AlarmsPayload => ({ delivery_is_local_only: true, al
 const profile = (target: string, provider?: string) => ({ name: target, target, ...(provider ? { provider } : {}) });
 const ready = (target: string, provider?: string, alarmN = 0): FleetCard => cardOf(profile(target, provider), { status: status(), apps: apps(1), alarms: alarms(alarmN) });
 
-test("TOTP hatası 'erişilemiyor' değil, ayrı bir durumdur", () => {
-  assert.equal(classifyFailure('rpc error: code = Unauthenticated desc = TOTP is on for this server: sign in with "kadran login"'), "totp");
-  assert.equal(classifyFailure("session expired: run kadran login"), "totp");
+test("TOTP hatası 'erişilemiyor' değil; sunucunun bütün giriş mesajları tanınır", () => {
+  assert.equal(classifyFailure('TOTP is on for this server: sign in with "kadran login" (upgrade kadran if it has no login command)'), "totp");
+  assert.equal(classifyFailure('session expired: sign in again with "kadran login"'), "totp");
+  assert.equal(classifyFailure('invalid session token: sign in again with "kadran login"'), "totp");
   assert.equal(classifyFailure("ssh: connect to host x port 22: Connection refused"), "unreachable");
   assert.equal(classifyFailure(""), "unreachable");
+});
+
+test("adında totp geçen ulaşılamaz sunucu giriş istemiyor sayılmaz", () => {
+  assert.equal(classifyFailure("ssh: connect to host totp-1 port 22: Connection refused"), "unreachable");
 });
 
 test("kart tonu: alarm ya da erişilemeyen denetçi uyarıdır, sağlıklı olmayan gizlenmez", () => {
   assert.equal(ready("a").tone, "ok");
   assert.equal(ready("a", undefined, 1).tone, "warn");
   assert.equal(cardOf(profile("a"), { status: status({ executor_reachable: false }), apps: apps(0), alarms: alarms(0) }).tone, "warn");
-  assert.equal(cardOf(profile("a"), { failure: "TOTP is on" }).state, "totp");
-  assert.equal(cardOf(profile("a"), { failure: "TOTP is on" }).tone, "muted");
+  assert.equal(cardOf(profile("a"), { failure: 'run "kadran login"' }).state, "totp");
+  assert.equal(cardOf(profile("a"), { failure: 'run "kadran login"' }).tone, "muted");
   assert.equal(cardOf(profile("a"), { failure: "refused" }).state, "unreachable");
   assert.equal(cardOf(profile("a"), { failure: "refused" }).tone, "bad");
   assert.equal(cardOf(profile("a"), {}).state, "loading");
+});
+
+test("root ile çalışan bozuk kurulum yeşil görünmez", () => {
+  const card = cardOf(profile("a"), { status: status({ running_as_user: "root" }), apps: apps(0), alarms: alarms(0) });
+  assert.equal(card.tone, "bad");
+  assert.deepEqual(summarize([card]), { servers: 1, ready: 0, warning: 0, signIn: 0, failed: 1, apps: 0 });
 });
 
 test("alarm listesi okunamazsa kart 'alarm yok' iddia etmez", () => {
@@ -61,17 +74,24 @@ test("alarm listesi okunamazsa kart 'alarm yok' iddia etmez", () => {
   assert.equal(alarmCount([card, ready("b", undefined, 2)]), 2);
 });
 
+test("toplu liste okunamayanı adıyla söyler, yüklenirken 'yok' demez", () => {
+  const noAlarms = cardOf(profile("a"), { status: status(), apps: apps(1) });
+  assert.deepEqual(coverage([noAlarms, ready("b")], "alarms"), { loading: false, unread: ["a"] });
+  assert.deepEqual(coverage([noAlarms, ready("b")], "apps"), { loading: false, unread: [] });
+  const down = cardOf(profile("c"), { failure: "refused" });
+  assert.deepEqual(coverage([down], "apps"), { loading: false, unread: ["c"] });
+  assert.deepEqual(coverage([cardOf(profile("d"), {})], "apps"), { loading: true, unread: [] });
+});
+
 test("disk yüzdesi: bilinmiyorsa null, sıfıra bölmez", () => {
   assert.equal(diskUsedPercent(status().host), 25);
   assert.equal(diskUsedPercent(null), null);
   assert.equal(diskUsedPercent({ ...status().host!, disk_total_bytes: "0" }), null);
 });
 
-test("sağlayıcı grupları ilk görülme sırasında, etiketsizler sonda", () => {
-  const groups = groupByProvider([ready("a"), ready("b", "hetzner"), ready("c", "google-cloud"), ready("d", "hetzner")]);
-  assert.deepEqual(groups.map((g) => g.provider), ["hetzner", "google-cloud", ""]);
-  assert.deepEqual(groups[0]!.cards.map((c) => c.profile.target), ["b", "d"]);
-  assert.deepEqual(groups[2]!.cards.map((c) => c.profile.target), ["a"]);
+test("aynı sağlayıcı yan yana, ilk görülme sırasında, etiketsizler sonda", () => {
+  const order = orderByProvider([ready("a"), ready("b", "hetzner"), ready("c", "google-cloud"), ready("d", "hetzner")]);
+  assert.deepEqual(order.map((c) => c.profile.target), ["b", "d", "c", "a"]);
 });
 
 test("bilinmeyen sağlayıcı etiketi metin olarak kalır, renk uydurulmaz", () => {
@@ -83,9 +103,16 @@ test("bilinmeyen sağlayıcı etiketi metin olarak kalır, renk uydurulmaz", () 
   assert.equal(providerView("").letter, "?");
 });
 
+test("elle bozulmuş sağlayıcı adı uygulamayı düşürmez", () => {
+  for (const name of ["__proto__", "constructor", "toString"]) {
+    assert.equal(providerView(name).name, name);
+    assert.equal(providerView(name).color, null);
+  }
+});
+
 test("özet yalnız okunabilenleri sayar", () => {
-  const s = summarize([ready("a"), ready("b", undefined, 1), cardOf(profile("c"), { failure: "refused" })]);
-  assert.deepEqual(s, { servers: 3, ready: 1, warning: 1, unavailable: 1, apps: 2 });
+  const s = summarize([ready("a"), ready("b", undefined, 1), cardOf(profile("c"), { failure: "refused" }), cardOf(profile("d"), { failure: '"kadran login"' })]);
+  assert.deepEqual(s, { servers: 4, ready: 1, warning: 1, signIn: 1, failed: 1, apps: 2 });
 });
 
 test("sürüm farkı: yalnız sunucu istemciden eskiyse, 'dev' derlemede susar", () => {
@@ -118,4 +145,11 @@ test("son işlemler: boş süzgeç her eylemi alır, sınır uygulanır, zamans�
     2,
   );
   assert.deepEqual(merged.map((m) => m.record.seq), ["3", "2"]);
+});
+
+test("denetim hedefinden uygulama adı", () => {
+  assert.equal(appOfTarget("app/blog/release/42"), "blog");
+  assert.equal(appOfTarget("app/blog"), "blog");
+  assert.equal(appOfTarget("host"), "host");
+  assert.equal(appOfTarget(""), "");
 });

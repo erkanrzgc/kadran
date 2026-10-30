@@ -5,6 +5,13 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+## v0.9.3 — 2026-10-30
+
+Install from a release: no checkout and no Go on your machine (K-159). The protocol is unchanged
+(3). The server programs are rebuilt with the new version number and nothing else, so a server that
+stays on v0.9.2 keeps working. Only the v0.9.3 client can install from a release: an older
+`kadran bootstrap` still needs local files.
+
 ### Added
 
 - `kadran bootstrap` installs from the GitHub release of the client's own version: no checkout and

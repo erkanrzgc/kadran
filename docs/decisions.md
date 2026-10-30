@@ -12081,7 +12081,7 @@ beri çalışıyordu; v0.9.1 kurulumu 00:02'deydi. Günlük:
 
 ## K-158 — Kurulum aynı ikiliyi yeniden yazmıyor (2026-10-30)
 
-**Durum:** PR #24 ile main'de (`45ff87e`); henüz yayımlanmadı.
+**Durum:** PR #24 ile main'de (`45ff87e`), v0.9.3'te. Hetzner'de canlıda görüldü: K-159, "Canlıda".
 
 ### Neden
 
@@ -12124,8 +12124,8 @@ interrupted" sözü sonraki paket yükseltmesine erteleniyordu.
 
 ## K-159 — Sürümden kurulum: gömülü özetle doğrulanan sunucu paketi (2026-10-30)
 
-**Durum:** dal `release-install`'da, yerelde yeşil; PR açılmadı. Canlı ölçüm v0.9.3'ü bekliyor.
-Tasarım: `docs/specs/2026-10-30-filo-design.md` (1. parça); plan:
+**Durum:** PR #25 ile main'de (`6b94dc5`), v0.9.3'te. Hetzner'de yansıdan ölçüldü; GitHub'dan gerçek
+indirme ve GCP v0.9.3'ü bekliyor. Tasarım: `docs/specs/2026-10-30-filo-design.md` (1. parça); plan:
 `docs/plans/2026-10-30-filo-1-surumden-kurulum.md`.
 
 ### Neden
@@ -12191,7 +12191,25 @@ yalnız bozulmayı yakalar. Yayını değiştirebilen onu da değiştirir.
   sağ çıktı (24.04'te yakalanıyordu). Denetim kopyalanan `sleep`in çalıştığını hiç sormuyordu. Muhtemel
   sebep 26.04'ün Rust coreutils'i: adı değişince hemen çıkan bir `sleep`. Bu 26.04'te ölçülmedi, yerelde
   taklitle aynı sonuç alındı. Denetim artık `bash` kopyalıyor ve sürecin kurulum boyunca yaşadığını çıkış
-  kodundan (143) kanıtlıyor; yalnız ETXTBSY'ye bakan ilk düzeltmem kapanan süreçte de geçti.
+  kodundan (143) kanıtlıyor; yalnız ETXTBSY'ye bakan ilk düzeltmem kapanan süreçte de geçti. Düzeltmeyle
+  CI 14/14 yeşil, mutant 26.04'te yakalanıyor.
+
+### Canlıda (Hetzner, `v0.9.3-rc1`, 30 Ekim, kullanıcı onayıyla)
+
+Etiketten önce, gerçek sunucuda: `89531f6`'dan iki LF klon (`SHA256SUMS` aynı), paket localhost'taki
+yansıdan (`KADRAN_RELEASE_BASE`).
+
+- **Bir baytı değişik paket:** çıkış 1, "nothing was installed". Dosyaların tarih ve sahipleri, `/tmp`,
+  `/var/tmp`, `/root` ve servis PID'leri önce ve sonra aynı.
+- **Kurulum:** `Server files: release v0.9.3-rc1 (verified)`, 34 sn, çıkış 0, denetimin tamamı ✓.
+  Yoklama bu makineden 81/81 ve GCP'den 69/69, hepsi 200.
+- **K-158:** "reverse proxy unchanged"; `kadran-caddy` aynı PID (`918125`, 29 Ekim'den beri), md5 aynı.
+  Silinmiş dosyadan çalışması sürüyor: K-158 bunu önlüyor, iyileştirmiyor.
+- **Sonrası:** çalışan ikililer paketle aynı, `NRestarts=0`, alarm yok, iki zincir geçerli, üç
+  uygulama ve `--allow-repo` duruyor, `authorized_keys` özeti aynı. TOTP oturumu yeniden başlatmayı
+  geçti, kurtarma kodları 10.
+
+Ölçülmeyen: GitHub'dan indirme, `-sudo` yolu, boş sunucu.
 
 ### Açık
 
@@ -12204,7 +12222,7 @@ yalnız bozulmayı yakalar. Yayını değiştirebilen onu da değiştirir.
   kadar v0.9.2 kurar ve onun `bootstrap`'ı sürümden kuramaz. Birleştirmeden hemen sonra v0.9.3
   yayımlanmalı.
 - İstemcinin kendisi imzasız: tek satır GitHub'a ve TLS'e güveniyor. İmza sonraki iş (tasarımda).
-- Sürüm yolu gerçek sunucuda koşmadı; yayınlanmış bir sürüm ister (planın 9. görevi, her adım
-  kullanıcı onayıyla). Boş sunucuda kabul testi kiralama ister, kullanıcıya sorulacak.
+- Sürüm yolu GitHub'dan ve `-sudo` ile koşmadı; yayınlanmış bir sürüm ister (planın 9. görevi, her
+  adım kullanıcı onayıyla). Boş sunucuda kabul testi kiralama ister, kullanıcıya sorulacak.
 - `kadran-server` paketi sunucuya yine iş istasyonundan gidiyor; ev hattından yavaş yükleme
   (K-119) değişmedi.

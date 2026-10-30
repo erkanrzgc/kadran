@@ -167,6 +167,39 @@ func TestFetchReleaseRejectsTamperedBundle(t *testing.T) {
 	}
 }
 
+// TestFetchReleaseComparesWholeHash: özetin yalnız son hanesi farklıysa da
+// reddedilir; kısaltılmış bir karşılaştırma bunu kaçırırdı.
+func TestFetchReleaseComparesWholeHash(t *testing.T) {
+	geciciTaban(t)
+	body := gecerliPaket(t)
+	h := ozet(body)
+	son := "0"
+	if h[63] == '0' {
+		son = "1"
+	}
+	srv, _ := paketSunucusu(t, body, http.StatusOK)
+
+	_, _, err := FetchRelease(context.Background(),
+		Release{Version: "v9.9.9", BaseURL: srv.URL, SHA256: map[string]string{"amd64": h[:63] + son}}, "amd64", &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "does not match the hash built into this kadran") {
+		t.Fatalf("hata = %v", err)
+	}
+}
+
+// TestFetchReleaseChecksHashBeforeUnpacking: özeti tutmayan paket hiç
+// açılmaz. Açılsaydı güvensiz girdinin hatası özet hatasından önce gelirdi.
+func TestFetchReleaseChecksHashBeforeUnpacking(t *testing.T) {
+	geciciTaban(t)
+	sahte := paketTar(t, map[string]string{"etc/evil": "x"})
+	srv, _ := paketSunucusu(t, sahte, http.StatusOK)
+
+	_, _, err := FetchRelease(context.Background(),
+		Release{Version: "v9.9.9", BaseURL: srv.URL, SHA256: map[string]string{"amd64": strings.Repeat("a", 64)}}, "amd64", &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "does not match the hash built into this kadran") {
+		t.Fatalf("hata = %v", err)
+	}
+}
+
 func TestFetchReleaseRefusesMissingHash(t *testing.T) {
 	geciciTaban(t)
 	srv, n := paketSunucusu(t, gecerliPaket(t), http.StatusOK)
@@ -240,6 +273,11 @@ func TestUnpackRejectsUnsafeEntries(t *testing.T) {
 		{"üst dizin", map[string]string{"../evil": "x"}, nil},
 		{"mutlak yol", map[string]string{"/etc/passwd": "x"}, nil},
 		{"yol içinde ..", map[string]string{"bin/../../evil": "x"}, nil},
+		// İzinli köke geri dönen ad, temizlenince kök denetiminden geçerdi.
+		{"izinli köke dönen ..", map[string]string{"bin/../deploy/x": "x"}, nil},
+		// Windows'ta istemci bunu paketin dışına yazardı: path.Clean ters
+		// bölüyü ayırıcı saymıyor, filepath.Join sayıyor.
+		{"ters bölü", map[string]string{`bin/..\..\evil`: "x"}, nil},
 		{"sembolik bağ", ok, []*tar.Header{{Name: "bin/l", Linkname: "/etc", Typeflag: tar.TypeSymlink}}},
 		{"sabit bağ", ok, []*tar.Header{{Name: "bin/h", Linkname: "bin/linux-amd64/kadrand", Typeflag: tar.TypeLink}}},
 		{"karakter aygıtı", ok, []*tar.Header{{Name: "bin/c", Typeflag: tar.TypeChar, Devmajor: 1, Devminor: 3}}},

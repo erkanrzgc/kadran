@@ -49,7 +49,7 @@ const ROOT_TIMEOUT_MS = 5_000;
  * prepareSmokeUserData, testi kullanıcının gerçek verisinden ayırır:
  * geçici bir kullanıcı verisi dizini ve sahte profiller. `whenReady`'den ÖNCE çağrılmalı.
  */
-/** Çok uzun ad ve hedef: kartta, sekmede ve menüde taşma olmamalı. */
+/** Çok uzun ad ve hedef: kartta taşma olmamalı. */
 const LONG_NAME = "uzun-" + "ad".repeat(60);
 const LONG_TARGET = "fake@" + "uzun-hedef.".repeat(11) + "example";
 
@@ -229,7 +229,14 @@ async function dashboardJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="rail-servers"]');
   await waitFor(win, q('[data-testid="screen-servers"]'), "servers screen");
 
-  // Sağlayıcı etiketi diske gider ve kart yerini bulur. Eylemler üstüne gelince görünür.
+  // Kart eylemleri gizli başlar, klavye odağında görünür.
+  const actions2 = q('[data-testid="card-edit-fake@verifyfail"]');
+  const parent = `${actions2}.parentElement`;
+  expect(await evaluate<string>(win, `getComputedStyle(${parent}).opacity`) === "0", "card actions are visible at rest");
+  await evaluate(win, `${actions2}.focus()`);
+  await waitFor(win, `getComputedStyle(${parent}).opacity === "1"`, "card actions on keyboard focus");
+
+  // Sağlayıcı etiketi diske gider ve kart yerini bulur.
   await click(win, '[data-testid="card-edit-fake@verifyfail"]');
   await waitFor(win, q('[data-testid="server-dialog"]'), "server settings");
   await evaluate(win, `(() => { const el = ${q('[data-testid="server-provider"]')}; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(el, "aws"); el.dispatchEvent(new Event("change", { bubbles: true })); })()`);
@@ -251,14 +258,14 @@ async function dashboardJourney(win: BrowserWindow): Promise<void> {
   await waitFor(win, `${card("fake@totp-new")}`, "TOTP server added");
   await waitFor(win, `${card("fake@totp-new")}?.dataset.state === "totp"`, "added TOTP server asks for sign-in");
 
-  // Açık sunucuya dönüş eski değeri "Sağlıklı" bırakmaz: yeniden okunur.
+  // Açık sunucuya dönüş eski değeri "Sağlıklı" bırakmaz: sunucu düştüyse sekme kapanır.
   await openServer(win, "fake@flaky2");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "flaky connected");
   await click(win, '[data-testid="tab-fleet"]');
   await openServer(win, "fake@flaky2");
-  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Attention required"`, "reopened server was refreshed");
+  await waitFor(win, `!${q('[data-testid="tab-fake@flaky2"]')} && ${q('[data-testid="screen-dashboard"]')}`, "reopened dead server left the old values");
+  await waitFor(win, q('[data-testid="toast"]'), "reason for the closed tab");
   await dismissToasts(win);
-  await click(win, '[data-testid="tab-close-fake@flaky2"]');
 }
 
 async function managementJourney(win: BrowserWindow): Promise<void> {
@@ -367,6 +374,13 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await new Promise((r) => setTimeout(r, 1900));
   expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-card-old-only"]')})`)), "old-server response overwrote new application list");
   await noHorizontalOverflow(win, "apps at 760x520");
+  const tabVisible = await evaluate<boolean>(win, `(() => { const s = ${q(".tabs")}.getBoundingClientRect(); const a = ${q(".tab.is-on")}.getBoundingClientRect(); return a.left >= s.left - 1 && a.right <= s.right + 1; })()`);
+  expect(tabVisible, "the open tab is scrolled out of view");
+  await click(win, '[data-testid="tab-fleet"]');
+  await waitFor(win, q('[data-testid="screen-dashboard"]'), "dashboard at 760x520");
+  await noHorizontalOverflow(win, "dashboard at 760x520");
+  await openServer(win, "fake@test");
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "back to the application list");
 
   await openServer(win, "fake@verifyfail");
   await click(win, '[data-testid="nav-status"]');

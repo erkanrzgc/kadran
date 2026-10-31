@@ -61,11 +61,7 @@ export function App() {
       if (next) setServerView(next);
       if (active === target) return;
       setActive(target);
-      // Zaten bağlıysa eski değerler "Sağlıklı" diye kalmasın: yeniden okunur.
-      if (server.state.target === target) {
-        if (await server.refresh()) await server.verifyChains();
-        return;
-      }
+      // Her açılışta baştan okunur: eski değerler "Sağlıklı" diye kalmasın.
       // Bağlanamazsa sebep bildirimde; sekme kapanır, kart zaten durumu gösterir.
       if ((await server.connect(target)) === "failed") {
         setTabs((list) => list.filter((x) => x !== target));

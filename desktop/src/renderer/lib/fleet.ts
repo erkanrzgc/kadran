@@ -64,7 +64,7 @@ export interface Coverage {
 /** Sunucu değiştiren ve geçmişi olan işlemler; yükseltmeler sunucuda kayıt bırakmıyor. */
 export const OPERATION_ACTIONS: readonly string[] = ["app.deploy", "app.rollback"];
 
-/** Sunucunun bütün TOTP mesajları "kadran login" der; "totp" sözcüğü sunucu adında da geçebilir. */
+/** Giriş isteyen sunucu mesajları "kadran login" der; "totp" sözcüğü sunucu adında da geçebilir. */
 export function classifyFailure(message: string): "totp" | "unreachable" {
   return message.includes("kadran login") ? "totp" : "unreachable";
 }

@@ -39,6 +39,8 @@ export function useRecentRecords(profiles: readonly Profile[], active: boolean, 
     // Geç biten eski tur yeni turun üstüne yazmasın.
     let lastRound = 0;
     const list = targets ? targets.split("\n") : [];
+    // Sunucu listesi değişti: cevap gelmeden "işlem yok" denmesin.
+    setState((prev) => ({ ...prev, loaded: false }));
     const round = async () => {
       if (document.hidden) return;
       const id = ++lastRound;

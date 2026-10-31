@@ -1,3 +1,5 @@
+import { useEffect, useRef, type WheelEvent } from "react";
+
 import type { Profile } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import type { FleetCard } from "../lib/fleet.ts";
@@ -16,8 +18,19 @@ interface Props {
 /** Tarayıcı gibi sekmeler: "Pano" ve açılmış sunucular. */
 export function Tabs({ tabs, active, profiles, cards, onSelectFleet, onSelect, onClose }: Props) {
   const t = useT();
+  const strip = useRef<HTMLElement>(null);
+
+  // Açık sekme her zaman görünür kalsın; kaydırma çubuğu gizli.
+  useEffect(() => {
+    strip.current?.querySelector(".tab.is-on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active, tabs]);
+
+  const wheel = (event: WheelEvent<HTMLElement>) => {
+    event.currentTarget.scrollLeft += event.deltaY;
+  };
+
   return (
-    <nav className="tabs" aria-label={t("tabs.label")}>
+    <nav className="tabs" aria-label={t("tabs.label")} ref={strip} onWheel={wheel}>
       <div className={active === null ? "tab is-on" : "tab"}>
         <button type="button" className="tab-main" onClick={onSelectFleet} data-testid="tab-fleet"><span>{t("nav.dashboard")}</span></button>
       </div>

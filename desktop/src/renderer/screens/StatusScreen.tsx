@@ -105,10 +105,7 @@ export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: Se
 
       <section className="panel">
         <div className="panel-head">
-          <div>
-            <h2 className="section-title">{t("status.summary")}</h2>
-            <p className="panel-sub">{reachable ? t("status.summary_ok") : t("status.meta_down")}</p>
-          </div>
+          <h2 className="section-title">{t("status.summary")}</h2>
         </div>
         <div className="well">
           <KeyValues

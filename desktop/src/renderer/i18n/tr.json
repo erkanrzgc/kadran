@@ -280,7 +280,6 @@
   "topbar.fleet": "Filo",
   "topbar.no_servers": "Henüz sunucu yok.",
   "status.summary": "Sunucu özeti",
-  "status.summary_ok": "Erişilebilir, doğrulanmış, uygulama çalıştırmaya hazır.",
   "status.connection": "Bağlantı",
   "row.os": "İşletim sistemi",
   "row.architecture": "Mimari",

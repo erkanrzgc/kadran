@@ -280,7 +280,6 @@
   "topbar.fleet": "Fleet",
   "topbar.no_servers": "No servers yet.",
   "status.summary": "Server summary",
-  "status.summary_ok": "Reachable, verified and ready to run applications.",
   "status.connection": "Connection",
   "row.os": "Operating system",
   "row.architecture": "Architecture",

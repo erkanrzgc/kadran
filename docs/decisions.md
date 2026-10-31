@@ -12333,6 +12333,16 @@ Kullanıcı masaüstünü açtırınca "rezil" buldu: 30 Ekim'de onaylanan görs
 - Adında "totp" geçen ulaşılamaz sunucu giriş istiyor sanılıyordu.
 - Duman yolculuğu `el.click()` ile görünmeyen düğmeye de basabiliyordu: artık görünürlük ve üstte olma denetleniyor; dar pencerede ikinci menü tek bileşen.
 
+İkinci inceleme (`8d431cc` üstüne) şunları buldu, kapatıldı:
+
+- Durum ekranı root kurulumda ve kırık zincirde bile "doğrulanmış, hazır" diyordu: cümle kaldırıldı, durum başlıkta ölçülen haliyle yazıyor.
+- Sunucu listesi gelince pano bir an "işlem yok" diyordu: cevap gelene dek yükleniyor der.
+- Hata ekranında pencere düğmesi yoktu, çerçevesiz pencere kapatılamıyordu: düğmeler ve "yeniden dene" eklendi.
+- Sığmayan sekmeye fareyle ulaşılamıyordu: tekerlek çalışır, açık sekme görünür kalır.
+- Açık sunucuya dönünce eski "Sağlıklı" yeniden okuma bitene dek görünüyordu: her açılışta baştan bağlanılır, sunucu düştüyse sekme kapanır.
+
+Bilinen eksik: sürükleme bölgesinin tıklamayı yutması testle yakalanamıyor (`el.click()` onu aşar), elle denenmeli. Yerel yönetici mesajı ("run kadran from your workstation") kartta "Sunucuya ulaşılamıyor" görünür, asıl metin ipucundadır.
+
 ### Ölçülmedi
 
 macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri" kapalıyken `prefers-reduced-transparency` (ayarı değiştirmek sistem ayarı, yalnız kural var); gerçek sunucuyla yeni arayüz.

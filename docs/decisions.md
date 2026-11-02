@@ -12301,7 +12301,7 @@ görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi 
 
 ## K-161 — Masaüstü görünümü: Coolify'ın aynısı, üstünde gerçek cam (2026-10-31)
 
-**Durum:** dal `desktop-look`, yerelde yeşil; kullanıcı gerçek pencerede onayladı (2 Kasım: "cam güzel olmuş"), push ve CI henüz yok.
+**Durum:** PR #27 → `ad23157`, main'de (2 Kasım); CI 14/14 yeşil (Linux mutasyonu 1 sa 17 dk). Kullanıcı gerçek pencerede onayladı ("cam güzel olmuş"); henüz yayımlanmadı.
 
 ### Neden
 

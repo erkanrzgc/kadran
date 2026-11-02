@@ -27,6 +27,7 @@ fi
 
 FILES=(
     src/main/window-options.ts
+    src/main/window-accent.ts
     src/main/permissions.ts
     src/main/ipc-validate.ts
     src/renderer/index.html
@@ -34,6 +35,8 @@ FILES=(
     src/renderer/i18n/en.json
     src/renderer/toast/Toast.tsx
     src/shared/appearance.ts
+    src/renderer/lib/fleet.ts
+    src/renderer/lib/providers.ts
     src/renderer/lib/audit-window.ts
     src/renderer/lib/health.ts
     src/renderer/lib/fonts.ts
@@ -120,8 +123,6 @@ mutate_in src/main/window-options.ts "sandbox kapalı" \
     "s=s.replace('sandbox: true,','sandbox: false,',1)"
 mutate_in src/main/window-options.ts "contextIsolation kapalı" \
     "s=s.replace('contextIsolation: true,','contextIsolation: false,',1)"
-mutate_in src/main/window-options.ts "Clear geçişi yeniden kurmuyor" \
-    "s=s.replace('return !(live(from) && live(to));','return false;',1)"
 mutate_in src/main/permissions.ts "her izin kontrolüne evet" \
     "s=s.replace('return ALLOWED_CHECKS.has(permission);','return true;',1)"
 mutate_in src/main/permissions.ts "her izin isteğine evet" \
@@ -144,10 +145,40 @@ mutate_in src/renderer/lib/i18n.ts "çoğul ters" \
     "s=s.replace('=== 1 ? \"one\" : \"other\"','=== 1 ? \"other\" : \"one\"',1)"
 
 echo "== Görünüm şeması =="
-mutate_in src/shared/appearance.ts "bu sistemde olmayan mod kabul ediliyor" \
-    "s=s.replace('mode: pick(o.mode, modesFor(info), d.mode),','mode: pick(o.mode, ALL_MODES, d.mode),',1)"
-mutate_in src/shared/appearance.ts "tint sınırı yok" \
-    "s=s.replace('tint: clampInt(o.tint, LIMITS.tint, d.tint),','tint: typeof o.tint === \"number\" ? o.tint : d.tint,',1)"
+mutate_in src/shared/appearance.ts "Windows 10'a Acrylic veriliyor" \
+    "s=s.replace('if (isWindows11(info)) return \"acrylic\";','if (info.platform === \"win32\") return \"acrylic\";',1)"
+mutate_in src/shared/appearance.ts "eski sürümün yazı tipi taşınıyor" \
+    "s=s.replace('if (o.version !== APPEARANCE_VERSION) return { ...d, language };','',1)"
+mutate_in src/shared/appearance.ts "yazı tipi kalınlığı sınırsız" \
+    "s=s.replace('weight: clampInt(o.weight, LIMITS.weight, fallback.weight)','weight: typeof o.weight === \"number\" ? o.weight : fallback.weight',1)"
+mutate_in src/shared/appearance.ts "bilinmeyen tema dosyadan geçiyor" \
+    "s=s.replace('theme: pick(o.theme, THEMES, d.theme)','theme: o.theme as Theme',1)"
+mutate_in src/shared/appearance.ts "cam, malzemesi olmayan sistemde kalıyor" \
+    "s=s.replace('return theme === \"glass\" && available === \"none\" ? \"dark\" : theme;','return theme;',1)"
+mutate_in src/shared/appearance.ts "koyu tema masaüstünü gösteriyor" \
+    "s=s.replace('return { material: \"none\", background: \"#0a0a0a\", scheme: \"dark\" };','return { material: available, background: \"#00000000\", scheme: \"dark\" };',1)"
+mutate_in src/shared/appearance.ts "açık tema yerel koyuda kalıyor" \
+    "s=s.replace('scheme: \"light\"','scheme: \"dark\"',1)"
+
+echo "== Windows camı =="
+mutate_in src/main/window-accent.ts "cam kapatılınca efekt kalıyor" \
+    "s=s.replace('State: on ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_DISABLED','State: ACCENT_ENABLE_ACRYLICBLURBEHIND',1)"
+mutate_in src/main/window-accent.ts "ton bayrağı yok (renk yok sayılır)" \
+    "s=s.replace('Flags: ACCENT_FLAG_GRADIENT_COLOR','Flags: 0',1)"
+mutate_in src/main/window-options.ts "Windows camı Electron malzemesiyle açılıyor (simsiyah)" \
+    "s=s.replace('case \"accent\":\n      return { ...base, ...chrome };','case \"accent\":\n      return { ...base, ...chrome, backgroundMaterial: \"acrylic\" };',1)"
+
+echo "== Filo doğruluğu =="
+mutate_in src/renderer/lib/fleet.ts "bozuk kurulum yeşil görünüyor" \
+    "s=s.replace('state === \"unreachable\" || isBrokenInstall(data.status)','state === \"unreachable\"',1)"
+mutate_in src/renderer/lib/fleet.ts "okunamayan alarm listesi sağlıklı sayılıyor" \
+    "s=s.replace(' && data.alarms !== undefined && data.alarms.alarms.length === 0',' && (data.alarms?.alarms.length ?? 0) === 0',1)"
+mutate_in src/renderer/lib/fleet.ts "okunamayan sunucu toplu listede gizleniyor" \
+    "s=s.replace('unread: cards.filter((c) => c.state !== \"loading\" && c[list] === null).map((c) => c.profile.name),','unread: [],',1)"
+mutate_in src/renderer/lib/fleet.ts "adında totp geçen sunucu giriş istiyor sanılıyor" \
+    "s=s.replace('message.includes(\"kadran login\")','/totp|kadran login/i.test(message)',1)"
+mutate_in src/renderer/lib/providers.ts "__proto__ sağlayıcı nesneye düşüyor" \
+    "s=s.replace('const known = PROVIDERS.get(provider);','const known = (Object.fromEntries(PROVIDERS) as Record<string, { name: string; color: string }>)[provider];',1)"
 
 echo "== Ekran mantığı =="
 mutate_in src/renderer/lib/audit-window.ts "son kayıtlar en eskiyi gösteriyor" \

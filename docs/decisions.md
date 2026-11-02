@@ -12298,3 +12298,64 @@ görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi 
 - Gecelik kırmızıyı yalnız GitHub'ın e-postası duyuruyor. GitHub 60 gün etkinlik olmayan depoda
   zamanlanmış koşuyu kapatır.
 - "Sürüm öncesi tam koşu" kodla zorlanmıyor; sürüm yordamına yazılı kural.
+
+## K-161 — Masaüstü görünümü: Coolify'ın aynısı, üstünde gerçek cam (2026-10-31)
+
+**Durum:** dal `desktop-look`, yerelde yeşil; kullanıcı gerçek pencerede onayladı (2 Kasım: "cam güzel olmuş"), push ve CI henüz yok.
+
+### Neden
+
+Kullanıcı masaüstünü açtırınca "rezil" buldu: 30 Ekim'de onaylanan görsel dil koda hiç girmemişti, arayüz kodunun son commit'i 13 Ekim'di. Önce taslağı birebir uyguladım (`ddfad66`). Kullanıcı bunu geri çevirdi ve yönü netleştirdi: bütün pencere modları kalkacak, görünüm Coolify'ın tıpatıp aynısı olacak (reposundan), mor kenar çubuğu olmayacak, cam gerçek olacak yani arkada masaüstü görünecek ("attığım resimlerin arka planı mavi diye maviyi referans alma"), macOS'a göre değil Windows'a göre olacak. Seçili satır için "hap" dedi.
+
+### Karar
+
+- **Kaynak:** `coollabsio/coolify` `DESIGN.md` Part 1 ("Portable design language"), commit `751ecb9`: 224 px kenar çubuğu, 48 px üst çubuk, kart + kuyu, 32 px denetim, 2 px alt kenarlı düğme, 40/48 px tablo, Geist + Geist Mono. Apache-2.0: uyarlama, atıf `THIRD_PARTY_NOTICES`'ta. Coolify'ın logosu ve adı kullanılmadı.
+- **Sapmalar, kullanıcının isteğiyle:** kenar çubuğunda mor ve dolgu yok, ince çizgi var. Seçili satır simge kutusu değil parlak, köşeli cam (8 px; kullanıcının referansı), bu yüzden simge kutuları kalktı. Mor her temada yalnız ana düğmede. Üst çubukta sekmeler var (30 Ekim kararı, Coolify'da yok). Kenar çubuğunda kullanıcı adı, kısayol ipucu ve daraltma yok: Windows'ta gereksiz bulundu, Mac sürümünde yeniden düşünülecek. Sürüm altta yazar.
+- **Üç tema:** koyu ve açık Coolify'ın renkleri (zemin `#0a0a0a` / `#fafafa`), cam gerçek masaüstünü gösterir ve varsayılandır. Eski pencere modları, ton, vurgu rengi ve cam kaydırıcıları geri gelmedi. Cam, Windows 11'de Windows camı, macOS'ta Vibrancy ister; ikisi de yoksa seçenek sunulmaz ve koyu çizilir. `nativeTheme` temayı izler, sistem temasını değil. Tema yeni IPC kanalı açmadan mevcut kayıt çağrısıyla pencereye uygulanır.
+- **Cam odak gidince de cam kalır:** Electron'un `backgroundMaterial: "acrylic"` ayarı odak gidince griye düşer. Kullanıcı griyi de siyahı da istemedi. Windows'un `SetWindowCompositionAttribute` çağrısı (`ACCENT_ENABLE_ACRYLICBLURBEHIND`) düşmüyor, gerçek pencerede ölçüldü. Saydam pencere (`transparent: true`) reddedildi: kenardan boyutlanmıyor, köşesi yuvarlak değil. Acrylic malzemeli pencereyle birleştirmek simsiyah çizdi. Normal pencere ve şeffaf arka plan hepsini koruyor.
+- **`koffi` (MIT):** Electron'un ana süreci bu çağrıyı kendisi yapamadığı için eklendi; `mica-electron` sürekli çalışan zamanlayıcı ve kendi yerel modülünü istediği için seçilmedi. Yalnız Windows 11'de, yalnız ana süreçte yüklenir; pakete yalnız JS dosyaları ve bu mimarinin kütüphanesi girer. React'te yapılamaz: sayfa masaüstü piksellerini göremez.
+- **Risk:** çağrı belgelenmemiş. Windows kaldırırsa köprü yüklenmez ya da çağrı reddedilir ve Electron'un Acrylic'ine dönülür; o durumda odak gidince zemin griye düşmesin diye `#0a0a0a` olur. Sürükleme takılması bildirimleri var, burada kullanıcı denemesine bırakıldı.
+- **Ayar dosyası sürüm 2:** eski dosyadan yalnız dil taşınır. Eski yazı tipi seçimi atılır, yoksa görünümü bozardı. Yazı tipi seçimi Ayarlar'da duruyor. `theme` alanı sürümü yükseltmez: alan yoksa cam kabul edilir ve kayıtlı yazı tipleri korunur.
+- **Pano yok:** kullanıcı Coolify'ın görünümünü beğenmişti, ekranını istememişti; bu yanlış anlaşılmayla eklenen Pano kaldırıldı. Sunucular kartının aynısı ve Denetim'in ilk beş satırıydı. Açılış ekranı Sunucular.
+- **Veri** mevcut çağrılardan (`status`, `apps.list`, `alarms.list`, `audit.list`) gelir; sunucu değişmedi. Sahte veri yok: bölge sunucudan gelmediği için kartta yok; yükseltmeler sunucuda kayıt bırakmıyor.
+- **Üst çubuk düz (2 Kasım):** Windows 11 başlığı gibi zeminsiz, 48 px, pencere düğmeleri köşede; logo şeridi de 48 px, aynı hizada. Filo ekranında yol yok: sayfa adı zaten sayfanın başlığında ve kenar çubuğunda seçili. Sunucu açıkken yol `Sunucular / sunucu ⌄` ve sağlık hapı. "Filo" sekmesi kalktı; sunucu sekmeleri ancak iki sunucu açıkken çıkar, tek sunucuda yol yeter.
+- **Yüzen cam üst çubuk denendi, geri alındı:** içerik altından kayan, kenarı büken Liquid Glass çubuk (`backdrop-filter: url()`, renk başına ayrı kırılma) yazıldı. Kullanıcı gerçek pencerede "çok kötü" buldu: arkası koyu ve boşken cam görünmüyor, kara şerit gibi duruyordu; "Filo" yolda ve sekmede iki kez yazıyordu, tek sekme anlamsızdı. Kod commit edilmedi. `rdev/liquid-glass-react` (Haziran 2025'ten beri değişmiyor, 180 KB, kare düşmesi şikâyeti) ve React Bits `GlassSurface` ("MIT + Commons Clause", depo Apache-2.0) zaten alınmamıştı. Not: Chromium masaüstü piksellerini göremez, böyle bir çubuk yalnız uygulama içeriğini büker.
+- **Seçili satır geçişi:** parlak zemin ayrı katmanda opaklık ve hafif ölçekle gelir (gradyan geçiş yapamaz). Fare seçili satırın üstündeyken hover kuralı onu eziyordu: cam kayboluyor, fare çekilince birden geliyordu; artık hover seçili satıra dokunmuyor.
+- **Cam daha açık, kartlar glassmorphism (2 Kasım):** kullanıcı "paket indirelim" dedi. Masaüstünü yalnız Windows bulanıklaştırabildiği için Electron paketleri (`mica-electron`, Mayıs 2022'den beri güncellenmeyen `electron-acrylic-window`, Electron'un kendi `backgroundMaterial` ayarı) aynı çağrıyı yapıyor. CSS kütüphaneleri ise yalnız sayfanın içini bulanıklaştırıyor; paket değiştirmek görünümü değiştirmezdi. Değişen ayarlar:
+  - Sayfanın tülü .34'ten .2'ye indi. Yedek Acrylic'te .34 kaldı, çünkü o daha açık çiziyor.
+  - Kartlar ve sunucu kartları köşeden süzülen ışık ve parlak üst kenar aldı. Hover yalnız zemin rengini değiştiriyor; kısaltılmış `background` gradyanı silerdi.
+  - Ölçülen: arkası neredeyse beyazken zemin rgb(45–63), beyaz yazı 10,9–12,5:1. Koyuluğun çoğu Windows camının kendisinden geliyor, tülün payı küçük.
+- **Sürüm altta kısa:** `v0.9.3-6-g65d8db7-dirty` gibi ara derlemede kenar çubuğu yalnız etiketi yazar, tamamı ipucunda ve Ayarlar'da. Geliştirme penceresinde "dev" görünmesinin sebebi damgasız `bin/kadran.exe` idi; paketlenen sidecar her zaman damgalı (`dist.mjs` sorup doğruluyor).
+- **İşlevi olmayanlar** yerinde, soluk, "Yakında" ipucuyla: Ara, Anahtarlar, Bildirimler, Hepsini yükselt, TOTP ve oturum, Yükseltme, Budama. TOTP gereken kartta gerçek yol yazar: `kadran login`.
+- **Yoklama:** filo ekranında 15 sn, sunucu sekmesinde 60 sn, pencere gizliyken yok. Hata karta yazılır, bildirim olmaz.
+
+### Ölçülen
+
+- Tarayıcıda çizilen sayfa masaüstünü gösteremez; tasarım gerçek Acrylic pencerede ve kullanıcının duvar kâğıdı üstünde denendi.
+- **En kötü zemin:** pencerenin arkası bembeyazken (ton .34) zemin rgb(100,100,101) ölçüldü. Beyaz metin 5,9:1, `--fg-dim` 4,5:1, `--fg-faint` 3,4:1. Soluk etiket 4,5'in altında, kabul edildi: yalnız ikincil metinde.
+- **Temalar gerçek pencerede (Windows 11, yapı 26300):** koyu zemin rgb(10,10,10), açık zemin rgb(250,250,250). Windows camında odak gidince masaüstü renkleri kaldı, griye düşmedi; Electron Acrylic'inde aynı noktalar tek renge düşüyor (rgb(59,59,60)). Arkası bembeyazken zemin rgb(46-62), beyaz yazı en az 10,7:1. Açık pencerede koyu → cam → açık → cam → koyu → açık geçişlerinin hepsi çalıştı. En düşük karşıtlık koyuda 5,8:1, açıkta 5,8:1. macOS, Linux ve Windows 10'da denenmedi.
+- Geist 83 KB; `motion` ve hareketli simgeler kalkınca arayüz JS'i 457 KB'tan 350 KB'a indi.
+
+### İncelemenin bulduğu ve kapatılanlar (`ddfad66` üstüne)
+
+- Okunamayan ya da yüklenen sunucu toplu listede "alarm yok" / "uygulama yok" diyordu: `coverage` artık adını söylüyor.
+- Root ile çalışan bozuk kurulum kartta yeşildi.
+- Açık sunucuya dönünce eski değer "Sağlıklı" kalıyordu: yeniden okunuyor.
+- Sunucu ekleme hatası kutunun arkasında kalıyordu: kutunun içinde. TOTP isteyen sunucu kaydediliyor, kart giriş ister.
+- Bozuk `since_unix`, `constructor` adlı eylem ve `__proto__` sağlayıcı beyaz ekran veriyordu: düzeltildi; ayrıca `ErrorBoundary` boş pencere bırakmaz.
+- Adında "totp" geçen ulaşılamaz sunucu giriş istiyor sanılıyordu.
+- Duman yolculuğu `el.click()` ile görünmeyen düğmeye de basabiliyordu: artık görünürlük ve üstte olma denetleniyor; dar pencerede ikinci menü tek bileşen.
+
+İkinci inceleme (`8d431cc` üstüne) şunları buldu, kapatıldı:
+
+- Durum ekranı root kurulumda ve kırık zincirde bile "doğrulanmış, hazır" diyordu: cümle kaldırıldı, durum başlıkta ölçülen haliyle yazıyor.
+- Sunucu listesi gelince pano bir an "işlem yok" diyordu: cevap gelene dek yükleniyor der.
+- Hata ekranında pencere düğmesi yoktu, çerçevesiz pencere kapatılamıyordu: düğmeler ve "yeniden dene" eklendi.
+- Sığmayan sekmeye fareyle ulaşılamıyordu: tekerlek çalışır, açık sekme görünür kalır.
+- Açık sunucuya dönünce eski "Sağlıklı" yeniden okuma bitene dek görünüyordu: her açılışta baştan bağlanılır, sunucu düştüyse sekme kapanır.
+
+Bilinen eksik: sürükleme bölgesinin tıklamayı yutması testle yakalanamıyor (`el.click()` onu aşar), elle denenmeli. Yerel yönetici mesajı ("run kadran from your workstation") kartta "Sunucuya ulaşılamıyor" görünür, asıl metin ipucundadır.
+
+### Ölçülmedi
+
+macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri" kapalıyken `prefers-reduced-transparency` (ayarı değiştirmek sistem ayarı, yalnız kural var); gerçek sunucuyla yeni arayüz.

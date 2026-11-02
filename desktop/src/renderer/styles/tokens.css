@@ -1,41 +1,151 @@
-/* Tasarım belirteçleri. Kaydırıcıların değerlerini AppearanceProvider yazar. */
+/*
+ * Tasarım belirteçleri. Ölçüler ve koyu/açık renkler Coolify'ın tasarım dili
+ * (coollabsio/coolify, DESIGN.md, Apache-2.0); kenar çubuğu morsuz.
+ * Üç tema: varsayılan blok cam (arkada gerçek masaüstü), altında koyu ve açık.
+ * Karar: docs/decisions.md K-161.
+ */
 :root {
-  --tint: 0.6;
-  --panel: 0.07;
-  --edge: 0.22;
-  --glow: 0.6;
-  --acc: 125, 211, 252;
-  --ring: var(--acc);
-  --accent: rgb(var(--acc));
-  --tone: 14, 16, 22;
-  --glass: 255, 255, 255;
-  --fg: #f2f4f8;
-  --brand-ink: #edf1f5;
-  --fg-dim: rgba(242, 244, 248, 0.62);
-  --fg-faint: rgba(242, 244, 248, 0.4);
-  --line: rgba(255, 255, 255, 0.08);
+  color-scheme: dark;
+
+  /* Yüzey katmanlarının rengi: koyu temalarda beyaz, açıkta siyah. */
+  --ov: 255 255 255;
+
+  /* Pencere tonu: camın üstündeki koyu tül. Windows camı kendisi koyulaştırdığı için hafif. */
+  --tint: 0.2;
+  --shell: rgba(12, 12, 14, var(--tint));
+  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  --fg: #ffffff;
+  --brand-ink: #ffffff;
+  --fg-dim: rgba(255, 255, 255, 0.8);
+  --fg-faint: rgba(255, 255, 255, 0.62);
+  --line: rgba(255, 255, 255, 0.12);
+  --line-soft: rgba(255, 255, 255, 0.08);
+  --edge: rgba(255, 255, 255, 0.22);
+  --flat: rgba(255, 255, 255, 0.07);
+  --flat-on: rgba(255, 255, 255, 0.14);
+  --menu: rgb(34, 34, 38);
+  --depth: rgba(255, 255, 255, 0.1);
+
+  /* Glassmorphism kart: köşeden süzülen ışık, üst kenarda parlak çizgi. */
+  --card-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04) 60%);
+  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 12px 36px rgba(0, 0, 0, 0.22);
+  --well-bg: rgba(0, 0, 0, 0.18);
+  --well-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --kart-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03));
+  --kart-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --thead: rgba(0, 0, 0, 0.14);
+  --code-bg: rgba(0, 0, 0, 0.45);
+  --pill: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.12));
+  --pill-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 6px 18px rgba(0, 0, 0, 0.25);
+  --shadow-menu: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4);
+  --backdrop: rgba(0, 0, 0, 0.5);
+
   --ok: #4ade80;
-  --warn: #fbbf24;
-  --bad: #f87171;
-  --muted: rgba(242, 244, 248, 0.45);
-  --radius: 18px;
-  --radius-sm: 10px;
-  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono Bundled", ui-monospace, Consolas, monospace;
+  --warn: #fbd24e;
+  --bad: #fb7185;
+  --muted: rgba(255, 255, 255, 0.62);
+
+  /* Ana düğme: Coolify moru. Mor yalnız burada. */
+  --accent-top: #7317ff;
+  --accent-bottom: #5a12c7;
+  --accent-edge: #4a0fa3;
+  --accent-fg: #ffffff;
+  --focus: rgba(255, 255, 255, 0.85);
+
+  --radius-card: 12px;
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+
+  --font-ui: "Geist Bundled", "Segoe UI", -apple-system, system-ui, sans-serif;
+  --font-mono: "Geist Mono Bundled", Consolas, ui-monospace, monospace;
   --w-ui: 400;
   --w-strong: 600;
   --w-mono: 400;
 }
 
-:root[data-tone="light"] {
-  --tone: 246, 247, 250;
-  --fg: #11141a;
-  --brand-ink: #000000;
-  --fg-dim: rgba(17, 20, 26, 0.62);
-  --fg-faint: rgba(17, 20, 26, 0.42);
-  --line: rgba(17, 20, 26, 0.1);
-  --ok: #15803d;
-  --warn: #b45309;
-  --bad: #b91c1c;
-  --muted: rgba(17, 20, 26, 0.45);
+/* Yedek Acrylic Windows camından açık çizer (beyaz arkada rgb 100'e karşı 46-62): yazı okunsun diye tül koyu. */
+:root[data-theme="glass"][data-material="acrylic"] { --tint: 0.34; }
+
+/* Yedek Acrylic (Windows camı yüklenemezse) odak gidince griye düşer: o an siyah olur. */
+:root[data-theme="glass"][data-material="acrylic"][data-focused="false"] { --shell: #0a0a0a; }
+
+/* İşletim sisteminde "saydamlık efektleri" kapalıysa da yazı okunur kalsın. */
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme="glass"] { --shell: #0a0a0a; }
+}
+
+:root[data-theme="dark"] {
+  --ov: 255 255 255;
+  --shell: #0a0a0a;
+  --text-shadow: none;
+
+  --fg: oklch(96.12% 0 0);
+  --brand-ink: oklch(96.12% 0 0);
+  --fg-dim: oklch(76.99% 0 0);
+  --fg-faint: oklch(65% 0 0);
+  --line: rgb(255 255 255 / 8%);
+  --line-soft: rgb(255 255 255 / 7%);
+  --edge: rgb(255 255 255 / 8%);
+  --flat: rgb(255 255 255 / 5%);
+  --flat-on: rgb(255 255 255 / 10%);
+  --menu: oklch(25.2% 0 0);
+  --depth: rgb(255 255 255 / 8%);
+
+  --card-bg: rgb(255 255 255 / 6%);
+  --card-shadow: none;
+  --well-bg: rgb(0 0 0 / 34%);
+  --well-shadow: 0 1px 2px rgb(0 0 0 / 25%);
+  --thead: rgb(0 0 0 / 20%);
+  --code-bg: rgb(0 0 0 / 45%);
+  --pill: linear-gradient(180deg, rgb(255 255 255 / 16%), rgb(255 255 255 / 9%));
+  --pill-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%);
+  --kart-bg: rgb(255 255 255 / 6%);
+  --kart-shadow: none;
+
+  --ok: oklch(72.27% 0.192 149.58);
+  --warn: oklch(88.13% 0.1507 91.7);
+  --bad: oklch(66% 0.2 27.33);
+  --muted: oklch(65% 0 0);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ov: 0 0 0;
+  --shell: #fafafa;
+  --text-shadow: none;
+
+  --fg: oklch(14.5% 0 0);
+  --brand-ink: oklch(14.5% 0 0);
+  --fg-dim: oklch(40% 0 0);
+  --fg-faint: oklch(50% 0 0);
+  --line: rgb(0 0 0 / 9%);
+  --line-soft: rgb(0 0 0 / 6%);
+  --edge: rgb(0 0 0 / 9%);
+  --flat: rgb(0 0 0 / 4%);
+  --flat-on: rgb(0 0 0 / 8%);
+  --menu: oklch(96% 0 0);
+  --depth: rgb(0 0 0 / 22%);
+
+  --card-bg: rgb(0 0 0 / 0.75%);
+  --card-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  --well-bg: #ffffff;
+  --well-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+  --thead: rgb(0 0 0 / 2%);
+  --code-bg: oklch(96% 0 0);
+  --pill: linear-gradient(180deg, #ffffff, oklch(97% 0 0));
+  --pill-shadow: inset 0 0 0 1px rgb(0 0 0 / 9%), 0 1px 3px rgb(0 0 0 / 10%);
+  --kart-bg: rgb(0 0 0 / 6%);
+  --kart-shadow: none;
+  --shadow-menu: 0 4px 12px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 8%);
+
+  --ok: oklch(48% 0.135 149.58);
+  --warn: oklch(50% 0.105 80);
+  --bad: oklch(52% 0.2 27.33);
+  --muted: oklch(50% 0 0);
+  --focus: rgb(0 0 0 / 70%);
 }

@@ -1,6 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type { Appearance, WindowMode } from "../../shared/appearance.ts";
+import { effectiveTheme, type Appearance, type Theme } from "../../shared/appearance.ts";
 import { bridge, type AppearanceBundle } from "../bridge.ts";
 import { applyAppearance, CODE_FALLBACK, UI_FALLBACK, type FontStacks } from "../lib/apply-appearance.ts";
 import { errorText } from "../lib/errors.ts";
@@ -9,7 +9,7 @@ import { resolveStack } from "../lib/font-stack.ts";
 import { groupFaces, strongerWeight, type Face } from "../lib/fonts.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
 
-/** Kaydırıcı sürüklenirken her adımda diske yazılmasın. */
+/** Her seçimde hemen değil, kısa bekleyip yazılır. */
 const SAVE_DELAY_MS = 250;
 
 /** Kararlı boş liste: efekt bağımlılığı her çizimde değişmesin. */
@@ -18,7 +18,9 @@ const NO_FACES: readonly Face[] = [];
 export interface AppearanceApi {
   appearance: Appearance;
   defaults: Appearance;
-  modes: readonly WindowMode[];
+  /** Çizilen tema: cam desteklenmiyorsa koyu. */
+  theme: Theme;
+  glassAvailable: boolean;
   families: ReadonlyMap<string, Face[]>;
   fontsListed: boolean;
   update: (patch: Partial<Appearance>) => void;
@@ -44,13 +46,34 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
     });
   }, []);
 
+  const theme = effectiveTheme(appearance.theme, initial.material);
+
+  // İlk çizimden önce: açık temada koyu bir kare görünmesin.
+  useLayoutEffect(() => {
+    document.documentElement.dataset.material = initial.material;
+    document.documentElement.dataset.theme = theme;
+  }, [initial.material, theme]);
+
+  // Yedek Acrylic odak gidince griye düşer; tokens.css o durumda zemini siyaha alır.
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.focused = String(document.hasFocus());
+    const onFocus = () => { root.dataset.focused = "true"; };
+    const onBlur = () => { root.dataset.focused = "false"; };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
   const uiFaces = families.get(appearance.uiFont.family) ?? NO_FACES;
   const codeFaces = families.get(appearance.codeFont.family) ?? NO_FACES;
   const uiWeight = appearance.uiFont.weight;
 
   // Her takma ad kendi etkisinde kaydedilir: bir takma adı yalnız tek etki
   // çağırır, böylece canlı çağrının 0 dönmesi gerçek başarısızlıktır.
-  // Kalınlık burada YOK: kaydırıcı her adımda yüzleri yeniden yüklemesin.
   useEffect(() => {
     let cancelled = false;
     void resolveStack("kadran-ui", uiFaces, UI_FALLBACK, registerFamily, () => cancelled).then((stack) => {
@@ -90,14 +113,11 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
 
   const update = useCallback(
     (patch: Partial<Appearance>) => {
-      const prev = latest.current;
-      const next: Appearance = { ...prev, ...patch };
+      const next: Appearance = { ...latest.current, ...patch };
       latest.current = next;
       setAppearance(next);
       if (timer.current) clearTimeout(timer.current);
-      // Mod değişimi pencereyi yeniden kurabilir: bekletmeden kaydet.
-      if (patch.mode !== undefined && patch.mode !== prev.mode) save(next);
-      else timer.current = setTimeout(() => save(next), SAVE_DELAY_MS);
+      timer.current = setTimeout(() => save(next), SAVE_DELAY_MS);
     },
     [save],
   );
@@ -105,8 +125,8 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
   const reset = useCallback(() => update({ ...initial.defaults }), [update, initial.defaults]);
 
   const value = useMemo<AppearanceApi>(
-    () => ({ appearance, defaults: initial.defaults, modes: initial.modes, families, fontsListed, update, reset }),
-    [appearance, initial.defaults, initial.modes, families, fontsListed, update, reset],
+    () => ({ appearance, defaults: initial.defaults, theme, glassAvailable: initial.material !== "none", families, fontsListed, update, reset }),
+    [appearance, initial.defaults, theme, initial.material, families, fontsListed, update, reset],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

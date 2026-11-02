@@ -13,7 +13,10 @@ import {
   humanBytes,
   humanDuration,
   memoryText,
+  formatUnix,
+  relativeTime,
   memoryUsedGiB,
+  railVersion,
   shortFingerprint,
   versionLabel,
 } from "../src/renderer/lib/format.ts";
@@ -90,4 +93,32 @@ test("versionLabel: CI etiketi zaten v ile başlar, iki kez v yazılmaz", () => 
   // Etiketsiz yerel derleme: "dev" ya da kısa commit; başına v konmaz.
   assert.equal(versionLabel("dev"), "dev");
   assert.equal(versionLabel("0c91e9c"), "0c91e9c");
+});
+
+test("railVersion: kenar çubuğunda yalnız etiket; ön sürüm eki kalır", () => {
+  assert.equal(railVersion("v0.9.3-6-g65d8db7-dirty"), "v0.9.3");
+  assert.equal(railVersion("v0.9.3-6-g65d8db7"), "v0.9.3");
+  assert.equal(railVersion("v0.9.3-dirty"), "v0.9.3");
+  assert.equal(railVersion("v0.9.3"), "v0.9.3");
+  assert.equal(railVersion("1.0.0-rc.1"), "v1.0.0-rc.1");
+  assert.equal(railVersion("1.0.0-rc.1-2-gabc1234"), "v1.0.0-rc.1");
+  assert.equal(railVersion("0c91e9c-dirty"), "0c91e9c");
+  assert.equal(railVersion("dev"), "dev");
+});
+
+test("göreli zaman: bozuk ya da eksikse tire, gelecek 'şimdi' olur", () => {
+  const now = Date.UTC(2026, 9, 31, 12, 0, 0);
+  assert.equal(relativeTime(null, now, "en"), "—");
+  assert.equal(relativeTime("bozuk", now, "en"), "—");
+  assert.equal(relativeTime("2026-10-29T12:00:00Z", now, "en"), "2 days ago");
+  assert.equal(relativeTime("2026-10-28T12:00:00Z", now, "tr"), "3 gün önce");
+  assert.equal(relativeTime("2026-10-31T09:00:00Z", now, "tr"), "3 saat önce");
+  assert.equal(relativeTime("2026-10-31T11:58:00Z", now, "en"), "2 minutes ago");
+  assert.equal(relativeTime("2026-10-31T13:00:00Z", now, "en"), "now");
+});
+
+test("sunucu zamanı: aralık dışı ya da bozuk değer arayüzü düşürmez", () => {
+  assert.equal(formatUnix("9".repeat(30), "en"), "—");
+  assert.equal(formatUnix("abc", "en"), "—");
+  assert.notEqual(formatUnix("1791633600", "en"), "—");
 });

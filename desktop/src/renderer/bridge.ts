@@ -3,7 +3,7 @@
  * yalnız bunları çağırabilir (src/preload/index.cjs).
  */
 
-import type { Appearance, WindowMode } from "../shared/appearance.ts";
+import type { Appearance, Material } from "../shared/appearance.ts";
 import type { Cancellable } from "../shared/management.ts";
 import type { AuditListPayload, StatusPayload, VerifyPayload, VersionPayload } from "./lib/types.ts";
 import type { AppSpec, AppUpdate, AppsListPayload, AppGetPayload, AppWritePayload, AppDeletePayload, RollbackPayload, DeployPayload, LogsPayload, AlarmsPayload, BackupsPayload, BackupCreatePayload } from "./lib/types.ts";
@@ -11,12 +11,14 @@ import type { AppSpec, AppUpdate, AppsListPayload, AppGetPayload, AppWritePayloa
 export interface Profile {
   name: string;
   target: string;
+  /** Elle seçilen sağlayıcı etiketi; kart gruplarını belirler. */
+  provider?: string;
 }
 
 export interface AppearanceBundle {
   appearance: Appearance;
   defaults: Appearance;
-  modes: WindowMode[];
+  material: Material;
 }
 
 export type WindowAction = "minimize" | "maximize" | "close";

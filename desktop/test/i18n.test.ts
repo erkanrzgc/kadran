@@ -63,14 +63,10 @@ test("İngilizce dosyada Türkçe harf yok", async () => {
  */
 const SAME_IN_BOTH = new Set([
   "rail.target_placeholder",
-  "rail.version",
   "topbar.rtt",
   "tile.executor",
-  "card.daemon",
-  "card.executor",
+  "fleet.alarm_count_one",
   "row.docker",
-  "mode.mica",
-  "mode.vibrancy",
 ]);
 
 test("iki dilde aynı değer yalnız dilden bağımsız anahtarlarda", async () => {

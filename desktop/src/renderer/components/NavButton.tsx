@@ -1,37 +1,30 @@
-import { useRef, type ComponentType, type RefAttributes } from "react";
-
-export interface AnimatedIconHandle {
-  startAnimation: () => void;
-  stopAnimation: () => void;
-}
-
-export type AnimatedIcon = ComponentType<{ size?: number; className?: string } & RefAttributes<AnimatedIconHandle>>;
+import { LineIcon, type LineIconName } from "./LineIcon.tsx";
 
 interface NavButtonProps {
-  icon: AnimatedIcon;
+  icon: LineIconName;
   label: string;
-  active: boolean;
-  onClick: () => void;
-  testId: string;
+  active?: boolean;
+  onClick?: () => void;
+  testId?: string;
+  count?: number;
+  /** Henüz işlevi yok: görünür ama basılamaz, ipucu nedenini söyler. */
+  soon?: string;
 }
 
-/** Menü düğmesi: düğmenin tamamına gelince (ya da odaklanınca) ikon hareket eder. */
-export function NavButton({ icon: Icon, label, active, onClick, testId }: NavButtonProps) {
-  const ref = useRef<AnimatedIconHandle>(null);
+export function NavButton({ icon, label, active = false, onClick, testId, count, soon }: NavButtonProps) {
   return (
     <button
       type="button"
       className={active ? "nav-item is-active" : "nav-item"}
       aria-current={active ? "page" : undefined}
       data-testid={testId}
+      disabled={soon !== undefined}
+      title={soon ?? label}
       onClick={onClick}
-      onMouseEnter={() => ref.current?.startAnimation()}
-      onMouseLeave={() => ref.current?.stopAnimation()}
-      onFocus={() => ref.current?.startAnimation()}
-      onBlur={() => ref.current?.stopAnimation()}
     >
-      <Icon ref={ref} size={18} className="nav-icon" />
-      <span>{label}</span>
+      <LineIcon name={icon} />
+      <span className="nav-label">{label}</span>
+      {count ? <span className="nav-count">{count}</span> : null}
     </button>
   );
 }

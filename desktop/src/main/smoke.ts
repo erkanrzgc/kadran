@@ -14,6 +14,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loadWindowAccent } from "./window-accent.ts";
+
 export const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
 
 export const EXPECTED_BRIDGE = [
@@ -46,29 +48,48 @@ const ROOT_TIMEOUT_MS = 5_000;
 
 /**
  * prepareSmokeUserData, testi kullanıcının gerçek verisinden ayırır:
- * geçici bir kullanıcı verisi dizini, iki sahte profil ve Solid mod
- * (CI'daki sanal ekranda saydamlık yok). `whenReady`'den ÖNCE çağrılmalı.
+ * geçici bir kullanıcı verisi dizini ve sahte profiller. `whenReady`'den ÖNCE çağrılmalı.
  */
+/** Çok uzun ad ve hedef: kartta taşma olmamalı. */
+const LONG_NAME = "uzun-" + "ad".repeat(60);
+const LONG_TARGET = "fake@" + "uzun-hedef.".repeat(11) + "example";
+
 export function prepareSmokeUserData(): string {
   const dir = mkdtempSync(join(tmpdir(), "kadran-smoke-"));
   writeFileSync(
     join(dir, "profiles.json"),
     JSON.stringify([
-      { name: "fake", target: "fake@test" },
-      { name: "down", target: "fake@down" },
-      { name: "badseq", target: "fake@badseq" },
+      { name: "fake", target: "fake@test", provider: "hetzner" },
+      { name: "down", target: "fake@down", provider: "hetzner" },
+      { name: "badseq", target: "fake@badseq", provider: "google-cloud" },
+      { name: "totp", target: "fake@totp", provider: "hostinger" },
+      { name: "noalarms", target: "fake@noalarms" },
+      { name: "root", target: "fake@root" },
       { name: "flaky", target: "fake@flaky" },
+      { name: "flaky2", target: "fake@flaky2" },
       { name: "verifyfail", target: "fake@verifyfail" },
       { name: "slow", target: "fake@slow" },
+      { name: LONG_NAME, target: LONG_TARGET, provider: "kendi-sunucum" },
     ]),
   );
-  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ mode: process.env.KADRAN_SMOKE_MODE === "clear" ? "clear" : "solid" }));
+  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en" }));
   app.setPath("userData", dir);
   return dir;
 }
 
+const EVALUATE_TIMEOUT_MS = 30_000;
+
+/** Sınırlı: takılan arayüz CI'ı sonsuza dek asmaz, neyin takıldığını söyleyerek düşer. */
 export async function evaluate<T>(win: BrowserWindow, code: string): Promise<T> {
-  return (await win.webContents.executeJavaScript(code, true)) as T;
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`renderer did not answer: ${code.slice(0, 120)}`)), EVALUATE_TIMEOUT_MS);
+  });
+  try {
+    return (await Promise.race([win.webContents.executeJavaScript(code, true), timeout])) as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
@@ -99,9 +120,23 @@ async function waitFor(win: BrowserWindow, expr: string, label: string, timeoutM
   throw new Error(`timed out waiting for ${label}`);
 }
 
+/**
+ * Kullanıcı gibi tıklar: öğe görünür olmalı ve tıklama noktasında üstte o olmalı.
+ * el.click() tek başına display:none düğmeye de, bildirimin altındakine de basardı.
+ */
 async function click(win: BrowserWindow, selector: string): Promise<void> {
-  const ok = await evaluate<boolean>(win, `(() => { const el = ${q(selector)}; if (!el) return false; el.click(); return true; })()`);
-  if (!ok) throw new Error(`not found: ${selector}`);
+  const result = await evaluate<string>(win, `(() => {
+    const el = ${q(selector)};
+    if (!el) return "not found";
+    el.scrollIntoView({ block: "center", inline: "center" });
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return "not visible";
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    if (!top || !(el === top || el.contains(top) || top.contains(el))) return "covered by " + (top ? top.className || top.tagName : "nothing");
+    el.click();
+    return "";
+  })()`);
+  if (result) throw new Error(`${result}: ${selector}`);
 }
 
 async function text(win: BrowserWindow, selector: string): Promise<string> {
@@ -114,7 +149,7 @@ async function fill(win: BrowserWindow, selector: string, value: string): Promis
 }
 
 async function noHorizontalOverflow(win: BrowserWindow, label: string): Promise<void> {
-  const offenders = await evaluate<string[]>(win, `(() => { const nodes = [...document.querySelectorAll('.app, .stage, .rail, .panel, .table-wrap, .settings, .resource-card, .operation-dialog')]; return nodes.filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth); })()`);
+  const offenders = await evaluate<string[]>(win, `(() => { const nodes = [...document.querySelectorAll('.app, .main, .stage, .rail, .panel, .table-wrap, .settings, .resource-card, .kart, .operation-dialog')]; return nodes.filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth); })()`);
   expect(offenders.length === 0, `${label} horizontal overflow: ${offenders.join(", ")}`);
 }
 
@@ -127,67 +162,173 @@ async function screenshot(win: BrowserWindow, name: string): Promise<void> {
   expect(!capture.isEmpty(), `empty screenshot: ${name}`);
   const path = join(dir, `${name}.png`);
   writeFileSync(path, capture.toPNG());
-  if (process.env.KADRAN_SMOKE_MODE === "clear") {
-    const bitmap = capture.toBitmap();
-    let translucent = 0;
-    let visible = 0;
-    for (let index = 3; index < bitmap.length; index += 4) { if (bitmap[index]! > 0) visible++; if (bitmap[index]! > 0 && bitmap[index]! < 255) translucent++; }
-    expect(visible > 1000 && translucent > 1000, `Clear mode does not retain visible translucent pixels (${visible}, ${translucent})`);
-    console.log(`Clear alpha evidence: ${translucent} translucent pixels`);
-  }
   console.log(`UI evidence: ${path}`);
 }
 
-async function checkWordmark(win: BrowserWindow): Promise<string> {
-  const mark = await evaluate<{ readable: boolean; color: string; fill: string; duplicate: boolean }>(win, `(() => {
-    const svg = ${q('[data-testid="brand-logo"]')};
-    if (!(svg instanceof SVGSVGElement)) return { readable: false, color: '', fill: '', duplicate: false };
-    const rect = svg.getBoundingClientRect();
-    const geometry = svg.getBBox();
-    return { readable: rect.width >= 100 && rect.height >= 20 && geometry.width > 0 && geometry.height > 0,
-      color: getComputedStyle(svg).color, fill: getComputedStyle(svg.querySelector('path')).fill,
-      duplicate: Boolean(document.querySelector('.tb-brand img, .tb-brand .wordmark')) };
+async function checkWordmark(win: BrowserWindow): Promise<void> {
+  const mark = await evaluate<{ readable: boolean; weight: string; spacing: string; text: string; offCenter: number }>(win, `(() => {
+    const el = ${q('[data-testid="brand-logo"]')};
+    const rail = ${q(".rail")};
+    if (!(el instanceof HTMLElement) || !(rail instanceof HTMLElement)) return { readable: false, weight: '', spacing: '', text: '', offCenter: 0 };
+    const rect = el.getBoundingClientRect();
+    const style = getComputedStyle(el);
+    const offCenter = Math.abs(rect.left + rect.width / 2 - (rail.getBoundingClientRect().left + rail.clientWidth / 2));
+    return { readable: rect.width >= 60 && rect.height >= 12, weight: style.fontWeight, spacing: style.letterSpacing, text: el.textContent, offCenter };
   })()`);
-  expect(mark.readable && !mark.duplicate, "selected wordmark is missing, too small or duplicated");
-  expect(mark.fill === mark.color, `wordmark did not follow foreground color (${mark.fill}, ${mark.color})`);
-  return mark.color;
+  expect(mark.readable && mark.text === "KΛDRΛN", "wordmark is missing or too small");
+  expect(mark.weight === "700" && parseFloat(mark.spacing) > 2.5, `wordmark lost its style: ${mark.weight} ${mark.spacing}`);
+  expect(mark.offCenter <= 1, `wordmark is not centered in the sidebar: ${mark.offCenter}px off`);
 }
 
-async function checkBrandContrast(win: BrowserWindow): Promise<void> {
-  const snapshot = await evaluate<{ tone: string | undefined; tint: string; accent: string }>(win,
-    `({ tone: document.documentElement.dataset.tone, tint: document.documentElement.style.getPropertyValue('--tint'), accent: document.documentElement.style.getPropertyValue('--acc') })`);
-  try {
-    for (const tone of ["dark", "light"]) {
-      await evaluate(win, `document.documentElement.dataset.tone = '${tone}'; document.documentElement.style.setProperty('--tint', '0')`);
-      for (const accent of ["125, 211, 252", "255, 176, 32", "126, 224, 138", "236, 235, 230"]) {
-        await evaluate(win, `document.documentElement.style.setProperty('--acc', '${accent}')`);
-        const ink = await checkWordmark(win);
-        expect(ink === (tone === "light" ? "rgb(0, 0, 0)" : "rgb(237, 241, 245)"), `${tone} wordmark changed with accent: ${ink}`);
-        const background = await evaluate<string>(win, "getComputedStyle(document.querySelector('.titlebar')).backgroundColor");
-        const rgba = background.match(/[\d.]+/g)?.map(Number);
-        expect(rgba?.length === 4 && rgba[3]! >= 0.7 && rgba[3]! < 1, `titlebar lost its translucent contrast guard: ${background}`);
-        const luminance = (rgb: number[]): number => rgb.map((v) => v / 255).map((v) => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i]!, 0);
-        const fg = luminance(tone === "light" ? [0, 0, 0] : [237, 241, 245]);
-        for (const wallpaper of [0, 255]) {
-          const bg = luminance(rgba!.slice(0, 3).map((v) => v * rgba![3]! + wallpaper * (1 - rgba![3]!)));
-          const contrast = (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
-          expect(contrast >= 4.5, `${tone} wordmark contrast at zero tint is only ${contrast.toFixed(2)}:1`);
-        }
-      }
-    }
-    console.log("wordmark contrast passed: both tones, four accents, zero tint, black/white backdrops");
-  } finally {
-    await evaluate(win, `(() => { const root = document.documentElement; const saved = ${JSON.stringify(snapshot)}; if (saved.tone) root.dataset.tone = saved.tone; else delete root.dataset.tone; for (const [name, value] of [['--tint', saved.tint], ['--acc', saved.accent]]) { if (value) root.style.setProperty(name, value); else root.style.removeProperty(name); } })()`);
-  }
+/** Duman testinde yerel malzeme kapalı: cam sunulmaz, açık ve koyu ana sürece de ulaşır. */
+async function themeJourney(win: BrowserWindow): Promise<void> {
+  const root = "document.documentElement";
+  const shell = `getComputedStyle(${q(".shell")}).backgroundColor`;
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="theme-glass"]')})`)), "glass is offered without a native material");
+  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "glass falls back to dark");
+
+  await click(win, '[data-testid="theme-light"]');
+  await waitFor(win, `${root}.dataset.theme === "light" && ${shell} === "rgb(250, 250, 250)"`, "light canvas");
+  await waitFor(win, `matchMedia("(prefers-color-scheme: light)").matches`, "native light theme");
+  const ink = await evaluate<number>(win, `(() => {
+    const ctx = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = getComputedStyle(document.body).color;
+    ctx.fillRect(0, 0, 1, 1);
+    return ctx.getImageData(0, 0, 1, 1).data[0];
+  })()`);
+  expect(ink < 60, `light theme text is not dark: ${ink}`);
+  await screenshot(win, "settings-light-1280x820");
+
+  await click(win, '[data-testid="theme-dark"]');
+  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "dark canvas");
+  await waitFor(win, `matchMedia("(prefers-color-scheme: dark)").matches`, "native dark theme");
+
+  await evaluate(win, `window.dispatchEvent(new Event("blur"))`);
+  await waitFor(win, `${root}.dataset.focused === "false"`, "window blur is tracked");
+  await evaluate(win, `window.dispatchEvent(new Event("focus"))`);
+  await waitFor(win, `${root}.dataset.focused === "true"`, "window focus is tracked");
+}
+
+async function dismissToasts(win: BrowserWindow): Promise<void> {
+  await evaluate(win, `document.querySelectorAll(".toast-close").forEach((b) => b.click())`);
+}
+
+/**
+ * openServer: kullanıcı gibi Sunucular ekranındaki karta basar. Ekranda değilse
+ * önce oraya döner; sekmeden değil karttan açmak kart testid'lerini de sınar.
+ */
+async function openServer(win: BrowserWindow, target: string): Promise<void> {
+  const card = `[data-testid="server-${target}"]`;
+  if (!(await evaluate<boolean>(win, `Boolean(${q(card)})`))) await click(win, '[data-testid="rail-servers"]');
+  await waitFor(win, q(card), `card ${target}`);
+  await click(win, card);
+}
+
+/** Windows'ta köprü gerçekten yüklenir ve çağrı kabul edilir; yüklenemeseydi cam sessizce griye düşerdi. */
+async function checkWindowAccent(win: BrowserWindow): Promise<void> {
+  if (process.platform !== "win32") return;
+  const accent = await loadWindowAccent((message) => expect(false, message));
+  expect(accent !== null, "Windows glass bridge did not load");
+  expect(accent!.set(win, false), "Windows refused the glass call");
+}
+
+/**
+ * Düz üst çubuk: içerik altından başlar; filo ekranında yol ve tek sekme yok
+ * (sayfa adı başlıkta), pencere düğmeleri sağ köşede.
+ */
+async function checkTopBar(win: BrowserWindow): Promise<void> {
+  const box = await evaluate<{ bar: number; stage: number; right: number; buttons: number }>(win, `({ bar: ${q(".topbar")}.getBoundingClientRect().bottom, stage: ${q(".stage")}.getBoundingClientRect().top, right: ${q(".topbar")}.getBoundingClientRect().right, buttons: ${q(".win-btns")}.getBoundingClientRect().right })`);
+  expect(box.stage >= box.bar, `content starts under the top bar: ${box.stage} < ${box.bar}`);
+  expect(Math.abs(box.right - box.buttons) <= 1, `window buttons are not in the corner: ${box.buttons} vs ${box.right}`);
+  expect(!(await evaluate<boolean>(win, `Boolean(${q(".topbar .crumbs")})`)), "fleet top bar repeats the page name");
+  const tabs = await evaluate<number>(win, `document.querySelectorAll(".topbar .tab").length`);
+  expect(tabs !== 1, "top bar shows a lone tab");
+}
+
+/** Sunucular: gerçek çağrılardan kartlar; okunamayan hiçbir şey "yok" sayılmaz. */
+async function fleetJourney(win: BrowserWindow): Promise<void> {
+  const card = (target: string) => q(`[data-testid="card-${target}"]`);
+  await waitFor(win, q('[data-testid="screen-servers"]'), "servers screen is the home screen");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="rail-dashboard"]')})`)), "the removed dashboard is back in the sidebar");
+  await checkTopBar(win);
+  await waitFor(win, `${card("fake@test")}?.dataset.state === "ready"`, "ready card");
+  await waitFor(win, `${card("fake@down")}?.dataset.state === "unreachable"`, "unreachable card");
+  await waitFor(win, `${card("fake@totp")}?.dataset.state === "totp"`, "TOTP card");
+  expect((await text(win, '[data-testid="card-fake@totp"]')).includes("kadran login"), "TOTP card does not tell the real next step");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="toast"]')})`)), "fleet polling raised a toast for an unreachable server");
+  await waitFor(win, `${card("fake@root")}?.dataset.tone === "bad"`, "broken install is not green");
+  await waitFor(win, `${card("fake@noalarms")}?.dataset.tone === "warn"`, "unreadable alarms are not healthy");
+  expect((await text(win, '[data-testid="card-fake@noalarms"]')).includes("alarms unknown"), "card with unreadable alarms does not say so");
+  const providers = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="server-groups"] > div')].map((s) => s.dataset.provider)`);
+  expect(providers[0] === "hetzner" && providers[1] === "hetzner" && providers.at(-1) === "", `provider order: ${providers.join(",")}`);
+  expect((await text(win, '[data-testid="card-fake@test"]')).includes("2 applications"), "card does not show the real application count");
+  const active = await evaluate<string>(win, `getComputedStyle(${q(".nav-item.is-active")}, "::before").backgroundImage`);
+  expect(active.includes("linear-gradient"), `selected row is not the glass pill: ${active}`);
+  await noHorizontalOverflow(win, "servers");
+  await screenshot(win, "servers-1280x820");
+
+  await click(win, '[data-testid="rail-alarms"]');
+  await waitFor(win, q('[data-testid="fleet-alarm-row"]'), "merged alarms");
+  await waitFor(win, `${q('[data-testid="fleet-unread"]')}?.textContent.includes("noalarms")`, "server with unreadable alarms named");
+  const badge = await text(win, '[data-testid="rail-alarms"] .nav-count');
+  expect(Number(badge) >= 1, `alarm badge is not a count: ${badge}`);
+  await click(win, '[data-testid="rail-apps"]');
+  await waitFor(win, q('[data-testid="fleet-app-row"]'), "merged applications");
+  await click(win, '[data-testid="rail-audit"]');
+  await waitFor(win, q('[data-testid="fleet-audit-row"]'), "merged audit");
+  await waitFor(win, `${q('[data-testid="ops-failed"]')}?.textContent.includes("badseq")`, "unreadable server named");
+  const wrapped = await evaluate<number>(win, `[...document.querySelectorAll('[data-testid="fleet-audit-row"] .pill')].filter((p) => p.getBoundingClientRect().height > 26).length`);
+  expect(wrapped === 0, `status pill wrapped in ${wrapped} rows`);
+  await click(win, '[data-testid="rail-servers"]');
+  await waitFor(win, q('[data-testid="screen-servers"]'), "servers screen");
+
+  // Kart eylemleri gizli başlar, klavye odağında görünür.
+  const actions2 = q('[data-testid="card-edit-fake@verifyfail"]');
+  const parent = `${actions2}.parentElement`;
+  expect(await evaluate<string>(win, `getComputedStyle(${parent}).opacity`) === "0", "card actions are visible at rest");
+  await evaluate(win, `${actions2}.focus()`);
+  await waitFor(win, `getComputedStyle(${parent}).opacity === "1"`, "card actions on keyboard focus");
+
+  // Sağlayıcı etiketi diske gider ve kart yerini bulur.
+  await click(win, '[data-testid="card-edit-fake@verifyfail"]');
+  await waitFor(win, q('[data-testid="server-dialog"]'), "server settings");
+  await evaluate(win, `(() => { const el = ${q('[data-testid="server-provider"]')}; Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(el, "aws"); el.dispatchEvent(new Event("change", { bubbles: true })); })()`);
+  await click(win, '[data-testid="connect"]');
+  await waitFor(win, `${q('[data-provider="aws"] [data-testid="card-fake@verifyfail"]')}`, "provider after edit");
+
+  // Ulaşılamayan sunucu kaydedilmez; sebep kutunun içinde, bildirimde değil.
+  await click(win, '[data-testid="server-add"]');
+  await fill(win, '[data-testid="target-input"]', "fake@down");
+  await click(win, '[data-testid="connect"]');
+  await waitFor(win, `${q('[data-testid="server-error"]')}?.textContent.includes("Connection refused")`, "add failure shown in the dialog");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="toast"]')})`)), "add failure went to a toast behind the dialog");
+  await click(win, '[data-testid="server-cancel"]');
+
+  // TOTP isteyen sunucu yerinde: kaydedilir, kart giriş ister.
+  await click(win, '[data-testid="server-add"]');
+  await fill(win, '[data-testid="target-input"]', "fake@totp-new");
+  await click(win, '[data-testid="connect"]');
+  await waitFor(win, `${card("fake@totp-new")}`, "TOTP server added");
+  await waitFor(win, `${card("fake@totp-new")}?.dataset.state === "totp"`, "added TOTP server asks for sign-in");
+
+  // Açık sunucuya dönüş eski değeri "Sağlıklı" bırakmaz: sunucu düştüyse sekme kapanır.
+  await openServer(win, "fake@flaky2");
+  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "flaky connected");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q(".topbar .tabs")})`)), "one open server shows a tab strip");
+  await click(win, '[data-testid="rail-servers"]');
+  await openServer(win, "fake@flaky2");
+  await waitFor(win, `!${q('[data-testid="tab-fake@flaky2"]')} && ${q('[data-testid="screen-servers"]')}`, "reopened dead server left the old values");
+  await waitFor(win, q('[data-testid="toast"]'), "reason for the closed tab");
+  await dismissToasts(win);
 }
 
 async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
-  const darkWordmarkColor = await checkWordmark(win);
-  const glass = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backdropFilter`);
-  expect(glass.includes("blur"), `glass surfaces have no real backdrop blur (${glass}); ${await evaluate<string>(win, "JSON.stringify({spaced:CSS.supports('backdrop-filter','blur(24px) saturate(135%)'),minified:CSS.supports('backdrop-filter','blur(24px)saturate(135%)'),rules:[...document.styleSheets].flatMap(s=>[...s.cssRules]).filter(r=>r.selectorText==='.glass').map(r=>r.cssText)})")}`);
-  await screenshot(win, "apps-dark-1180x780");
+  await checkWordmark(win);
+  const cardFill = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backgroundColor`);
+  expect(cardFill.startsWith("rgba(255, 255, 255"), `application card lost its glass fill: ${cardFill}`);
+  await screenshot(win, "apps-1280x820");
   await click(win, '[data-testid="app-card-hello"]');
   await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "r2"`, "active release");
   await click(win, '[data-testid="app-tab-configuration"]');
@@ -236,13 +377,13 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await waitFor(win, "Math.abs(window.innerWidth - 760) <= 1", "minimum window size");
   await noHorizontalOverflow(win, "configuration at 760x520");
   await evaluate(win, `${q('[data-testid="app-form"]')}.scrollIntoView({block:'start'})`);
-  await screenshot(win, "configuration-dark-760x520");
+  await screenshot(win, "configuration-760x520");
   await click(win, '[data-testid="app-tab-deployments"]');
   await noHorizontalOverflow(win, "releases at 760x520");
   await click(win, '[data-testid="release-r2"] summary');
   await noHorizontalOverflow(win, "release detail at 760x520");
   await evaluate(win, `${q('[data-testid="release-r2"]')}.scrollIntoView({block:'start'})`);
-  await screenshot(win, "releases-dark-760x520");
+  await screenshot(win, "releases-760x520");
 
   await click(win, '[data-testid="apps-back"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application list after back");
@@ -278,18 +419,26 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await waitFor(win, `document.querySelectorAll('[data-testid="backup-row"]').length === 2`, "backup refreshed list");
   await noHorizontalOverflow(win, "backups at 760x520");
 
-  await click(win, '[data-testid="server-fake@slow"]');
+  await openServer(win, "fake@slow");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "slow server connected");
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="screen-apps"]'), "slow application read started");
-  await click(win, '[data-testid="server-fake@test"]');
+  await openServer(win, "fake@test");
   await waitFor(win, q('[data-testid="app-card-hello"]'), "new server application list");
   await new Promise((r) => setTimeout(r, 1900));
   expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-card-old-only"]')})`)), "old-server response overwrote new application list");
   await noHorizontalOverflow(win, "apps at 760x520");
+  const tabVisible = await evaluate<boolean>(win, `(() => { const s = ${q(".tabs")}.getBoundingClientRect(); const a = ${q(".tab.is-on")}.getBoundingClientRect(); return a.left >= s.left - 1 && a.right <= s.right + 1; })()`);
+  expect(tabVisible, "the open tab is scrolled out of view");
+  await click(win, '[data-testid="rail-servers"]');
+  await waitFor(win, q('[data-testid="screen-servers"]'), "servers at 760x520");
+  await noHorizontalOverflow(win, "servers at 760x520");
+  await checkTopBar(win);
+  await openServer(win, "fake@test");
+  await waitFor(win, q('[data-testid="app-card-hello"]'), "back to the application list");
 
+  await openServer(win, "fake@verifyfail");
   await click(win, '[data-testid="nav-status"]');
-  await click(win, '[data-testid="server-fake@verifyfail"]');
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "initial successful verification");
   const verifiedAt = await text(win, '[data-testid="verification-time"]');
   expect(verifiedAt.includes("Last verified:"), "last verification time missing");
@@ -302,22 +451,11 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await waitFor(win, q('[data-testid="audit-detail-1284"]'), "minimum audit");
   await click(win, '[data-testid="audit-detail-1284"]');
   await noHorizontalOverflow(win, "audit detail at 760x520");
-  await screenshot(win, "audit-dark-760x520");
+  await screenshot(win, "audit-760x520");
   await click(win, '[data-testid="nav-settings"]');
   await noHorizontalOverflow(win, "settings at 760x520");
-  await screenshot(win, "settings-dark-760x520");
-  await click(win, '[data-testid="tone-light"]');
-  await waitFor(win, "document.documentElement.dataset.tone === 'light'", "light appearance");
-  expect((await checkWordmark(win)) !== darkWordmarkColor, "light theme retained the dark theme wordmark color");
-  await click(win, '[data-testid="server-fake@test"]');
-  await click(win, '[data-testid="nav-apps"]');
-  await waitFor(win, q('[data-testid="app-card-hello"]'), "light application list");
-  await noHorizontalOverflow(win, "light apps at 760x520");
-  await screenshot(win, "apps-light-760x520");
-  await click(win, '[data-testid="nav-settings"]');
-  await click(win, '[data-testid="tone-dark"]');
-  await click(win, '[data-testid="nav-status"]');
-  win.setSize(1180, 780);
+  await screenshot(win, "settings-760x520");
+  win.setSize(1280, 820);
 }
 
 async function rowSeqs(win: BrowserWindow, tableId: string): Promise<string[]> {
@@ -340,7 +478,9 @@ async function journey(win: BrowserWindow): Promise<void> {
   const fonts = await evaluate<number>(win, "window.queryLocalFonts ? queryLocalFonts().then((l) => l.length) : -1");
   expect(fonts > 0, `font list is empty or missing (${fonts}); the local-fonts permission may be denied`);
 
-  await click(win, '[data-testid="server-fake@test"]');
+  await checkWindowAccent(win);
+  await fleetJourney(win);
+  await openServer(win, "fake@test");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Attention required"`, "health pill");
   await waitFor(win, `${q('[data-testid="chain-executor"] .badge')}?.textContent === "UNVERIFIABLE"`, "executor chain");
 
@@ -369,8 +509,8 @@ async function journey(win: BrowserWindow): Promise<void> {
   await managementJourney(win);
 
   // Bozuk latest_seq HATA olmalı, "zincirde kayıt yok" değil.
+  await openServer(win, "fake@badseq");
   await click(win, '[data-testid="nav-status"]');
-  await click(win, '[data-testid="server-fake@badseq"]');
   await waitFor(
     win,
     `${q('[data-testid="audit-preview"] [data-testid="audit-placeholder"]')}?.textContent === "Could not load audit records."`,
@@ -378,7 +518,7 @@ async function journey(win: BrowserWindow): Promise<void> {
   );
 
   // Bağlantı koptuktan sonra yenileme: ekran bayat işaretlenmeli.
-  await click(win, '[data-testid="server-fake@flaky"]');
+  await openServer(win, "fake@flaky");
   await waitFor(win, q('[data-testid="screen-status"]'), "status screen for fake@flaky");
   // fake@flaky sağlıklı başlar; bayatlık "Healthy"i düşürmeli (yalnız "Healthy değil" boş bir iddia olurdu).
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "healthy pill for fake@flaky");
@@ -387,19 +527,17 @@ async function journey(win: BrowserWindow): Promise<void> {
   expect((await text(win, ".stage-head")).includes("out of date"), "stale header does not say the values may be out of date");
   const pill = await text(win, '[data-testid="health"]');
   expect(pill === "Attention required", `health pill while stale: ${pill}`);
+  await dismissToasts(win);
 
   await click(win, '[data-testid="nav-settings"]');
   await waitFor(win, q('[data-testid="screen-settings"]'), "settings screen");
-  // İkon animasyonu: Motion'ın yazdığı her şey CSP'ye takılmamalı.
-  await evaluate(win, `${q('[data-testid="nav-status"]')}.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))`);
-  await new Promise((r) => setTimeout(r, 800));
-
+  await themeJourney(win);
   await click(win, '[data-testid="lang-tr"]');
   await waitFor(win, `${q('[data-testid="nav-settings"]')}?.textContent === "Ayarlar"`, "Turkish UI");
 
   // İnceleme odağı 5: Türkçe arayüzde İngilizce sunucu hatası tam ve düz metin.
   // Önceki hata bildirimleri ekranda kalmış olabilir; TÜM bildirimler aranır.
-  await click(win, '[data-testid="server-fake@down"]');
+  await openServer(win, "fake@down");
   const downToast = `[...document.querySelectorAll('[data-testid="toast"] .toast-text')].find((el) => el.textContent.includes("Connection refused"))`;
   await waitFor(win, downToast, "error toast");
   const toast = await evaluate<string>(win, `${downToast}.textContent`);
@@ -441,7 +579,7 @@ export async function runSmokeTest(win: BrowserWindow): Promise<void> {
       problems.push(`bridge surface differs: ${JSON.stringify(surface)} != ${JSON.stringify(EXPECTED_BRIDGE)}`);
     }
     if (!(await waitForRoot(win))) problems.push("React root did not render");
-    else await checkBrandContrast(win);
+    else await checkWordmark(win);
 
     // Renderer Node'a ERİŞEMEMELİ; erişebiliyorsa ayrıcalık ayrımı
     // istemci tarafından delinmiş olur.

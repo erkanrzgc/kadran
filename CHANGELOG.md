@@ -5,6 +5,14 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+Desktop: new look (K-161). The layout follows Coolify's design language, with your real desktop
+blurred behind the window. The app opens on your server cards under a plain Windows-style title bar,
+with tabs once two or more servers are open, and a new wordmark. All your saved servers are
+read at once using the existing calls, so the server does not change. There are three themes: dark,
+light and glass. Glass is the default and stays glass while the window is in the background on
+Windows 11; on systems without native blur it isn't offered and the window is dark. The old window
+modes and glass sliders are gone. Settings keep language and fonts.
+
 ## v0.9.3 — 2026-10-30
 
 Install from a release: no checkout and no Go on your machine (K-159). The protocol is unchanged

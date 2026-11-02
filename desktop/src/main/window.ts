@@ -1,33 +1,31 @@
 /**
- * Pencereyi kurar ve görünüm modu değişince uygular.
- *
- * Saydamlık (Clear) pencere KURULURKEN verilir, sonradan açılıp
- * kapanamaz. Bu yüzden Clear ile diğerleri arasında yeni bir pencere
- * kurulur: konum, boyut ve büyütülmüş hâl taşınır, arayüz Settings
- * ekranında açılır (mod yalnız oradan değiştiriliyor). Acrylic ↔ Mica
- * yerinde değişir.
- *
- * Uygulama İÇİNDE gezinme yok. Bir bağlantıya tıklanırsa kullanıcının
- * tarayıcısında açılır; pencere hiçbir zaman uzak bir içeriğe dönüşemez.
+ * Pencereyi kurar. Uygulama İÇİNDE gezinme yok. Bir bağlantıya tıklanırsa
+ * kullanıcının tarayıcısında açılır; pencere hiçbir zaman uzak bir içeriğe
+ * dönüşemez.
  */
 
 import { BrowserWindow, shell } from "electron";
 
-import type { WindowMode } from "../shared/appearance.ts";
-import { needsRecreate, windowOptions, type WindowState } from "./window-options.ts";
+import type { Material, WindowLook } from "../shared/appearance.ts";
+import type { WindowAccent } from "./window-accent.ts";
+import { windowOptions } from "./window-options.ts";
 
 export interface WindowHostOptions {
   preloadPath: string;
   rendererIndex: string;
   platform: string;
+  /** Bu sistemin yerel malzemesi; `none` ise malzeme çağrıları yapılmaz. */
+  available: Material;
+  accent: WindowAccent | null;
+  look: WindowLook;
   showOnReady: boolean;
   iconPath?: string;
 }
 
 export interface WindowHost {
   current(): BrowserWindow | null;
-  open(mode: WindowMode, view?: string): BrowserWindow;
-  applyMode(mode: WindowMode): void;
+  open(): BrowserWindow;
+  setLook(look: WindowLook): void;
 }
 
 function lockNavigation(win: BrowserWindow): void {
@@ -40,38 +38,38 @@ function lockNavigation(win: BrowserWindow): void {
 
 export function createWindowHost(opts: WindowHostOptions): WindowHost {
   let win: BrowserWindow | null = null;
-  let mode: WindowMode | null = null;
+  let look = opts.look;
 
-  function open(next: WindowMode, view?: string, state?: WindowState): BrowserWindow {
-    const created = new BrowserWindow({ ...windowOptions(next, opts.platform, opts.preloadPath, state), ...(opts.iconPath ? { icon: opts.iconPath } : {}) });
+  function applyAccent(target: BrowserWindow, on: boolean): void {
+    // Windows reddederse cam tamamen gitmesin: Electron'un Acrylic'i odakta yine çalışır.
+    if (!opts.accent?.set(target, on) && on) target.setBackgroundMaterial("acrylic");
+  }
+
+  function open(): BrowserWindow {
+    const created = new BrowserWindow({ ...windowOptions(look, opts.platform, opts.preloadPath), ...(opts.iconPath ? { icon: opts.iconPath } : {}) });
     lockNavigation(created);
+    if (look.material === "accent") applyAccent(created, true);
     created.once("ready-to-show", () => {
-      if (state?.maximized) created.maximize();
       if (opts.showOnReady) created.show();
     });
-    void created.loadFile(opts.rendererIndex, view ? { query: { view } } : undefined);
+    void created.loadFile(opts.rendererIndex);
     created.on("closed", () => {
-      if (win === created) {
-        win = null;
-        mode = null;
-      }
+      if (win === created) win = null;
     });
     win = created;
-    mode = next;
     return created;
   }
 
-  function applyMode(next: WindowMode): void {
-    if (!win || !mode || next === mode) return;
-    if (!needsRecreate(mode, next)) {
-      win.setBackgroundMaterial(next === "mica" ? "mica" : "acrylic");
-      mode = next;
-      return;
-    }
-    const old = win;
-    open(next, "settings", { bounds: old.getNormalBounds(), maximized: old.isMaximized() });
-    old.destroy();
+  function setLook(next: WindowLook): void {
+    // Yazı tipi ya da dil kaydı da buradan geçer: aynı malzemeyi yeniden kurmak titretir.
+    const unchanged = next.material === look.material && next.background === look.background;
+    look = next;
+    if (!win || unchanged) return;
+    win.setBackgroundColor(next.background);
+    if (opts.available === "accent") applyAccent(win, next.material === "accent");
+    if (opts.available === "acrylic") win.setBackgroundMaterial(next.material === "acrylic" ? "acrylic" : "none");
+    if (opts.available === "vibrancy") win.setVibrancy(next.material === "vibrancy" ? "under-window" : null);
   }
 
-  return { current: () => win, open: (m, view) => open(m, view), applyMode };
+  return { current: () => win, open, setLook };
 }

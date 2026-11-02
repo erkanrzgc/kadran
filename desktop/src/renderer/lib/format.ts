@@ -93,6 +93,30 @@ export function formatTime(ts: string | null, locale: string): string {
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
 }
 
+/** formatUnix: saniye cinsinden sunucu zamanı. Bozuk ya da aralık dışıysa "—": arayüz düşmez. */
+export function formatUnix(seconds: number | string, locale: string): string {
+  const d = new Date(Number(seconds) * 1000);
+  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString(locale);
+}
+
+const RELATIVE_STEPS: ReadonlyArray<readonly [number, Intl.RelativeTimeFormatUnit]> = [
+  [86_400, "day"],
+  [3_600, "hour"],
+  [60, "minute"],
+];
+
+/** relativeTime: "2 gün önce". Zaman yok ya da bozuksa "—"; gelecekteki saat kayması "şimdi" olur. */
+export function relativeTime(ts: string | null, now: number, locale: string): string {
+  const then = ts ? new Date(ts).getTime() : Number.NaN;
+  if (Number.isNaN(then)) return "—";
+  const seconds = Math.max(0, Math.floor((now - then) / 1000));
+  const format = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  for (const [size, unit] of RELATIVE_STEPS) {
+    if (seconds >= size) return format.format(-Math.floor(seconds / size), unit);
+  }
+  return format.format(0, "second");
+}
+
 export function formatCount(n: number, locale: string): string {
   return n.toLocaleString(locale);
 }
@@ -104,4 +128,12 @@ export function formatCount(n: number, locale: string): string {
  */
 export function versionLabel(version: string): string {
   return /^\d+\.\d+/.test(version) ? `v${version}` : version;
+}
+
+/**
+ * railVersion: kenar çubuğu için kısa sürüm. git describe'ın etiketten sonraki
+ * commit sayısı, karması ve "-dirty" eki atılır; tamamı ipucunda ve Ayarlar'da.
+ */
+export function railVersion(version: string): string {
+  return versionLabel(version.replace(/(-\d+-g[0-9a-f]+)?(-dirty)?$/, ""));
 }

@@ -25,10 +25,19 @@ export interface Profile {
   name: string;
   /** `kadran` hedef dizesi: kullanici@sunucu[:port] veya unix:// yolu. */
   target: string;
+  /** Elle seçilen sağlayıcı etiketi; Kadran bulut hesabına bağlanmaz. */
+  provider?: string;
 }
 
 /** MAX_PROFILES, saklanabilecek profil sayısının üst sınırı. */
 const MAX_PROFILES = 100;
+const MAX_PROVIDER = 64;
+
+/** Yalnız bilinen alanlar diske ve arayüze geçer. */
+function cleanProfile(p: Profile): Profile {
+  const provider = p.provider;
+  return { name: p.name, target: p.target, ...(typeof provider === "string" && provider.length > 0 && provider.length <= MAX_PROVIDER ? { provider } : {}) };
+}
 
 export function profilesPath(userDataDir: string): string {
   return join(userDataDir, "profiles.json");
@@ -60,7 +69,7 @@ export async function loadProfiles(
       onWarning?.("profil dosyası bir dizi değil, yok sayıldı");
       return [];
     }
-    return parsed.filter(isProfile).slice(0, MAX_PROFILES);
+    return parsed.filter(isProfile).slice(0, MAX_PROFILES).map(cleanProfile);
   } catch (err) {
     onWarning?.(`profil dosyası çözümlenemedi: ${(err as Error).message}`);
     return [];
@@ -96,7 +105,7 @@ export async function saveProfiles(
   // Renderer'dan gelen veri DOĞRULANIR. Güvenilmez bir kaynaktan gelen
   // yapıyı olduğu gibi diske yazmak, bir sonraki okumada beklenmedik
   // şekiller üretir.
-  const clean = profiles.filter(isProfile).slice(0, MAX_PROFILES);
+  const clean = profiles.filter(isProfile).slice(0, MAX_PROFILES).map(cleanProfile);
 
   const path = profilesPath(userDataDir);
   await mkdir(dirname(path), { recursive: true });

@@ -1,44 +1,46 @@
+import type { ReactNode } from "react";
+
 import type { Profile } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { healthKey, healthTone, type Health } from "../lib/health.ts";
-import { ServerSwitcher } from "./ServerSwitcher.tsx";
+import { CrumbMenu } from "./CrumbMenu.tsx";
+import type { FleetView } from "./Rail.tsx";
+import { WindowButtons } from "./WindowButtons.tsx";
 
 interface Props {
+  /** Açık sunucu; yoksa filo ekranı. */
   target: string | null;
-  profiles: readonly Profile[];
   health: Health;
-  rtt: number | null;
-  verifying: boolean;
-  onVerify: () => void;
-  onSwitch: (target: string) => void;
+  profiles: readonly Profile[];
+  /** Sekmeler. */
+  children: ReactNode;
+  onOpenServer: (target: string) => void;
+  onNavigate: (view: FleetView) => void;
 }
 
-/** Üst çubuk (Coolify düzeni): kırıntı yolu + sağlık hapı | gecikme + birincil eylem. */
-export function TopBar({ target, profiles, health, rtt, verifying, onVerify, onSwitch }: Props) {
+/**
+ * Düz üst çubuk (48 px): yol, sekmeler, pencere düğmeleri. Filo ekranında yol
+ * yok: sayfa adı zaten sayfanın başlığında ve kenar çubuğunda seçili.
+ */
+export function TopBar({ target, health, profiles, children, onOpenServer, onNavigate }: Props) {
   const t = useT();
+  const servers = profiles.map((p) => ({ key: p.target, label: p.name, current: p.target === target, onSelect: () => onOpenServer(p.target) }));
+  const name = profiles.find((p) => p.target === target)?.name ?? target ?? "";
   return (
     <header className="topbar">
-      <nav className="crumbs" aria-label={t("topbar.crumbs")}>
-        <span className="crumb-static">{t("topbar.servers")}</span>
-        <span className="crumb-sep" aria-hidden="true">/</span>
-        <ServerSwitcher target={target} profiles={profiles} onSwitch={onSwitch} />
-        {target ? (
+      {target === null ? null : (
+        <nav className="crumbs" aria-label={t("topbar.crumbs")}>
+          <button type="button" className="crumb is-quiet" onClick={() => onNavigate("servers")} data-testid="crumb-servers"><span>{t("nav.servers")}</span></button>
+          <span className="crumb-sep" aria-hidden="true">/</span>
+          <CrumbMenu label={name} items={servers} testId="switcher" />
           <span className={`pill is-${healthTone(health)}`} data-testid="health">
             <i className="pill-dot" aria-hidden="true" />
-            {t(healthKey(health))}
+            <span style={{ color: "var(--fg)" }}>{t(healthKey(health))}</span>
           </span>
-        ) : null}
-      </nav>
-      <div className="topbar-right">
-        {rtt !== null ? (
-          <span className="pill is-muted mono" title={t("topbar.rtt_title")} data-testid="rtt">
-            {t("topbar.rtt", { ms: rtt })}
-          </span>
-        ) : null}
-        <button type="button" className="btn btn-primary" disabled={!target || verifying} onClick={onVerify} data-testid="verify">
-          {verifying ? t("topbar.verifying") : t("topbar.verify")}
-        </button>
-      </div>
+        </nav>
+      )}
+      {children}
+      <WindowButtons />
     </header>
   );
 }

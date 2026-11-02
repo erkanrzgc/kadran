@@ -20,10 +20,10 @@ export function ChainCard({ name, status, checked, detail, testId }: Props) {
   const view = chainView(status);
   const n = Number(checked) || 0;
   return (
-    <article className={`chain glass is-${view.tone}`} data-testid={testId}>
+    <article className="chain" data-testid={testId}>
       <div className="chain-top">
-        <h4 className="chain-name mono">{name}</h4>
-        <span className={`badge is-${view.tone}`}>{view.label}</span>
+        <h3 className="chain-name mono">{name}</h3>
+        <span className={`badge is-${view.tone}`}><i className="pill-dot" aria-hidden="true" />{view.label}</span>
       </div>
       <p className="chain-count">
         {status ? t("chains.records", { count: n, n: formatCount(n, language) }) : t("chains.not_verified")}

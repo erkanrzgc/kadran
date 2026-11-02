@@ -1,13 +1,14 @@
 /**
  * build/THIRD_PARTY_NOTICES.txt'i üretir: Kadran'ın telif satırı ve lisansı,
- * arayüze gömülen her çalışma zamanı paketinin lisans metni, kopyalanan
- * ikonlar (MIT + ISC) ve JetBrains Mono (OFL). Paketlenmiş uygulamanın
+ * arayüze gömülen her çalışma zamanı paketinin lisans metni, Geist (OFL) ve
+ * Coolify'dan uyarlanan tasarım dili (Apache-2.0). Paketlenmiş uygulamanın
  * resources/ dizinine konur. Electron'un kendi lisanslarını (LICENSE,
  * LICENSES.chromium.html) @electron/packager ekliyor.
  *
  * Lisans dosyası bulunamayan bir paket varsa betik DURUR.
  */
 
+import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,11 +30,15 @@ const sections = [
 ];
 for (const [path, p] of Object.entries(lock.packages)) {
   if (path === "" || p.dev || p.devOptional) continue;
+  // koffi'nin başka platformların yerel paketleri bu makineye kurulmaz, pakete de girmez.
+  if (p.optional && !existsSync(join(desktop, path))) continue;
   const name = path.replace(/^.*node_modules\//, "");
-  sections.push(`${name}@${p.version} — ${p.license}\n\n${(await licenseText(join(desktop, path))).trim()}`);
+  // koffi'nin yerel paketi lisans dosyası taşımıyor; aynı proje, aynı lisans.
+  const licenseDir = name.startsWith("@koromix/koffi-") ? join(desktop, "node_modules", "koffi") : join(desktop, path);
+  sections.push(`${name}@${p.version} — ${p.license}\n\n${(await licenseText(licenseDir)).trim()}`);
 }
-sections.push(`Animated icons (pqoqubbw/icons) and Lucide drawings\n\n${(await readFile(join(desktop, "src", "renderer", "icons", "LICENSE"), "utf8")).trim()}`);
-sections.push(`JetBrains Mono — OFL-1.1\n\n${(await readFile(join(desktop, "src", "renderer", "fonts", "OFL.txt"), "utf8")).trim()}`);
+sections.push(`Geist and Geist Mono — OFL-1.1\n\n${(await readFile(join(desktop, "src", "renderer", "fonts", "OFL.txt"), "utf8")).trim()}`);
+sections.push(`Coolify (https://github.com/coollabsio/coolify) — Apache-2.0\nCopyright coolLabs\n\nThe desktop layout, measurements and component anatomy are adapted from Coolify's design\nlanguage (DESIGN.md). Colors, icons and the logo are Kadran's own. The license text is the\nApache License 2.0 reproduced in the first section of this file.`);
 
 await mkdir(dirname(out), { recursive: true });
 await writeFile(out, sections.join(`\n\n${"=".repeat(72)}\n\n`) + "\n", "utf8");

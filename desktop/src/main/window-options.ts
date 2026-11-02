@@ -1,39 +1,26 @@
 /**
- * Mod → BrowserWindow seçenekleri. SAF: Electron'u yalnız tip olarak
+ * Görünüm → BrowserWindow seçenekleri. SAF: Electron'u yalnız tip olarak
  * içe aktarır, böylece node --test ile ölçülür.
  *
- * Güvenlik ayarları (webPreferences) HER modda aynıdır. Üçü birlikte
+ * Güvenlik ayarları (webPreferences) HER görünümde aynıdır. Üçü birlikte
  * renderer'ı Node'dan tamamen ayırır; Electron'un varsayılanları olsalar
  * da AÇIKÇA yazılıyorlar: varsayılana güvenmek bir sürüm yükseltmesinde
  * sessizce değişebilir.
  */
 
-import type { BrowserWindowConstructorOptions, Rectangle } from "electron";
+import type { BrowserWindowConstructorOptions } from "electron";
 
-import type { WindowMode } from "../shared/appearance.ts";
+import type { WindowLook } from "../shared/appearance.ts";
 
-export const SOLID_BACKGROUND = "#0e1016";
-const CLEAR = "#00000000";
-
-export interface WindowState {
-  bounds?: Rectangle;
-  maximized: boolean;
-}
-
-export function windowOptions(
-  mode: WindowMode,
-  platform: string,
-  preloadPath: string,
-  state?: WindowState,
-): BrowserWindowConstructorOptions {
+export function windowOptions(look: WindowLook, platform: string, preloadPath: string): BrowserWindowConstructorOptions {
   const base: BrowserWindowConstructorOptions = {
-    width: 1180,
-    height: 780,
+    width: 1280,
+    height: 820,
     minWidth: 760,
     minHeight: 520,
     title: "KΛDRΛN",
     show: false,
-    ...(state?.bounds ?? {}),
+    backgroundColor: look.background,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -46,22 +33,14 @@ export function windowOptions(
   const chrome: BrowserWindowConstructorOptions =
     platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
 
-  switch (mode) {
-    case "clear":
-      return { ...base, ...chrome, transparent: true, backgroundColor: CLEAR };
+  switch (look.material) {
+    case "accent":
+      return { ...base, ...chrome };
     case "acrylic":
-    case "mica":
-      return { ...base, ...chrome, backgroundColor: CLEAR, backgroundMaterial: mode };
+      return { ...base, ...chrome, backgroundMaterial: "acrylic" };
     case "vibrancy":
-      return { ...base, ...chrome, backgroundColor: CLEAR, vibrancy: "under-window", visualEffectState: "active" };
-    case "solid":
-      return { ...base, ...chrome, backgroundColor: SOLID_BACKGROUND };
+      return { ...base, ...chrome, vibrancy: "under-window", visualEffectState: "active" };
+    case "none":
+      return { ...base, ...chrome };
   }
-}
-
-/** needsRecreate: yalnız Acrylic ↔ Mica (backgroundMaterial) yerinde değişebilir. */
-export function needsRecreate(from: WindowMode, to: WindowMode): boolean {
-  if (from === to) return false;
-  const live = (m: WindowMode) => m === "acrylic" || m === "mica";
-  return !(live(from) && live(to));
 }

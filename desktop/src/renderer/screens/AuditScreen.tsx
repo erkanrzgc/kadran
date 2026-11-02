@@ -47,11 +47,11 @@ export function AuditScreen({ target }: { target: string | null }) {
   return (
     <div className="screen" data-testid="screen-audit">
       <header className="stage-head">
-        <p className="eyebrow">{t("audit.eyebrow")}</p>
         <h1 className="title">{t("audit.title")}</h1>
+        <p className="meta">{t("audit.subtitle")}</p>
       </header>
 
-      <section className="panel glass">
+      <section className="panel">
         <div className="panel-head">
           <h2 className="section-title">{t("audit.outcomes")}</h2>
           <Segmented
@@ -61,10 +61,10 @@ export function AuditScreen({ target }: { target: string | null }) {
             onChange={setRange}
           />
         </div>
-        <OutcomeBar records={audit.records} />
+        <div className="well"><OutcomeBar records={audit.records} /></div>
       </section>
 
-      <section className="panel glass">
+      <section className="panel">
         <div className="panel-head filters">
           <label className="filter">
             {t("audit.filter_action")}
@@ -89,15 +89,17 @@ export function AuditScreen({ target }: { target: string | null }) {
           </button>
         </div>
 
-        <AuditTable records={shown} testId="audit-full" placeholder={placeholder} />
+        <div className="well is-flush">
+          <AuditTable records={shown} testId="audit-full" placeholder={placeholder} />
 
-        {audit.hasOlder ? (
-          <div className="panel-foot">
-            <button type="button" className="btn btn-ghost" disabled={audit.loading} onClick={() => void audit.loadOlder()} data-testid="load-older">
-              {audit.loading ? t("audit.loading") : t("audit.load_older")}
-            </button>
-          </div>
-        ) : null}
+          {audit.hasOlder ? (
+            <div className="panel-foot">
+              <button type="button" className="btn btn-ghost" disabled={audit.loading} onClick={() => void audit.loadOlder()} data-testid="load-older">
+                {audit.loading ? t("audit.loading") : t("audit.load_older")}
+              </button>
+            </div>
+          ) : null}
+        </div>
       </section>
     </div>
   );

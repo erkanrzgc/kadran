@@ -16,7 +16,7 @@ import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { loadProfiles, migrateLegacyProfiles } from "../src/main/profiles.ts";
+import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "../src/main/profiles.ts";
 
 async function dirs(): Promise<{ root: string; legacy: string; current: string }> {
   const root = await mkdtemp(join(tmpdir(), "kadran-profil-"));
@@ -29,6 +29,27 @@ const ESKI = [
   { name: "yerel", target: "unix:///run/kadran/api.sock" },
   { name: "başka", target: "biri@baska.example" },
 ];
+
+test("sağlayıcı etiketi saklanır; bilinmeyen alanlar ve geçersiz etiket diske yazılmaz", async () => {
+  const { root, current } = await dirs();
+  try {
+    const saved = await saveProfiles(current, [
+      { name: "a", target: "a@b", provider: "hetzner", extra: "silinir" },
+      { name: "c", target: "c@d", provider: 42 },
+      { name: "e", target: "e@f", provider: "x".repeat(65) },
+    ]);
+    assert.deepEqual(saved, [
+      { name: "a", target: "a@b", provider: "hetzner" },
+      { name: "c", target: "c@d" },
+      { name: "e", target: "e@f" },
+    ]);
+    assert.deepEqual(await loadProfiles(current), saved);
+    await writeFile(join(current, "profiles.json"), JSON.stringify([{ name: "g", target: "g@h", gizli: "x" }]), "utf8");
+    assert.deepEqual(await loadProfiles(current), [{ name: "g", target: "g@h" }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("eski dizindeki profiller yeni dizine taşınıyor, hedefler çevriliyor", async () => {
   const { root, legacy, current } = await dirs();

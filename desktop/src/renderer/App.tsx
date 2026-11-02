@@ -1,31 +1,43 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { bridge, type Profile } from "./bridge.ts";
-import { Rail, type View } from "./components/Rail.tsx";
-import { Titlebar } from "./components/Titlebar.tsx";
+import { Rail, type FleetView } from "./components/Rail.tsx";
+import { ServerDialog, type ServerDraft } from "./components/ServerDialog.tsx";
+import { ServerSubnav, type ServerView } from "./components/ServerSubnav.tsx";
+import { Tabs } from "./components/Tabs.tsx";
 import { TopBar } from "./components/TopBar.tsx";
+import { useT } from "./i18n/I18nProvider.tsx";
+import { useFleet } from "./hooks/useFleet.ts";
 import { useServer } from "./hooks/useServer.ts";
 import { errorText } from "./lib/errors.ts";
-import { healthOf, healthTone } from "./lib/health.ts";
+import { alarmCount, classifyFailure } from "./lib/fleet.ts";
+import { healthOf } from "./lib/health.ts";
 import { createProfileStore } from "./lib/profile-store.ts";
 import type { VersionPayload } from "./lib/types.ts";
-import { AuditScreen } from "./screens/AuditScreen.tsx";
-import { AppsScreen } from "./screens/AppsScreen.tsx";
 import { AlarmsScreen } from "./screens/AlarmsScreen.tsx";
+import { AppsScreen } from "./screens/AppsScreen.tsx";
+import { AuditScreen } from "./screens/AuditScreen.tsx";
 import { BackupsScreen } from "./screens/BackupsScreen.tsx";
+import { FleetAlarms, FleetApps, FleetAudit } from "./screens/FleetLists.tsx";
+import { ServersScreen } from "./screens/ServersScreen.tsx";
 import { SettingsScreen } from "./screens/SettingsScreen.tsx";
 import { StatusScreen } from "./screens/StatusScreen.tsx";
 import { useToast } from "./toast/ToastProvider.tsx";
 
-function initialView(): View {
-  const v = new URLSearchParams(window.location.search).get("view");
-  return v === "audit" || v === "settings" || v === "apps" || v === "alarms" || v === "backups" ? v : "status";
-}
+type Dialog = { kind: "add" } | { kind: "edit"; profile: Profile } | null;
 
 export function App() {
+  const t = useT();
   const toast = useToast();
   const server = useServer();
-  const [view, setView] = useState<View>(initialView);
+  const [view, setView] = useState<FleetView>("servers");
+  const [serverView, setServerView] = useState<ServerView>("status");
+  const [tabs, setTabs] = useState<readonly string[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+  const [newAppFor, setNewAppFor] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
+  const [dialogPending, setDialogPending] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   // Okuma ve yazmalar sırada; diskten okunmadan yazılmaz (lib/profile-store.ts).
   const [store] = useState(() =>
@@ -36,77 +48,159 @@ export function App() {
     }),
   );
   const [version, setVersion] = useState<VersionPayload | null>(null);
+  const cards = useFleet(profiles, active === null);
 
   useEffect(() => {
     store.load().catch((err: unknown) => toast("toast.profiles_failed", { error: errorText(err) }));
     bridge.version().then(setVersion, (err: unknown) => toast("toast.sidecar_failed", { error: errorText(err) }));
   }, [toast, store]);
 
-  const connect = useCallback(
-    async (target: string) => {
-      const ok = await server.connect(target);
-      if (!ok) return;
-      try {
-        await store.add({ name: target, target });
-      } catch (err) {
-        toast("toast.save_failed", { error: errorText(err) });
+  const openServer = useCallback(
+    async (target: string, next?: ServerView) => {
+      setTabs((list) => (list.includes(target) ? list : [...list, target]));
+      if (next) setServerView(next);
+      if (active === target) return;
+      setActive(target);
+      // Her açılışta baştan okunur: eski değerler "Sağlıklı" diye kalmasın.
+      // Bağlanamazsa sebep bildirimde; sekme kapanır, kart zaten durumu gösterir.
+      if ((await server.connect(target)) === "failed") {
+        setTabs((list) => list.filter((x) => x !== target));
+        setActive((current) => (current === target ? null : current));
+        setNewAppFor((current) => (current === target ? null : current));
       }
     },
-    [server, store, toast],
+    [active, server],
+  );
+
+  const closeTab = useCallback((target: string) => {
+    setTabs((list) => list.filter((x) => x !== target));
+    setActive((current) => (current === target ? null : current));
+  }, []);
+
+  const navigate = useCallback((next: FleetView) => {
+    setView(next);
+    setActive(null);
+  }, []);
+
+  const newApp = useCallback(
+    (target: string) => {
+      setNewAppFor(target);
+      void openServer(target, "apps");
+    },
+    [openServer],
   );
 
   const removeProfile = useCallback(
     async (target: string) => {
       try {
         await store.remove(target);
+        closeTab(target);
       } catch (err) {
         toast("toast.save_failed", { error: errorText(err) });
       }
     },
-    [store, toast],
+    [store, closeTab, toast],
+  );
+
+  const openDialog = (next: Dialog) => {
+    setDialogError(null);
+    setDialog(next);
+  };
+
+  const submitDialog = useCallback(
+    async (draft: ServerDraft) => {
+      setDialogPending(true);
+      setDialogError(null);
+      try {
+        if (dialog?.kind === "edit") {
+          await store.update(draft.target, { name: draft.name, provider: draft.provider });
+          setDialog(null);
+          return;
+        }
+        const profile: Profile = { name: draft.name, target: draft.target, ...(draft.provider ? { provider: draft.provider } : {}) };
+        // Önce denenir: ulaşılamayan hedef kaydedilmez, sebep kutunun içinde görünür.
+        try {
+          await bridge.status(draft.target);
+        } catch (err) {
+          const message = errorText(err);
+          if (classifyFailure(message) !== "totp") {
+            setDialogError(message);
+            return;
+          }
+          // Sunucu yerinde, giriş bekliyor: kart "TOTP girişi gerekli" der.
+          await store.add(profile);
+          setDialog(null);
+          return;
+        }
+        await store.add(profile);
+        setDialog(null);
+        void openServer(draft.target);
+      } catch (err) {
+        setDialogError(errorText(err));
+      } finally {
+        setDialogPending(false);
+      }
+    },
+    [dialog, store, openServer],
   );
 
   const health = healthOf(server.state.status, server.state.verify, server.state.stale || server.state.verifyStale);
+  const currentProfile = profiles.find((p) => p.target === active) ?? null;
+  const editServer = (target: string) => {
+    const profile = profiles.find((p) => p.target === target);
+    if (profile) openDialog({ kind: "edit", profile });
+  };
+  const fleetActions = { onOpen: (target: string) => void openServer(target), onNewApp: newApp, onEdit: editServer, onAdd: () => openDialog({ kind: "add" }) };
+  const listProps = { profiles, cards, onOpen: (target: string, next?: ServerView) => void openServer(target, next) };
+  const clientVersion = version?.version ?? null;
+  const ready = active !== null && server.state.target === active && server.state.status !== null;
 
   return (
     <div className="app" data-testid="app">
-      <Titlebar />
-      <div className="body">
-        <Rail
-          profiles={profiles}
-          currentTarget={server.state.target}
-          currentTone={healthTone(health)}
-          view={view}
-          connecting={server.state.connecting}
-          version={version}
-          onConnect={(target) => void connect(target)}
-          onNavigate={setView}
-        />
-        <main className="stage">
-          <TopBar
-            target={server.state.target}
-            profiles={profiles}
-            health={health}
-            rtt={server.state.rtt}
-            verifying={server.state.verifying}
-            onVerify={() => void server.verifyChains()}
-            onSwitch={(target) => void connect(target)}
-          />
-          {view === "status" ? (
-            <StatusScreen server={server} onSeeAll={() => setView("audit")} />
-          ) : view === "audit" ? (
-            <AuditScreen target={server.state.target} />
-          ) : view === "apps" ? (
-            <AppsScreen key={server.state.target} target={server.state.target} />
-          ) : view === "alarms" ? (
-            <AlarmsScreen key={server.state.target} target={server.state.target} />
-          ) : view === "backups" ? (
-            <BackupsScreen key={server.state.target} target={server.state.target} />
+      <div className="shell">
+        <Rail view={active === null ? view : null} serverOpen={active !== null} alarmCount={alarmCount(cards)} version={version} onNavigate={navigate} />
+        <div className="main">
+          <TopBar target={active} health={health} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
+            <Tabs tabs={tabs} active={active} profiles={profiles} cards={cards} onSelect={(target) => void openServer(target)} onClose={closeTab} />
+          </TopBar>
+          {active === null ? (
+            <main className="stage">
+              {view === "servers" ? (
+                <ServersScreen profiles={profiles} cards={cards} clientVersion={clientVersion} {...fleetActions} />
+              ) : view === "apps" ? (
+                <FleetApps {...listProps} />
+              ) : view === "alarms" ? (
+                <FleetAlarms {...listProps} />
+              ) : view === "audit" ? (
+                <FleetAudit {...listProps} />
+              ) : (
+                <SettingsScreen profiles={profiles} version={version} onRemoveProfile={(target) => void removeProfile(target)} />
+              )}
+            </main>
           ) : (
-            <SettingsScreen profiles={profiles} version={version} onRemoveProfile={(target) => void removeProfile(target)} />
+            <div className="page-host">
+              <ServerSubnav view={serverView} onNavigate={setServerView} />
+              <main className="stage">
+                {/* Bağlantı kurulmadan ekran veri istemez: bağlanamayan sunucuda tek bildirim çıksın. */}
+                {!ready ? (
+                  <p className="meta" role="status" data-testid="server-loading">{t("resource.loading")}</p>
+                ) : serverView === "status" ? (
+                  <StatusScreen server={server} profile={currentProfile} onEdit={editServer} onSeeAll={() => setServerView("audit")} />
+                ) : serverView === "audit" ? (
+                  <AuditScreen target={server.state.target} />
+                ) : serverView === "apps" ? (
+                  <AppsScreen key={server.state.target} target={server.state.target} startCreating={newAppFor === active} onCreateConsumed={() => setNewAppFor(null)} />
+                ) : serverView === "alarms" ? (
+                  <AlarmsScreen key={server.state.target} target={server.state.target} />
+                ) : (
+                  <BackupsScreen key={server.state.target} target={server.state.target} />
+                )}
+              </main>
+            </div>
           )}
-        </main>
+        </div>
       </div>
+      {dialog ? <ServerDialog profile={dialog.kind === "edit" ? dialog.profile : null} pending={dialogPending} error={dialogError} onSubmit={(draft) => void submitDialog(draft)} onClose={() => setDialog(null)} /> : null}
     </div>
   );
 }

@@ -30,6 +30,11 @@ test("çalışma zamanı paketlerinin lisansı izinli", async () => {
   assert.deepEqual(bad, []);
 });
 
+test("lisans dosyası: başka platformun yerel paketi kurulu olmasa da betik durmaz, kurulu olan listelenir", async () => {
+  const notices = await readFile(join(root, "scripts", "notices.mjs"), "utf8");
+  assert.match(notices, /p\.optional && !existsSync\(join\(desktop, path\)\)/);
+});
+
 test("gömülü yazı tipinin lisansı yerinde", async () => {
   const ofl = await readFile(join(root, "src", "renderer", "fonts", "OFL.txt"), "utf8");
   assert.match(ofl, /SIL OPEN FONT LICENSE/i);

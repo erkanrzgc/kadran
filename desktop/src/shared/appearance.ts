@@ -1,13 +1,14 @@
 /**
- * Kullanıcı ayarları: dil ve yazı tipleri. Görünüm tektir (K-161): pencere
- * modu, tema ve cam ayarları kaldırıldı. Ana süreç (doğrulayıp diske yazmak
- * için) ve arayüz aynı dosyayı kullanır; Node ya da DOM'a bağımlı değil.
+ * Kullanıcı ayarları: dil, tema ve yazı tipleri. Tema üç tanedir: koyu, açık
+ * ve cam (K-161); ton ya da vurgu ayarı yoktur. Ana süreç (doğrulayıp diske
+ * yazmak için) ve arayüz aynı dosyayı kullanır; Node ya da DOM'a bağımlı değil.
  *
  * Dosya elle düzenlenebilir ya da bozulabilir. Her alan TEK TEK
  * doğrulanır; geçersiz alan varsayılana döner, geçerli alanlar korunur.
  */
 
 export type Language = "en" | "tr";
+export type Theme = "dark" | "light" | "glass";
 
 export interface FontChoice {
   /** Boş dize: gömülü Geist. */
@@ -20,6 +21,7 @@ export const APPEARANCE_VERSION = 2;
 export interface Appearance {
   version: typeof APPEARANCE_VERSION;
   language: Language;
+  theme: Theme;
   uiFont: FontChoice;
   codeFont: FontChoice;
 }
@@ -30,10 +32,22 @@ export interface PlatformInfo {
   release: string;
 }
 
-/** Pencerenin yerel malzemesi; arkada masaüstü bulanık görünür. `none`: opak koyu. */
-export type Material = "acrylic" | "vibrancy" | "none";
+/**
+ * Pencerenin yerel malzemesi; arkada masaüstü bulanık görünür. `none`: opak koyu.
+ * `accent`: Windows camı, odak gidince de kalır (main/window-accent.ts).
+ * `acrylic`: Electron'un malzemesi, accent yüklenemezse; odak gidince griye düşer.
+ */
+export type Material = "accent" | "acrylic" | "vibrancy" | "none";
+
+/** Pencerenin yerel tarafı; arayüz renkleri styles/tokens.css'te. */
+export interface WindowLook {
+  material: Material;
+  background: string;
+  scheme: "dark" | "light";
+}
 
 export const LANGUAGE_CODES: readonly Language[] = ["en", "tr"];
+export const THEMES: readonly Theme[] = ["dark", "light", "glass"];
 
 export const LIMITS = {
   weight: [100, 900],
@@ -56,10 +70,27 @@ export function materialFor(info: PlatformInfo): Material {
   return "none";
 }
 
+/** Cam yerel malzeme ister; malzemesi olmayan sistemde koyu çizilir. */
+export function effectiveTheme(theme: Theme, available: Material): Theme {
+  return theme === "glass" && available === "none" ? "dark" : theme;
+}
+
+export function windowLook(theme: Theme, available: Material): WindowLook {
+  switch (effectiveTheme(theme, available)) {
+    case "glass":
+      return { material: available, background: "#00000000", scheme: "dark" };
+    case "light":
+      return { material: "none", background: "#fafafa", scheme: "light" };
+    case "dark":
+      return { material: "none", background: "#0a0a0a", scheme: "dark" };
+  }
+}
+
 export function defaultAppearance(): Appearance {
   return {
     version: APPEARANCE_VERSION,
     language: "en",
+    theme: "glass",
     uiFont: { family: "", weight: 400 },
     codeFont: { family: "", weight: 400 },
   };
@@ -92,5 +123,5 @@ export function sanitizeAppearance(raw: unknown): Appearance {
   const o = raw as Record<string, unknown>;
   const language = pick(o.language, LANGUAGE_CODES, d.language);
   if (o.version !== APPEARANCE_VERSION) return { ...d, language };
-  return { version: APPEARANCE_VERSION, language, uiFont: font(o.uiFont, d.uiFont), codeFont: font(o.codeFont, d.codeFont) };
+  return { version: APPEARANCE_VERSION, language, theme: pick(o.theme, THEMES, d.theme), uiFont: font(o.uiFont, d.uiFont), codeFont: font(o.codeFont, d.codeFont) };
 }

@@ -99,7 +99,7 @@ export function FleetAlarms({ cards, onOpen }: ListProps) {
 export function FleetAudit({ profiles, onOpen }: ListProps) {
   const t = useT();
   const recent = useRecentRecords(profiles, true, AUDIT_PER_SERVER);
-  const operations = mergeOperations(recent.servers, null, AUDIT_ROWS);
+  const operations = mergeOperations(recent.servers, AUDIT_ROWS);
   const failed = recent.failed.map((target) => profiles.find((p) => p.target === target)?.name ?? target);
   return (
     <div className="screen" data-testid="screen-fleet-audit">

@@ -16,6 +16,7 @@
     "dist": "npm run build && node scripts/dist.mjs"
   },
   "dependencies": {
+    "koffi": "3.3.6",
     "react": "19.3.0",
     "react-dom": "19.3.0"
   },

@@ -16,7 +16,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, "..", "src", "renderer");
 
 /** Çevrilmeyen, adıyla izin verilen metinler: marka ve ayraçlar. */
-const ALLOWED = new Set(["KΛDRΛN"]);
+const ALLOWED = new Set(["KΛDRΛN", "Kadran"]);
 const VISIBLE_ATTRS = new Set(["title", "aria-label", "placeholder", "alt"]);
 const LETTER = /\p{L}/u;
 

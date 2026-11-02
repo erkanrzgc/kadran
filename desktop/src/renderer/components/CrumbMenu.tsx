@@ -12,13 +12,11 @@ export interface CrumbItem {
 interface Props {
   label: string;
   items: readonly CrumbItem[];
-  empty?: string;
-  quiet?: boolean;
   testId: string;
 }
 
-/** Yoldaki seçici (Coolify düzeni): `Filo ⌄ / Pano ⌄`. */
-export function CrumbMenu({ label, items, empty, quiet = false, testId }: Props) {
+/** Yoldaki seçici (Coolify düzeni): `Sunucular / sunucu ⌄`. */
+export function CrumbMenu({ label, items, testId }: Props) {
   const [open, setOpen] = useState(false);
   const box = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -44,13 +42,12 @@ export function CrumbMenu({ label, items, empty, quiet = false, testId }: Props)
 
   return (
     <div className="crumb-box" ref={box}>
-      <button ref={trigger} type="button" className={quiet ? "crumb is-quiet" : "crumb"} title={label} aria-expanded={open} data-testid={testId} onClick={() => setOpen((o) => !o)}>
+      <button ref={trigger} type="button" className="crumb" title={label} aria-expanded={open} data-testid={testId} onClick={() => setOpen((o) => !o)}>
         <span>{label}</span>
         <LineIcon name="chevron" size={12} />
       </button>
       {open ? (
         <ul className="crumb-menu">
-          {items.length === 0 && empty ? <li className="empty">{empty}</li> : null}
           {items.map((item) => (
             <li key={item.key}>
               <button type="button" className="menu-item" aria-current={item.current ? "true" : undefined} onClick={() => { setOpen(false); item.onSelect(); }}>

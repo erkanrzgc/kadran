@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 
+import { THEMES } from "../../shared/appearance.ts";
 import { useAppearance } from "../appearance/AppearanceProvider.tsx";
 import type { Profile } from "../bridge.ts";
 import { FontPicker } from "../components/FontPicker.tsx";
@@ -20,7 +21,7 @@ interface Props {
 export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
   const t = useT();
   const language = useLanguage();
-  const { appearance: a, families, fontsListed, update, reset } = useAppearance();
+  const { appearance: a, theme, glassAvailable, families, fontsListed, update, reset } = useAppearance();
   const names = useMemo(() => [...families.keys()].sort((x, y) => x.localeCompare(y)), [families]);
   const uiFaces = families.get(a.uiFont.family) ?? [];
   const codeFaces = families.get(a.codeFont.family) ?? [];
@@ -31,6 +32,20 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
         <h1 className="title">{t("settings.title")}</h1>
         <p className="meta">{t("settings.appearance_meta")}</p>
       </header>
+
+      <section className="panel">
+        <div className="panel-head"><h2 className="section-title">{t("settings.theme")}</h2></div>
+        <div className="well">
+          <SetRow title={t("settings.theme")} hint={t(glassAvailable ? "settings.theme_hint" : "settings.theme_hint_no_glass")}>
+            <Segmented
+              label={t("settings.theme")}
+              value={theme}
+              options={THEMES.filter((name) => name !== "glass" || glassAvailable).map((name) => ({ value: name, label: t(`theme.${name}`), testId: `theme-${name}` }))}
+              onChange={(next) => update({ theme: next })}
+            />
+          </SetRow>
+        </div>
+      </section>
 
       <section className="panel">
         <div className="panel-head"><h2 className="section-title">{t("settings.language")}</h2></div>

@@ -18,8 +18,8 @@ import { AlarmsScreen } from "./screens/AlarmsScreen.tsx";
 import { AppsScreen } from "./screens/AppsScreen.tsx";
 import { AuditScreen } from "./screens/AuditScreen.tsx";
 import { BackupsScreen } from "./screens/BackupsScreen.tsx";
-import { Dashboard, ServersScreen } from "./screens/Dashboard.tsx";
 import { FleetAlarms, FleetApps, FleetAudit } from "./screens/FleetLists.tsx";
+import { ServersScreen } from "./screens/ServersScreen.tsx";
 import { SettingsScreen } from "./screens/SettingsScreen.tsx";
 import { StatusScreen } from "./screens/StatusScreen.tsx";
 import { useToast } from "./toast/ToastProvider.tsx";
@@ -30,7 +30,7 @@ export function App() {
   const t = useT();
   const toast = useToast();
   const server = useServer();
-  const [view, setView] = useState<FleetView>("dashboard");
+  const [view, setView] = useState<FleetView>("servers");
   const [serverView, setServerView] = useState<ServerView>("status");
   const [tabs, setTabs] = useState<readonly string[]>([]);
   const [active, setActive] = useState<string | null>(null);
@@ -160,14 +160,12 @@ export function App() {
       <div className="shell">
         <Rail view={active === null ? view : null} serverOpen={active !== null} alarmCount={alarmCount(cards)} version={version} onNavigate={navigate} />
         <div className="main">
-          <TopBar target={active} view={view} health={health} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
-            <Tabs tabs={tabs} active={active} profiles={profiles} cards={cards} onSelectFleet={() => navigate("dashboard")} onSelect={(target) => void openServer(target)} onClose={closeTab} />
+          <TopBar target={active} health={health} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
+            <Tabs tabs={tabs} active={active} profiles={profiles} cards={cards} onSelect={(target) => void openServer(target)} onClose={closeTab} />
           </TopBar>
           {active === null ? (
             <main className="stage">
-              {view === "dashboard" ? (
-                <Dashboard profiles={profiles} cards={cards} clientVersion={clientVersion} onSeeAll={() => navigate("audit")} {...fleetActions} />
-              ) : view === "servers" ? (
+              {view === "servers" ? (
                 <ServersScreen profiles={profiles} cards={cards} clientVersion={clientVersion} {...fleetActions} />
               ) : view === "apps" ? (
                 <FleetApps {...listProps} />

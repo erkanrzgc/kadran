@@ -46,7 +46,6 @@ export interface KadranBridge {
   saveAppearance(appearance: Appearance): Promise<Appearance>;
   windowControl(action: WindowAction): Promise<void>;
   copyText(text: string): Promise<void>;
-  userName(): Promise<string>;
 }
 
 declare global {

@@ -13,7 +13,7 @@ body {
   font-weight: var(--w-ui);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  text-shadow: var(--text-shadow);
 }
 
 #root { height: 100%; }
@@ -27,14 +27,8 @@ body {
 
 .app { position: relative; height: 100%; overflow: hidden; }
 
-/* Kabuk: gerçek masaüstünün üstündeki koyu tül. Yerel malzeme yoksa opak. */
-.shell { display: flex; height: 100%; background: rgba(12, 12, 14, var(--tint)); }
-:root[data-material="none"] .shell { background: #16161a; }
-
-/* İşletim sisteminde "saydamlık efektleri" kapalıysa da yazı okunur kalsın. */
-@media (prefers-reduced-transparency: reduce) {
-  .shell { background: #16161a; }
-}
+/* Kabuk: rengi temadan (tokens.css). */
+.shell { display: flex; height: 100%; background: var(--shell); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }

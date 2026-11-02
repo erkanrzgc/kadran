@@ -19,7 +19,7 @@
  * - `fake@totp…`: sunucunun gerçek TOTP mesajını döner; kart "erişilemiyor"
  *   değil "TOTP girişi gerekli" demeli.
  * - `fake@flaky…`: zincir doğrulanana (bağlanılana) dek status başarılı, sonra
- *   hata; pano yoklaması bağlantıyı tüketmesin diye çağrı sayılmaz. Arayüz
+ *   hata; filo yoklaması bağlantıyı tüketmesin diye çağrı sayılmaz. Arayüz
  *   bayat veriyi "bağlantı koptu" diye işaretlemeli. Bu hedef SAĞLIKLI
  *   başlar (executor erişilebilir, iki zincir VALID): bayatlığın "Healthy"
  *   hapını düşürdüğü ancak böyle ölçülebilir.

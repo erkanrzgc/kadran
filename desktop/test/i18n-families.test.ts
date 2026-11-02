@@ -13,6 +13,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { OUTCOME_KEYS } from "../src/renderer/lib/chain.ts";
+import { THEMES } from "../src/shared/appearance.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, "..", "src", "renderer");
@@ -58,7 +59,7 @@ test("şablonlu t(`…`) çağrılarının her ailesi tanımlı ve üyeleri en+t
     "alarm.${}": protoEnum(proto, "AlarmSeverity"),
     "release.${}": protoEnum(proto, "ReleaseStatus"),
     "apps.tab_${}": appTabs(appsSrc),
-    "nav.${}": ["dashboard", "servers", "apps", "alarms", "audit", "settings"], // TopBar.tsx FLEET_VIEWS
+    "theme.${}": THEMES,
   };
 
   const found = new Set<string>();

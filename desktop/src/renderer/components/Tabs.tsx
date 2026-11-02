@@ -10,13 +10,15 @@ interface Props {
   active: string | null;
   profiles: readonly Profile[];
   cards: readonly FleetCard[];
-  onSelectFleet: () => void;
   onSelect: (target: string) => void;
   onClose: (target: string) => void;
 }
 
-/** Tarayıcı gibi sekmeler: "Pano" ve açılmış sunucular. */
-export function Tabs({ tabs, active, profiles, cards, onSelectFleet, onSelect, onClose }: Props) {
+/** Tek sunucuda üst çubuktaki yol yeter; şerit ancak iki sunucu açıkken çıkar. */
+const MIN_TABS = 2;
+
+/** Açık sunucular arasında geçiş için sekmeler. */
+export function Tabs({ tabs, active, profiles, cards, onSelect, onClose }: Props) {
   const t = useT();
   const strip = useRef<HTMLElement>(null);
 
@@ -29,11 +31,10 @@ export function Tabs({ tabs, active, profiles, cards, onSelectFleet, onSelect, o
     event.currentTarget.scrollLeft += event.deltaY;
   };
 
+  if (tabs.length < MIN_TABS) return null;
+
   return (
     <nav className="tabs" aria-label={t("tabs.label")} ref={strip} onWheel={wheel}>
-      <div className={active === null ? "tab is-on" : "tab"}>
-        <button type="button" className="tab-main" onClick={onSelectFleet} data-testid="tab-fleet"><span>{t("nav.dashboard")}</span></button>
-      </div>
       {tabs.map((target) => {
         const name = profiles.find((p) => p.target === target)?.name ?? target;
         const tone = cards.find((c) => c.profile.target === target)?.tone ?? "muted";

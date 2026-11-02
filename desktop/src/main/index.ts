@@ -15,11 +15,11 @@
 
 import { app, BrowserWindow, clipboard, ipcMain, nativeTheme, session } from "electron";
 import { spawn } from "node:child_process";
-import { release, userInfo } from "node:os";
+import { release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { defaultAppearance, materialFor, type Material, type PlatformInfo } from "../shared/appearance.ts";
+import { defaultAppearance, materialFor, windowLook, type Material, type PlatformInfo } from "../shared/appearance.ts";
 import { CHANNELS } from "../shared/channels.ts";
 import { SidecarClient } from "../shared/sidecar-client.ts";
 import type { SidecarProcess } from "../shared/sidecar-client.ts";
@@ -31,6 +31,7 @@ import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts
 import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
 import { registerSidecarReads } from "./sidecar-reads.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
+import { loadWindowAccent, type WindowAccent } from "./window-accent.ts";
 import { createWindowHost, type WindowHost } from "./window.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -40,7 +41,7 @@ const rendererIndex = join(here, "..", "renderer", "index.html");
 const platformInfo: PlatformInfo = { platform: process.platform, release: release() };
 const warn = (message: string): void => console.warn("[kadran]", message);
 // Duman testi yerel malzeme istemez: gizli pencerede yakalanan görüntü ve CI aynı kalsın.
-const material: Material = SMOKE_TEST ? "none" : materialFor(platformInfo);
+let material: Material = SMOKE_TEST ? "none" : materialFor(platformInfo);
 
 // Kullanıcı verisi dizini whenReady'den ÖNCE belirlenmeli.
 if (SMOKE_TEST) prepareSmokeUserData();
@@ -85,7 +86,13 @@ function registerHandlers(): void {
     defaults: defaultAppearance(),
     material,
   }));
-  ipcMain.handle(CHANNELS.saveAppearance, (_event, raw: unknown) => saveAppearance(userData(), raw));
+  ipcMain.handle(CHANNELS.saveAppearance, async (_event, raw: unknown) => {
+    const saved = await saveAppearance(userData(), raw);
+    const look = windowLook(saved.theme, material);
+    nativeTheme.themeSource = look.scheme;
+    host?.setLook(look);
+    return saved;
+  });
   ipcMain.handle(CHANNELS.windowControl, (event, action: unknown) => {
     const what = requireWindowAction(action);
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -99,7 +106,6 @@ function registerHandlers(): void {
   ipcMain.handle(CHANNELS.copyText, (_event, text: unknown) => {
     clipboard.writeText(requireCopyText(text));
   });
-  ipcMain.handle(CHANNELS.userName, () => userInfo().username);
 }
 
 // ── Yaşam döngüsü ────────────────────────────────────────────────────
@@ -117,8 +123,6 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   void app.whenReady().then(async () => {
-    // Görünüm tek ve koyu: Acrylic sistem açık temada olsa da koyu kalsın.
-    nativeTheme.themeSource = "dark";
     lockDownPermissions(session.defaultSession);
 
     // Eski adlı uygulamanın (panely-desktop) profilleri, pencere onları
@@ -127,8 +131,13 @@ if (!app.requestSingleInstanceLock()) {
       console.warn("[profiller]", msg),
     ).catch((err: unknown) => console.warn("[profiller]", (err as Error).message));
 
+    const accent: WindowAccent | null = material === "acrylic" ? await loadWindowAccent(warn) : null;
+    if (accent) material = "accent";
     registerHandlers();
-    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, material, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-icon.png") });
+    // Tema sistemden değil ayardan: cam sistem açık temada olsa da koyu kalır.
+    const look = windowLook((await loadAppearance(userData(), warn)).theme, material);
+    nativeTheme.themeSource = look.scheme;
+    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, available: material, accent, look, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-icon.png") });
     const win = host.open();
     if (SMOKE_TEST) void runSmokeTest(win);
 

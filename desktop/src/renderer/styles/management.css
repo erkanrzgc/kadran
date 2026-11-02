@@ -1,7 +1,7 @@
 /* Uygulama, alarm, yedek ve onay ekranları. */
 .resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr)); gap: 12px; }
-.resource-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; color: var(--fg); text-align: left; cursor: pointer; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255, 255, 255, 0.06); transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out); text-shadow: inherit; }
-.resource-card:hover { border-color: var(--edge); background: rgba(255, 255, 255, 0.09); }
+.resource-card { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; color: var(--fg); text-align: left; cursor: pointer; font: inherit; border: 1px solid var(--line); border-radius: var(--radius); background: var(--kart-bg); box-shadow: var(--kart-shadow); transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out); text-shadow: inherit; }
+.resource-card:hover { border-color: var(--edge); background-color: rgb(var(--ov) / 0.09); }
 .resource-card-top { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
 .resource-card-title { display: block; font-weight: 600; overflow-wrap: anywhere; }
 .resource-card-domain { display: block; margin-top: 1px; font-size: 12px; color: var(--fg-faint); overflow-wrap: anywhere; }
@@ -13,7 +13,7 @@
 .app-layout { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 18px; align-items: start; min-width: 0; }
 .detail-tabs { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .detail-tab { display: block; width: 100%; height: 32px; padding: 0 12px; text-align: left; color: var(--fg-dim); font: inherit; font-weight: 500; background: transparent; border: 0; border-radius: 16px; cursor: pointer; text-shadow: inherit; }
-.detail-tab.is-active { color: var(--fg); background: var(--flat-on); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22); }
+.detail-tab.is-active { color: var(--fg); background: var(--flat-on); box-shadow: inset 0 0 0 1px rgb(var(--ov) / 0.22); }
 .detail-tab:hover:not(:disabled) { color: var(--fg); background: var(--flat); }
 .detail-tab:disabled { opacity: 0.6; cursor: default; }
 .app-content { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -31,7 +31,7 @@
 .row dt { color: var(--fg-faint); flex-shrink: 0; max-width: 45%; }
 .row dd { margin: 0; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; min-width: 0; }
 
-.log-output { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; padding: 12px; border-radius: var(--radius); border: 1px solid var(--line-soft); background: rgba(0, 0, 0, 0.45); line-height: 1.6; max-height: 340px; overflow: auto; text-shadow: none; }
+.log-output { max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; margin: 10px 0 0; padding: 12px; border-radius: var(--radius); border: 1px solid var(--line-soft); background: var(--code-bg); line-height: 1.6; max-height: 340px; overflow: auto; text-shadow: none; }
 
 .app-form { margin-top: 2px; display: flex; flex-direction: column; gap: 14px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 14px; }
@@ -41,13 +41,13 @@
 .form-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 
 .scope-note { color: var(--fg-faint); font-size: 12px; line-height: 1.6; margin: 8px 0; overflow-wrap: anywhere; }
-.scope-banner { color: var(--fg-dim); font-size: 12px; line-height: 1.6; padding: 10px 14px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255, 255, 255, 0.05); }
+.scope-banner { color: var(--fg-dim); font-size: 12px; line-height: 1.6; padding: 10px 14px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius); background: rgb(var(--ov) / 0.05); }
 .operation-message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; margin: 6px 0; }
 .dialog-error { margin: 12px 0 0; padding: 8px 10px; font-size: 12px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--bad); border: 1px solid currentColor; border-radius: var(--radius); }
 
 /* Yüzen yüzey opak (Coolify kuralı): arkadaki içerik yazıya karışmasın. */
-.operation-dialog { width: min(520px, calc(100vw - 56px)); max-height: calc(100vh - 60px); padding: 18px; color: var(--fg); background: var(--menu); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4); overflow: auto; text-shadow: none; }
-.operation-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+.operation-dialog { width: min(520px, calc(100vw - 56px)); max-height: calc(100vh - 60px); padding: 18px; color: var(--fg); background: var(--menu); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-modal); overflow: auto; text-shadow: none; }
+.operation-dialog::backdrop { background: var(--backdrop); }
 .operation-dialog .eyebrow { color: var(--fg-faint); }
 .operation-dialog .title { font-size: 16px; line-height: 22px; }
 

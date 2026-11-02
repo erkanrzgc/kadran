@@ -590,11 +590,12 @@ jobs:
         run: |
           set -euo pipefail
           d=dist/Kadran-win32-x64
-          for f in Kadran.exe resources/kadran.exe resources/THIRD_PARTY_NOTICES.txt resources/app.asar; do
+          for f in Kadran.exe resources/kadran.exe resources/THIRD_PARTY_NOTICES.txt resources/app.asar resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node; do
             test -f "$d/$f" || { echo "::error::pakette yok: $f"; exit 1; }
           done
-          if npx asar list "$d/resources/app.asar" | grep -q node_modules; then
-            echo "::error::app.asar node_modules taşıyor"; exit 1
+          # Windows camının köprüsü (koffi) dışında node_modules girmez.
+          if npx asar list "$d/resources/app.asar" | grep node_modules | grep -v koffi | grep -qvE 'node_modules([/\\]@koromix)?$'; then
+            echo "::error::app.asar koffi dışında node_modules taşıyor"; exit 1
           fi
 
   # ══════════════════════════════════════════════════════════════════

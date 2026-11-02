@@ -149,6 +149,7 @@ Görünüş "Görsel dil" bölümünde ve referans taslakta.
 
 - Solda kenar çubuğu: Pano, Sunucular, Uygulamalar, Alarmlar; Güvenlik (Anahtarlar, Denetim);
   Yönet (Bildirimler, Ayarlar).
+- (K-161: Pano kaldırıldı, açılış ekranı Sunucular; bu madde tarihsel.)
 - Pano: "Son işlemler" tablosu ve sunucu kartları. Dağıtım ve geri almalar sunucuların kendi
   geçmişinden; yükseltmeler sunucuda kayıt bırakmadığı için istemcinin yerel kaydından
   **(karar)**.

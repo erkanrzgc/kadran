@@ -36,7 +36,6 @@ export const CHANNELS = {
   saveAppearance: "kadran:appearance-save",
   windowControl: "kadran:window",
   copyText: "kadran:copy",
-  userName: "kadran:user-name",
 } as const;
 
 export type ChannelName = (typeof CHANNELS)[keyof typeof CHANNELS];

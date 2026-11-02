@@ -9,8 +9,9 @@
  * Electron paket adı "kadran-desktop" DEĞİŞMEZ: kullanıcı verisi dizini
  * ondan türüyor (K-136); paket yalnız çalıştırılabilirin adını Kadran yapar.
  * Uygulamanın kendisi out/ ve package.json'dan ibaret: arayüzün çalışma
- * zamanı bağımlılıkları Vite ile gömülü, ana süreç yalnız Electron ve Node
- * kullanıyor; node_modules pakete girmez.
+ * zamanı bağımlılıkları Vite ile gömülü, ana süreç Electron ve Node kullanıyor;
+ * node_modules pakete girmez. Tek istisna Windows'ta koffi (main/window-accent.ts):
+ * JS dosyaları ve bu mimarinin yerel kütüphanesi; kaynak kodu ve diğer platformlar girmez.
  */
 
 import { execFileSync } from "node:child_process";
@@ -57,6 +58,15 @@ console.log(`sidecar ${version} (${commit})`);
 
 execFileSync(process.execPath, [join(here, "notices.mjs")], { stdio: "inherit" });
 
+/** Windows camının köprüsü; yerel kaynak ve belgeler (1 MB) hariç. */
+function isAccentBridge(path) {
+  if (process.platform !== "win32") return false;
+  if (["/node_modules", "/node_modules/@koromix"].includes(path)) return true;
+  if (path === "/node_modules/@koromix/koffi-win32-x64" || path.startsWith("/node_modules/@koromix/koffi-win32-x64/")) return true;
+  if (path !== "/node_modules/koffi" && !path.startsWith("/node_modules/koffi/")) return false;
+  return !/^\/node_modules\/koffi\/(doc|lib|vendor)(\/|$)|\.(cc|hh|inc|txt|S|asm)$|\/src\/koffi\/src\/abi(\/|$)/.test(path) || /LICENSE\.txt$/.test(path);
+}
+
 const paths = await packager({
   dir: desktop,
   out: join(desktop, "dist"),
@@ -66,9 +76,9 @@ const paths = await packager({
   executableName: "Kadran",
   icon: process.platform === "win32" ? join(desktop, "assets", "kadran.ico") : undefined,
   overwrite: true,
-  asar: true,
+  asar: { unpack: "**/*.node" },
   prune: false,
   extraResource: [sidecar, join(desktop, "build", "THIRD_PARTY_NOTICES.txt")],
-  ignore: (path) => path !== "" && path !== "/package.json" && path !== "/out" && !path.startsWith("/out/"),
+  ignore: (path) => path !== "" && path !== "/package.json" && path !== "/out" && !path.startsWith("/out/") && !isAccentBridge(path),
 });
 console.log(`paket: ${paths.join(", ")}`);

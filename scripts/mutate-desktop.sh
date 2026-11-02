@@ -27,6 +27,7 @@ fi
 
 FILES=(
     src/main/window-options.ts
+    src/main/window-accent.ts
     src/main/permissions.ts
     src/main/ipc-validate.ts
     src/renderer/index.html
@@ -150,6 +151,22 @@ mutate_in src/shared/appearance.ts "eski sürümün yazı tipi taşınıyor" \
     "s=s.replace('if (o.version !== APPEARANCE_VERSION) return { ...d, language };','',1)"
 mutate_in src/shared/appearance.ts "yazı tipi kalınlığı sınırsız" \
     "s=s.replace('weight: clampInt(o.weight, LIMITS.weight, fallback.weight)','weight: typeof o.weight === \"number\" ? o.weight : fallback.weight',1)"
+mutate_in src/shared/appearance.ts "bilinmeyen tema dosyadan geçiyor" \
+    "s=s.replace('theme: pick(o.theme, THEMES, d.theme)','theme: o.theme as Theme',1)"
+mutate_in src/shared/appearance.ts "cam, malzemesi olmayan sistemde kalıyor" \
+    "s=s.replace('return theme === \"glass\" && available === \"none\" ? \"dark\" : theme;','return theme;',1)"
+mutate_in src/shared/appearance.ts "koyu tema masaüstünü gösteriyor" \
+    "s=s.replace('return { material: \"none\", background: \"#0a0a0a\", scheme: \"dark\" };','return { material: available, background: \"#00000000\", scheme: \"dark\" };',1)"
+mutate_in src/shared/appearance.ts "açık tema yerel koyuda kalıyor" \
+    "s=s.replace('scheme: \"light\"','scheme: \"dark\"',1)"
+
+echo "== Windows camı =="
+mutate_in src/main/window-accent.ts "cam kapatılınca efekt kalıyor" \
+    "s=s.replace('State: on ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_DISABLED','State: ACCENT_ENABLE_ACRYLICBLURBEHIND',1)"
+mutate_in src/main/window-accent.ts "ton bayrağı yok (renk yok sayılır)" \
+    "s=s.replace('Flags: ACCENT_FLAG_GRADIENT_COLOR','Flags: 0',1)"
+mutate_in src/main/window-options.ts "Windows camı Electron malzemesiyle açılıyor (simsiyah)" \
+    "s=s.replace('case \"accent\":\n      return { ...base, ...chrome };','case \"accent\":\n      return { ...base, ...chrome, backgroundMaterial: \"acrylic\" };',1)"
 
 echo "== Filo doğruluğu =="
 mutate_in src/renderer/lib/fleet.ts "bozuk kurulum yeşil görünüyor" \

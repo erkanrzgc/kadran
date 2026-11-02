@@ -1,8 +1,8 @@
 /**
- * Malzeme → BrowserWindow seçenekleri. SAF: Electron'u yalnız tip olarak
+ * Görünüm → BrowserWindow seçenekleri. SAF: Electron'u yalnız tip olarak
  * içe aktarır, böylece node --test ile ölçülür.
  *
- * Güvenlik ayarları (webPreferences) HER malzemede aynıdır. Üçü birlikte
+ * Güvenlik ayarları (webPreferences) HER görünümde aynıdır. Üçü birlikte
  * renderer'ı Node'dan tamamen ayırır; Electron'un varsayılanları olsalar
  * da AÇIKÇA yazılıyorlar: varsayılana güvenmek bir sürüm yükseltmesinde
  * sessizce değişebilir.
@@ -10,12 +10,9 @@
 
 import type { BrowserWindowConstructorOptions } from "electron";
 
-import type { Material } from "../shared/appearance.ts";
+import type { WindowLook } from "../shared/appearance.ts";
 
-export const OPAQUE_BACKGROUND = "#16161a";
-const CLEAR = "#00000000";
-
-export function windowOptions(material: Material, platform: string, preloadPath: string): BrowserWindowConstructorOptions {
+export function windowOptions(look: WindowLook, platform: string, preloadPath: string): BrowserWindowConstructorOptions {
   const base: BrowserWindowConstructorOptions = {
     width: 1280,
     height: 820,
@@ -23,6 +20,7 @@ export function windowOptions(material: Material, platform: string, preloadPath:
     minHeight: 520,
     title: "KΛDRΛN",
     show: false,
+    backgroundColor: look.background,
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -35,12 +33,14 @@ export function windowOptions(material: Material, platform: string, preloadPath:
   const chrome: BrowserWindowConstructorOptions =
     platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { frame: false };
 
-  switch (material) {
+  switch (look.material) {
+    case "accent":
+      return { ...base, ...chrome };
     case "acrylic":
-      return { ...base, ...chrome, backgroundColor: CLEAR, backgroundMaterial: "acrylic" };
+      return { ...base, ...chrome, backgroundMaterial: "acrylic" };
     case "vibrancy":
-      return { ...base, ...chrome, backgroundColor: CLEAR, vibrancy: "under-window", visualEffectState: "active" };
+      return { ...base, ...chrome, vibrancy: "under-window", visualEffectState: "active" };
     case "none":
-      return { ...base, ...chrome, backgroundColor: OPAQUE_BACKGROUND };
+      return { ...base, ...chrome };
   }
 }

@@ -27,15 +27,59 @@ test("Coolify ölçüleri: kart 12, denetim 8, küçük 6 px", async () => {
   assert.match(tokens, /--radius-sm:\s*6px/);
   const layout = await read("layout.css");
   assert.match(layout, /\.rail \{ width: 224px/);
-  assert.match(layout, /\.topbar \{ height: 48px/);
 });
 
-test("kenar çubuğunda dolgu ve mor yok; seçili satır cam hap", async () => {
+test("üst çubuk düz: zemin, gölge, yüzme yok; düğmeler sağ köşede", async () => {
+  const layout = await read("layout.css");
+  const bar = layout.slice(layout.indexOf(".topbar {"), layout.indexOf("}", layout.indexOf(".topbar {")));
+  assert.match(bar, /height: 48px/);
+  assert.doesNotMatch(bar, /position: absolute|background|box-shadow|border-radius|filter/);
+  assert.match(layout, /\.rail-brand \{ height: 48px;/);
+  assert.match(layout, /\.win-btns \{[^}]*margin-left: auto/);
+  assert.doesNotMatch(layout, /\.lens|--bar-/);
+  assert.doesNotMatch(await read("tokens.css"), /--bar-/);
+});
+
+test("kenar çubuğunda dolgu ve mor yok; seçili satır köşeli cam", async () => {
   const layout = await read("layout.css");
   const rail = layout.slice(layout.indexOf(".rail {"), layout.indexOf("}", layout.indexOf(".rail {")));
   assert.doesNotMatch(rail, /background/);
-  assert.match(layout, /\.nav-item\.is-active \{[^}]*linear-gradient\(180deg, rgba\(255, 255, 255/);
+  assert.match(layout, /\.nav-item \{[^}]*border-radius: var\(--radius\);/);
+  assert.match(layout, /\.nav-item::before \{[^}]*background: var\(--pill\)[^}]*opacity: 0/);
+  assert.match(layout, /\.nav-item\.is-active::before \{ opacity: 1;/);
+  // Hover seçili satırı ezerse fare üstündeyken cam kaybolur, çekilince birden gelir.
+  assert.match(layout, /\.nav-item:not\(:disabled\):not\(\.is-active\):hover \{/);
+  assert.match(await read("tokens.css"), /--pill: linear-gradient\(180deg, rgba\(255, 255, 255/);
   assert.doesNotMatch(layout, /7317ff|5a12c7|6b16ed|120e1a/);
+});
+
+test("üç tema da aynı renk adlarını tanımlıyor; bileşende sabit beyaz ya da siyah yok", async () => {
+  const tokens = await read("tokens.css");
+  const block = (selector: string): string => {
+    const start = tokens.indexOf(`${selector} {`);
+    assert.ok(start >= 0, selector);
+    return tokens.slice(start, tokens.indexOf("}", start));
+  };
+  const named = (css: string): string[] => [...css.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]!);
+  const glass = named(block(":root"));
+  for (const selector of [':root[data-theme="dark"]', ':root[data-theme="light"]']) {
+    const own = named(block(selector));
+    for (const name of ["--shell", "--ov", "--fg", "--fg-dim", "--fg-faint", "--line", "--edge", "--flat", "--menu", "--card-bg", "--well-bg", "--pill", "--text-shadow", "--kart-bg", "--kart-shadow"]) {
+      assert.ok(glass.includes(name), `cam: ${name}`);
+      assert.ok(own.includes(name), `${selector}: ${name}`);
+    }
+  }
+  assert.match(block(':root[data-theme="light"]'), /color-scheme: light/);
+  for (const [name, css] of await styles()) {
+    if (name === "tokens.css") continue;
+    assert.doesNotMatch(css, /rgba\(255, 255, 255|rgba\(0, 0, 0|#1b1b1f|#16161a|#f2f2f2/, name);
+  }
+});
+
+test("odak gidince siyah yalnız yedek Acrylic'te; Windows camı açık kalır", async () => {
+  const tokens = await read("tokens.css");
+  assert.match(tokens, /:root\[data-theme="glass"\]\[data-material="acrylic"\]\[data-focused="false"\] \{ --shell: #0a0a0a; \}/);
+  assert.doesNotMatch(tokens, /data-material="accent"/);
 });
 
 test("mor yalnız ana düğmede", async () => {
@@ -53,13 +97,25 @@ test("pencere modu ve cam ayarı kalmadı", async () => {
     assert.doesNotMatch(css, /data-mode|data-tone|--panel|--glow/, name);
   }
   const tokens = await read("tokens.css");
-  assert.match(tokens, /--tint:\s*0\.34/);
+  // Windows camında hafif tül; yedek Acrylic daha açık çizdiği için orada koyu kalır.
+  assert.match(tokens, /--tint:\s*0\.2;/);
+  assert.match(tokens, /:root\[data-theme="glass"\]\[data-material="acrylic"\] \{ --tint: 0\.34; \}/);
 });
 
-test("yerel malzeme yoksa ya da saydamlık kapalıysa opak", async () => {
-  const base = await read("base.css");
-  assert.match(base, /\[data-material="none"\] \.shell \{ background: #16161a/);
-  assert.match(base, /@media \(prefers-reduced-transparency: reduce\)/);
+test("camda kartlar glassmorphism: ışık süzmesi ve parlak üst kenar; hover süzmeyi silmez", async () => {
+  const tokens = await read("tokens.css");
+  const glass = tokens.slice(tokens.indexOf(":root {"), tokens.indexOf("}", tokens.indexOf(":root {")));
+  assert.match(glass, /--card-bg: linear-gradient\(/);
+  assert.match(glass, /--card-shadow: inset 0 1px 0 rgba\(255, 255, 255/);
+  assert.match(glass, /--kart-bg: linear-gradient\(/);
+  // Kısaltılmış "background" hover'da gradyanı silerdi: kart düzleşip parlar.
+  assert.match(await read("screens.css"), /\.kart:hover \{[^}]*background-color:/);
+  assert.match(await read("management.css"), /\.resource-card:hover \{[^}]*background-color:/);
+});
+
+test("saydamlık kapalıysa cam opak", async () => {
+  assert.match(await read("base.css"), /\.shell \{[^}]*background: var\(--shell\)/);
+  assert.match(await read("tokens.css"), /@media \(prefers-reduced-transparency: reduce\) \{\s*:root\[data-theme="glass"\] \{ --shell: #0a0a0a; \}/);
 });
 
 test("yüzen yüzey opak: menü, kutu, bildirim", async () => {
@@ -91,6 +147,21 @@ test("logo gömülü dış hat değil metin", async () => {
   assert.match(brand, /KΛDRΛN/);
   assert.doesNotMatch(brand, /<path/);
   assert.match(await read("layout.css"), /\.marka \{[^}]*font-weight: 700; letter-spacing: 0\.22em/);
+});
+
+test("kenar çubuğunda kısayol ipucu ve kullanıcı adı yok; sürüm altta", async () => {
+  const rail = await readFile(join(rendererDir, "components", "Rail.tsx"), "utf8");
+  assert.doesNotMatch(rail, /kbd|Ctrl|⌘|userName/);
+  assert.match(rail, /className="rail-foot"[\s\S]*Kadran[\s\S]*data-testid="rail-version"/);
+  assert.doesNotMatch(rail.slice(rail.indexOf('className="rail-brand"'), rail.indexOf('className="search"')), /rail-version/);
+});
+
+test("pano yok: uygulama Sunucular ekranında açılır", async () => {
+  const rail = await readFile(join(rendererDir, "components", "Rail.tsx"), "utf8");
+  assert.doesNotMatch(rail, /dashboard/);
+  const app = await readFile(join(rendererDir, "App.tsx"), "utf8");
+  assert.match(app, /useState<FleetView>\("servers"\)/);
+  assert.doesNotMatch(app, /Dashboard|"dashboard"/);
 });
 
 test("metin karakteri simge yok", async () => {

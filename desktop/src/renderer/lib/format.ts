@@ -129,3 +129,11 @@ export function formatCount(n: number, locale: string): string {
 export function versionLabel(version: string): string {
   return /^\d+\.\d+/.test(version) ? `v${version}` : version;
 }
+
+/**
+ * railVersion: kenar çubuğu için kısa sürüm. git describe'ın etiketten sonraki
+ * commit sayısı, karması ve "-dirty" eki atılır; tamamı ipucunda ve Ayarlar'da.
+ */
+export function railVersion(version: string): string {
+  return versionLabel(version.replace(/(-\d+-g[0-9a-f]+)?(-dirty)?$/, ""));
+}

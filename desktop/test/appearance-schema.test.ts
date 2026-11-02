@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { APPEARANCE_VERSION, defaultAppearance, isWindows11, materialFor, sanitizeAppearance, type PlatformInfo } from "../src/shared/appearance.ts";
+import { APPEARANCE_VERSION, defaultAppearance, effectiveTheme, isWindows11, materialFor, sanitizeAppearance, windowLook, type PlatformInfo } from "../src/shared/appearance.ts";
 
 const WIN11: PlatformInfo = { platform: "win32", release: "10.0.26200" };
 const WIN10: PlatformInfo = { platform: "win32", release: "10.0.19045" };
@@ -30,7 +30,37 @@ test("yerel malzeme: desteklemeyen sistem opak düşer", () => {
 });
 
 test("varsayılan değerler", () => {
-  assert.deepEqual(defaultAppearance(), { version: 2, language: "en", uiFont: { family: "", weight: 400 }, codeFont: { family: "", weight: 400 } });
+  assert.deepEqual(defaultAppearance(), { version: 2, language: "en", theme: "glass", uiFont: { family: "", weight: 400 }, codeFont: { family: "", weight: 400 } });
+});
+
+test("tema: bilinmeyen değer varsayılana döner, tema alanı olmayan dosyada yazı tipi korunur", () => {
+  assert.equal(sanitizeAppearance({ ...V, theme: "light" }).theme, "light");
+  assert.equal(sanitizeAppearance({ ...V, theme: "dark" }).theme, "dark");
+  assert.equal(sanitizeAppearance({ ...V, theme: "mica" }).theme, "glass");
+  assert.equal(sanitizeAppearance({ ...V, theme: "__proto__" }).theme, "glass");
+  const saved = sanitizeAppearance({ ...V, uiFont: { family: "Arial", weight: 500 } });
+  assert.equal(saved.theme, "glass");
+  assert.deepEqual(saved.uiFont, { family: "Arial", weight: 500 });
+});
+
+test("cam desteklenmeyen sistemde koyuya düşer", () => {
+  assert.equal(effectiveTheme("glass", "none"), "dark");
+  assert.equal(effectiveTheme("glass", "accent"), "glass");
+  assert.equal(effectiveTheme("glass", "acrylic"), "glass");
+  assert.equal(effectiveTheme("glass", "vibrancy"), "glass");
+  assert.equal(effectiveTheme("light", "none"), "light");
+  assert.equal(effectiveTheme("dark", "acrylic"), "dark");
+});
+
+test("tema → pencere: yalnız cam saydam; koyu ve açık opak", () => {
+  assert.deepEqual(windowLook("glass", "accent"), { material: "accent", background: "#00000000", scheme: "dark" });
+  assert.deepEqual(windowLook("dark", "accent"), { material: "none", background: "#0a0a0a", scheme: "dark" });
+  assert.deepEqual(windowLook("glass", "acrylic"), { material: "acrylic", background: "#00000000", scheme: "dark" });
+  assert.deepEqual(windowLook("glass", "vibrancy"), { material: "vibrancy", background: "#00000000", scheme: "dark" });
+  assert.deepEqual(windowLook("glass", "none"), { material: "none", background: "#0a0a0a", scheme: "dark" });
+  assert.deepEqual(windowLook("dark", "acrylic"), { material: "none", background: "#0a0a0a", scheme: "dark" });
+  assert.deepEqual(windowLook("light", "acrylic"), { material: "none", background: "#fafafa", scheme: "light" });
+  assert.deepEqual(windowLook("light", "none"), { material: "none", background: "#fafafa", scheme: "light" });
 });
 
 test("nesne değilse ya da diziyse varsayılan", () => {

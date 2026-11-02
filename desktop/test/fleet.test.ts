@@ -1,5 +1,5 @@
 /**
- * Filo mantığı: kart durumu, sağlayıcı sırası ve "son işlemler".
+ * Filo mantığı: kart durumu, sağlayıcı sırası ve toplu denetim.
  * Bunlar saf; ekran doğruluğu duman yolculuğunda ayrıca ölçülür.
  */
 
@@ -14,7 +14,6 @@ import {
   coverage,
   diskUsedPercent,
   mergeOperations,
-  OPERATION_ACTIONS,
   orderByProvider,
   summarize,
   updateAvailable,
@@ -125,23 +124,20 @@ test("sürüm farkı: yalnız sunucu istemciden eskiyse, 'dev' derlemede susar",
 
 const record = (seq: number, action: string, ts: string | null): AuditRecord => ({ seq: String(seq), ts, actor: null, action, target: "app", params_json: "{}", outcome: "AUDIT_OUTCOME_SUCCESS", detail: "", source: "" });
 
-test("son işlemler: yalnız dağıtım ve geri alma, bütün sunuculardan en yeni üstte", () => {
-  assert.deepEqual([...OPERATION_ACTIONS], ["app.deploy", "app.rollback"]);
+test("toplu denetim: bütün sunuculardan en yeni üstte", () => {
   const merged = mergeOperations(
     [
       { target: "a", records: [record(1, "app.deploy", "2026-10-30T10:00:00Z"), record(2, "app.update", "2026-10-30T11:00:00Z")] },
       { target: "b", records: [record(9, "app.rollback", "2026-10-30T12:00:00Z")] },
     ],
-    OPERATION_ACTIONS,
     5,
   );
-  assert.deepEqual(merged.map((m) => [m.server, m.record.seq]), [["b", "9"], ["a", "1"]]);
+  assert.deepEqual(merged.map((m) => [m.server, m.record.seq]), [["b", "9"], ["a", "2"], ["a", "1"]]);
 });
 
-test("son işlemler: boş süzgeç her eylemi alır, sınır uygulanır, zamansız kayıt sona düşer", () => {
+test("toplu denetim: sınır uygulanır, zamansız kayıt sona düşer", () => {
   const merged = mergeOperations(
     [{ target: "a", records: [record(1, "x", null), record(2, "y", "2026-10-30T10:00:00Z"), record(3, "z", "2026-10-30T11:00:00Z")] }],
-    null,
     2,
   );
   assert.deepEqual(merged.map((m) => m.record.seq), ["3", "2"]);

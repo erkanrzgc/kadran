@@ -61,9 +61,6 @@ export interface Coverage {
   unread: string[];
 }
 
-/** Sunucu değiştiren ve geçmişi olan işlemler; yükseltmeler sunucuda kayıt bırakmıyor. */
-export const OPERATION_ACTIONS: readonly string[] = ["app.deploy", "app.rollback"];
-
 /** Giriş isteyen sunucu mesajları "kadran login" der; "totp" sözcüğü sunucu adında da geçebilir. */
 export function classifyFailure(message: string): "totp" | "unreachable" {
   return message.includes("kadran login") ? "totp" : "unreachable";
@@ -159,12 +156,10 @@ const timeOf = (record: AuditRecord): number => {
   return Number.isNaN(value) ? Number.NEGATIVE_INFINITY : value;
 };
 
-/** Bütün sunucuların kayıtları, en yeni üstte. `actions` null ise süzmez. */
-export function mergeOperations(servers: readonly ServerRecords[], actions: readonly string[] | null, limit: number): FleetOperation[] {
+/** Bütün sunucuların kayıtları, en yeni üstte. */
+export function mergeOperations(servers: readonly ServerRecords[], limit: number): FleetOperation[] {
   return servers
-    .flatMap(({ target, records }) =>
-      records.filter((r) => actions === null || actions.includes(r.action)).map((record) => ({ server: target, record })),
-    )
+    .flatMap(({ target, records }) => records.map((record) => ({ server: target, record })))
     .sort((a, b) => timeOf(b.record) - timeOf(a.record))
     .slice(0, limit);
 }

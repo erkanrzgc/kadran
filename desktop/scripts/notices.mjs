@@ -8,6 +8,7 @@
  * Lisans dosyası bulunamayan bir paket varsa betik DURUR.
  */
 
+import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -29,8 +30,12 @@ const sections = [
 ];
 for (const [path, p] of Object.entries(lock.packages)) {
   if (path === "" || p.dev || p.devOptional) continue;
+  // koffi'nin başka platformların yerel paketleri bu makineye kurulmaz, pakete de girmez.
+  if (p.optional && !existsSync(join(desktop, path))) continue;
   const name = path.replace(/^.*node_modules\//, "");
-  sections.push(`${name}@${p.version} — ${p.license}\n\n${(await licenseText(join(desktop, path))).trim()}`);
+  // koffi'nin yerel paketi lisans dosyası taşımıyor; aynı proje, aynı lisans.
+  const licenseDir = name.startsWith("@koromix/koffi-") ? join(desktop, "node_modules", "koffi") : join(desktop, path);
+  sections.push(`${name}@${p.version} — ${p.license}\n\n${(await licenseText(licenseDir)).trim()}`);
 }
 sections.push(`Geist and Geist Mono — OFL-1.1\n\n${(await readFile(join(desktop, "src", "renderer", "fonts", "OFL.txt"), "utf8")).trim()}`);
 sections.push(`Coolify (https://github.com/coollabsio/coolify) — Apache-2.0\nCopyright coolLabs\n\nThe desktop layout, measurements and component anatomy are adapted from Coolify's design\nlanguage (DESIGN.md). Colors, icons and the logo are Kadran's own. The license text is the\nApache License 2.0 reproduced in the first section of this file.`);

@@ -1,6 +1,5 @@
 /** Çizgi simgeler: 16 px, 24'lük ızgara, 1,5 çizgi (Coolify ölçüsü). */
 const PATHS = {
-  dashboard: "M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z",
   server: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
   layers: "M12 3l9 5-9 5-9-5zM3 12l9 5 9-5M3 16l9 5 9-5",
   bell: "M6 17v-6a6 6 0 0 1 12 0v6l1.5 1.5h-15zM10 21a2 2 0 0 0 4 0",

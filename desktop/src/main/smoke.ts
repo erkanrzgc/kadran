@@ -14,6 +14,8 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { loadWindowAccent } from "./window-accent.ts";
+
 export const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
 
 export const EXPECTED_BRIDGE = [
@@ -37,7 +39,6 @@ export const EXPECTED_BRIDGE = [
   "saveAppearance",
   "saveProfiles",
   "status",
-  "userName",
   "version",
   "windowControl",
 ];
@@ -165,15 +166,47 @@ async function screenshot(win: BrowserWindow, name: string): Promise<void> {
 }
 
 async function checkWordmark(win: BrowserWindow): Promise<void> {
-  const mark = await evaluate<{ readable: boolean; weight: string; spacing: string; text: string }>(win, `(() => {
+  const mark = await evaluate<{ readable: boolean; weight: string; spacing: string; text: string; offCenter: number }>(win, `(() => {
     const el = ${q('[data-testid="brand-logo"]')};
-    if (!(el instanceof HTMLElement)) return { readable: false, weight: '', spacing: '', text: '' };
+    const rail = ${q(".rail")};
+    if (!(el instanceof HTMLElement) || !(rail instanceof HTMLElement)) return { readable: false, weight: '', spacing: '', text: '', offCenter: 0 };
     const rect = el.getBoundingClientRect();
     const style = getComputedStyle(el);
-    return { readable: rect.width >= 60 && rect.height >= 12, weight: style.fontWeight, spacing: style.letterSpacing, text: el.textContent };
+    const offCenter = Math.abs(rect.left + rect.width / 2 - (rail.getBoundingClientRect().left + rail.clientWidth / 2));
+    return { readable: rect.width >= 60 && rect.height >= 12, weight: style.fontWeight, spacing: style.letterSpacing, text: el.textContent, offCenter };
   })()`);
   expect(mark.readable && mark.text === "KΛDRΛN", "wordmark is missing or too small");
   expect(mark.weight === "700" && parseFloat(mark.spacing) > 2.5, `wordmark lost its style: ${mark.weight} ${mark.spacing}`);
+  expect(mark.offCenter <= 1, `wordmark is not centered in the sidebar: ${mark.offCenter}px off`);
+}
+
+/** Duman testinde yerel malzeme kapalı: cam sunulmaz, açık ve koyu ana sürece de ulaşır. */
+async function themeJourney(win: BrowserWindow): Promise<void> {
+  const root = "document.documentElement";
+  const shell = `getComputedStyle(${q(".shell")}).backgroundColor`;
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="theme-glass"]')})`)), "glass is offered without a native material");
+  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "glass falls back to dark");
+
+  await click(win, '[data-testid="theme-light"]');
+  await waitFor(win, `${root}.dataset.theme === "light" && ${shell} === "rgb(250, 250, 250)"`, "light canvas");
+  await waitFor(win, `matchMedia("(prefers-color-scheme: light)").matches`, "native light theme");
+  const ink = await evaluate<number>(win, `(() => {
+    const ctx = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = getComputedStyle(document.body).color;
+    ctx.fillRect(0, 0, 1, 1);
+    return ctx.getImageData(0, 0, 1, 1).data[0];
+  })()`);
+  expect(ink < 60, `light theme text is not dark: ${ink}`);
+  await screenshot(win, "settings-light-1280x820");
+
+  await click(win, '[data-testid="theme-dark"]');
+  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "dark canvas");
+  await waitFor(win, `matchMedia("(prefers-color-scheme: dark)").matches`, "native dark theme");
+
+  await evaluate(win, `window.dispatchEvent(new Event("blur"))`);
+  await waitFor(win, `${root}.dataset.focused === "false"`, "window blur is tracked");
+  await evaluate(win, `window.dispatchEvent(new Event("focus"))`);
+  await waitFor(win, `${root}.dataset.focused === "true"`, "window focus is tracked");
 }
 
 async function dismissToasts(win: BrowserWindow): Promise<void> {
@@ -181,20 +214,43 @@ async function dismissToasts(win: BrowserWindow): Promise<void> {
 }
 
 /**
- * openServer: kullanıcı gibi panodaki karta basar. Pano ekranda değilse önce
- * panoya döner; sekmeden değil karttan açmak kart testid'lerini de sınar.
+ * openServer: kullanıcı gibi Sunucular ekranındaki karta basar. Ekranda değilse
+ * önce oraya döner; sekmeden değil karttan açmak kart testid'lerini de sınar.
  */
 async function openServer(win: BrowserWindow, target: string): Promise<void> {
   const card = `[data-testid="server-${target}"]`;
-  if (!(await evaluate<boolean>(win, `Boolean(${q(card)})`))) await click(win, '[data-testid="tab-fleet"]');
+  if (!(await evaluate<boolean>(win, `Boolean(${q(card)})`))) await click(win, '[data-testid="rail-servers"]');
   await waitFor(win, q(card), `card ${target}`);
   await click(win, card);
 }
 
-/** Pano: gerçek çağrılardan kart ve son işlemler; okunamayan hiçbir şey "yok" sayılmaz. */
-async function dashboardJourney(win: BrowserWindow): Promise<void> {
+/** Windows'ta köprü gerçekten yüklenir ve çağrı kabul edilir; yüklenemeseydi cam sessizce griye düşerdi. */
+async function checkWindowAccent(win: BrowserWindow): Promise<void> {
+  if (process.platform !== "win32") return;
+  const accent = await loadWindowAccent((message) => expect(false, message));
+  expect(accent !== null, "Windows glass bridge did not load");
+  expect(accent!.set(win, false), "Windows refused the glass call");
+}
+
+/**
+ * Düz üst çubuk: içerik altından başlar; filo ekranında yol ve tek sekme yok
+ * (sayfa adı başlıkta), pencere düğmeleri sağ köşede.
+ */
+async function checkTopBar(win: BrowserWindow): Promise<void> {
+  const box = await evaluate<{ bar: number; stage: number; right: number; buttons: number }>(win, `({ bar: ${q(".topbar")}.getBoundingClientRect().bottom, stage: ${q(".stage")}.getBoundingClientRect().top, right: ${q(".topbar")}.getBoundingClientRect().right, buttons: ${q(".win-btns")}.getBoundingClientRect().right })`);
+  expect(box.stage >= box.bar, `content starts under the top bar: ${box.stage} < ${box.bar}`);
+  expect(Math.abs(box.right - box.buttons) <= 1, `window buttons are not in the corner: ${box.buttons} vs ${box.right}`);
+  expect(!(await evaluate<boolean>(win, `Boolean(${q(".topbar .crumbs")})`)), "fleet top bar repeats the page name");
+  const tabs = await evaluate<number>(win, `document.querySelectorAll(".topbar .tab").length`);
+  expect(tabs !== 1, "top bar shows a lone tab");
+}
+
+/** Sunucular: gerçek çağrılardan kartlar; okunamayan hiçbir şey "yok" sayılmaz. */
+async function fleetJourney(win: BrowserWindow): Promise<void> {
   const card = (target: string) => q(`[data-testid="card-${target}"]`);
-  await waitFor(win, q('[data-testid="screen-dashboard"]'), "dashboard");
+  await waitFor(win, q('[data-testid="screen-servers"]'), "servers screen is the home screen");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="rail-dashboard"]')})`)), "the removed dashboard is back in the sidebar");
+  await checkTopBar(win);
   await waitFor(win, `${card("fake@test")}?.dataset.state === "ready"`, "ready card");
   await waitFor(win, `${card("fake@down")}?.dataset.state === "unreachable"`, "unreachable card");
   await waitFor(win, `${card("fake@totp")}?.dataset.state === "totp"`, "TOTP card");
@@ -206,16 +262,10 @@ async function dashboardJourney(win: BrowserWindow): Promise<void> {
   const providers = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="server-groups"] > div')].map((s) => s.dataset.provider)`);
   expect(providers[0] === "hetzner" && providers[1] === "hetzner" && providers.at(-1) === "", `provider order: ${providers.join(",")}`);
   expect((await text(win, '[data-testid="card-fake@test"]')).includes("2 applications"), "card does not show the real application count");
-  await waitFor(win, `document.querySelectorAll('[data-testid="recent-ops-row"]').length === 5`, "recent operations");
-  const actions = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="recent-ops-row"] td:nth-child(3)')].map((c) => c.textContent)`);
-  expect(actions.every((a) => a === "deployment" || a === "rollback"), `recent operations contain ${actions.join(",")}`);
-  const wrapped = await evaluate<number>(win, `[...document.querySelectorAll('[data-testid="recent-ops-row"] .pill')].filter((p) => p.getBoundingClientRect().height > 26).length`);
-  expect(wrapped === 0, `status pill wrapped in ${wrapped} rows`);
-  await waitFor(win, `${q('[data-testid="ops-failed"]')}?.textContent.includes("badseq")`, "unreadable server named");
-  const active = await evaluate<string>(win, `getComputedStyle(${q(".nav-item.is-active")}).backgroundImage`);
+  const active = await evaluate<string>(win, `getComputedStyle(${q(".nav-item.is-active")}, "::before").backgroundImage`);
   expect(active.includes("linear-gradient"), `selected row is not the glass pill: ${active}`);
-  await noHorizontalOverflow(win, "dashboard");
-  await screenshot(win, "dashboard-1280x820");
+  await noHorizontalOverflow(win, "servers");
+  await screenshot(win, "servers-1280x820");
 
   await click(win, '[data-testid="rail-alarms"]');
   await waitFor(win, q('[data-testid="fleet-alarm-row"]'), "merged alarms");
@@ -226,6 +276,9 @@ async function dashboardJourney(win: BrowserWindow): Promise<void> {
   await waitFor(win, q('[data-testid="fleet-app-row"]'), "merged applications");
   await click(win, '[data-testid="rail-audit"]');
   await waitFor(win, q('[data-testid="fleet-audit-row"]'), "merged audit");
+  await waitFor(win, `${q('[data-testid="ops-failed"]')}?.textContent.includes("badseq")`, "unreadable server named");
+  const wrapped = await evaluate<number>(win, `[...document.querySelectorAll('[data-testid="fleet-audit-row"] .pill')].filter((p) => p.getBoundingClientRect().height > 26).length`);
+  expect(wrapped === 0, `status pill wrapped in ${wrapped} rows`);
   await click(win, '[data-testid="rail-servers"]');
   await waitFor(win, q('[data-testid="screen-servers"]'), "servers screen");
 
@@ -261,9 +314,10 @@ async function dashboardJourney(win: BrowserWindow): Promise<void> {
   // Açık sunucuya dönüş eski değeri "Sağlıklı" bırakmaz: sunucu düştüyse sekme kapanır.
   await openServer(win, "fake@flaky2");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "flaky connected");
-  await click(win, '[data-testid="tab-fleet"]');
+  expect(!(await evaluate<boolean>(win, `Boolean(${q(".topbar .tabs")})`)), "one open server shows a tab strip");
+  await click(win, '[data-testid="rail-servers"]');
   await openServer(win, "fake@flaky2");
-  await waitFor(win, `!${q('[data-testid="tab-fake@flaky2"]')} && ${q('[data-testid="screen-dashboard"]')}`, "reopened dead server left the old values");
+  await waitFor(win, `!${q('[data-testid="tab-fake@flaky2"]')} && ${q('[data-testid="screen-servers"]')}`, "reopened dead server left the old values");
   await waitFor(win, q('[data-testid="toast"]'), "reason for the closed tab");
   await dismissToasts(win);
 }
@@ -376,9 +430,10 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await noHorizontalOverflow(win, "apps at 760x520");
   const tabVisible = await evaluate<boolean>(win, `(() => { const s = ${q(".tabs")}.getBoundingClientRect(); const a = ${q(".tab.is-on")}.getBoundingClientRect(); return a.left >= s.left - 1 && a.right <= s.right + 1; })()`);
   expect(tabVisible, "the open tab is scrolled out of view");
-  await click(win, '[data-testid="tab-fleet"]');
-  await waitFor(win, q('[data-testid="screen-dashboard"]'), "dashboard at 760x520");
-  await noHorizontalOverflow(win, "dashboard at 760x520");
+  await click(win, '[data-testid="rail-servers"]');
+  await waitFor(win, q('[data-testid="screen-servers"]'), "servers at 760x520");
+  await noHorizontalOverflow(win, "servers at 760x520");
+  await checkTopBar(win);
   await openServer(win, "fake@test");
   await waitFor(win, q('[data-testid="app-card-hello"]'), "back to the application list");
 
@@ -423,7 +478,8 @@ async function journey(win: BrowserWindow): Promise<void> {
   const fonts = await evaluate<number>(win, "window.queryLocalFonts ? queryLocalFonts().then((l) => l.length) : -1");
   expect(fonts > 0, `font list is empty or missing (${fonts}); the local-fonts permission may be denied`);
 
-  await dashboardJourney(win);
+  await checkWindowAccent(win);
+  await fleetJourney(win);
   await openServer(win, "fake@test");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Attention required"`, "health pill");
   await waitFor(win, `${q('[data-testid="chain-executor"] .badge')}?.textContent === "UNVERIFIABLE"`, "executor chain");
@@ -475,6 +531,7 @@ async function journey(win: BrowserWindow): Promise<void> {
 
   await click(win, '[data-testid="nav-settings"]');
   await waitFor(win, q('[data-testid="screen-settings"]'), "settings screen");
+  await themeJourney(win);
   await click(win, '[data-testid="lang-tr"]');
   await waitFor(win, `${q('[data-testid="nav-settings"]')}?.textContent === "Ayarlar"`, "Turkish UI");
 

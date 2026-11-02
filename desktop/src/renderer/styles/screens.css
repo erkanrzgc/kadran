@@ -10,15 +10,15 @@
 
 /* Kart: dış kutu, başlık satırı, iç kuyu (Coolify P4). */
 .panel {
-  flex: none; display: flex; flex-direction: column; min-width: 0; padding: 6px; border: 1px solid var(--edge); border-radius: var(--radius-card); background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 10px 30px rgba(0, 0, 0, 0.18);
+  flex: none; display: flex; flex-direction: column; min-width: 0; padding: 6px; border: 1px solid var(--edge); border-radius: var(--radius-card); background: var(--card-bg);
+  box-shadow: var(--card-shadow);
 }
 .panel-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; padding: 4px 8px 10px; min-width: 0; }
 .section-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 20px; color: var(--fg-dim); }
 .panel-sub { margin: 2px 0 0; font-size: 11px; line-height: 16px; color: var(--fg-faint); }
 .panel-link { font: inherit; font-size: 11px; font-weight: 500; color: var(--fg-faint); background: none; border: 0; padding: 0; cursor: pointer; text-shadow: inherit; }
 .panel-link:hover { color: var(--fg); }
-.well { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(0, 0, 0, 0.2); }
+.well { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--well-bg); box-shadow: var(--well-shadow); }
 .well.is-flush { padding: 0; overflow: hidden; }
 .panel-foot { display: flex; justify-content: center; padding: 10px; border-top: 1px solid var(--line-soft); }
 
@@ -47,7 +47,7 @@
 
 /* Zincirler */
 .chains { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
-.chain { padding: 12px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255, 255, 255, 0.06); }
+.chain { padding: 12px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: rgb(var(--ov) / 0.06); }
 .chain-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .chain-name { margin: 0; font-size: 13px; font-weight: 600; font-family: inherit; }
 .chain-count { margin: 6px 0 0; font-size: 12px; color: var(--fg-dim); }
@@ -57,7 +57,7 @@
 /* Tablolar: başlık 40 px, satır 48 px. */
 .table-wrap { overflow-x: auto; }
 .data-table, .audit-table { width: 100%; border-collapse: collapse; }
-.data-table th, .audit-table th { height: 40px; padding: 0 16px; text-align: left; font-weight: 500; color: var(--fg-faint); background: rgba(0, 0, 0, 0.14); border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+.data-table th, .audit-table th { height: 40px; padding: 0 16px; text-align: left; font-weight: 500; color: var(--fg-faint); background: var(--thead); border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
 .data-table td, .audit-table td { height: 48px; padding: 10px 16px; border-bottom: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
 .data-table tr:last-child td, .audit-table tr:last-child td { border-bottom: 0; }
 .audit-table td { overflow-wrap: anywhere; }
@@ -99,8 +99,9 @@
 .sag-ad { display: flex; align-items: center; gap: 6px; height: 16px; margin-bottom: 8px; font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-faint); min-width: 0; }
 .sag-ad > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rozet { width: 14px; height: 14px; flex: none; display: grid; place-items: center; font-size: 9px; font-weight: 700; letter-spacing: 0; color: #fff; background: rgba(148, 163, 184, 0.7); border-radius: var(--radius-xs); text-shadow: none; }
-.kart { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: rgba(255, 255, 255, 0.06); transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out); }
-.kart:hover { border-color: var(--edge); background: rgba(255, 255, 255, 0.09); }
+.kart { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 12px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--kart-bg); box-shadow: var(--kart-shadow); transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out); }
+/* Yalnız zemin rengi değişir: camdaki ışık süzmesi kalır, düz temada eski değer. */
+.kart:hover { border-color: var(--edge); background-color: rgb(var(--ov) / 0.09); }
 .kart-main { display: block; width: 100%; min-width: 0; padding: 0; font: inherit; color: inherit; text-align: left; background: none; border: 0; border-radius: var(--radius-xs); cursor: pointer; text-shadow: inherit; }
 .ikon { width: 30px; height: 30px; flex: none; display: grid; place-items: center; color: var(--fg-dim); background: var(--flat); border: 1px solid var(--line); border-radius: var(--radius); }
 .kart-text { display: block; min-width: 0; flex: 1; }
@@ -113,7 +114,7 @@
 .eylem { position: absolute; top: 8px; right: 8px; display: flex; gap: 2px; opacity: 0; transition: opacity 120ms var(--ease-out); }
 .kart:hover .eylem, .kart:focus-within .eylem { opacity: 1; }
 .icon-btn { width: 22px; height: 22px; display: grid; place-items: center; padding: 0; color: var(--fg-dim); background: transparent; border: 0; border-radius: var(--radius-sm); cursor: pointer; }
-.icon-btn:not(:disabled):hover { color: var(--fg); background: rgba(255, 255, 255, 0.12); }
+.icon-btn:not(:disabled):hover { color: var(--fg); background: rgb(var(--ov) / 0.12); }
 .icon-btn:disabled { opacity: 0.35; cursor: default; }
 .fleet-note { margin: 0; font-size: 12px; color: var(--warn); }
 

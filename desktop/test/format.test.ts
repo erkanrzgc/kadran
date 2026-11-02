@@ -16,6 +16,7 @@ import {
   formatUnix,
   relativeTime,
   memoryUsedGiB,
+  railVersion,
   shortFingerprint,
   versionLabel,
 } from "../src/renderer/lib/format.ts";
@@ -92,6 +93,17 @@ test("versionLabel: CI etiketi zaten v ile başlar, iki kez v yazılmaz", () => 
   // Etiketsiz yerel derleme: "dev" ya da kısa commit; başına v konmaz.
   assert.equal(versionLabel("dev"), "dev");
   assert.equal(versionLabel("0c91e9c"), "0c91e9c");
+});
+
+test("railVersion: kenar çubuğunda yalnız etiket; ön sürüm eki kalır", () => {
+  assert.equal(railVersion("v0.9.3-6-g65d8db7-dirty"), "v0.9.3");
+  assert.equal(railVersion("v0.9.3-6-g65d8db7"), "v0.9.3");
+  assert.equal(railVersion("v0.9.3-dirty"), "v0.9.3");
+  assert.equal(railVersion("v0.9.3"), "v0.9.3");
+  assert.equal(railVersion("1.0.0-rc.1"), "v1.0.0-rc.1");
+  assert.equal(railVersion("1.0.0-rc.1-2-gabc1234"), "v1.0.0-rc.1");
+  assert.equal(railVersion("0c91e9c-dirty"), "0c91e9c");
+  assert.equal(railVersion("dev"), "dev");
 });
 
 test("göreli zaman: bozuk ya da eksikse tire, gelecek 'şimdi' olur", () => {

@@ -5,13 +5,27 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
-Desktop: new look (K-161). The layout follows Coolify's design language, with your real desktop
-blurred behind the window. The app opens on your server cards under a plain Windows-style title bar,
-with tabs once two or more servers are open, and a new wordmark. All your saved servers are
-read at once using the existing calls, so the server does not change. There are three themes: dark,
-light and glass. Glass is the default and stays glass while the window is in the background on
-Windows 11; on systems without native blur it isn't offered and the window is dark. The old window
-modes and glass sliders are gone. Settings keep language and fonts.
+## v0.10.0 — 2026-11-02
+
+A new look for the desktop app (K-161). The protocol is unchanged (3). The CLI and the server
+programs are rebuilt with the new version number and nothing else, so a server that stays on v0.9.3
+keeps working and needs no upgrade. The desktop app is not among the release files: build it from
+source in `desktop/` (see the [desktop guide](docs/guides/desktop.md)).
+
+### Changed
+
+- Desktop: the layout follows Coolify's design language. The app opens on a card for every saved
+  server under a plain Windows-style title bar, with tabs once two or more servers are open, and a
+  new wordmark. The cards read your saved servers at once with the existing calls, so the server
+  does not change (K-161).
+- Desktop: three themes, dark, light and glass. Glass is the default and shows your desktop blurred
+  behind the window; on Windows 11 it stays glass while the window is in the background. On systems
+  without native blur it isn't offered and the window is dark (K-161).
+- Desktop: the window modes (Clear, Acrylic, Mica, Vibrancy, Solid), the tone switch and the glass
+  sliders are gone. Settings keep language and fonts (K-161).
+
+The new look was checked in a real window on Windows 11 only; macOS, Linux and Windows 10 were not
+run.
 
 ## v0.9.3 — 2026-10-30
 

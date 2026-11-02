@@ -132,7 +132,7 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
 | **Heartbeat** *(optional)* | A free-tier Cloudflare Worker ([`deploy/nabiz`](deploy/nabiz/README.md)) tells you when the alarm sender goes silent for 15 minutes, meaning it or the whole server is down |
 | **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `kadran audit verify` checks both |
 | **CI deploys** | Deploy-only SSH keys scoped to named apps; a GitHub Actions workflow that deploys on every push ([below](#continuous-deployment)) |
-| **Glass desktop management** | Apps, definitions, release history, deploy/rollback, bounded log snapshots, alarms, database backups and audit details. English/Turkish, adjustable native transparency and a responsive resource layout. [Desktop guide](docs/guides/desktop.md) |
+| **Glass desktop management** | Apps, definitions, release history, deploy/rollback, bounded log snapshots, alarms, database backups and audit details, starting from a card for every saved server. English/Turkish; dark, light and glass themes, glass showing your desktop blurred behind the window. Built from source in `desktop/`. [Desktop guide](docs/guides/desktop.md) |
 | **Typed proxy boundary** | Rootless `kadran-proxy` accepts only bounded domain/IP/port route sets. The daemon cannot reach raw Caddy admin or request file placeholders. [Upgrade guide](docs/guides/quality-upgrade.md) |
 | **Serialized application operations** | Same-app deploy, rollback, update, delete, prune and heal share a cancelable queue; independent apps proceed separately. Health probes must finish reading the response body |
 
@@ -603,7 +603,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      KADRAN_VERSION: v0.9.3   # the release your server runs
+      KADRAN_VERSION: v0.10.0  # the release your server runs
     steps:
       - name: Download and verify kadran
         working-directory: ${{ runner.temp }}
@@ -720,7 +720,7 @@ cmd/kadran-connect/  Forced-command stdio proxy
 cmd/kadran/          Workstation CLI + `kadran sidecar`
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
-desktop/             Electron + React + Vite, glass window modes
+desktop/             Electron + React + Vite: dark, light and glass themes
 deploy/              systemd units, offsite backup, alarm delivery, heartbeat
 docs/                Architecture decision records
 scripts/             Surface checks, mutation tests — and the tests for those checks

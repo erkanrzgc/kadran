@@ -208,6 +208,8 @@ func (s *sidecar) dispatch(ctx context.Context, req rpcRequest) (any, *rpcError)
 	switch req.Method {
 	case "apps.list", "apps.get", "apps.create", "apps.update", "apps.delete", "apps.deploy", "apps.rollback", "apps.logs", "alarms.list", "backups.list", "backups.create":
 		return s.dispatchManagement(ctx, req)
+	case "servers.list", "servers.add", "servers.update", "servers.remove", "servers.import":
+		return s.dispatchServers(req)
 	case "version":
 		return map[string]any{
 			"version":  version.Version,

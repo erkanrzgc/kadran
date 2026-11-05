@@ -12301,7 +12301,7 @@ görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi 
 
 ## K-161 — Masaüstü görünümü: Coolify'ın aynısı, üstünde gerçek cam (2026-10-31)
 
-**Durum:** PR #27 → `ad23157`, main'de (2 Kasım); CI 14/14 yeşil (Linux mutasyonu 1 sa 17 dk). Kullanıcı gerçek pencerede onayladı ("cam güzel olmuş"); v0.10.0'a giriyor. Masaüstü sürüm dosyalarında yok, kaynaktan derleniyor (kullanıcı kararı, 2 Kasım); sunucu değişmediği için yükseltme yok (K-160).
+**Durum:** PR #27 → `ad23157`, main'de (2 Kasım); CI 14/14 yeşil (Linux mutasyonu 1 sa 17 dk). Kullanıcı gerçek pencerede onayladı ("cam güzel olmuş"); v0.10.0'da yayımlandı (2026-11-05; etiketli `76d6f4d`'de tam CI 14/14, iki LF klonda `SHA256SUMS` aynı). Masaüstü sürüm dosyalarında yok, kaynaktan derleniyor (kullanıcı kararı, 2 Kasım); sunucu değişmediği için yükseltme yok (K-160).
 
 ### Neden
 

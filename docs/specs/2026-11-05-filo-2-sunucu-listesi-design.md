@@ -89,9 +89,9 @@ Spec macOS için `~/.config` diyordu; Go'nun verdiği yer bu ve oturumlar zaten 
 
 ### Kayıt kuralları
 
-- **Ad (benim kararım):** 1–64 karakter. Harf, rakam, boşluk, `-`, `_`, `.` serbest; denetim
-  karakteri yok; baş ve sondaki boşluk kırpılır; `-` ile başlayamaz (`-s -foo` bayrak gibi
-  okunmasın). Benzersiz, ve benzersizlik büyük/küçük harfe bakmaz: `Hetzner` ile `hetzner` aynı
+- **Ad (benim kararım):** 1–64 karakter (rune). Denetim karakteri yok; baş ve sondaki boşluk
+  kırpılır; `-` ile başlayamaz (`-s -foo` bayrak gibi okunmasın). Bunun dışında her karakter
+  serbest; göçteki `ad (2)` de geçerli. Benzersiz, ve benzersizlik büyük/küçük harfe bakmaz: `Hetzner` ile `hetzner` aynı
   anda olamaz. Arama ise tam eşleşme.
 - **Hedef:** `client.ParseTarget`'tan geçmeli; aynı hedef iki kez olamaz (masaüstü bugün de
   hedefi anahtar sayıyor). Yerel soket (`unix://…`) kabul edilir, sunucunun kendisinde işe yarar.

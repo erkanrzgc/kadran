@@ -22,6 +22,15 @@ export const IMPORT_MARKER = "servers-imported";
 
 export type ImportResult = "imported" | "already" | "failed";
 
+/** Göçün sonucu ve alınamayan hedefler: göç bir kez koşar, kaybolan kart söylenmeli. */
+export interface ImportStatus {
+  result: ImportResult;
+  skipped: string[];
+}
+
+/** Eski masaüstü en çok 100 profil gösteriyordu; yan sürecin içe aktarma sınırı da bu. */
+const MAX_IMPORT = 100;
+
 /** Ad sınırı Go'da 64; burada yalnız kaba bir üst sınır, kırpma ve kural Go'da. */
 const MAX_NAME = 200;
 const MAX_PROVIDER = 64;
@@ -71,7 +80,7 @@ export interface ServerListDeps {
   handle: ReadDeps["handle"];
   call: SidecarCall;
   /** Açılıştaki göçün sonucu; henüz koşmadıysa null. */
-  importStatus: () => ImportResult | null;
+  importStatus: () => ImportStatus | null;
 }
 
 export function registerServerList(deps: ServerListDeps): void {
@@ -106,9 +115,10 @@ export function registerServerList(deps: ServerListDeps): void {
  *   bu yüzden dosya burada ayrıca okunur).
  * - profiles.json silinmez ve değişmez: v0.10.0'a dönen listesini görür.
  */
-export async function importProfiles(userDataDir: string, call: SidecarCall, warn: (message: string) => void): Promise<ImportResult> {
+export async function importProfiles(userDataDir: string, call: SidecarCall, warn: (message: string) => void): Promise<ImportStatus> {
+  const failed: ImportStatus = { result: "failed", skipped: [] };
   const marker = join(userDataDir, IMPORT_MARKER);
-  if (await readFile(marker).then(() => true, () => false)) return "already";
+  if (await readFile(marker).then(() => true, () => false)) return { result: "already", skipped: [] };
 
   let raw: string | null;
   try {
@@ -116,38 +126,44 @@ export async function importProfiles(userDataDir: string, call: SidecarCall, war
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       warn(`could not read the old server list: ${(err as Error).message}`);
-      return "failed";
+      return failed;
     }
     raw = null;
   }
 
+  const skipped: string[] = [];
   if (raw !== null) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
     } catch (err) {
       warn(`the old server list is damaged: ${(err as Error).message}`);
-      return "failed";
+      return failed;
     }
     if (!Array.isArray(parsed)) {
       warn("the old server list is not a list");
-      return "failed";
+      return failed;
     }
     // Yalnız bilinen alanlar: yan süreç bilinmeyen alanı reddeder ve elle
     // eklenmiş bir alan göçü sonsuza dek düşürürdü.
-    const profiles: Profile[] = parsed
+    const all: Profile[] = parsed
       .filter((p): p is Profile => typeof p === "object" && p !== null && typeof p.name === "string" && typeof p.target === "string")
       .map((p) => ({ name: p.name, target: p.target, ...(typeof p.provider === "string" ? { provider: p.provider } : {}) }));
+    // Fazlası yan süreçte reddedilir ve göç hiç bitmezdi: ilk 100 gider, gerisi söylenir.
+    const profiles = all.slice(0, MAX_IMPORT);
     if (profiles.length > 0) {
       try {
-        await call("servers.import", { profiles });
+        const result = (await call("servers.import", { profiles })) as { skipped?: { target?: unknown }[] } | null;
+        for (const s of result?.skipped ?? []) if (typeof s?.target === "string") skipped.push(s.target);
       } catch (err) {
         warn(`could not import the old server list: ${userFacingError(err).message}`);
-        return "failed";
+        return failed;
       }
     }
+    skipped.push(...all.slice(MAX_IMPORT).map((p) => p.target));
+    if (skipped.length > 0) warn(`not imported from the old server list: ${skipped.join(", ")}`);
   }
 
   await writeFile(marker, `${new Date().toISOString()}\n`);
-  return "imported";
+  return { result: "imported", skipped };
 }

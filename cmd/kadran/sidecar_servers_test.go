@@ -12,8 +12,9 @@ import (
 )
 
 type serversResult struct {
-	Servers  []servers.Server `json:"servers"`
-	Imported int              `json:"imported"`
+	Servers  []servers.Server  `json:"servers"`
+	Imported int               `json:"imported"`
+	Skipped  []servers.Skipped `json:"skipped"`
 }
 
 // serversSidecar, kendi geçici listesi olan bir sidecar.
@@ -102,9 +103,13 @@ func TestSidecarServersImport(t *testing.T) {
 	got := mustServers(t, s, "servers.import", `{"profiles":[
 		{"name":"a","target":"kadran-client@a"},
 		{"name":"a","target":"kadran-client@b","provider":"P"},
-		{"name":"c","target":"kadran-client@c"}]}`)
+		{"name":"c","target":"kadran-client@c"},
+		{"name":"old","target":"panely-client@d"}]}`)
 	if got.Imported != 2 || len(got.Servers) != 3 || got.Servers[1].Name != "a (2)" || got.Servers[1].Provider != "P" {
 		t.Fatalf("import: %+v", got)
+	}
+	if len(got.Skipped) != 1 || got.Skipped[0].Target != "panely-client@d" || got.Skipped[0].Reason == "" {
+		t.Fatalf("atlanan söylenmedi: %+v", got.Skipped)
 	}
 }
 

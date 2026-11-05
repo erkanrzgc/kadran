@@ -57,8 +57,9 @@ export function App() {
   useEffect(() => {
     store.load().catch((err: unknown) => toast("toast.profiles_failed", { error: errorText(err) }));
     bridge.serversImportStatus().then(
-      (result) => {
-        if (result === "failed") toast("servers.import_failed");
+      (status) => {
+        if (status?.result === "failed") toast("servers.import_failed");
+        else if (status?.skipped.length) toast("servers.import_skipped", { targets: status.skipped.join(", ") });
       },
       (err: unknown) => toast("toast.profiles_failed", { error: errorText(err) }),
     );

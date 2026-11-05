@@ -235,9 +235,8 @@ func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *k
 	// istiyorsa bir konumsal argüman eksik demektir (`deploy -s gcp` gibi):
 	// kayıtlı hedef uygulama adının yerine geçmiş, hedef boş (yerel soket)
 	// kalmıştır. Hiçbir bağlantı denenmez (K-162).
-	if c.serverName != "" && rawTarget != c.serverTarget {
-		return nil, nil, fmt.Errorf("-s %s: an argument is missing (the saved target ended up in its place, "+
-			"so nothing was sent) — see the command's usage", c.serverName)
+	if err := c.checkServerTarget(rawTarget); err != nil {
+		return nil, nil, err
 	}
 	c.target = rawTarget
 	conn, ping, err := c.dialTarget(ctx, rawTarget)
@@ -349,6 +348,9 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	}
 	if fs.NArg() != 1 {
 		return c.usageError("usage: kadran bootstrap [options] root@server  |  kadran bootstrap -sudo user@server")
+	}
+	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
+		return c.fail(err)
 	}
 
 	target, err := client.ParseTarget(fs.Arg(0))

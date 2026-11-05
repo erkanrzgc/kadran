@@ -12397,13 +12397,25 @@ dizininde tutuyordu. 4. parça ("+ Sunucu ekle") ve 5. parça ("Hepsini yükselt
   hedefi kabul ediyor, değilse hiçbir şey gönderilmeden duruyor. `-s` ile birlikte hedef yazılmasını
   ise her komutun kendi argüman sayısı denetimi reddediyor; 18 komutun hepsi tek tek sınanıyor.
 - Windows'ta eşzamanlı yazma: 8 yazıcıyla okuma `ERROR_SHARING_VIOLATION`, rename erişim hatası
-  verdi. Okuma ve rename Windows'ta 10 kez, 10 ms × deneme aralıkla (toplam ~0,5 sn) yeniden
-  deneniyor; eşzamanlılık testi 40/40 geçti. POSIX'te yeniden deneme yok.
-- `mutate-servers.sh` 11/11 yakalandı (ad önek ya da harf duyarsız eşleşmesi, `-s` + hedef, kayan
-  hedef, yönetici yerine istemci hedefi, düşen `-sudo`, okunan kaydın denetimi, yeni sürüm dosyası);
-  dosya izni mutantı Windows'ta atlanıyor, Linux'ta (CI) ölçülüyor.
-- `mutate-desktop.sh` 79/80; göçe eklenen iki mutanttan biri derlenmiyordu (TypeScript `if (false)`
-  sonrası türü daraltmıyor), yeniden yazıldı ve elle ölçüldü: derleniyor, yakalanıyor. Tam koşu CI'da.
+  verdi. Okuma ve rename Windows'ta 10 kez, 20 ms × deneme aralıkla (toplam ~1,1 sn) yeniden
+  deneniyor; ilk bütçe (~0,55 sn) yüklü makinede 8 yazıcıyla bir kez tükendi. Testler: iki yazıcıda
+  (CLI + masaüstü) hiç hata yok; sekiz yazıcıda yalnız "dosya kullanımda" hatası olabilir, dosya hiç
+  bozulmaz; 30/30. POSIX'te yeniden deneme yok.
+- Bağımsız inceleme (Opus) iki "önemli" bulgu verdi, ikisi de kapatıldı:
+  - Göç sessizce sunucu düşürüyordu: boşluklu hedef (`ParseTarget` kırpıyor, eski masaüstü
+    bağlanıyordu), eski `panely-client@` kullanıcısı, "-   -y" gibi bir ad; 100'ü aşan eski
+    liste göçü hiç bitirmiyordu. Şimdi hedef kırpılır, ad sabit noktaya dek temizlenir, alınamayan
+    her profil sebebiyle döner ve arayüz adlarıyla söyler; 100'ü aşan liste kırpılır, fazlası söylenir.
+  - Kök yolunda (`bootstrap`, `key`, `totp reset`) ikinci kilit yoktu: `-s` ile başka bir hedef
+    yalnız argüman sayısı denetimine takılıyordu, test de yoktu. Şimdi bu üç yol da `connect` gibi
+    kayıtlı yönetici hedefinden başkasını reddediyor. Kilit yokken test kırmızıydı: bootstrap
+    başka bir makineye ssh denedi.
+- `mutate-servers.sh` 17/17 yakalandı (ad önek ya da harf duyarsız eşleşmesi, `-s` + hedef, kayan
+  hedef, dört kilit, yönetici yerine istemci hedefi, düşen `-sudo`, göçte sessiz kayıp ve boşluklu
+  hedef, okunan kaydın denetimi, yeni sürüm dosyası); dosya izni mutantı Windows'ta atlanıyor,
+  Linux'ta (CI) ölçülüyor.
+- `mutate-desktop.sh` 82/82 (göçün üç mutantı dahil: liste olmayan eski dosya, yan süreç hatası,
+  100'ü aşan liste).
 - Uçtan uca (sahte yan süreç): eski 11 profil açılışta ortak listeye taşındı; dosyaya "CLI gibi"
   eklenen sunucu pencere odağa gelince kart oldu, silinince kayboldu.
 

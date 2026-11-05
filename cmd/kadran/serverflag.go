@@ -120,6 +120,19 @@ func takeServerFlag(args []string) (name string, rest []string, found bool, err 
 	return name, rest, found, nil
 }
 
+// checkServerTarget, -s verildiyse komutun bağlanacağı hedefin kayıtlı hedef
+// (kök yolunda yönetici hedefi) olduğunu denetler. Bir konumsal argüman eksik
+// ya da fazlaysa kayıtlı hedef başka bir argümanın yerine kayar; o zaman
+// hiçbir şey gönderilmez (K-162). Her komutun kendi sayı denetimine ek ikinci
+// kilit: connect, bootstrap, key ve totp reset bunu çağırır.
+func (c *cli) checkServerTarget(raw string) error {
+	if c.serverName == "" || raw == c.serverTarget {
+		return nil
+	}
+	return fmt.Errorf("-s %s: an argument is missing or extra (the saved target did not end up as the target, "+
+		"so nothing was sent) — see the command's usage", c.serverName)
+}
+
 // savedNames, "kayıt yok" hatasının ikinci yarısı: kayıtlı adlar ya da boş
 // listenin nasıl doldurulacağı. Benzer ad önerilmez.
 func savedNames(list []servers.Server) string {

@@ -205,45 +205,56 @@ func RemoveByTarget(list []Server, target string) ([]Server, error) {
 	return slices.Delete(slices.Clone(list), i, i+1), nil
 }
 
-// Import, masaüstünün eski profil listesini bir kez taşır. Listede olan hedef
-// atlanır; ad kurala uydurulur (kırpılır, baştaki `-` atılır, 64 karaktere
-// kısaltılır; boş kalırsa hedefin sunucu adı) ve başka bir kayıtta varsa
-// "ad (2)", "ad (3)" … olur. Hedefi geçersiz profil atlanır. Kaç kayıt
-// eklendiği döner.
-func Import(list []Server, in []Server) ([]Server, int) {
-	out := slices.Clone(list)
-	added := 0
+// Skipped, içe aktarmada alınamayan bir profil ve sebebi.
+type Skipped struct {
+	Target string `json:"target"`
+	Reason string `json:"reason"`
+}
+
+// Import, masaüstünün eski profil listesini bir kez taşır. Hedef kırpılır
+// (eski masaüstü " kadran-client@h " ile de bağlanıyordu); listede olan hedef
+// atlanır, bu kayıp değildir. Ad kurala uydurulur (baştaki boşluk ve `-`
+// atılır, 64 karaktere kısaltılır; boş kalırsa hedefin sunucu adı) ve başka bir
+// kayıtta varsa "ad (2)", "ad (3)" … olur. Alınamayan profil (geçersiz hedef,
+// dolu liste) sebebiyle döner: göç bir kez koşar, kaybolan kart geri gelmez.
+func Import(list []Server, in []Server) (out []Server, added int, skipped []Skipped) {
+	out = slices.Clone(list)
 	for _, p := range in {
-		if len(out) >= MaxServers {
-			break
+		target := strings.TrimSpace(p.Target)
+		if slices.ContainsFunc(out, func(s Server) bool { return s.Target == target }) {
+			continue
 		}
-		if slices.ContainsFunc(out, func(s Server) bool { return s.Target == p.Target }) {
+		if len(out) >= MaxServers {
+			skipped = append(skipped, Skipped{Target: p.Target, Reason: fmt.Sprintf("the list is full (%d servers)", MaxServers)})
 			continue
 		}
 		cand := Server{
-			Name:     uniqueName(out, importName(p.Name, p.Target)),
+			Name:     uniqueName(out, importName(p.Name, target)),
 			Provider: truncateRunes(strings.TrimSpace(stripControl(p.Provider)), MaxProvider),
-			Target:   p.Target,
+			Target:   target,
 		}
-		if validateEntry(cand) != nil {
+		if err := validateEntry(cand); err != nil {
+			skipped = append(skipped, Skipped{Target: p.Target, Reason: err.Error()})
 			continue
 		}
 		out = append(out, cand)
 		added++
 	}
-	return out, added
+	return out, added, skipped
 }
 
-// importName, eski bir profil adını kurala uydurur.
+// importName, eski bir profil adını kurala uydurur. Baştaki boşluk ve `-`
+// birlikte atılır ("-   -y" → "y"): kırpma sabit noktada biter.
 func importName(name, target string) string {
-	n := strings.TrimLeft(strings.TrimSpace(stripControl(name)), "- ")
-	if n == "" {
+	dashOrSpace := func(r rune) bool { return r == '-' || unicode.IsSpace(r) }
+	n := strings.TrimLeftFunc(stripControl(name), dashOrSpace)
+	if strings.TrimSpace(n) == "" {
 		n = "server"
 		if t, err := client.ParseTarget(target); err == nil && !t.IsLocal() {
-			n = strings.TrimLeft(t.SSHHost, "- ")
+			n = strings.TrimLeftFunc(t.SSHHost, dashOrSpace)
 		}
 	}
-	return strings.TrimSpace(truncateRunes(n, MaxName))
+	return strings.TrimSpace(truncateRunes(strings.TrimSpace(n), MaxName))
 }
 
 // uniqueName, ad listede (büyük/küçük harfe bakmadan) varsa " (n)" ekler;

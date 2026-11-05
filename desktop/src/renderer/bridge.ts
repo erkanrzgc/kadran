@@ -44,7 +44,8 @@ export interface KadranBridge {
   addServer(profile: Profile): Promise<Profile[]>;
   updateServer(target: string, change: { name: string; provider: string }): Promise<Profile[]>;
   removeServer(target: string): Promise<Profile[]>;
-  serversImportStatus(): Promise<"imported" | "already" | "failed" | null>;
+  /** Açılıştaki göçün sonucu ve alınamayan hedefler; göç koşmadıysa null. */
+  serversImportStatus(): Promise<{ result: "imported" | "already" | "failed"; skipped: string[] } | null>;
   loadAppearance(): Promise<AppearanceBundle>;
   saveAppearance(appearance: Appearance): Promise<Appearance>;
   windowControl(action: WindowAction): Promise<void>;

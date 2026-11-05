@@ -100,7 +100,7 @@ func TestHelpersDoNotMutate(t *testing.T) {
 		func() error { _, err := Rename(in, "a", "z"); return err },
 		func() error { _, err := UpdateByTarget(in, "kadran-client@a", "y", ""); return err },
 		func() error { _, err := RemoveByTarget(in, "kadran-client@b"); return err },
-		func() error { _, _ = Import(in, []Server{{Name: "a", Target: "kadran-client@d"}}); return nil },
+		func() error { _, _, _ = Import(in, []Server{{Name: "a", Target: "kadran-client@d"}}); return nil },
 	}
 	for i, step := range steps {
 		if err := step(); err != nil {
@@ -149,8 +149,8 @@ func TestImportNormalizesAndSkips(t *testing.T) {
 		{Name: "dup", Target: "kadran-client@a"},
 		{Name: " - ", Target: "kadran-client@host-f"},
 	}
-	got, n := Import(list, in)
-	if n != 5 {
+	got, n, skipped := Import(list, in)
+	if n != 5 || len(skipped) != 0 {
 		t.Fatalf("eklenen %d, beklenen 5: %+v", n, got)
 	}
 	names := map[string]string{}
@@ -178,9 +178,44 @@ func TestImportNormalizesAndSkips(t *testing.T) {
 	}
 }
 
+// Göç bir kez koşar: atlanan sunucu kartlardan sessizce kaybolmamalı, sebebi
+// söylenmeli. Eski masaüstünün bağlanabildiği hedef de atlanmamalı.
+func TestImportReportsSkippedAndTrims(t *testing.T) {
+	in := []Server{
+		{Name: "space", Target: " kadran-client@t7 "},
+		{Name: "legacy", Target: "panely-client@t6"},
+		{Name: "-   -y", Target: "kadran-client@t8"},
+		{Name: "evil", Target: "-oProxyCommand=x@h"},
+	}
+	got, n, skipped := Import(nil, in)
+	if n != 2 {
+		t.Fatalf("eklenen %d, beklenen 2: %+v %+v", n, got, skipped)
+	}
+	if got[0].Target != "kadran-client@t7" || got[1].Name != "y" {
+		t.Errorf("kırpılmadı: %+v", got)
+	}
+	if len(skipped) != 2 || skipped[0].Target != "panely-client@t6" || skipped[1].Target != "-oProxyCommand=x@h" || skipped[0].Reason == "" {
+		t.Errorf("atlananlar söylenmedi: %+v", skipped)
+	}
+	if err := Validate(got); err != nil {
+		t.Errorf("içe aktarılan liste geçersiz: %v", err)
+	}
+}
+
+func TestImportReportsFullList(t *testing.T) {
+	var list []Server
+	for i := range MaxServers - 1 {
+		list = append(list, Server{Name: "s" + strconv.Itoa(i), Target: "kadran-client@h" + strconv.Itoa(i)})
+	}
+	got, n, skipped := Import(list, []Server{{Name: "a", Target: "kadran-client@a"}, {Name: "b", Target: "kadran-client@b"}, {Name: "c", Target: "kadran-client@c"}})
+	if n != 1 || len(got) != MaxServers || len(skipped) != 2 || !strings.Contains(skipped[0].Reason, "100") {
+		t.Fatalf("dolu liste: eklenen %d, uzunluk %d, atlanan %+v", n, len(got), skipped)
+	}
+}
+
 func TestImportSuffixFitsLimit(t *testing.T) {
 	long := strings.Repeat("ş", 64)
-	got, n := Import([]Server{{Name: long, Target: "kadran-client@a"}}, []Server{{Name: long, Target: "kadran-client@b"}})
+	got, n, _ := Import([]Server{{Name: long, Target: "kadran-client@a"}}, []Server{{Name: long, Target: "kadran-client@b"}})
 	if n != 1 || len([]rune(got[1].Name)) > MaxName || !strings.HasSuffix(got[1].Name, " (2)") {
 		t.Errorf("ek sığmadı: %q (%d)", got[1].Name, len([]rune(got[1].Name)))
 	}

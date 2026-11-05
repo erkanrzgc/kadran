@@ -23,9 +23,12 @@ function fakeSidecar(fail?: Error) {
     calls.push({ method, params });
     if (fail) throw fail;
     if (method === "servers.import") {
+      // Gerçek yan süreç gibi: eski kullanıcı adıyla hedef alınamaz, sebebiyle döner.
       const profiles = (params?.profiles ?? []) as Record<string, unknown>[];
-      list = [...list, ...profiles];
-      return { servers: list, imported: profiles.length };
+      const refused = (p: Record<string, unknown>) => String(p.target).startsWith("panely-client@");
+      list = [...list, ...profiles.filter((p) => !refused(p))];
+      const skipped = profiles.filter(refused).map((p) => ({ target: p.target, reason: "old user name" }));
+      return { servers: list, imported: profiles.length - skipped.length, ...(skipped.length ? { skipped } : {}) };
     }
     if (method === "servers.add") list = [...list, { ...params, admin: "root@x", sudo: true }];
     return { servers: list };
@@ -50,7 +53,7 @@ test("migration normalizes names and runs once", async () => {
   ];
   const dir = await userData(JSON.stringify(profiles));
   const sidecar = fakeSidecar();
-  assert.equal(await importProfiles(dir, sidecar.call, () => {}), "imported");
+  assert.equal((await importProfiles(dir, sidecar.call, () => {})).result, "imported");
   assert.equal(sidecar.calls.length, 1);
   assert.equal(sidecar.calls[0]!.method, "servers.import");
   assert.deepEqual(sidecar.calls[0]!.params, { profiles });
@@ -58,14 +61,14 @@ test("migration normalizes names and runs once", async () => {
   // profiles.json olduğu gibi kalır: eski sürüme dönen listesini görür.
   assert.equal(await readFile(join(dir, "profiles.json"), "utf8"), JSON.stringify(profiles));
 
-  assert.equal(await importProfiles(dir, sidecar.call, () => {}), "already");
+  assert.equal((await importProfiles(dir, sidecar.call, () => {})).result, "already");
   assert.equal(sidecar.calls.length, 1);
 });
 
 test("no profiles file: marker written, nothing imported", async () => {
   const dir = await userData();
   const sidecar = fakeSidecar();
-  assert.equal(await importProfiles(dir, sidecar.call, () => {}), "imported");
+  assert.equal((await importProfiles(dir, sidecar.call, () => {})).result, "imported");
   assert.equal(sidecar.calls.length, 0);
   assert.ok(await exists(join(dir, IMPORT_MARKER)));
 });
@@ -75,7 +78,7 @@ test("damaged profiles file is not 'nothing to import'", async () => {
     const dir = await userData(body);
     const sidecar = fakeSidecar();
     const warnings: string[] = [];
-    assert.equal(await importProfiles(dir, sidecar.call, (m) => warnings.push(m)), "failed", body);
+    assert.equal((await importProfiles(dir, sidecar.call, (m) => warnings.push(m))).result, "failed", body);
     assert.equal(sidecar.calls.length, 0);
     assert.equal(await exists(join(dir, IMPORT_MARKER)), false);
     assert.equal(warnings.length, 1);
@@ -85,10 +88,10 @@ test("damaged profiles file is not 'nothing to import'", async () => {
 test("sidecar error: no marker, retried on next start", async () => {
   const dir = await userData(JSON.stringify([{ name: "a", target: "t1" }]));
   const failing = fakeSidecar(new SidecarError("call failed", -32603, "the server list is damaged"));
-  assert.equal(await importProfiles(dir, failing.call, () => {}), "failed");
+  assert.equal((await importProfiles(dir, failing.call, () => {})).result, "failed");
   assert.equal(await exists(join(dir, IMPORT_MARKER)), false);
   const ok = fakeSidecar();
-  assert.equal(await importProfiles(dir, ok.call, () => {}), "imported");
+  assert.equal((await importProfiles(dir, ok.call, () => {})).result, "imported");
 });
 
 function handlers(call: ReturnType<typeof fakeSidecar>["call"], status: () => string | null = () => null) {
@@ -130,6 +133,20 @@ test("a known sidecar reason reaches the renderer as a stable code", async () =>
 });
 
 test("import status channel reports the startup result", async () => {
-  const invoke = handlers(fakeSidecar().call, () => "failed");
-  assert.equal(await invoke(CHANNELS.serversImportStatus), "failed");
+  const invoke = handlers(fakeSidecar().call, () => ({ result: "failed", skipped: [] }));
+  assert.deepEqual(await invoke(CHANNELS.serversImportStatus), { result: "failed", skipped: [] });
+});
+
+// Göç bir kez koşar: alınamayan sunucu kartlardan sessizce kaybolmamalı. Eski
+// masaüstü yalnız ilk 100 profili gösteriyordu; fazlası da söylenir ve göç biter.
+test("over 100 old profiles and refused ones are reported, and the import finishes", async () => {
+  const profiles = Array.from({ length: 105 }, (_, i) => ({ name: `s${i}`, target: `t${i}` }));
+  profiles[3] = { name: "old", target: "panely-client@x" };
+  const dir = await userData(JSON.stringify(profiles));
+  const sidecar = fakeSidecar();
+  const status = await importProfiles(dir, sidecar.call, () => {});
+  assert.equal(status.result, "imported");
+  assert.equal((sidecar.calls[0]!.params!.profiles as unknown[]).length, 100);
+  assert.deepEqual(status.skipped, ["panely-client@x", "t100", "t101", "t102", "t103", "t104"]);
+  assert.ok(await exists(join(dir, IMPORT_MARKER)));
 });

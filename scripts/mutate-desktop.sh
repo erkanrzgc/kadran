@@ -213,7 +213,9 @@ mutate_in src/main/ipc-validate.ts "'-' ile başlayan hedef kabul ediliyor" \
 mutate_in src/main/server-list.ts "liste olmayan eski dosya boş liste sayılıyor" \
     "s=s.replace('if (!Array.isArray(parsed)) {','parsed = Array.isArray(parsed) ? parsed : []; if (!Array.isArray(parsed)) {',1)"
 mutate_in src/main/server-list.ts "yan süreç hatasında da göç bitti sayılıyor" \
-    "s=s.replace('await call(\"servers.import\", { profiles });','await call(\"servers.import\", { profiles }).catch(() => undefined);',1)"
+    "s=s.replace('(await call(\"servers.import\", { profiles }))','(await call(\"servers.import\", { profiles }).catch(() => null))',1)"
+mutate_in src/main/server-list.ts "100'ü aşan eski liste göçü hiç bitirmiyor" \
+    "s=s.replace('const profiles = all.slice(0, MAX_IMPORT);','const profiles = all;',1)"
 
 echo "== Yönetim yüzeyi (ana süreç onayı) =="
 # Her durum değiştiren kanalın onay çağrısı AYRI ayrı silinir: biri unutulursa

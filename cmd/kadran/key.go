@@ -79,6 +79,9 @@ func (c *cli) runKey(ctx context.Context, args []string) int {
 
 // keyTarget, son argümanı root yetkili SSH hedefi olarak çözer.
 func (c *cli) keyTarget(raw string, sudo bool) (bootstrap.KeyOptions, error) {
+	if err := c.checkServerTarget(raw); err != nil {
+		return bootstrap.KeyOptions{}, err
+	}
 	return rootTarget("key", raw, sudo, c.keys != nil)
 }
 

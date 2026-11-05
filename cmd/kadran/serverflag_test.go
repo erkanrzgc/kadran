@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/erkanrzgc/kadran/internal/bootstrap"
 	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/servers"
@@ -147,6 +149,65 @@ func TestServerFlagWithTargetNeverDials(t *testing.T) {
 		}
 		if len(*dialed) != 0 {
 			t.Errorf("%q: bağlanıldı: %v", strings.Join(args, " "), *dialed)
+		}
+	}
+}
+
+// Kök yolu (bootstrap, key, totp reset) connect'ten geçmez: -s ile birlikte
+// başka bir hedef yazılırsa root başka bir makinede çalışırdı. Hem run()
+// üzerinden hem de sayı denetimini atlayan doğrudan çağrıyla sınanır; ikinci
+// kilit kayıtlı yönetici hedefinden başkasını reddetmeli.
+func adminCLI(t *testing.T) (*cli, *bytes.Buffer, *sahteAnahtarlar, *bool) {
+	t.Helper()
+	c, errOut := savedCLI(t)
+	out := &bytes.Buffer{}
+	c.stdout = out
+	keys := &sahteAnahtarlar{}
+	c.keys = keys
+	reset := false
+	c.totpReset = func(context.Context, bootstrap.KeyOptions, io.Writer) error {
+		reset = true
+		return nil
+	}
+	_ = errOut
+	return c, out, keys, &reset
+}
+
+func TestAdminCommandsWithTargetNeverRun(t *testing.T) {
+	for _, args := range [][]string{
+		{"bootstrap", "-s", "hetzner", "root@other"},
+		{"key", "list", "-s", "hetzner", "root@other"},
+		{"key", "add", "-s", "hetzner", "-deploy", "blog", "k.pub", "root@other"},
+		{"key", "remove", "-s", "hetzner", "SHA256:x", "root@other"},
+		{"totp", "reset", "-s", "hetzner", "root@other"},
+	} {
+		c, out, keys, reset := adminCLI(t)
+		if code := c.run(t.Context(), args); code == exitOK {
+			t.Errorf("%v geçti", args)
+		}
+		if strings.Contains(out.String(), "Kadran install") || keys.opts.Host != "" || *reset {
+			t.Errorf("%v: kök yolunda çalıştı (out=%q keys=%+v reset=%v)", args, out, keys.opts, *reset)
+		}
+	}
+}
+
+func TestAdminGuardRefusesOtherTarget(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(c *cli) int
+	}{
+		{"bootstrap", func(c *cli) int { return c.runBootstrap(t.Context(), []string{"root@other"}) }},
+		{"key list", func(c *cli) int { return c.runKey(t.Context(), []string{"list", "root@other"}) }},
+		{"totp reset", func(c *cli) int { return c.runTotp(t.Context(), []string{"reset", "root@other"}) }},
+	} {
+		c, out, keys, reset := adminCLI(t)
+		// run() -s'yi çözmüş gibi: sayı denetimi geçer, yalnız ikinci kilit kalır.
+		c.serverName, c.serverTarget = "hetzner", "root@203.0.113.10"
+		if code := tc.run(c); code == exitOK {
+			t.Errorf("%s geçti", tc.name)
+		}
+		if strings.Contains(out.String(), "Kadran install") || keys.opts.Host != "" || *reset {
+			t.Errorf("%s: kayıtlı olmayan hedefte çalıştı (out=%q keys=%+v reset=%v)", tc.name, out, keys.opts, *reset)
 		}
 	}
 }

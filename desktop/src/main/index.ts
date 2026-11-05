@@ -28,7 +28,7 @@ import { requireCopyText, requireWindowAction } from "./ipc-validate.ts";
 import { lockDownPermissions } from "./permissions.ts";
 import { registerManagementHandlers } from "./management-handlers.ts";
 import { migrateLegacyProfiles } from "./profiles.ts";
-import { importProfiles, registerServerList, type ImportResult } from "./server-list.ts";
+import { importProfiles, registerServerList, type ImportStatus } from "./server-list.ts";
 import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
 import { registerSidecarReads } from "./sidecar-reads.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
@@ -50,7 +50,7 @@ if (SMOKE_TEST) prepareSmokeUserData();
 let client: SidecarClient | null = null;
 let host: WindowHost | null = null;
 // Açılışta eski profil listesinin ortak listeye taşınmasının sonucu (K-162).
-let importResult: ImportResult | null = null;
+let importResult: ImportStatus | null = null;
 
 function sidecar(): SidecarClient {
   if (client) return client;
@@ -140,9 +140,9 @@ if (!app.requestSingleInstanceLock()) {
     // pencere listeyi okumadan önce. Hata uygulamayı durdurmaz, sonraki
     // açılış yeniden dener ve arayüz bildirir (K-162).
     importResult = await importProfiles(userData(), (method, params, options) => sidecar().call(method, params, options), warn).catch(
-      (err: unknown): ImportResult => {
+      (err: unknown): ImportStatus => {
         warn(`could not import the old server list: ${(err as Error).message}`);
-        return "failed";
+        return { result: "failed", skipped: [] };
       },
     );
 

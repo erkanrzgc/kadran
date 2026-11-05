@@ -22,7 +22,9 @@ FIL=internal/servers/file.go
 FLG=cmd/kadran/serverflag.go
 STA=cmd/kadran/status.go
 MAIN=cmd/kadran/main.go
-FILES=("$SRV" "$FIL" "$FLG" "$STA" "$MAIN")
+KEY=cmd/kadran/key.go
+TOT=cmd/kadran/totp.go
+FILES=("$SRV" "$FIL" "$FLG" "$STA" "$MAIN" "$KEY" "$TOT")
 
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -110,16 +112,39 @@ mutate_in "$STA" "status ikinci konumsal hedefi kabul ediyor" \
 mutate_in "$FLG" "ikinci -s kabul ediliyor, sonuncusu geçiyor" \
     "s=s.replace('if found {','if false && found {',1)"
 
-mutate_in "$MAIN" "eksik argümanda kayan hedefle bağlanılıyor" \
-    "s=s.replace('if c.serverName != \"\" && rawTarget != c.serverTarget {','if false && c.serverName != \"\" && rawTarget != c.serverTarget {',1)"
+mutate_in "$MAIN" "eksik argümanda kayan hedefle bağlanılıyor (connect kilidi)" \
+    "s=s.replace('if err := c.checkServerTarget(rawTarget); err != nil {','if err := c.checkServerTarget(c.serverTarget); err != nil {',1)"
+
+mutate_in "$FLG" "ikinci kilit hiçbir hedefi reddetmiyor" \
+    "s=s.replace('if c.serverName == \"\" || raw == c.serverTarget {','if true {',1)"
 
 echo "== Kök yolu =="
+
+# Kök yolunda sayı denetimi ve ikinci kilit üst üste: biri tek başına
+# bozulunca öbürü tutar. Kilidi doğrudan çağrıyla sınayan test
+# (TestAdminGuardRefusesOtherTarget) her birini ayrı ölçer.
+mutate_in "$MAIN" "bootstrap kayıtlı olmayan makinede root olarak çalışıyor" \
+    "s=s.replace('c.checkServerTarget(fs.Arg(0))','c.checkServerTarget(c.serverTarget)',1)"
+
+mutate_in "$KEY" "key kayıtlı olmayan makinede çalışıyor" \
+    "s=s.replace('if err := c.checkServerTarget(raw); err != nil {','if err := c.checkServerTarget(c.serverTarget); err != nil {',1)"
+
+mutate_in "$TOT" "totp reset kayıtlı olmayan makinede çalışıyor" \
+    "s=s.replace('c.checkServerTarget(fs.Arg(0))','c.checkServerTarget(c.serverTarget)',1)"
 
 mutate_in "$FLG" "bootstrap yönetici yerine istemci hedefini alıyor" \
     "s=s.replace('return append(out, srv.Admin), name, nil','return append(out, srv.Target), name, nil',1)"
 
 mutate_in "$FLG" "sudo'lu kayıtta -sudo eklenmiyor" \
     "s=s.replace('if srv.Sudo {','if false && srv.Sudo {',1)"
+
+echo "== Göç (bir kez koşar: kaybolan kart geri gelmez) =="
+
+mutate_in "$SRV" "alınamayan profil sessizce düşüyor" \
+    "s=s.replace('skipped = append(skipped, Skipped{Target: p.Target, Reason: err.Error()})','_ = err',1)"
+
+mutate_in "$SRV" "eski masaüstünün bağlandığı boşluklu hedef atlanıyor" \
+    "s=s.replace('target := strings.TrimSpace(p.Target)','target := p.Target',1)"
 
 echo "== Dosya =="
 

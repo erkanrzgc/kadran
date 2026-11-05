@@ -110,6 +110,7 @@
   "toast.copy_failed": "Couldn't copy: {error}",
   "toast.profiles_failed": "Couldn't read saved servers: {error}",
   "servers.import_failed": "Couldn't move your saved servers to the list shared with the command line. Kadran will try again next time it starts.",
+  "servers.import_skipped": "These saved servers could not be moved to the shared list and are not shown: {targets}. Add them again with the right target.",
   "servers.error_duplicate_name": "Another saved server already has this name.",
   "servers.error_duplicate_target": "This server is already saved.",
   "servers.error_not_found": "This server is no longer in the list; it may have been removed from the command line.",

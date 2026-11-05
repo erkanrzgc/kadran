@@ -39,10 +39,12 @@ type serverImportParams struct {
 	Profiles []serverAddParams `json:"profiles"`
 }
 
-// serverList, bütün yöntemlerin sonucu: güncel liste.
+// serverList, bütün yöntemlerin sonucu: güncel liste. İçe aktarmada ayrıca
+// eklenen sayısı ve alınamayan profiller (masaüstü kullanıcıya söyler).
 type serverList struct {
-	Servers  []servers.Server `json:"servers"`
-	Imported *int             `json:"imported,omitempty"`
+	Servers  []servers.Server  `json:"servers"`
+	Imported *int              `json:"imported,omitempty"`
+	Skipped  []servers.Skipped `json:"skipped,omitempty"`
 }
 
 func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
@@ -94,13 +96,14 @@ func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
 			in[i] = servers.Server{Name: pr.Name, Target: pr.Target, Provider: pr.Provider}
 		}
 		imported := 0
+		var skipped []servers.Skipped
 		list, err = store.Update(func(l []servers.Server) ([]servers.Server, error) {
-			next, n := servers.Import(l, in)
-			imported = n
+			next, n, sk := servers.Import(l, in)
+			imported, skipped = n, sk
 			return next, nil
 		})
 		if err == nil {
-			return serverList{Servers: nonNil(list), Imported: &imported}, nil
+			return serverList{Servers: nonNil(list), Imported: &imported, Skipped: skipped}, nil
 		}
 	}
 	if err != nil {

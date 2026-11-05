@@ -148,8 +148,9 @@ func writeFile(path string, list []Server) (err error) {
 
 // withRetry: Windows'ta dosya o an başka bir süreçte (CLI ya da masaüstü)
 // okunuyor ya da değiştiriliyorsa hem okuma hem rename düşebiliyor. Kısa ve
-// artan aralıklarla yeniden denenir (toplam ~0,5 sn), sonra açık hata
-// (K-162). POSIX'te yeniden denenecek hata yok (retryable).
+// artan aralıklarla yeniden denenir (toplam ~1,1 sn), sonra açık hata
+// (K-162). 0,55 sn, yüklü makinede 8 yazıcıyla bir kez yetmedi (ölçüldü).
+// POSIX'te yeniden denenecek hata yok (retryable).
 func withRetry(fn func() error) error {
 	const attempts = 10
 	var err error
@@ -157,7 +158,7 @@ func withRetry(fn func() error) error {
 		if err = fn(); err == nil || !retryable(err) {
 			return err
 		}
-		time.Sleep(time.Duration(i) * 10 * time.Millisecond)
+		time.Sleep(time.Duration(i) * 20 * time.Millisecond)
 	}
 	return err
 }

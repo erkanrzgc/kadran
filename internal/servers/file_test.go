@@ -166,26 +166,52 @@ func TestUpdateFnErrorWritesNothing(t *testing.T) {
 	}
 }
 
-func TestConcurrentUpdatesStayValid(t *testing.T) {
-	s := testStore(t)
-	var wg sync.WaitGroup
-	errs := make(chan error, 80)
-	for g := range 8 {
+// concurrentUpdates, writers goroutine'in her biri perWriter kayıt ekler;
+// dönen hatalar toplanır.
+func concurrentUpdates(s Store, writers, perWriter int) []error {
+	var (
+		wg   sync.WaitGroup
+		mu   sync.Mutex
+		errs []error
+	)
+	for g := range writers {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for i := range 10 {
+			for i := range perWriter {
 				id := strconv.Itoa(g) + "-" + strconv.Itoa(i)
 				if _, err := s.Update(addServer(Server{Name: "s" + id, Target: "kadran-client@h" + id})); err != nil {
-					errs <- err
+					mu.Lock()
+					errs = append(errs, err)
+					mu.Unlock()
 				}
 			}
 		}()
 	}
 	wg.Wait()
-	close(errs)
-	for err := range errs {
-		t.Errorf("eşzamanlı yazma: %v", err)
+	return errs
+}
+
+// Gerçek kullanım: CLI ve masaüstü aynı anda yazar. Hata olmamalı.
+func TestTwoWritersNoErrors(t *testing.T) {
+	s := testStore(t)
+	for _, err := range concurrentUpdates(s, 2, 20) {
+		t.Errorf("iki yazıcı: %v", err)
+	}
+	if list, err := s.Load(); err != nil || len(list) == 0 {
+		t.Fatalf("son dosya okunamadı: %d, %v", len(list), err)
+	}
+}
+
+// Aşırı yük: Windows'ta yeniden denemeler tükenince "dosya kullanımda" hatası
+// dönebilir (tasarımın kabul ettiği açık hata), ama dosya hiçbir anda bozulmaz.
+// POSIX'te hiç hata olmamalı (retryable hep false).
+func TestConcurrentUpdatesStayValid(t *testing.T) {
+	s := testStore(t)
+	for _, err := range concurrentUpdates(s, 8, 10) {
+		if !retryable(err) {
+			t.Errorf("eşzamanlı yazma: %v", err)
+		}
 	}
 	list, err := s.Load()
 	if err != nil || len(list) == 0 {

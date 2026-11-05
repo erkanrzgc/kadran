@@ -294,6 +294,9 @@ func (c *cli) runTotpReset(ctx context.Context, args []string) int {
 	if fs.NArg() != 1 {
 		return c.usageError("%s", totpUsage)
 	}
+	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
+		return c.fail(err)
+	}
 	opts, err := rootTarget("totp reset", fs.Arg(0), *sudo, c.totpReset != nil)
 	if err != nil {
 		return c.fail(err)

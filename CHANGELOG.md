@@ -5,6 +5,17 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ## Unreleased
 
+### Added
+
+- A saved server list shared by the CLI and the desktop app (K-162). `kadran server add|list|rm|rename`
+  manages it, and `-s <name>` picks a saved server on every command: `kadran status -s hetzner`,
+  `kadran bootstrap -s gcp` (install and upgrade use the saved admin target and `-sudo`). The name
+  must match exactly, and `-s` cannot be combined with a target. The list is
+  `servers.json` in your config directory and holds no key, password or token. The protocol is
+  unchanged and the server does not change.
+- Desktop: servers added from the CLI appear when you switch back to the window. On first start the
+  desktop's own list is copied into the shared one once; the old `profiles.json` is left as it was.
+
 ## v0.10.0 — 2026-11-02
 
 A new look for the desktop app (K-161). The protocol is unchanged (3). The CLI and the server

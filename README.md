@@ -292,10 +292,31 @@ A root domain also gets its `www` partner by default: `www.example.com` redirect
 | `logout` | Delete the saved session on this machine |
 | `totp status\|enable\|disable` | Manage two-step sign-in ([guide](docs/guides/totp.md)) |
 | `totp reset root@server` | Turn TOTP off through root when the phone and recovery codes are lost |
+| `server add\|list\|rm\|rename` | Manage the saved server list, shared with the desktop app |
 
 Targets: empty means the local socket; `user@host[:port]` or `host` means SSH, with
 `kadran-client` as the default user. Exit codes: `0` success · `1` error · `2` usage ·
 `3` **audit chain broken**. `alarms` also exits `1` while alarms are active.
+
+#### Saved servers
+
+Save a server once and pick it by name with `-s` (K-162). The list lives in your config
+directory (`%AppData%\kadran\servers.json`, `~/.config/kadran/servers.json`, or
+`~/Library/Application Support/kadran/servers.json`) and holds no key, password or token. The
+desktop app uses the same list.
+
+```bash
+kadran server add -provider Hetzner -admin root@203.0.113.10 hetzner kadran-client@203.0.113.10
+kadran server add -admin ops@198.51.100.7 -sudo gcp kadran-client@198.51.100.7
+kadran status -s hetzner
+kadran deploy -s gcp site
+kadran bootstrap -s gcp      # uses the admin target, with -sudo for gcp
+```
+
+`-s` matches the saved name exactly (no case folding, no prefixes) and cannot be combined with
+a target on the same command. `bootstrap`, `key` and `totp reset` use the saved admin target;
+every other command uses the client target. `server add` does not contact the server: run
+`kadran status -s <name>` to check it.
 
 ## Upgrading from v0.3.0
 

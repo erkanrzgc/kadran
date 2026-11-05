@@ -123,14 +123,10 @@ func (c *cli) withSavedNames(err error) error {
 		return err
 	}
 	list, lerr := c.serverStore().Load()
-	if lerr != nil || len(list) == 0 {
-		return fmt.Errorf("%w — the list is empty; add one: kadran server add <name> <target>", err)
+	if lerr != nil {
+		return err
 	}
-	names := make([]string, len(list))
-	for i, s := range list {
-		names[i] = s.Name
-	}
-	return fmt.Errorf("%w — saved: %s", err, strings.Join(names, ", "))
+	return fmt.Errorf("%w — %s", err, savedNames(list))
 }
 
 func dashIfEmpty(s string) string {

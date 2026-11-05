@@ -25,7 +25,7 @@
  *   hapını düşürdüğü ancak böyle ölçülebilir.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
@@ -80,6 +80,68 @@ const releases = ["r2", "r1"].map((id) => ({ release_id: id, app_id: "hello", co
 let activeRelease = "r2";
 const backups = [{ path: "/var/lib/kadran/backups/kadran-20261010T120000Z.db", bytes: "262144", taken_unix: "1791633600" }];
 
+// Ortak sunucu listesi (K-162): KADRAN_FAKE_SERVERS_FILE'daki dosya (smoke onu
+// "CLI" gibi değiştirir), yoksa bellek. Kurallar internal/servers'ın sade hâli:
+// aynı hedef ve büyük/küçük harfe bakmadan aynı ad yok, içe aktarmada çakışan
+// ad "ad (2)" olur. Hata biçimi gerçek yan süreçteki gibi: sebep `data`'da.
+const serversFile = process.env.KADRAN_FAKE_SERVERS_FILE;
+let memoryServers = [];
+function readServers() {
+  if (!serversFile) return memoryServers;
+  try {
+    return JSON.parse(readFileSync(serversFile, "utf8")).servers ?? [];
+  } catch (err) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+}
+function writeServers(list) {
+  if (serversFile) writeFileSync(serversFile, JSON.stringify({ version: 1, servers: list }, null, 2));
+  else memoryServers = list;
+  return { result: { servers: list } };
+}
+const serverFail = (message, reason) => ({ error: { code: -32603, message, data: reason } });
+const sameName = (a, b) => a.toLowerCase() === b.toLowerCase();
+const entry = (name, target, provider) => ({ name, target, ...(provider ? { provider } : {}) });
+
+function serversCall(method, params) {
+  const list = readServers();
+  switch (method) {
+    case "servers.list":
+      return { result: { servers: list } };
+    case "servers.add": {
+      const name = String(params.name).trim();
+      if (list.some((s) => s.target === params.target)) return serverFail("a saved server already has this target", "duplicate_target");
+      if (list.some((s) => sameName(s.name, name))) return serverFail("a saved server already has this name", "duplicate_name");
+      return writeServers([...list, entry(name, params.target, params.provider)]);
+    }
+    case "servers.update": {
+      const name = String(params.name).trim();
+      if (!list.some((s) => s.target === params.target)) return serverFail("no saved server with this target", "not_found");
+      if (list.some((s) => s.target !== params.target && sameName(s.name, name))) return serverFail("a saved server already has this name", "duplicate_name");
+      // Yönetici hedefi ve sudo, gerçek yan süreçteki gibi korunur.
+      return writeServers(list.map(({ provider: _old, ...s }) => (s.target === params.target ? { ...s, name, ...(params.provider ? { provider: params.provider } : {}) } : { ...s, ...(_old ? { provider: _old } : {}) })));
+    }
+    case "servers.remove":
+      if (!list.some((s) => s.target === params.target)) return serverFail("no saved server with this target", "not_found");
+      return writeServers(list.filter((s) => s.target !== params.target));
+    case "servers.import": {
+      const next = [...list];
+      let imported = 0;
+      for (const p of params.profiles ?? []) {
+        if (next.some((s) => s.target === p.target)) continue;
+        const base = String(p.name).trim().replace(/^[-\s]+/, "").slice(0, 64) || p.target;
+        let name = base;
+        for (let n = 2; next.some((s) => sameName(s.name, name)); n++) name = `${base.slice(0, 64 - ` (${n})`.length)} (${n})`;
+        next.push(entry(name, p.target, p.provider));
+        imported++;
+      }
+      return { result: { ...writeServers(next).result, imported } };
+    }
+  }
+  return { error: { code: -32601, message: `unknown method "${method}"` } };
+}
+
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   let req;
@@ -90,6 +152,11 @@ rl.on("line", (line) => {
   }
   const reply = (body) => process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id: req.id, ...body }) + "\n");
   const params = req.params ?? {};
+  // Liste yöntemleri hedefe bağlanmaz: özel hedeflerin hatası onlara uygulanmaz.
+  if (typeof req.method === "string" && req.method.startsWith("servers.")) {
+    reply(serversCall(req.method, params));
+    return;
+  }
   if (params.target === "fake@down") {
     reply(rpcFail("connect", DOWN_MESSAGE));
     return;

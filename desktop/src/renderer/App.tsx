@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { bridge, type Profile } from "./bridge.ts";
 import { Rail, type FleetView } from "./components/Rail.tsx";
@@ -9,7 +9,7 @@ import { TopBar } from "./components/TopBar.tsx";
 import { useT } from "./i18n/I18nProvider.tsx";
 import { useFleet } from "./hooks/useFleet.ts";
 import { useServer } from "./hooks/useServer.ts";
-import { errorText } from "./lib/errors.ts";
+import { errorText, serverListError } from "./lib/errors.ts";
 import { alarmCount, classifyFailure } from "./lib/fleet.ts";
 import { healthOf } from "./lib/health.ts";
 import { createProfileStore } from "./lib/profile-store.ts";
@@ -39,20 +39,45 @@ export function App() {
   const [dialogPending, setDialogPending] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  // Okuma ve yazmalar sırada; diskten okunmadan yazılmaz (lib/profile-store.ts).
+  // Ortak liste (servers.json, K-162): tek değişiklik gönderilir, sırada uygulanır (lib/profile-store.ts).
   const [store] = useState(() =>
     createProfileStore({
-      load: () => bridge.loadProfiles(),
-      save: (list) => bridge.saveProfiles(list),
+      load: () => bridge.listServers(),
+      add: (profile) => bridge.addServer(profile),
+      update: (target, change) => bridge.updateServer(target, change),
+      remove: (target) => bridge.removeServer(target),
       onChange: setProfiles,
     }),
   );
   const [version, setVersion] = useState<VersionPayload | null>(null);
   const cards = useFleet(profiles, active === null);
+  // Odakta yeniden okuma düşerse aynı hata her pencere geçişinde yinelenmesin.
+  const reloadFailed = useRef(false);
 
   useEffect(() => {
     store.load().catch((err: unknown) => toast("toast.profiles_failed", { error: errorText(err) }));
+    bridge.serversImportStatus().then(
+      (result) => {
+        if (result === "failed") toast("servers.import_failed");
+      },
+      (err: unknown) => toast("toast.profiles_failed", { error: errorText(err) }),
+    );
     bridge.version().then(setVersion, (err: unknown) => toast("toast.sidecar_failed", { error: errorText(err) }));
+  }, [toast, store]);
+
+  // CLI'da eklenen ya da silinen sunucu pencereye dönünce görünür.
+  useEffect(() => {
+    const onFocus = () => {
+      store.reload().then(
+        () => (reloadFailed.current = false),
+        (err: unknown) => {
+          if (!reloadFailed.current) toast("toast.profiles_failed", { error: errorText(err) });
+          reloadFailed.current = true;
+        },
+      );
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [toast, store]);
 
   const openServer = useCallback(
@@ -96,10 +121,10 @@ export function App() {
         await store.remove(target);
         closeTab(target);
       } catch (err) {
-        toast("toast.save_failed", { error: errorText(err) });
+        toast("toast.save_failed", { error: serverListError(t, err) });
       }
     },
-    [store, closeTab, toast],
+    [store, closeTab, toast, t],
   );
 
   const openDialog = (next: Dialog) => {
@@ -136,12 +161,12 @@ export function App() {
         setDialog(null);
         void openServer(draft.target);
       } catch (err) {
-        setDialogError(errorText(err));
+        setDialogError(serverListError(t, err));
       } finally {
         setDialogPending(false);
       }
     },
-    [dialog, store, openServer],
+    [dialog, store, openServer, t],
   );
 
   const health = healthOf(server.state.status, server.state.verify, server.state.stale || server.state.verifyStale);

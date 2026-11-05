@@ -40,8 +40,11 @@ export interface KadranBridge {
   alarmsList(target: string): Promise<AlarmsPayload>;
   backupsList(target: string): Promise<BackupsPayload>;
   backupCreate(target: string): Promise<Cancellable<BackupCreatePayload>>;
-  loadProfiles(): Promise<Profile[]>;
-  saveProfiles(profiles: Profile[]): Promise<Profile[]>;
+  listServers(): Promise<Profile[]>;
+  addServer(profile: Profile): Promise<Profile[]>;
+  updateServer(target: string, change: { name: string; provider: string }): Promise<Profile[]>;
+  removeServer(target: string): Promise<Profile[]>;
+  serversImportStatus(): Promise<"imported" | "already" | "failed" | null>;
   loadAppearance(): Promise<AppearanceBundle>;
   saveAppearance(appearance: Appearance): Promise<Appearance>;
   windowControl(action: WindowAction): Promise<void>;

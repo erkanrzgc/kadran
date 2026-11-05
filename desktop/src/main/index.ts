@@ -27,7 +27,7 @@ import { loadAppearance, saveAppearance } from "./appearance.ts";
 import { requireCopyText, requireWindowAction } from "./ipc-validate.ts";
 import { lockDownPermissions } from "./permissions.ts";
 import { registerManagementHandlers } from "./management-handlers.ts";
-import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
+import { migrateLegacyProfiles } from "./profiles.ts";
 import { importProfiles, registerServerList, type ImportResult } from "./server-list.ts";
 import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
 import { registerSidecarReads } from "./sidecar-reads.ts";
@@ -87,8 +87,6 @@ function registerHandlers(): void {
     call: (method, params, options) => sidecar().call(method, params, options),
     importStatus: () => importResult,
   });
-  ipcMain.handle(CHANNELS.loadProfiles, () => loadProfiles(userData(), (msg) => console.warn("[profiller]", msg)));
-  ipcMain.handle(CHANNELS.saveProfiles, (_event, profiles: unknown) => saveProfiles(userData(), profiles));
   ipcMain.handle(CHANNELS.loadAppearance, async () => ({
     appearance: await loadAppearance(userData(), warn),
     defaults: defaultAppearance(),

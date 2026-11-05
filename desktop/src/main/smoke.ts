@@ -10,7 +10,7 @@
  */
 
 import { app, type BrowserWindow } from "electron";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -19,6 +19,7 @@ import { loadWindowAccent } from "./window-accent.ts";
 export const SMOKE_TEST = process.env.KADRAN_SMOKE_TEST === "1";
 
 export const EXPECTED_BRIDGE = [
+  "addServer",
   "alarmsList",
   "appCreate",
   "appDelete",
@@ -33,12 +34,14 @@ export const EXPECTED_BRIDGE = [
   "backupCreate",
   "backupsList",
   "copyText",
+  "listServers",
   "loadAppearance",
-  "loadProfiles",
   "platform",
+  "removeServer",
   "saveAppearance",
-  "saveProfiles",
+  "serversImportStatus",
   "status",
+  "updateServer",
   "version",
   "windowControl",
 ];
@@ -73,8 +76,19 @@ export function prepareSmokeUserData(): string {
     ]),
   );
   writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en" }));
+  // Ortak sunucu listesi (K-162): sahte yan süreç bu dosyayı kullanır; yukarıdaki
+  // profiles.json açılışta ona taşınır. Kullanıcının gerçek servers.json'una dokunulmaz.
+  process.env.KADRAN_FAKE_SERVERS_FILE = join(dir, "fake-servers.json");
   app.setPath("userData", dir);
   return dir;
+}
+
+/** CLI'ın ortak listeye yazmasının taklidi: sahte yan sürecin dosyasına yazar. */
+function writeSharedServers(change: (servers: unknown[]) => unknown[]): void {
+  const file = process.env.KADRAN_FAKE_SERVERS_FILE;
+  if (!file) throw new Error("KADRAN_FAKE_SERVERS_FILE is not set");
+  const body = JSON.parse(readFileSync(file, "utf8")) as { version: number; servers: unknown[] };
+  writeFileSync(file, JSON.stringify({ ...body, servers: change(body.servers) }));
 }
 
 const EVALUATE_TIMEOUT_MS = 30_000;
@@ -266,6 +280,16 @@ async function fleetJourney(win: BrowserWindow): Promise<void> {
   expect(active.includes("linear-gradient"), `selected row is not the glass pill: ${active}`);
   await noHorizontalOverflow(win, "servers");
   await screenshot(win, "servers-1280x820");
+
+  // Eski profil listesi açılışta ortak listeye taşındı (yukarıdaki kartlar onu
+  // okudu); CLI'da eklenen sunucu pencere odağa gelince kart olarak çıkar,
+  // silinen de kaybolur.
+  writeSharedServers((servers) => [...servers, { name: "from-cli", target: "fake@cli" }]);
+  await evaluate(win, `window.dispatchEvent(new Event("focus"))`);
+  await waitFor(win, card("fake@cli"), "server added from the CLI appears on focus");
+  writeSharedServers((servers) => servers.filter((s) => (s as { target: string }).target !== "fake@cli"));
+  await evaluate(win, `window.dispatchEvent(new Event("focus"))`);
+  await waitFor(win, `!${card("fake@cli")}`, "server removed from the CLI disappears on focus");
 
   await click(win, '[data-testid="rail-alarms"]');
   await waitFor(win, q('[data-testid="fleet-alarm-row"]'), "merged alarms");

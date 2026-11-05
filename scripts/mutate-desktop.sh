@@ -201,8 +201,8 @@ mutate_in src/renderer/lib/single-flight.ts "aynı sunucuya üst üste istek" \
     "s=s.replace('if (existing) return existing;','void existing;',1)"
 mutate_in src/renderer/lib/serial.ts "profil yazmaları sırasız" \
     "s=s.replace('const result = tail.then(job, job);','const result = job();',1)"
-mutate_in src/renderer/lib/profile-store.ts "diskten okumadan yazıyor" \
-    "s=s.replace('current ?? apply(await io.load());','current ?? [];',1)"
+mutate_in src/renderer/lib/profile-store.ts "odakta yeniden okumuyor (CLI'ın eklediği görünmez)" \
+    "s=s.replace('reload: () => serial(read),','reload: () => serial(async () => { if (!loaded) await read(); }),',1)"
 mutate_in src/renderer/lib/audit-view.ts "yükleme hatası 'kayıt yok' gösteriyor" \
     "s=s.replace('if (failed) return \"audit.load_failed\";','void failed;',1)"
 mutate_in src/main/ipc-validate.ts "'-' ile başlayan hedef kabul ediliyor" \

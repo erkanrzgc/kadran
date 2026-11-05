@@ -30,8 +30,6 @@ export const CHANNELS = {
   alarmsList: "kadran:alarms-list",
   backupsList: "kadran:backups-list",
   backupCreate: "kadran:backup-create",
-  loadProfiles: "kadran:profiles-load",
-  saveProfiles: "kadran:profiles-save",
   serversList: "kadran:servers-list",
   serversAdd: "kadran:servers-add",
   serversUpdate: "kadran:servers-update",

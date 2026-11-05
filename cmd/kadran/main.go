@@ -32,6 +32,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/client"
 	"github.com/erkanrzgc/kadran/internal/domaincheck"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/servers"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -90,6 +91,8 @@ type cli struct {
 	keys keyManager
 	// TOTP oturum jetonları (Dir boş: kullanıcının yapılandırma dizini).
 	sessions client.SessionStore
+	// Kayıtlı sunucu listesi (Path boş: kullanıcının yapılandırma dizini).
+	servers servers.Store
 	// `totp reset`: root yolundan sıfırlama (nil: gerçek ssh).
 	totpReset func(ctx context.Context, opts bootstrap.KeyOptions, out io.Writer) error
 
@@ -127,6 +130,7 @@ func commands() []command {
 		{"backup", "<create|list> [target]", "takes and lists database backups", (*cli).runBackup},
 		{"domain", "check <domain> [target]", "checks a domain's DNS, ports and certificate", (*cli).runDomain},
 		{"audit", "<list|verify> [target]", "reads and verifies the audit chain", (*cli).runAudit},
+		{"server", "<add|list|rm|rename> …", "manages the saved server list", (*cli).runServer},
 		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
 		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
 		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},

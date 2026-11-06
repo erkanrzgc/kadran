@@ -35,6 +35,8 @@ FILES=(
     src/renderer/i18n/en.json
     src/renderer/toast/Toast.tsx
     src/shared/appearance.ts
+    src/renderer/styles/tokens.css
+    src/renderer/styles/layout.css
     src/renderer/lib/fleet.ts
     src/renderer/lib/providers.ts
     src/renderer/lib/audit-window.ts
@@ -154,18 +156,46 @@ mutate_in src/shared/appearance.ts "yazı tipi kalınlığı sınırsız" \
     "s=s.replace('weight: clampInt(o.weight, LIMITS.weight, fallback.weight)','weight: typeof o.weight === \"number\" ? o.weight : fallback.weight',1)"
 mutate_in src/shared/appearance.ts "bilinmeyen tema dosyadan geçiyor" \
     "s=s.replace('theme: pick(o.theme, THEMES, d.theme)','theme: o.theme as Theme',1)"
-mutate_in src/shared/appearance.ts "cam, malzemesi olmayan sistemde kalıyor" \
-    "s=s.replace('return theme === \"glass\" && available === \"none\" ? \"dark\" : theme;','return theme;',1)"
-mutate_in src/shared/appearance.ts "koyu tema masaüstünü gösteriyor" \
-    "s=s.replace('return { material: \"none\", background: \"#0a0a0a\", scheme: \"dark\" };','return { material: available, background: \"#00000000\", scheme: \"dark\" };',1)"
+mutate_in src/shared/appearance.ts "malzemesiz sistemde pencere saydam açılıyor" \
+    "s=s.replace('  if (available === \"none\") return { material: \"none\", background: SOLID_FRAME[theme], scheme: theme };\n','',1)"
+mutate_in src/shared/appearance.ts "açık temada cam kapanıyor (cam yalnız koyuda)" \
+    "s=s.replace('return { material: available, background: \"#00000000\", scheme: theme };','return theme === \"light\" ? { material: \"none\", background: SOLID_FRAME[theme], scheme: theme } : { material: available, background: \"#00000000\", scheme: theme };',1)"
 mutate_in src/shared/appearance.ts "açık tema yerel koyuda kalıyor" \
-    "s=s.replace('scheme: \"light\"','scheme: \"dark\"',1)"
+    "s=s.replace('background: \"#00000000\", scheme: theme','background: \"#00000000\", scheme: \"dark\"',1)"
+mutate_in src/shared/appearance.ts "varsayılan tema koyu" \
+    "s=s.replace('    theme: \"light\",','    theme: \"dark\",',1)"
+mutate_in src/shared/appearance.ts "kaldırılan cam teması dosyadan geçiyor" \
+    "s=s.replace('export const THEMES: readonly Theme[] = [\"dark\", \"light\"];','export const THEMES: readonly Theme[] = [\"dark\", \"light\", \"glass\" as unknown as Theme];',1)"
+
+echo "== Cam yalnız çerçevede (stil) =="
+mutate_in src/renderer/styles/tokens.css "malzemesiz sistemde çerçeve saydam kalıyor" \
+    "s=s.replace(':root[data-material=\"none\"] { --shell: var(--frame-solid); }\n','',1)"
+mutate_in src/renderer/styles/tokens.css "saydamlık kapalıyken çerçeve cam kalıyor" \
+    "s=s.replace('  :root { --shell: var(--frame-solid); }\n','',1)"
+mutate_in src/renderer/styles/layout.css "içerik paneli saydam (masaüstü içerikte görünüyor)" \
+    "s=s.replace('.page-host > .stage { background: var(--sheet);','.page-host > .stage { background: transparent;',1)"
+mutate_in src/renderer/styles/layout.css "kapat düğmesi köşeden içeride (boşluk üst çubuğu da kapsıyor)" \
+    "s=s.replace('.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }','.main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 var(--frame-gap) var(--frame-gap) 0; }',1)"
 
 echo "== Windows camı =="
 mutate_in src/main/window-accent.ts "cam kapatılınca efekt kalıyor" \
     "s=s.replace('State: on ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_DISABLED','State: ACCENT_ENABLE_ACRYLICBLURBEHIND',1)"
+mutate_in src/main/window-accent.ts "düz bulanıklık (Electron'da arka siyah)" \
+    "s=s.replace('const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;','const ACCENT_ENABLE_ACRYLICBLURBEHIND = 3;',1)"
+mutate_in src/main/window-accent.ts "koyu tonun saydamlığı sıfır (simsiyah)" \
+    "s=s.replace('dark: 0x30181816','dark: 0x00181816',1)"
+mutate_in src/main/window-accent.ts "açık temada koyu ton (cam film)" \
+    "s=s.replace('light: 0xa0f7f4f4','light: 0x30181816',1)"
+mutate_in src/main/window-accent.ts "ton temaya bakmıyor" \
+    "s=s.replace('Color: GLASS_TINT[scheme]','Color: GLASS_TINT.dark',1)"
 mutate_in src/main/window-accent.ts "ton bayrağı yok (renk yok sayılır)" \
     "s=s.replace('Flags: ACCENT_FLAG_GRADIENT_COLOR','Flags: 0',1)"
+mutate_in src/main/window-options.ts "tema değişince camın tonu yeniden verilmiyor" \
+    "s=s.replace('accent: next.material === \"accent\" && next.scheme !== prev.scheme ? next.scheme : null,','accent: null,',1)"
+mutate_in src/main/window-options.ts "yazı tipi kaydı camı yeniden kuruyor (titreme)" \
+    "s=s.replace('next.material === \"accent\" && next.scheme !== prev.scheme ? next.scheme','next.material === \"accent\" ? next.scheme',1)"
+mutate_in src/main/window-options.ts "zemin rengi her kayıtta yeniden veriliyor" \
+    "s=s.replace('background: next.background !== prev.background ? next.background : null,','background: next.background,',1)"
 mutate_in src/main/window-options.ts "Windows camı Electron malzemesiyle açılıyor (simsiyah)" \
     "s=s.replace('case \"accent\":\n      return { ...base, ...chrome };','case \"accent\":\n      return { ...base, ...chrome, backgroundMaterial: \"acrylic\" };',1)"
 

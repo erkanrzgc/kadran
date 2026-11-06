@@ -84,6 +84,8 @@ yiyor **(kullanıcı)**. Bütçeler ölçülerek konur ve CI'da sınanır:
 ## Görsel dil (kullanıcı, 30 Ekim)
 
 > **31 Ekim (K-161):** bu bölümün yerini aldı. Görünüm Coolify'ın `DESIGN.md`'sinin aynısı, üstünde gerçek masaüstü camı; tek görünüm, mod yok; Geist + Geist Mono; arayüz Electron'da, 2. parçadan önce yapıldı.
+>
+> **6 Kasım (K-163):** cam yalnız çerçevede (kenar çubuğu, üst çubuk, paneller arası); içerik camın içinde yüzen opak panellerde. İki tema, açık (varsayılan) ve koyu; ayrı cam teması yok. Windows camı Akrilik, ton temaya göre (Electron'da düz bulanıklık çalışmadı).
 
 Referans taslak: [`2026-10-30-filo-taslak.html`](2026-10-30-filo-taslak.html) (tarayıcıda açılır;
 pano ve sunucu sayfası). Kullanıcı dört taslak boyunca yönlendirdi; son hâli onayladı.

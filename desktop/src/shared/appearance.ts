@@ -1,6 +1,7 @@
 /**
- * Kullanıcı ayarları: dil, tema ve yazı tipleri. Tema üç tanedir: koyu, açık
- * ve cam (K-161); ton ya da vurgu ayarı yoktur. Ana süreç (doğrulayıp diske
+ * Kullanıcı ayarları: dil, tema ve yazı tipleri. Tema iki tanedir: açık ve
+ * koyu. Cam ayrı bir tema değil, her temada çerçevede (kenar çubuğu, üst
+ * çubuk; K-163); ton ya da vurgu ayarı yoktur. Ana süreç (doğrulayıp diske
  * yazmak için) ve arayüz aynı dosyayı kullanır; Node ya da DOM'a bağımlı değil.
  *
  * Dosya elle düzenlenebilir ya da bozulabilir. Her alan TEK TEK
@@ -8,7 +9,7 @@
  */
 
 export type Language = "en" | "tr";
-export type Theme = "dark" | "light" | "glass";
+export type Theme = "dark" | "light";
 
 export interface FontChoice {
   /** Boş dize: gömülü Geist. */
@@ -47,7 +48,10 @@ export interface WindowLook {
 }
 
 export const LANGUAGE_CODES: readonly Language[] = ["en", "tr"];
-export const THEMES: readonly Theme[] = ["dark", "light", "glass"];
+export const THEMES: readonly Theme[] = ["dark", "light"];
+
+/** Yerel malzeme yokken çerçevenin opak rengi; tokens.css'teki --frame-solid ile aynı. */
+const SOLID_FRAME: Record<Theme, string> = { dark: "#0a0a0a", light: "#ededf0" };
 
 export const LIMITS = {
   weight: [100, 900],
@@ -70,27 +74,20 @@ export function materialFor(info: PlatformInfo): Material {
   return "none";
 }
 
-/** Cam yerel malzeme ister; malzemesi olmayan sistemde koyu çizilir. */
-export function effectiveTheme(theme: Theme, available: Material): Theme {
-  return theme === "glass" && available === "none" ? "dark" : theme;
-}
-
+/**
+ * Cam her temada çerçevede: malzeme sistemin, temadan bağımsız. Malzemesi
+ * olmayan sistemde pencere çerçevenin opak rengiyle açılır.
+ */
 export function windowLook(theme: Theme, available: Material): WindowLook {
-  switch (effectiveTheme(theme, available)) {
-    case "glass":
-      return { material: available, background: "#00000000", scheme: "dark" };
-    case "light":
-      return { material: "none", background: "#fafafa", scheme: "light" };
-    case "dark":
-      return { material: "none", background: "#0a0a0a", scheme: "dark" };
-  }
+  if (available === "none") return { material: "none", background: SOLID_FRAME[theme], scheme: theme };
+  return { material: available, background: "#00000000", scheme: theme };
 }
 
 export function defaultAppearance(): Appearance {
   return {
     version: APPEARANCE_VERSION,
     language: "en",
-    theme: "glass",
+    theme: "light",
     uiFont: { family: "", weight: 400 },
     codeFont: { family: "", weight: 400 },
   };
@@ -116,6 +113,7 @@ function font(value: unknown, fallback: FontChoice): FontChoice {
 /**
  * sanitizeAppearance, güvenilmez bir değerden geçerli bir Appearance üretir.
  * Eski sürümün kayıtlı yazı tipi yeni görünümü bozmasın: yalnız dil taşınır.
+ * Kaldırılan cam teması ("glass") bilinmeyen değer gibi varsayılana (açık) döner.
  */
 export function sanitizeAppearance(raw: unknown): Appearance {
   const d = defaultAppearance();

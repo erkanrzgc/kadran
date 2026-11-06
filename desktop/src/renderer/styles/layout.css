@@ -1,5 +1,5 @@
-/* Kenar çubuğu: 224 px, dolgu yok, yalnız ince çizgi. */
-.rail { width: 224px; flex: none; display: flex; flex-direction: column; overflow: hidden auto; border-right: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: var(--line) transparent; user-select: none; }
+/* Kenar çubuğu: 224 px, dolgu ve çizgi yok; camın üstünde durur (K-163). */
+.rail { width: 224px; flex: none; display: flex; flex-direction: column; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; user-select: none; }
 .rail-brand { height: 48px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0 16px; min-width: 0; }
 /* Harf aralığı son harften sonra da eklenir; sol dolgu logoyu gözle de ortalar. */
 .rail-brand .marka { padding-left: 0.22em; }
@@ -32,8 +32,10 @@
 .nav-count { margin-left: auto; height: 18px; padding: 0 6px; line-height: 18px; font-size: 10.5px; font-weight: 600; color: var(--warn); background: rgba(251, 210, 78, 0.16); border-radius: 999px; }
 .rail-foot { margin-top: auto; display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 12px; border-top: 1px solid var(--line-soft); color: var(--fg-dim); font-weight: 500; min-width: 0; flex: none; }
 
-/* Sağ sütun */
+/* Sağ sütun. Üst çubuk tam genişlik: kapat düğmesi pencerenin köşesinde kalır. */
 .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* İçerik paneli camın içinde, sağda ve altta boşlukla yüzer. */
+.main > .stage, .main > .page-host { margin: 0 var(--frame-gap) var(--frame-gap) 0; }
 
 /* Üst çubuk: Windows 11 başlığı gibi düz, zeminsiz; yol, sekmeler, köşede pencere düğmeleri. */
 .topbar { height: 48px; flex: none; display: flex; align-items: center; gap: 12px; padding-left: 24px; min-width: 0; }
@@ -73,11 +75,14 @@
 .win-close:hover { background: #c42b1c; color: #fff; }
 
 .stage { flex: 1; min-width: 0; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 24px; padding: 18px 24px 24px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.page-host { flex: 1; min-height: 0; display: flex; }
+.page-host { flex: 1; min-height: 0; display: flex; gap: var(--frame-gap); }
 
 /* Sunucu sayfasının ikinci menüsü; dar pencerede tek satır olur. */
-.subnav { width: 188px; flex: none; padding: 2px 0 12px; overflow: hidden auto; border-right: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.subnav { width: 188px; flex: none; padding: 8px 0 12px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .subnav .nav-group:first-child { border-top: 0; }
+
+/* İçerik opak panelde; cam yalnız çevresinde kalır (K-163). */
+.main > .stage, .page-host > .subnav, .page-host > .stage { background: var(--sheet); border: 1px solid var(--sheet-edge); border-radius: var(--sheet-radius); box-shadow: var(--sheet-shadow); }
 
 /* Boş durum */
 .empty-state { margin: auto; max-width: 448px; text-align: center; padding: 40px 20px; }
@@ -86,7 +91,7 @@
 
 @media (max-width: 1050px) {
   .page-host { flex-direction: column; }
-  .subnav { width: auto; flex: none; display: flex; align-items: center; padding: 4px 16px; border-right: 0; border-bottom: 1px solid var(--line); overflow: auto hidden; scrollbar-width: none; }
+  .subnav { width: auto; flex: none; display: flex; align-items: center; padding: 4px 16px; overflow: auto hidden; scrollbar-width: none; }
   .subnav .nav-group { padding: 0; border: 0; }
   .subnav .nav-section { display: none; }
   .subnav .nav { flex-direction: row; gap: 2px; }

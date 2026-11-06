@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { effectiveTheme, type Appearance, type Theme } from "../../shared/appearance.ts";
+import type { Appearance, Theme } from "../../shared/appearance.ts";
 import { bridge, type AppearanceBundle } from "../bridge.ts";
 import { applyAppearance, CODE_FALLBACK, UI_FALLBACK, type FontStacks } from "../lib/apply-appearance.ts";
 import { errorText } from "../lib/errors.ts";
@@ -18,8 +18,8 @@ const NO_FACES: readonly Face[] = [];
 export interface AppearanceApi {
   appearance: Appearance;
   defaults: Appearance;
-  /** Çizilen tema: cam desteklenmiyorsa koyu. */
   theme: Theme;
+  /** Çerçeve cam mı; değilse (malzemesiz sistem) opak çizilir. */
   glassAvailable: boolean;
   families: ReadonlyMap<string, Face[]>;
   fontsListed: boolean;
@@ -46,7 +46,7 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
     });
   }, []);
 
-  const theme = effectiveTheme(appearance.theme, initial.material);
+  const theme = appearance.theme;
 
   // İlk çizimden önce: açık temada koyu bir kare görünmesin.
   useLayoutEffect(() => {
@@ -54,7 +54,7 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
     document.documentElement.dataset.theme = theme;
   }, [initial.material, theme]);
 
-  // Yedek Acrylic odak gidince griye düşer; tokens.css o durumda zemini siyaha alır.
+  // Yedek Acrylic odak gidince griye düşer; tokens.css o durumda çerçeveyi opak yapar.
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.focused = String(document.hasFocus());

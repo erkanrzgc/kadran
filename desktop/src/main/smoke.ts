@@ -75,7 +75,8 @@ export function prepareSmokeUserData(): string {
       { name: LONG_NAME, target: LONG_TARGET, provider: "kendi-sunucum" },
     ]),
   );
-  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en" }));
+  // Kaldırılan cam teması kayıtlı: açılışta açığa dönmeli (K-163).
+  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en", theme: "glass" }));
   // Ortak sunucu listesi (K-162): sahte yan süreç bu dosyayı kullanır; yukarıdaki
   // profiles.json açılışta ona taşınır. Kullanıcının gerçek servers.json'una dokunulmaz.
   process.env.KADRAN_FAKE_SERVERS_FILE = join(dir, "fake-servers.json");
@@ -194,15 +195,17 @@ async function checkWordmark(win: BrowserWindow): Promise<void> {
   expect(mark.offCenter <= 1, `wordmark is not centered in the sidebar: ${mark.offCenter}px off`);
 }
 
-/** Duman testinde yerel malzeme kapalı: cam sunulmaz, açık ve koyu ana sürece de ulaşır. */
+/**
+ * Duman testinde yerel malzeme kapalı: cam çerçeve opak düşer. Kayıtlı eski cam
+ * teması açığa döner; iki tema da ana sürece ulaşır, içerik iki temada da opak
+ * panelde (K-163).
+ */
 async function themeJourney(win: BrowserWindow): Promise<void> {
   const root = "document.documentElement";
   const shell = `getComputedStyle(${q(".shell")}).backgroundColor`;
-  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="theme-glass"]')})`)), "glass is offered without a native material");
-  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "glass falls back to dark");
-
-  await click(win, '[data-testid="theme-light"]');
-  await waitFor(win, `${root}.dataset.theme === "light" && ${shell} === "rgb(250, 250, 250)"`, "light canvas");
+  const sheet = `getComputedStyle(${q(".stage")}).backgroundColor`;
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="theme-glass"]')})`)), "the removed glass theme is still offered");
+  await waitFor(win, `${root}.dataset.theme === "light" && ${shell} === "rgb(237, 237, 240)" && ${sheet} === "rgb(255, 255, 255)"`, "light is the default: solid frame, white panel");
   await waitFor(win, `matchMedia("(prefers-color-scheme: light)").matches`, "native light theme");
   const ink = await evaluate<number>(win, `(() => {
     const ctx = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
@@ -214,7 +217,7 @@ async function themeJourney(win: BrowserWindow): Promise<void> {
   await screenshot(win, "settings-light-1280x820");
 
   await click(win, '[data-testid="theme-dark"]');
-  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "dark canvas");
+  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)" && ${sheet} === "rgb(20, 20, 20)"`, "dark: solid frame, dark panel");
   await waitFor(win, `matchMedia("(prefers-color-scheme: dark)").matches`, "native dark theme");
 
   await evaluate(win, `window.dispatchEvent(new Event("blur"))`);
@@ -243,7 +246,7 @@ async function checkWindowAccent(win: BrowserWindow): Promise<void> {
   if (process.platform !== "win32") return;
   const accent = await loadWindowAccent((message) => expect(false, message));
   expect(accent !== null, "Windows glass bridge did not load");
-  expect(accent!.set(win, false), "Windows refused the glass call");
+  expect(accent!.set(win, false, "dark"), "Windows refused the glass call");
 }
 
 /**
@@ -350,8 +353,8 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
   await checkWordmark(win);
-  const cardFill = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backgroundColor`);
-  expect(cardFill.startsWith("rgba(255, 255, 255"), `application card lost its glass fill: ${cardFill}`);
+  const sheetFill = await evaluate<string>(win, `getComputedStyle(${q(".page-host > .stage")}).backgroundColor`);
+  expect(sheetFill === "rgb(255, 255, 255)", `application cards are not on the opaque panel: ${sheetFill}`);
   await screenshot(win, "apps-1280x820");
   await click(win, '[data-testid="app-card-hello"]');
   await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "r2"`, "active release");

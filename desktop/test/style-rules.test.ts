@@ -9,6 +9,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { windowLook } from "../src/shared/appearance.ts";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, "..", "src", "renderer");
 const stylesDir = join(rendererDir, "styles");
@@ -49,36 +51,39 @@ test("kenar çubuğunda dolgu ve mor yok; seçili satır köşeli cam", async ()
   assert.match(layout, /\.nav-item\.is-active::before \{ opacity: 1;/);
   // Hover seçili satırı ezerse fare üstündeyken cam kaybolur, çekilince birden gelir.
   assert.match(layout, /\.nav-item:not\(:disabled\):not\(\.is-active\):hover \{/);
-  assert.match(await read("tokens.css"), /--pill: linear-gradient\(180deg, rgba\(255, 255, 255/);
+  assert.match(await read("tokens.css"), /--pill: linear-gradient\(180deg,/);
   assert.doesNotMatch(layout, /7317ff|5a12c7|6b16ed|120e1a/);
 });
 
-test("üç tema da aynı renk adlarını tanımlıyor; bileşende sabit beyaz ya da siyah yok", async () => {
+const THEME_BLOCKS = [':root[data-theme="dark"]', ':root[data-theme="light"]'];
+
+function block(tokens: string, selector: string): string {
+  const start = tokens.indexOf(`${selector} {`);
+  assert.ok(start >= 0, selector);
+  return tokens.slice(start, tokens.indexOf("}", start));
+}
+
+test("iki tema da aynı renk adlarını tanımlıyor; bileşende sabit beyaz ya da siyah yok", async () => {
   const tokens = await read("tokens.css");
-  const block = (selector: string): string => {
-    const start = tokens.indexOf(`${selector} {`);
-    assert.ok(start >= 0, selector);
-    return tokens.slice(start, tokens.indexOf("}", start));
-  };
   const named = (css: string): string[] => [...css.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]!);
-  const glass = named(block(":root"));
-  for (const selector of [':root[data-theme="dark"]', ':root[data-theme="light"]']) {
-    const own = named(block(selector));
-    for (const name of ["--shell", "--ov", "--fg", "--fg-dim", "--fg-faint", "--line", "--edge", "--flat", "--menu", "--card-bg", "--well-bg", "--pill", "--text-shadow", "--kart-bg", "--kart-shadow"]) {
-      assert.ok(glass.includes(name), `cam: ${name}`);
+  for (const selector of THEME_BLOCKS) {
+    const own = named(block(tokens, selector));
+    for (const name of ["--frame", "--frame-solid", "--sheet", "--sheet-edge", "--sheet-shadow", "--ov", "--fg", "--fg-dim", "--fg-faint", "--line", "--edge", "--flat", "--menu", "--card-bg", "--well-bg", "--pill", "--text-shadow", "--kart-bg", "--kart-shadow"]) {
       assert.ok(own.includes(name), `${selector}: ${name}`);
     }
   }
-  assert.match(block(':root[data-theme="light"]'), /color-scheme: light/);
+  assert.match(block(tokens, ':root[data-theme="light"]'), /color-scheme: light/);
   for (const [name, css] of await styles()) {
     if (name === "tokens.css") continue;
     assert.doesNotMatch(css, /rgba\(255, 255, 255|rgba\(0, 0, 0|#1b1b1f|#16161a|#f2f2f2/, name);
   }
 });
 
-test("odak gidince siyah yalnız yedek Acrylic'te; Windows camı açık kalır", async () => {
+test("cam yoksa çerçeve opak: malzemesiz sistemde ve odak gidince yedek Acrylic'te; Windows camı açık kalır", async () => {
   const tokens = await read("tokens.css");
-  assert.match(tokens, /:root\[data-theme="glass"\]\[data-material="acrylic"\]\[data-focused="false"\] \{ --shell: #0a0a0a; \}/);
+  assert.match(tokens, /:root \{[^}]*--shell: var\(--frame\);/);
+  assert.match(tokens, /:root\[data-material="none"\] \{ --shell: var\(--frame-solid\); \}/);
+  assert.match(tokens, /:root\[data-material="acrylic"\]\[data-focused="false"\] \{ --shell: var\(--frame-solid\); \}/);
   assert.doesNotMatch(tokens, /data-material="accent"/);
 });
 
@@ -92,35 +97,64 @@ test("mor yalnız ana düğmede", async () => {
   }
 });
 
-test("pencere modu ve cam ayarı kalmadı", async () => {
+test("pencere modu, ton ve ayrı cam teması kalmadı", async () => {
   for (const [name, css] of await styles()) {
-    assert.doesNotMatch(css, /data-mode|data-tone|--panel|--glow/, name);
+    assert.doesNotMatch(css, /data-mode|data-tone|--panel|--glow|--tint|data-theme="glass"/, name);
   }
-  const tokens = await read("tokens.css");
-  // Windows camında hafif tül; yedek Acrylic daha açık çizdiği için orada koyu kalır.
-  assert.match(tokens, /--tint:\s*0\.2;/);
-  assert.match(tokens, /:root\[data-theme="glass"\]\[data-material="acrylic"\] \{ --tint: 0\.34; \}/);
 });
 
-test("camda kartlar glassmorphism: ışık süzmesi ve parlak üst kenar; hover süzmeyi silmez", async () => {
+test("cam yalnız çerçevede: kenar çubuğu çizgisiz, içerik opak panelde (K-163)", async () => {
+  const layout = await read("layout.css");
+  const rail = layout.slice(layout.indexOf(".rail {"), layout.indexOf("}", layout.indexOf(".rail {")));
+  assert.doesNotMatch(rail, /border-right/);
+  // Boşluk panelin dışında; üst çubuk tam genişlik kalır, kapat düğmesi pencerenin köşesinde.
+  assert.match(layout, /\.main > \.stage, \.main > \.page-host \{ margin: 0 var\(--frame-gap\) var\(--frame-gap\) 0; \}/);
+  const main = layout.slice(layout.indexOf(".main {"), layout.indexOf("}", layout.indexOf(".main {")));
+  assert.doesNotMatch(main, /padding/);
+  assert.match(layout, /\.page-host \{[^}]*gap: var\(--frame-gap\);/);
+  assert.match(
+    layout,
+    /\.main > \.stage, \.page-host > \.subnav, \.page-host > \.stage \{ background: var\(--sheet\); border: 1px solid var\(--sheet-edge\); border-radius: var\(--sheet-radius\); box-shadow: var\(--sheet-shadow\); \}/,
+  );
+  // Dar pencerede ikinci menü üste geçer; kendi kenarlığını silerse panel kenarsız kalır.
+  const narrow = layout.slice(layout.indexOf("@media (max-width: 1050px)"));
+  const narrowSubnav = narrow.slice(narrow.indexOf(".subnav {"), narrow.indexOf("}", narrow.indexOf(".subnav {")));
+  assert.ok(narrowSubnav.length > 0);
+  assert.doesNotMatch(narrowSubnav, /border/);
   const tokens = await read("tokens.css");
-  const glass = tokens.slice(tokens.indexOf(":root {"), tokens.indexOf("}", tokens.indexOf(":root {")));
-  assert.match(glass, /--card-bg: linear-gradient\(/);
-  assert.match(glass, /--card-shadow: inset 0 1px 0 rgba\(255, 255, 255/);
-  assert.match(glass, /--kart-bg: linear-gradient\(/);
-  // Kısaltılmış "background" hover'da gradyanı silerdi: kart düzleşip parlar.
-  assert.match(await read("screens.css"), /\.kart:hover \{[^}]*background-color:/);
-  assert.match(await read("management.css"), /\.resource-card:hover \{[^}]*background-color:/);
+  assert.match(tokens, /--sheet-radius:\s*10px/);
+  assert.match(tokens, /--frame-gap:\s*8px/);
+  for (const selector of THEME_BLOCKS) {
+    const css = block(tokens, selector);
+    // Panel ve opak çerçeve saydamlık taşımaz: içerik masaüstünün üstünde okunur kalır.
+    assert.match(css, /--sheet: #[0-9a-f]{6};/, selector);
+    assert.match(css, /--frame-solid: #[0-9a-f]{6};/, selector);
+  }
+  // Kullanıcının seçtiği örtüler (6 Kasım): açıkta Windows camının beyaz tonu yeter, koyuda hafif örtü.
+  assert.match(block(tokens, ':root[data-theme="light"]'), /--frame: rgb\(244 244 247 \/ 0%\);/);
+  assert.match(block(tokens, ':root[data-theme="dark"]'), /--frame: rgb\(22 22 24 \/ 20%\);/);
 });
 
-test("saydamlık kapalıysa cam opak", async () => {
+test("opak çerçeve rengi pencerenin açılış rengiyle aynı: renk sıçraması yok", async () => {
+  const tokens = await read("tokens.css");
+  for (const theme of ["dark", "light"] as const) {
+    const solid = /--frame-solid: (#[0-9a-f]{6});/.exec(block(tokens, `:root[data-theme="${theme}"]`));
+    assert.equal(solid?.[1], windowLook(theme, "none").background, theme);
+  }
+});
+
+test("saydamlık kapalıysa çerçeve opak", async () => {
   assert.match(await read("base.css"), /\.shell \{[^}]*background: var\(--shell\)/);
-  assert.match(await read("tokens.css"), /@media \(prefers-reduced-transparency: reduce\) \{\s*:root\[data-theme="glass"\] \{ --shell: #0a0a0a; \}/);
+  const tokens = await read("tokens.css");
+  assert.match(tokens, /@media \(prefers-reduced-transparency: reduce\) \{\s*:root \{ --shell: var\(--frame-solid\); \}/);
+  // Seçiciler eşit güçte: kural ancak varsayılan çerçeveden SONRA gelirse kazanır.
+  assert.ok(tokens.indexOf("@media (prefers-reduced-transparency") > tokens.indexOf("--shell: var(--frame);"));
 });
 
 test("yüzen yüzey opak: menü, kutu, bildirim", async () => {
   const tokens = await read("tokens.css");
-  assert.match(tokens, /--menu:\s*rgb\(/);
+  // Saydamlık payı ("/ %") olmayan renk: menü camın üstünde de okunur.
+  for (const selector of THEME_BLOCKS) assert.match(block(tokens, selector), /--menu:\s*(oklch|rgb)\([^/)]*\);/, selector);
   assert.match(await read("layout.css"), /\.crumb-menu \{[^}]*background: var\(--menu\)/);
   assert.match(await read("management.css"), /\.operation-dialog \{[^}]*background: var\(--menu\)/);
   assert.match(await read("controls.css"), /\.toast \{[^}]*background: var\(--menu\)/);

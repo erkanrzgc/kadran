@@ -149,10 +149,10 @@ if (!app.requestSingleInstanceLock()) {
     const accent: WindowAccent | null = material === "acrylic" ? await loadWindowAccent(warn) : null;
     if (accent) material = "accent";
     registerHandlers();
-    // Tema sistemden değil ayardan: cam sistem açık temada olsa da koyu kalır.
+    // Tema sistemden değil ayardan: sistem koyu temadayken de seçilen açık kalır.
     const look = windowLook((await loadAppearance(userData(), warn)).theme, material);
     nativeTheme.themeSource = look.scheme;
-    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, available: material, accent, look, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-icon.png") });
+    host = createWindowHost({ preloadPath, rendererIndex, platform: process.platform, accent, look, showOnReady: !SMOKE_TEST, iconPath: join(here, "..", "renderer", "kadran-icon.png") });
     const win = host.open();
     if (SMOKE_TEST) void runSmokeTest(win);
 

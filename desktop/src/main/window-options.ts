@@ -10,7 +10,27 @@
 
 import type { BrowserWindowConstructorOptions } from "electron";
 
-import type { WindowLook } from "../shared/appearance.ts";
+import type { Theme, WindowLook } from "../shared/appearance.ts";
+
+/** Tema ya da ayar kaydı değişince pencereye yeniden verilecekler; null: dokunma. */
+export interface LookChange {
+  background: string | null;
+  /** Windows camının yeni tonu (tema başına, K-163). */
+  accent: Theme | null;
+}
+
+/**
+ * Malzeme sistemin, temadan bağımsız: pencere açılırken bir kez kurulur. Tema
+ * yalnız malzemesiz sistemde opak zeminin rengini ve Windows camının tonunu
+ * değiştirir. Yedek Acrylic'in ve macOS'un tonunu sistem teması (nativeTheme)
+ * verir. Yazı tipi ya da dil kaydı da buradan geçer; aynısını yeniden vermek titretir.
+ */
+export function lookChange(prev: WindowLook, next: WindowLook): LookChange {
+  return {
+    background: next.background !== prev.background ? next.background : null,
+    accent: next.material === "accent" && next.scheme !== prev.scheme ? next.scheme : null,
+  };
+}
 
 export function windowOptions(look: WindowLook, platform: string, preloadPath: string): BrowserWindowConstructorOptions {
   const base: BrowserWindowConstructorOptions = {

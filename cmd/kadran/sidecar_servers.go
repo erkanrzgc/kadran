@@ -48,6 +48,11 @@ type serverList struct {
 }
 
 func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
+	// İstekler eşzamanlı işlenir (serve); oku-değiştir-yaz sırayla olmazsa
+	// iki ekleme birbirininkini silerdi. Başka bir sürece (CLI) karşı kilit
+	// yok: orada son yazan kazanır (K-162).
+	s.serversMu.Lock()
+	defer s.serversMu.Unlock()
 	store := s.cli.serverStore()
 	var (
 		list []servers.Server

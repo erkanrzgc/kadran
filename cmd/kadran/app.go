@@ -65,7 +65,7 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		// ilk konumsal argümanda ayrıştırma durur. Kullanım metni bunu
 		// açıkça söylüyor, çünkü tersini deneyen biri "-repo zorunlu"
 		// hatası alır ve sebebini göremez.
-		return c.usageError("usage: kadran app create -repo host/owner/repo " +
+		return c.argCountError("usage: kadran app create -repo host/owner/repo " +
 			"[options] <name> [target] — options go BEFORE the name")
 	}
 
@@ -154,7 +154,7 @@ func (c *cli) runAppList(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`app list` takes at most one target, got %d", fs.NArg())
+		return c.argCountError("`app list` takes at most one target, got %d", fs.NArg())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -205,7 +205,7 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("usage: kadran app show [options] <name> [target]")
+		return c.argCountError("usage: kadran app show [options] <name> [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)

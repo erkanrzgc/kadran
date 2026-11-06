@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/erkanrzgc/kadran/internal/servers"
 )
@@ -72,10 +74,7 @@ func expandServerFlag(args []string, load func() ([]servers.Server, error)) ([]s
 		return append(slices.Clone(rest), srv.Target), name, nil
 	}
 	if srv.Admin == "" {
-		return nil, "", &serverFlagError{msg: fmt.Sprintf(
-			"server %q has no admin target for `%s` — save it again with one: "+
-				"kadran server rm %s && kadran server add -admin root@host %s %s",
-			name, args[0], name, name, srv.Target)}
+		return nil, "", &serverFlagError{msg: noAdminHint(srv, args[0])}
 	}
 	out := slices.Clone(rest[:at])
 	if srv.Sudo {
@@ -129,8 +128,59 @@ func (c *cli) checkServerTarget(raw string) error {
 	if c.serverName == "" || raw == c.serverTarget {
 		return nil
 	}
+	shown, _ := shellName(c.serverName)
 	return fmt.Errorf("-s %s: an argument is missing or extra (the saved target did not end up as the target, "+
-		"so nothing was sent) — see the command's usage", c.serverName)
+		"so nothing was sent) — see the command's usage", shown)
+}
+
+// noAdminHint, yönetici hedefi olmayan kayıtla kök yolundan bir komut
+// denenince ne yapılacağı. Komutlar ayrı satırlarda (PowerShell 5.1'de && yok)
+// ve sağlayıcı korunarak; ad kabukta güvenle yazılamıyorsa komut verilmez.
+func noAdminHint(srv servers.Server, cmd string) string {
+	shown, ok := shellName(srv.Name)
+	head := fmt.Sprintf("server %s has no admin target for `%s` — save it again with one", shown, cmd)
+	if !ok {
+		return head + " (kadran server rm, then kadran server add -admin root@host)"
+	}
+	add := "kadran server add"
+	if srv.Provider != "" {
+		if p, pok := shellName(srv.Provider); pok {
+			add += " -provider " + p
+		}
+	}
+	return head + ":\n" +
+		"  kadran server rm " + shown + "\n" +
+		"  " + add + " -admin root@host " + shown + " " + srv.Target + "\n" +
+		"  (or -admin user@host -sudo for a user with passwordless sudo)"
+}
+
+// shellName, kayıtlı adın ipuçlarındaki biçimi; ok, kopyalanıp bash,
+// PowerShell ya da cmd'de çalıştırılabilir mi. Harfle başlayan ve yalnız
+// harf, rakam, `.`, `_`, `-` taşıyan ad olduğu gibi yazılır. Boşluk, parantez
+// gibi üç kabuğun da çift tırnak içinde düz okuduğu karakterler varsa çift
+// tırnaklanır ("a (2)"). Tırnak içinde de yorumlanan bir karakter ($ ` " \ !
+// % ya da listede olmayan bir işaret) varsa ok=false: ad yalnız gösterilir,
+// çalıştırılacak bir komuta yazılmaz.
+func shellName(name string) (string, bool) {
+	plain, quotable := name != "", true
+	for i, r := range name {
+		switch {
+		case unicode.IsLetter(r):
+		case unicode.IsDigit(r) || unicode.IsMark(r) || strings.ContainsRune("._-", r):
+			plain = plain && i > 0
+		case strings.ContainsRune(" ()+=/,:@'#&;[]~", r):
+			plain = false
+		default:
+			plain, quotable = false, false
+		}
+	}
+	switch {
+	case plain:
+		return name, true
+	case quotable:
+		return `"` + name + `"`, true
+	}
+	return strconv.Quote(name), false
 }
 
 // savedNames, "kayıt yok" hatasının ikinci yarısı: kayıtlı adlar ya da boş

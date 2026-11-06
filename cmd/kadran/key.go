@@ -111,7 +111,7 @@ func (c *cli) runKeyList(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() != 1 {
-		return c.usageError("%s", keyUsage)
+		return c.argCountError("%s", keyUsage)
 	}
 	opts, err := c.keyTarget(fs.Arg(0), *sudo)
 	if err != nil {
@@ -178,7 +178,7 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() != 2 {
-		return c.usageError("%s", keyUsage)
+		return c.argCountError("%s", keyUsage)
 	}
 	// Yönetici anahtarı bu komutla EKLENMİYOR: yönetici anahtarı
 	// bootstrap'ın işi (-client-key). Kapsamsız bir `key add` yazım
@@ -237,7 +237,7 @@ func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() != 2 {
-		return c.usageError("%s", keyUsage)
+		return c.argCountError("%s", keyUsage)
 	}
 	fp := fs.Arg(0)
 	if !strings.HasPrefix(fp, "SHA256:") {

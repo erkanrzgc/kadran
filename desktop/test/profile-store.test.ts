@@ -82,6 +82,46 @@ test("two removes in a row are both sent, in order", async () => {
   assert.deepEqual(f.seen.at(-1), ["c"]);
 });
 
+/** Yan sürecin "kayıt yok" hatası, IPC'nin eklediği önekle (main/server-list.ts). */
+const notFound = () => new Error("Error invoking remote method 'kadran:servers-remove': Error: server-list:not_found");
+
+test("removing a server already deleted from the CLI re-reads the list and resolves", async () => {
+  const f = fakeIO([p("a"), p("b")]);
+  const store = createProfileStore(f.io);
+  await store.load();
+  f.write([p("a")]);
+  f.io.remove = async (target) => {
+    f.calls.push(["remove", target]);
+    throw notFound();
+  };
+  await store.remove("b");
+  assert.deepEqual(f.calls.slice(-2), [["remove", "b"], ["load"]]);
+  assert.deepEqual(f.seen.at(-1), ["a"]);
+});
+
+test("updating a server already deleted from the CLI re-reads the list and still rejects", async () => {
+  const f = fakeIO([p("a"), p("b")]);
+  const store = createProfileStore(f.io);
+  await store.load();
+  f.write([p("a")]);
+  f.io.update = async () => {
+    throw notFound();
+  };
+  await assert.rejects(store.update("b", { name: "x", provider: "" }), /server-list:not_found/);
+  assert.deepEqual(f.seen.at(-1), ["a"]);
+});
+
+test("another remove error rejects and does not re-read", async () => {
+  const f = fakeIO([p("a")]);
+  const store = createProfileStore(f.io);
+  await store.load();
+  f.io.remove = async () => {
+    throw new Error("server-list:newer_file");
+  };
+  await assert.rejects(store.remove("a"), /newer_file/);
+  assert.equal(f.calls.filter((c) => c[0] === "load").length, 1);
+});
+
 test("update sends the target and the change, provider empty clears it", async () => {
   const f = fakeIO([{ name: "a", target: "a", provider: "aws" }]);
   const store = createProfileStore(f.io);

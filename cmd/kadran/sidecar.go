@@ -114,6 +114,9 @@ type sidecar struct {
 	// çalışabilir. Çerçeveleme satır sonuna dayandığından araya giren
 	// bir yazma, üst sürecin akışı yanlış bölmesine yol açardı.
 	writeMu sync.Mutex
+
+	// serversMu, servers.* çağrılarını sıraya koyar (sidecar_servers.go).
+	serversMu sync.Mutex
 }
 
 // serve, stdin'den gelen istekleri okur ve her birini eşzamanlı işler.

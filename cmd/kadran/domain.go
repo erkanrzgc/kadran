@@ -64,7 +64,12 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return c.usageError("-wait cannot be negative")
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("usage: kadran domain check <domain> [target]")
+		return c.argCountError("usage: kadran domain check <domain> [target]")
+	}
+	// Komut connect'ten geçmez: -s ile alan adı unutulursa kayıtlı hedef alan
+	// adının yerine geçer ve o sunucu HTTP'den yoklanırdı (K-162).
+	if err := c.checkServerTarget(fs.Arg(1)); err != nil {
+		return c.fail(err)
 	}
 	domain := strings.TrimSuffix(strings.ToLower(fs.Arg(0)), ".")
 	if strings.ContainsAny(domain, "/: ") || domain == "" {

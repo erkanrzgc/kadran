@@ -3,9 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/servers"
@@ -40,6 +42,33 @@ func callServers(t *testing.T, s *sidecar, method, params string) (serversResult
 		t.Fatal(err)
 	}
 	return out, nil
+}
+
+// serve her isteği ayrı goroutine'de işler; servers.* oku-değiştir-yaz
+// yaptığından kilitsiz iki ekleme birbirininkini silebilir.
+func TestSidecarServersConcurrentAddsAllLand(t *testing.T) {
+	s := serversSidecar(t)
+	const n = 20
+	var wg sync.WaitGroup
+	errs := make(chan string, n)
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			params := fmt.Sprintf(`{"name":"s%d","target":"kadran-client@192.0.2.%d"}`, i, i+1)
+			if _, rpcErr := s.dispatch(context.Background(), rpcRequest{Method: "servers.add", Params: json.RawMessage(params)}); rpcErr != nil {
+				errs <- rpcErr.Message
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Errorf("servers.add: %s", e)
+	}
+	if got := mustServers(t, s, "servers.list", ""); len(got.Servers) != n {
+		t.Fatalf("%d eklemenin %d'i kaldı", n, len(got.Servers))
+	}
 }
 
 func mustServers(t *testing.T, s *sidecar, method, params string) serversResult {

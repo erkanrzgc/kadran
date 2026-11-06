@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -73,7 +74,8 @@ func (s Store) load() (list []Server, version int, path string, err error) {
 		return nil, 0, path, fmt.Errorf("the server list (%s) has no version — fix or remove the file", path)
 	}
 	if err := Validate(body.Servers); err != nil {
-		return nil, 0, path, fmt.Errorf("the server list (%s) has an invalid entry: %w", path, err)
+		// Liste bu hâldeyken `kadran server rm` de onu okuyamaz: düzeltme elle.
+		return nil, 0, path, fmt.Errorf("the server list (%s) has an invalid entry: %w — fix or remove the file", path, err)
 	}
 	return body.Servers, body.Version, path, nil
 }
@@ -163,10 +165,18 @@ func withRetry(fn func() error) error {
 	return err
 }
 
+// readRetry, dosyayı en çok maxFileSize+1 bayt okur: daha büyüğünü load
+// reddeder, belleğe bütünüyle hiç alınmaz. Açma da yeniden denenir; Windows'ta
+// paylaşım ihlali orada çıkar.
 func readRetry(path string) ([]byte, error) {
 	var raw []byte
-	err := withRetry(func() (err error) {
-		raw, err = os.ReadFile(path)
+	err := withRetry(func() error {
+		f, err := os.Open(path)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = f.Close() }()
+		raw, err = io.ReadAll(io.LimitReader(f, maxFileSize+1))
 		return err
 	})
 	return raw, err

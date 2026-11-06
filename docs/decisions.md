@@ -12379,8 +12379,8 @@ dizininde tutuyordu. 4. parça ("+ Sunucu ekle") ve 5. parça ("Hepsini yükselt
   "servers": [...]}`. Biçimi yalnız `internal/servers` bilir. Daha yeni sürümün dosyası okunur ama
   yazılmaz; bozuk dosya hatadır ve ezilmez. Okunan her hedef yazmadaki denetimden geçer
   (`-oProxyCommand=…` ssh'a ulaşmaz).
-- Ad 1–64 karakter, denetim karakteri yok, `-` ile başlamaz; benzersizlik büyük/küçük harfe bakmaz,
-  arama tam eşleşme.
+- Ad 1–64 karakter, denetim ya da görünmez biçim karakteri (`\p{Cf}`) yok, `-` ile başlamaz;
+  benzersizlik büyük/küçük harfe bakmaz, arama tam eşleşme.
 - CLI: `kadran server add|list|rm|rename` (ağa çıkmaz) ve her komutta `-s <ad>`. Çözüm `run()`'da bir
   kez: `-s ad` çıkarılır, kayıtlı hedef sona eklenir. `bootstrap`, `key`, `totp reset` yönetici
   hedefini ve `-sudo`'yu alır. Konumsal argüman ad olarak aranmaz (`~/.ssh/config` takma adıyla
@@ -12419,6 +12419,41 @@ dizininde tutuyordu. 4. parça ("+ Sunucu ekle") ve 5. parça ("Hepsini yükselt
   100'ü aşan liste).
 - Uçtan uca (sahte yan süreç): eski 11 profil açılışta ortak listeye taşındı; dosyaya "CLI gibi"
   eklenen sunucu pencere odağa gelince kart oldu, silinince kayboldu.
+
+### İncelemenin ertelenen küçükleri (6 Kasım, düzeltme PR'ı)
+
+PR #28'de ertelenen sekiz küçük bulgu kapatıldı:
+
+- **Yan süreç kilidi:** `servers.*` çağrıları sıraya kondu. İstekler eşzamanlı işleniyor; kilit
+  yokken 20 eşzamanlı eklemenin bir kısmı kayboldu, 10 koşunun 10'unda. Kilitle 10/10 yeşil.
+  Başka bir sürece (CLI) karşı kilit yok, orada son yazan kazanır.
+- **`domain check -s ad`:** alan adı unutulursa kayıtlı hedef alan adının yerine geçiyor, komut
+  `connect`'ten geçmediği için o sunucu HTTP'den yoklanıyordu. Artık ikinci kilit burada da var:
+  hiçbir DNS, TCP ya da HTTP denemesi yapılmıyor. Hedefi `connect` dışında kullanan öbür komutlar
+  (`logout`) ağa çıkmıyor.
+- **Görünmez karakter:** adda `\p{Cf}` (sıfır genişlikli boşluk, sağdan sola işaretleri, yumuşak
+  tire) reddediliyor; ekranda aynı görünen iki ayrı kayıt olmasın. Sağlayıcıda da öyle. Göçte bu
+  karakterler atılıyor, profil düşmüyor. Bedel: emoji birleştiricisi (ZWJ) de Cf; birleşik emoji
+  adda kullanılamaz.
+- **Geçersiz kayıt hatası** "fix or remove the file" diyor (liste bu hâldeyken `server rm` de
+  okuyamıyor).
+- **Kopyalanan ipuçları:** ad üç kabukta (bash, PowerShell, cmd) çift tırnak içinde düz okunan
+  karakterler taşıyorsa tırnaklanıyor (`"a (2)"`). Tırnak içinde de yorumlanan bir karakter
+  (`$`, `` ` ``, `"`, `\`, `!`, `%`) varsa ad çalıştırılacak bir komuta hiç yazılmıyor (oturum
+  ipucu o zaman kayıtlı hedefi söylüyor). Yöneticisiz kayıt ipucu `&&` yerine iki satır
+  (PowerShell 5.1'de `&&` yok) ve sağlayıcıyı koruyor.
+- **`-s` notu** yalnız argüman sayısı hatasında (`argCountError`); bilinmeyen alt komut ya da
+  geçersiz bayrakta çıkmıyor.
+- **Masaüstü:** CLI'da silinmiş sunucu masaüstünde kaldırılınca kart odak beklemeden gidiyor
+  (`not_found` listeyi yeniden okutuyor). Düzenlenen kayıt silinmişse liste tazeleniyor, hata yine
+  pencerede söyleniyor.
+- **Küçükler:** komut yardımı (`-h`) `-s`'yi söylüyor; kurulum sonrası "To verify" `-s` ile
+  kurulduysa `kadran status -s <ad>` diyor; dosya en çok sınırın bir bayt fazlası okunuyor;
+  sağlayıcı `servers.Add`'de kırpılıyor (CLI ve masaüstü aynı yoldan).
+- Ölçüm: `mutate-servers.sh` 27/27 (yeni on mutant: görünmez karakter, sağlayıcı kırpma,
+  `domain check` kilidi, tırnaklama ikisi, oturum ipucu, `-s` notunun iki yönü, `-h` satırı, yan
+  süreç kilidi); izin mutantı yine Windows'ta atlanıyor. İki yeni masaüstü mutantı (kaldırmada ve
+  düzenlemede `not_found`) elle uygulandı, ikisi de yakalandı; betiğin tamamı CI'da koşar.
 
 ### Ölçülmedi
 

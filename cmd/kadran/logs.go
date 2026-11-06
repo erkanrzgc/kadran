@@ -37,7 +37,7 @@ func (c *cli) runLogs(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("usage: kadran logs [-f] [-tail n] <app> " +
+		return c.argCountError("usage: kadran logs [-f] [-tail n] <app> " +
 			"[target] — options go BEFORE the app name")
 	}
 

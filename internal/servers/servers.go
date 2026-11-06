@@ -46,8 +46,14 @@ var (
 	ErrDuplicateTarget = errors.New("a saved server already has this target")
 )
 
+// invisible, denetim ve görünmez biçim karakterleri (\p{Cf}: sıfır genişlikli
+// boşluk, sağdan sola işaretleri, yumuşak tire). Cf'li iki ad ekranda aynı
+// görünüp ayrı kayıt olurdu, yön işareti de adı ters gösterirdi.
+func invisible(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }
+
 // NormalizeName, adı kırpar ve kurala uyduğunu denetler: 1–64 karakter,
-// denetim karakteri yok, `-` ile başlamıyor (`-s -foo` bayrak gibi okunmasın).
+// denetim ya da görünmez karakter yok, `-` ile başlamıyor (`-s -foo` bayrak
+// gibi okunmasın).
 func NormalizeName(name string) (string, error) {
 	n := strings.TrimSpace(name)
 	switch {
@@ -59,8 +65,8 @@ func NormalizeName(name string) (string, error) {
 		return "", fmt.Errorf("server name is longer than %d characters", MaxName)
 	case strings.HasPrefix(n, "-"):
 		return "", fmt.Errorf("server name cannot start with `-` (%q)", n)
-	case strings.IndexFunc(n, unicode.IsControl) >= 0:
-		return "", fmt.Errorf("server name contains a control character (%q)", n)
+	case strings.IndexFunc(n, invisible) >= 0:
+		return "", fmt.Errorf("server name contains a control or invisible character (%q)", n)
 	}
 	return n, nil
 }
@@ -81,8 +87,8 @@ func validateEntry(s Server) error {
 	if _, err := client.ParseTarget(s.Target); err != nil {
 		return fmt.Errorf("server %q: target: %w", s.Name, err)
 	}
-	if utf8.RuneCountInString(s.Provider) > MaxProvider || strings.IndexFunc(s.Provider, unicode.IsControl) >= 0 {
-		return fmt.Errorf("server %q: provider is longer than %d characters or has a control character", s.Name, MaxProvider)
+	if utf8.RuneCountInString(s.Provider) > MaxProvider || strings.IndexFunc(s.Provider, invisible) >= 0 {
+		return fmt.Errorf("server %q: provider is longer than %d characters or has a control or invisible character", s.Name, MaxProvider)
 	}
 	if s.Admin == "" {
 		if s.Sudo {
@@ -134,13 +140,15 @@ func Find(list []Server, name string) (Server, bool) {
 	return Server{}, false
 }
 
-// Add, kaydı sona ekler. Ad kırpılır; liste değişmez, yenisi döner.
+// Add, kaydı sona ekler. Ad ve sağlayıcı kırpılır (CLI de masaüstü de bu
+// yoldan geçer); liste değişmez, yenisi döner.
 func Add(list []Server, s Server) ([]Server, error) {
 	n, err := NormalizeName(s.Name)
 	if err != nil {
 		return nil, err
 	}
 	s.Name = n
+	s.Provider = strings.TrimSpace(s.Provider)
 	next := append(slices.Clone(list), s)
 	if err := Validate(next); err != nil {
 		return nil, err
@@ -230,7 +238,7 @@ func Import(list []Server, in []Server) (out []Server, added int, skipped []Skip
 		}
 		cand := Server{
 			Name:     uniqueName(out, importName(p.Name, target)),
-			Provider: truncateRunes(strings.TrimSpace(stripControl(p.Provider)), MaxProvider),
+			Provider: truncateRunes(strings.TrimSpace(stripInvisible(p.Provider)), MaxProvider),
 			Target:   target,
 		}
 		if err := validateEntry(cand); err != nil {
@@ -247,7 +255,7 @@ func Import(list []Server, in []Server) (out []Server, added int, skipped []Skip
 // birlikte atılır ("-   -y" → "y"): kırpma sabit noktada biter.
 func importName(name, target string) string {
 	dashOrSpace := func(r rune) bool { return r == '-' || unicode.IsSpace(r) }
-	n := strings.TrimLeftFunc(stripControl(name), dashOrSpace)
+	n := strings.TrimLeftFunc(stripInvisible(name), dashOrSpace)
 	if strings.TrimSpace(n) == "" {
 		n = "server"
 		if t, err := client.ParseTarget(target); err == nil && !t.IsLocal() {
@@ -282,9 +290,11 @@ func truncateRunes(s string, max int) string {
 	return string([]rune(s)[:max])
 }
 
-func stripControl(s string) string {
+// stripInvisible, eski profil adından denetim ve görünmez karakterleri atar:
+// profil göçte reddedilmesin, kuralı geçen adla gelsin.
+func stripInvisible(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if invisible(r) {
 			return -1
 		}
 		return r

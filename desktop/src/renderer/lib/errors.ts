@@ -14,6 +14,15 @@ export function errorText(err: unknown): string {
 }
 
 /**
+ * serverListReason, sunucu listesinin bilinen sebebi ("server-list:not_found"
+ * → "not_found", main/server-list.ts); başka bir hatada null.
+ */
+export function serverListReason(err: unknown): string | null {
+  const m = /^server-list:([a-z_]+)$/.exec(errorText(err));
+  return m?.[1] ?? null;
+}
+
+/**
  * serverListError, sunucu listesinin bilinen sebeplerini ("server-list:…",
  * main/server-list.ts) arayüzün dilinde söyler; geri kalanı errorText gibi.
  */

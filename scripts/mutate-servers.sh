@@ -24,7 +24,9 @@ STA=cmd/kadran/status.go
 MAIN=cmd/kadran/main.go
 KEY=cmd/kadran/key.go
 TOT=cmd/kadran/totp.go
-FILES=("$SRV" "$FIL" "$FLG" "$STA" "$MAIN" "$KEY" "$TOT")
+DOM=cmd/kadran/domain.go
+SCS=cmd/kadran/sidecar_servers.go
+FILES=("$SRV" "$FIL" "$FLG" "$STA" "$MAIN" "$KEY" "$TOT" "$DOM" "$SCS")
 
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -104,6 +106,12 @@ mutate_in "$SRV" "benzersizlik büyük/küçük harfe bakıyor" \
 mutate_in "$SRV" "ad '-' ile başlayabiliyor" \
     "s=s.replace('case strings.HasPrefix(n, \"-\"):','case false && strings.HasPrefix(n, \"-\"):',1)"
 
+mutate_in "$SRV" "görünmez karakterli ad kabul ediliyor (ekranda aynı iki ad)" \
+    "s=s.replace('return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)','return unicode.IsControl(r)',1)"
+
+mutate_in "$SRV" "sağlayıcı eklemede kırpılmıyor" \
+    "s=s.replace('s.Provider = strings.TrimSpace(s.Provider)','',1)"
+
 echo "== -s çözümü =="
 
 mutate_in "$STA" "status ikinci konumsal hedefi kabul ediyor" \
@@ -117,6 +125,35 @@ mutate_in "$MAIN" "eksik argümanda kayan hedefle bağlanılıyor (connect kilid
 
 mutate_in "$FLG" "ikinci kilit hiçbir hedefi reddetmiyor" \
     "s=s.replace('if c.serverName == \"\" || raw == c.serverTarget {','if true {',1)"
+
+mutate_in "$DOM" "domain check alan adı unutulunca kayıtlı sunucuyu yokluyor" \
+    "s=s.replace('if err := c.checkServerTarget(fs.Arg(1)); err != nil {','if err := c.checkServerTarget(c.serverTarget); err != nil {',1)"
+
+echo "== İpuçları (kopyalanıp kabuğa yapıştırılır) =="
+
+mutate_in "$FLG" "boşluklu ad tırnaksız yazılıyor" \
+    "s=s.replace('case quotable:','case quotable && false:',1)"
+
+mutate_in "$FLG" "tırnakta da genişleyen ad (\$) çalıştırılacak komuta yazılıyor" \
+    "s=s.replace('plain, quotable = false, false','plain = false',1)"
+
+mutate_in "$MAIN" "oturum ipucu kabukta genişleyen adı yazıyor" \
+    "s=s.replace('if name, ok := shellName(c.serverName); ok {','if name, _ := shellName(c.serverName); true {',1)"
+
+mutate_in "$MAIN" "fazladan hedefte -s notu yok" \
+    "s=s.replace('\tif c.serverName != \"\" {\n\t\tshown, _ := shellName','\tif false {\n\t\tshown, _ := shellName',1)"
+
+mutate_in "$KEY" "-s notu ilgisiz kullanım hatasında da çıkıyor" \
+    "s=s.replace('return c.usageError(\"unknown key subcommand','return c.argCountError(\"unknown key subcommand',1)"
+
+mutate_in "$MAIN" "komut yardımı -s'yi söylemiyor" \
+    "s=s.replace('if !noTargetCommands[command] {','if !noTargetCommands[command] && false {',1)"
+
+echo "== Masaüstünün listesi (yan süreç) =="
+
+# Kilitsiz ölçüldü: 10 koşunun 10'unda eklemelerin bir kısmı kayboldu.
+mutate_in "$SCS" "eşzamanlı eklemeler birbirini siliyor (kilit yok)" \
+    "s=s.replace('defer s.serversMu.Unlock()','',1); s=s.replace('s.serversMu.Lock()','',1)"
 
 echo "== Kök yolu =="
 

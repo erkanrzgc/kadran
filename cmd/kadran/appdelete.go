@@ -29,7 +29,7 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.usageError("usage: kadran app delete <app> [target] — " +
+		return c.argCountError("usage: kadran app delete <app> [target] — " +
 			"options go BEFORE the app name")
 	}
 

@@ -3,7 +3,20 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.11.0 — 2026-11-06
+
+A saved server list for the CLI and the desktop app (K-162) and a new desktop frame (K-163). The
+protocol is unchanged (3), so a server that stays on v0.10.0 keeps working with this client. The
+server programs are rebuilt with the new version number; `kadran-caddy` also carries a security fix
+(below), so upgrade your servers to get it. The desktop app is not among the release files: build it
+from source in `desktop/` (see the [desktop guide](docs/guides/desktop.md)).
+
+### Security
+
+- `kadran-caddy` is built with `github.com/klauspost/compress` v1.20.2, which fixes
+  [GO-2026-6865](https://pkg.go.dev/vuln/GO-2026-6865) (a panic on two-block frames). Kadran's proxy
+  compresses responses with zstd and gzip through this library. Upgrade your servers to v0.11.0 to
+  get the fixed binary (recorded under K-163).
 
 ### Added
 
@@ -11,10 +24,35 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   manages it, and `-s <name>` picks a saved server on every command: `kadran status -s hetzner`,
   `kadran bootstrap -s gcp` (install and upgrade use the saved admin target and `-sudo`). The name
   must match exactly, and `-s` cannot be combined with a target. The list is
-  `servers.json` in your config directory and holds no key, password or token. The protocol is
-  unchanged and the server does not change.
+  `servers.json` in your config directory and holds no key, password or token. The list lives on
+  your machine only; the server needs nothing new for it.
 - Desktop: servers added from the CLI appear when you switch back to the window. On first start the
   desktop's own list is copied into the shared one once; the old `profiles.json` is left as it was.
+
+### Changed
+
+- Desktop: glass is now only on the window frame (sidebar, title bar and the gaps), in both themes.
+  Content sits on opaque panels that float inside the glass. On Windows the frame uses Acrylic and
+  stays glass while the window is in the background; without native blur, or with reduced
+  transparency, the frame is opaque (K-163).
+- Desktop: two themes, light (the default) and dark. The glass theme is gone; a saved glass setting
+  opens as light (K-163).
+- Desktop: switching themes repaints the whole window at once. The sidebar selection slides to the
+  chosen row and a highlight follows the pointer; buttons no longer move on hover (K-163).
+
+The new frame was checked in a real window on Windows 11 only; macOS, Linux and Windows 10 were not
+run.
+
+### Fixed
+
+- `kadran domain check -s <name>` without a domain no longer probes the saved server: it stops before
+  any DNS, TCP or HTTP attempt (K-162).
+- Server names with invisible characters (zero-width space, right-to-left marks, soft hyphen) are
+  rejected, so two entries can't look the same; the one-time desktop copy drops them (K-162).
+- Copied command hints quote server names for bash, PowerShell and cmd, and never put a name with
+  characters those shells interpret inside quotes into a command (K-162).
+- Desktop: adding servers quickly no longer loses some of them, and removing a server already deleted
+  from the CLI drops its card at once (K-162).
 
 ## v0.10.0 — 2026-11-02
 

@@ -12363,14 +12363,14 @@ macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri"
 ## K-162 — Ortak sunucu listesi: `servers.json`, `kadran server`, `-s <ad>` (2026-11-05)
 
 **Durum:** PR #28 → `281aa3e`, main'de (6 Kasım); CI 13/13 yeşil (Windows kurulum betiği
-mutasyonu ilgisiz olduğu için atlandı), henüz yayınlanmadı. Sunucu değişmedi. Tasarım:
+mutasyonu ilgisiz olduğu için atlandı); v0.11.0'a giriyor. Sunucu değişmedi. Tasarım:
 `docs/specs/2026-11-05-filo-2-sunucu-listesi-design.md`; plan:
 `docs/plans/2026-11-05-filo-2-sunucu-listesi.md`. Filo tasarımının 2. parçası.
 
 **Ertelenen küçükler:** PR #29 → `e89a99a`, main'de (6 Kasım). CI 13/13 yeşil; Windows
 kurulum betiği mutasyonu atlandı, mutasyon 30 dk 22 sn. İlk koşuda Güvenlik değişmezleri
 kırmızıydı. Sebep #29 değildi, Caddy'deki GO-2026-6865'ti (K-163, PR #31). Dala main
-alındıktan sonra yeşile döndü. Henüz yayınlanmadı.
+alındıktan sonra yeşile döndü. v0.11.0'a giriyor.
 
 ### Neden
 
@@ -12473,7 +12473,7 @@ Gerçek sunucuyla (sunucu tarafı değişmedi); macOS ve Linux'ta masaüstü; Li
 - **Masaüstü (windows):** Windows CI'da pencere 1280 px açılmıyor, dar düzene düşüyor. Duman testi logoyu içerik paneline göre ölçtüğü için 50 px fark buldu: ikinci menü 42 px, boşluk 8 px. Test artık en üstteki panele göre ölçüyor, 760 px'te de ölçüyor (`719501b`).
 - **Güvenlik değişmezleri:** bu PR'dan değildi. Caddy'nin dolaylı bağımlılığı `klauspost/compress` v1.20.1'de GO-2026-6865 açığı vardı; o gün main de kırmızıydı. PR #31 ile v1.20.2'ye çıkıldı (`8db8716`).
 
-Yayınlanmadı (K-160: birikince). K-163 sunucuya dokunmuyor. #31 ise `kadran-caddy` ikilisini değiştiriyor; sunuculara bir sonraki sunucu sürümüyle gider.
+v0.11.0'a giriyor; masaüstü yine sürüm dosyalarında yok, kaynaktan derleniyor. K-163 sunucuya dokunmuyor. #31 ise `kadran-caddy` ikilisini değiştiriyor; sunuculara v0.11.0'a yükseltilince gider (canlı adım, ayrı onay).
 
 ### Neden
 

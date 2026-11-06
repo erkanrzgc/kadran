@@ -85,8 +85,8 @@ mutate "proto değişince hepsi koşmuyor" \
     "s=s.replace('^(\\\\.github/|proto/|','^(\\\\.github/|',1)"
 mutate "seçici değişince hepsi koşmuyor" \
     "s=s.replace('scripts/mutation-select\\\\.sh\$|','',1)"
-mutate "alt modülün go.mod'u ortak sayılmıyor" \
-    "s=s.replace('(.*/)?go','go',1)"
+mutate "kök go.mod ortak sayılmıyor" \
+    "s=s.replace('|go\\\\.(mod|sum)\$|','|',1)"
 mutate "betiğin andığı paket kapsama girmiyor" \
     "s=s.replace('(\$0 in dosya) || ((\$0 in dizin) && /\\\\//) { print }','(\$0 in dosya) { print }',1)"
 mutate "betiğin andığı dosya kapsama girmiyor" \
@@ -100,6 +100,10 @@ echo "== Fazla seçmek =="
 
 mutate "her betik her zaman seçiliyor" \
     "s=s.replace('if grep -qxF \"\$b\" <<<\"\$degisen\" ||','if true ||',1)"
+# K-164 öncesi hâl: Caddy alt modülünün bağımlılığı 1 sa 12 dk koşturuyordu.
+# (Yol burada yazılmıyor: seçici yorumdaki yolu da kapsam sayar.)
+mutate "alt modülün go.mod'u yine ortak" \
+    "s=s.replace('|go\\\\.(mod|sum)\$|','|(.*/)?go\\\\.(mod|sum)\$|',1)"
 
 echo
 if [ "$fail" -ne 0 ]; then

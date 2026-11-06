@@ -12555,3 +12555,83 @@ Açık ve koyu Akriliğin parlak ve koyu masaüstünde yazı karşıtlığı: ku
 - macOS, Linux ve Windows 10;
 - saydamlık efektleri kapalıyken;
 - Windows camı yüklenip çağrı sonradan reddedilirse: Electron Acrylic'ine dönülür ama `data-material` "accent" kalır, odak gidince çerçeve opaklaşmaz. Bu durum K-161'den beri var.
+
+## K-164 — Mutasyon işi beş parçada; Caddy alt modülü bütün betikleri koşturmuyor (2026-11-07)
+
+**Durum:** dalda, push edilmedi; CI'da henüz koşmadı.
+
+### Neden
+
+Kullanıcı: bekleme çok uzun. Tam mutasyon koşusu (gecelik, sürüm öncesi, seçici "hepsi" deyince) tek işte
+1 sa 12–17 dk sürüyordu. PR #31 yalnız `build/caddy`'nin `go.mod`/`go.sum`'ını değiştirdi (GO-2026-6865,
+dolaylı bağımlılık) ve yine bütün betikleri koşturdu (1 sa 12 dk).
+
+PR #31'in koşusunun (run 42258002478) günlüğü bir kez okundu. Betik başına süre (sn, ubuntu-latest): toplam
+4257 (71 dk). En uzunlar: `mutate-proxywatch.sh` 1258, `mutate-bootstrapssh.sh` 600, `mutate-desktop.sh`
+454, `mutate-domaincheck.sh` 398, `mutate-totp.sh` 252, `mutate-watchdog.sh` 231. Kalan 30 betik 5–93 sn.
+
+**Proxywatch'un 21 dakikasının 20'si bekleme.** İki mutantı ("her zaman birebir sayılıyor", "hiç
+yüklemiyor") testi sonsuz döngüye sokuyor; `go test` 10 dk'lık varsayılan zaman aşımında düşüyordu
+(17:40:17→17:50:20, 17:50:33→18:00:34). Betik düzeyinde parçalama tek başına 22 dk'nın altına inemezdi.
+
+### Karar
+
+- **`mutate-proxywatch.sh`'a `-timeout 120s`**, taban ve mutant koşusunda aynı. `mutate-authz.sh` (120 sn),
+  `mutate-bootstrapssh.sh` ve `mutate-domaincheck.sh` (90 sn) zaten böyleydi; proxywatch eksik kalan tekti.
+  Anlam değişmiyor: zaman aşımı testi düşürür, mutant yine "yakalandı" sayılır, yalnız 8 dk erken. Taban da
+  aynı sınırla koşuyor: taban 120 sn'yi geçerse TABAN KIRMIZI olur, her mutantı sahte "yakalandı" göstermez.
+- **En çok beş parça.** `changes` işi seçimi `scripts/mutation-shard.sh` ile böler: en uzun süren önce, o an
+  en hafif parçaya (LPT); eşitlikte ad sırası, aynı seçim aynı parçaları verir. Süre tablosu yukarıdaki
+  ölçüm (proxywatch 300, tahmin). Tabloda olmayan betik 60 sn sayılır ve yine bir parçaya girer: tablonun
+  eskimesi yalnız dengeyi bozar. Betik sayısı beşten azsa o kadar parça; tek betiklik PR'da tek iş.
+  - Neden beş: ölçülen sürelerle LPT, proxywatch 300 iken: 3 parça 18,7 dk, 4 parça 14 dk, 5 parça 11,2 dk,
+    6 parça 10 dk (bootstrapssh tek başına). Kurulum ~1 dk. Beş parça, aynı anda koşan diğer işlerle 20
+    işin altında kalıyor.
+  - Proxywatch düzelmeseydi parça sayısı fark etmezdi: 4, 5 ve 6 parçada en ağır parça 21 dk.
+- **Birleşim CI'da parçalayıcıdan bağımsız denetleniyor** (`changes` işi, `sort -u` ve karşılaştırma):
+  parçaların birleşimi seçimin kendisi olmalı. Liste tekrarsız olduğu için eşitlik her betiğin TAM BİR
+  parçada olduğunu da söyler. Ayrıca boş satır yok, en çok beş parça. Matris önce değişkene alınıyor:
+  `echo "…$(jq …)"` içinde düşen jq adımı düşürmüyordu.
+- **Her parça eski koruyucuların hepsini taşıyor:** glob sayısı (`-lt 28`), üç kapı (K-096, K-127, taban),
+  `KADRAN_TEST_REAL_SUDO`, `KADRAN_TEST_REQUIRE_KASA_TOOLS`, python, node, `npm ci`, sqlite3, age, sonda
+  `git diff --exit-code`. Kurulum hiçbir parçada koşullu değil. Betik listesi boş parça düşer.
+  `fail-fast: false`: kırmızı bir parça ötekileri iptal edip sonuçlarını gizlemiyor.
+- **Yalnız kök `go.mod`/`go.sum` ortak.** Kök modülün testleri `build/caddy`'yi derlemiyor: `go.work` yok,
+  kök `go.mod`'da yerel `replace` yok. Hiçbir mutasyon betiği `build/caddy` kodunu mutasyona uğratmıyor ya
+  da testlerini koşmuyor (`mutate-redirects.sh` yalnız yorumda anıyor; `mutate-units.sh` yalnız
+  `kadran-caddy.service` birimini). Alt modül değişince betikler kapsamlarından seçilir: PR #31'in farkı
+  artık yalnız `mutate-redirects.sh`'ı seçiyor. Caddy değişikliğini koruyanlar yerinde: her PR'da
+  `build/caddy`'de `go test -race` ve `govulncheck`, iki mimaride derleme, gecelik tam koşu.
+  - Varsayım kodla korunuyor: `go.work` ya da kök `go.mod`'da yerel `replace` belirirse
+    `check-mutation-select.sh` düşer; o zaman alt modülün `go.mod`'u yeniden ORTAK'a girmeli.
+- Parçalayıcı ORTAK'a girmedi: değişince yalnız `mutate-mutation-shard.sh` seçilir. Bozuk parçalayıcıyı her
+  koşuda birleşim denetimi, lint'te `check-mutation-shard.sh` (bütün betikler, beş parça) yakalar.
+
+### Bedeli
+
+Kurulum (Go, buf, npm, apt) beş kez yapılıyor: koşucu dakikası artıyor, duvar saati düşüyor. Depo açık
+kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozulur, doğruluk bozulmaz.
+
+### Ölçüm (yerelde, Windows)
+
+- `check-mutation-shard.sh` önce kırmızı (parçalayıcı yokken), sonra yeşil. Bütün betiklerle en ağır parça
+  673 sn (sınır 896 sn, LPT'nin 4/3 sınırı).
+- `mutate-mutation-shard.sh` 9/9. İlk koşuda "parça sayısı betik sayısına inmiyor" sağ kaldı: denetim
+  satırları `$(…)` ile sayıyordu, `$(…)` sondaki boş satırları siliyor, sondaki boş parçalar görünmüyordu.
+  Satırlar artık borudan sayılıyor.
+- `check-mutation-select.sh` önce kırmızı (PR #31'in farkı hepsini seçiyordu), sonra yeşil.
+- `mutate-mutation-select.sh` 11/11. "Alt modülün go.mod'u ortak sayılmıyor" mutantı artık doğru davranış;
+  yerine "kök go.mod ortak sayılmıyor" ve "alt modülün go.mod'u yine ortak" geldi. İlk koşuda TABAN KIRMIZI:
+  yeni mutant için yazdığım yorum `build/caddy` yolunu anıyordu, seçici yorumdaki yolu da kapsam sayıyor ve
+  `mutate-mutation-select.sh`'ı da seçti. Yorum yolsuz yazıldı.
+- `actionlint` 1.7.7 temiz. `shard` adımı yerelde üç seçimle (hepsi, boş, tek betik) doğru matris verdi.
+  Bozuk parçalayıcı taklitleri (son parça düşer, bir betik iki parçada, ortada boş parça, her satır iki kez)
+  dördü de birleşim denetiminde düştü.
+
+### Açık
+
+- Yeni tam koşu süresi ölçülmedi: bu PR `ci.yml`'yi değiştirdiği için CI'da bütün betikler koşacak, ilk
+  ölçüm o.
+- `mutate-proxywatch.sh` 120 sn ile yerelde koşturulmadı; iki mutantın zaman aşımıyla
+  yakalandığı ve tabanın sınırın altında kaldığı CI'da görülecek. Süre tablosundaki 300 sn tahmin.
+- `mutate-mutation-shard.sh` tabloda yok (60 sn sayılıyor); ilk tam koşudan sonra tablo güncellenebilir.

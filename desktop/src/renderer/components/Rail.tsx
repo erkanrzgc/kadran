@@ -5,6 +5,7 @@ import type { VersionPayload } from "../lib/types.ts";
 import { BrandWordmark } from "./BrandWordmark.tsx";
 import { LineIcon } from "./LineIcon.tsx";
 import { NavButton } from "./NavButton.tsx";
+import { NavSlider } from "./NavSlider.tsx";
 
 export type FleetView = "servers" | "apps" | "alarms" | "audit" | "settings";
 
@@ -25,6 +26,7 @@ export function Rail({ view, serverOpen, alarmCount, version, onNavigate }: Prop
 
   return (
     <aside className={isMac ? "rail is-mac" : "rail"}>
+      <NavSlider activeKey={serverOpen ? "servers" : (view ?? "")} />
       <div className="rail-brand">
         <BrandWordmark label={t("brand.logo")} />
       </div>

@@ -42,6 +42,6 @@ Hacimler ada göre birleştirilir; bağlamayı kaldırmak diskteki veriyi silmez
 
 ## Görünüm
 
-**Settings / Ayarlar** altında üç tema var: **Koyu**, **Açık** ve **Cam**. Cam varsayılandır ve pencerenin arkasındaki masaüstünü bulanık gösterir. Windows 11'de pencere arka plana geçince de cam kalır; bunu sağlayan Windows çağrısı yüklenemezse pencere arka planda koyulaşır. Yerel bulanıklığı olmayan sistemde cam seçeneği görünmez ve pencere koyu açılır. Dil ve yazı tipleri de buradadır; ayarlar bu bilgisayarda kalır.
+**Settings / Ayarlar** altında iki tema var: **Açık** (varsayılan) ve **Koyu**. İkisinde de kenar çubuğu ve üst çubuk camdır: arkasında masaüstü bulanık görünür. İçerik camın içindeki opak panellerdedir. Windows 11'de pencere arka plana geçince de cam kalır. Bunu sağlayan Windows çağrısı yüklenemezse çerçeve arka planda opak olur. Yerel bulanıklığı olmayan sistemde ya da Windows'un saydamlık efektleri kapalıyken çerçeve hep opaktır. Eski sürümde **Cam** seçiliyse ayar **Açık**'a geçer. Dil ve yazı tipleri de buradadır; ayarlar bu bilgisayarda kalır.
 
 En küçük desteklenen pencere 760×520'dir. Küçük pencerede içerik dikey kayar; formlar ve kartlar yeniden düzenlenir. Görünüm yalnız Windows 11'de gerçek pencerede doğrulandı (K-161); macOS, Linux ve Windows 10 ölçülmedi.

@@ -11,6 +11,8 @@
 
 import type { BrowserWindow } from "electron";
 
+import type { Theme } from "../shared/appearance.ts";
+
 const WCA_ACCENT_POLICY = 19;
 const ACCENT_DISABLED = 0;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;
@@ -18,8 +20,13 @@ const ACCENT_FLAG_GRADIENT_COLOR = 2;
 const DWMWA_WINDOW_CORNER_PREFERENCE = 33;
 const DWMWCP_ROUND = 2;
 
-/** Ton (AABBGGRR). Arka plan bembeyazken de beyaz yazı okunsun diye ölçüldü. */
-const GLASS_TINT = 0x22121210;
+/**
+ * Tema başına ton (AABBGGRR). Kullanıcı Electron deneme penceresinde seçti
+ * (6 Kasım, K-163): açıkta buzlu beyaz, koyuda hafif koyu. Saydamlığı sıfır
+ * olamaz: pencere simsiyah çizilir. Düz bulanıklık (3) Electron'un penceresinde
+ * hiç çalışmadı (arka siyah); yalnız Akrilik masaüstünü gösteriyor.
+ */
+const GLASS_TINT: Record<Theme, number> = { light: 0xa0f7f4f4, dark: 0x30181816 };
 
 export interface AccentPolicy {
   State: number;
@@ -28,8 +35,8 @@ export interface AccentPolicy {
   AnimationId: number;
 }
 
-export function accentPolicy(on: boolean): AccentPolicy {
-  return { State: on ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_DISABLED, Flags: ACCENT_FLAG_GRADIENT_COLOR, Color: GLASS_TINT, AnimationId: 0 };
+export function accentPolicy(on: boolean, scheme: Theme): AccentPolicy {
+  return { State: on ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_DISABLED, Flags: ACCENT_FLAG_GRADIENT_COLOR, Color: GLASS_TINT[scheme], AnimationId: 0 };
 }
 
 export function handleValue(handle: Buffer): number {
@@ -37,8 +44,8 @@ export function handleValue(handle: Buffer): number {
 }
 
 export interface WindowAccent {
-  /** false: Windows çağrıyı reddetti. */
-  set(win: BrowserWindow, on: boolean): boolean;
+  /** false: Windows çağrıyı reddetti. `scheme` tonu seçer. */
+  set(win: BrowserWindow, on: boolean, scheme: Theme): boolean;
 }
 
 export async function loadWindowAccent(warn: (message: string) => void): Promise<WindowAccent | null> {
@@ -50,11 +57,11 @@ export async function loadWindowAccent(warn: (message: string) => void): Promise
     const setDwm = koffi.load("dwmapi.dll").func("DwmSetWindowAttribute", "int", ["uintptr_t", "uint32", koffi.pointer("int"), "uint32"]);
     const size = koffi.sizeof(policy);
     return {
-      set(win, on) {
+      set(win, on, scheme) {
         const hwnd = handleValue(win.getNativeWindowHandle());
         // Köşe isteği başarısız olsa da cam çalışır; sonucu önemsiz.
         setDwm(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, [DWMWCP_ROUND], 4);
-        return setComposition(hwnd, { Attribute: WCA_ACCENT_POLICY, Data: accentPolicy(on), Size: size }) !== 0;
+        return setComposition(hwnd, { Attribute: WCA_ACCENT_POLICY, Data: accentPolicy(on, scheme), Size: size }) !== 0;
       },
     };
   } catch (err) {

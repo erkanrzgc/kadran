@@ -40,7 +40,7 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
             <Segmented
               label={t("settings.theme")}
               value={theme}
-              options={THEMES.filter((name) => name !== "glass" || glassAvailable).map((name) => ({ value: name, label: t(`theme.${name}`), testId: `theme-${name}` }))}
+              options={THEMES.map((name) => ({ value: name, label: t(`theme.${name}`), testId: `theme-${name}` }))}
               onChange={(next) => update({ theme: next })}
             />
           </SetRow>

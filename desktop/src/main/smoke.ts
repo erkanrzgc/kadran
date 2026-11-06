@@ -75,7 +75,8 @@ export function prepareSmokeUserData(): string {
       { name: LONG_NAME, target: LONG_TARGET, provider: "kendi-sunucum" },
     ]),
   );
-  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en" }));
+  // Kaldırılan cam teması kayıtlı: açılışta açığa dönmeli (K-163).
+  writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en", theme: "glass" }));
   // Ortak sunucu listesi (K-162): sahte yan süreç bu dosyayı kullanır; yukarıdaki
   // profiles.json açılışta ona taşınır. Kullanıcının gerçek servers.json'una dokunulmaz.
   process.env.KADRAN_FAKE_SERVERS_FILE = join(dir, "fake-servers.json");
@@ -167,9 +168,14 @@ async function noHorizontalOverflow(win: BrowserWindow, label: string): Promise<
   expect(offenders.length === 0, `${label} horizontal overflow: ${offenders.join(", ")}`);
 }
 
+/** İki çizim karesi bekler: boyut izleyicileri ve rAF işleri o karelerde çalışır. */
+async function nextFrames(win: BrowserWindow): Promise<void> {
+  await evaluate(win, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+}
+
 async function screenshot(win: BrowserWindow, name: string): Promise<void> {
   // A DOM update can precede its compositor frame, especially in hidden windows.
-  await evaluate(win, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
+  await nextFrames(win);
   const dir = join(app.getPath("userData"), "evidence");
   mkdirSync(dir, { recursive: true });
   const capture = await win.capturePage(undefined, { stayHidden: true, stayAwake: true });
@@ -179,30 +185,58 @@ async function screenshot(win: BrowserWindow, name: string): Promise<void> {
   console.log(`UI evidence: ${path}`);
 }
 
+/**
+ * Seçili satırın camı tek bir kayan gösterge (K-163, kullanıcının seçtiği 7):
+ * görünür, cam dolgulu ve seçili satırın tam üstünde durmalı.
+ */
+async function pillOnActive(win: BrowserWindow, scope: string): Promise<void> {
+  const pill = q(`${scope} .nav-pill`);
+  const active = q(`${scope} .nav-item.is-active`);
+  await waitFor(
+    win,
+    `(() => {
+      const p = ${pill}, a = ${active};
+      if (!p || !a) return false;
+      const r = p.getBoundingClientRect(), s = a.getBoundingClientRect();
+      return getComputedStyle(p).opacity === "1" && getComputedStyle(p).backgroundImage.includes("linear-gradient")
+        && Math.abs(r.top - s.top) <= 1 && Math.abs(r.left - s.left) <= 1 && Math.abs(r.width - s.width) <= 1 && Math.abs(r.height - s.height) <= 1;
+    })()`,
+    `${scope}: the glass pill does not sit on the selected row`,
+  );
+}
+
 async function checkWordmark(win: BrowserWindow): Promise<void> {
-  const mark = await evaluate<{ readable: boolean; weight: string; spacing: string; text: string; offCenter: number }>(win, `(() => {
+  const mark = await evaluate<{ readable: boolean; weight: string; spacing: string; text: string; offCenter: number; offPanel: number }>(win, `(() => {
     const el = ${q('[data-testid="brand-logo"]')};
     const rail = ${q(".rail")};
-    if (!(el instanceof HTMLElement) || !(rail instanceof HTMLElement)) return { readable: false, weight: '', spacing: '', text: '', offCenter: 0 };
+    // En üstteki panelin üst kenarı: sunucu sayfasında dar düzende o panel
+    // ikinci menüdür, içerik paneli onun altına iner.
+    const stage = ${q(".main > .stage, .main > .page-host")};
+    if (!(el instanceof HTMLElement) || !(rail instanceof HTMLElement) || !(stage instanceof HTMLElement)) return { readable: false, weight: '', spacing: '', text: '', offCenter: 0, offPanel: 0 };
     const rect = el.getBoundingClientRect();
     const style = getComputedStyle(el);
     const offCenter = Math.abs(rect.left + rect.width / 2 - (rail.getBoundingClientRect().left + rail.clientWidth / 2));
-    return { readable: rect.width >= 60 && rect.height >= 12, weight: style.fontWeight, spacing: style.letterSpacing, text: el.textContent, offCenter };
+    const offPanel = Math.abs(rect.top - stage.getBoundingClientRect().top - 16);
+    return { readable: rect.width >= 60 && rect.height >= 12, weight: style.fontWeight, spacing: style.letterSpacing, text: el.textContent, offCenter, offPanel };
   })()`);
   expect(mark.readable && mark.text === "KΛDRΛN", "wordmark is missing or too small");
   expect(mark.weight === "700" && parseFloat(mark.spacing) > 2.5, `wordmark lost its style: ${mark.weight} ${mark.spacing}`);
   expect(mark.offCenter <= 1, `wordmark is not centered in the sidebar: ${mark.offCenter}px off`);
+  // KADRAN panelin üst kenarının 16 px altından başlar (kullanıcı, 6 Kasım).
+  expect(mark.offPanel <= 2, `wordmark is not 16px below the panel top: ${mark.offPanel}px off`);
 }
 
-/** Duman testinde yerel malzeme kapalı: cam sunulmaz, açık ve koyu ana sürece de ulaşır. */
+/**
+ * Duman testinde yerel malzeme kapalı: cam çerçeve opak düşer. Kayıtlı eski cam
+ * teması açığa döner; iki tema da ana sürece ulaşır, içerik iki temada da opak
+ * panelde (K-163).
+ */
 async function themeJourney(win: BrowserWindow): Promise<void> {
   const root = "document.documentElement";
   const shell = `getComputedStyle(${q(".shell")}).backgroundColor`;
-  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="theme-glass"]')})`)), "glass is offered without a native material");
-  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "glass falls back to dark");
-
-  await click(win, '[data-testid="theme-light"]');
-  await waitFor(win, `${root}.dataset.theme === "light" && ${shell} === "rgb(250, 250, 250)"`, "light canvas");
+  const sheet = `getComputedStyle(${q(".stage")}).backgroundColor`;
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="theme-glass"]')})`)), "the removed glass theme is still offered");
+  await waitFor(win, `${root}.dataset.theme === "light" && ${shell} === "rgb(237, 237, 240)" && ${sheet} === "rgb(255, 255, 255)"`, "light is the default: solid frame, white panel");
   await waitFor(win, `matchMedia("(prefers-color-scheme: light)").matches`, "native light theme");
   const ink = await evaluate<number>(win, `(() => {
     const ctx = new OffscreenCanvas(1, 1).getContext("2d", { willReadFrequently: true });
@@ -214,7 +248,7 @@ async function themeJourney(win: BrowserWindow): Promise<void> {
   await screenshot(win, "settings-light-1280x820");
 
   await click(win, '[data-testid="theme-dark"]');
-  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)"`, "dark canvas");
+  await waitFor(win, `${root}.dataset.theme === "dark" && ${shell} === "rgb(10, 10, 10)" && ${sheet} === "rgb(20, 20, 20)"`, "dark: solid frame, dark panel");
   await waitFor(win, `matchMedia("(prefers-color-scheme: dark)").matches`, "native dark theme");
 
   await evaluate(win, `window.dispatchEvent(new Event("blur"))`);
@@ -243,7 +277,7 @@ async function checkWindowAccent(win: BrowserWindow): Promise<void> {
   if (process.platform !== "win32") return;
   const accent = await loadWindowAccent((message) => expect(false, message));
   expect(accent !== null, "Windows glass bridge did not load");
-  expect(accent!.set(win, false), "Windows refused the glass call");
+  expect(accent!.set(win, false, "dark"), "Windows refused the glass call");
 }
 
 /**
@@ -276,8 +310,7 @@ async function fleetJourney(win: BrowserWindow): Promise<void> {
   const providers = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="server-groups"] > div')].map((s) => s.dataset.provider)`);
   expect(providers[0] === "hetzner" && providers[1] === "hetzner" && providers.at(-1) === "", `provider order: ${providers.join(",")}`);
   expect((await text(win, '[data-testid="card-fake@test"]')).includes("2 applications"), "card does not show the real application count");
-  const active = await evaluate<string>(win, `getComputedStyle(${q(".nav-item.is-active")}, "::before").backgroundImage`);
-  expect(active.includes("linear-gradient"), `selected row is not the glass pill: ${active}`);
+  await pillOnActive(win, ".rail");
   await noHorizontalOverflow(win, "servers");
   await screenshot(win, "servers-1280x820");
 
@@ -293,6 +326,7 @@ async function fleetJourney(win: BrowserWindow): Promise<void> {
 
   await click(win, '[data-testid="rail-alarms"]');
   await waitFor(win, q('[data-testid="fleet-alarm-row"]'), "merged alarms");
+  await pillOnActive(win, ".rail");
   await waitFor(win, `${q('[data-testid="fleet-unread"]')}?.textContent.includes("noalarms")`, "server with unreadable alarms named");
   const badge = await text(win, '[data-testid="rail-alarms"] .nav-count');
   expect(Number(badge) >= 1, `alarm badge is not a count: ${badge}`);
@@ -349,9 +383,10 @@ async function fleetJourney(win: BrowserWindow): Promise<void> {
 async function managementJourney(win: BrowserWindow): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
+  await pillOnActive(win, ".subnav");
   await checkWordmark(win);
-  const cardFill = await evaluate<string>(win, `getComputedStyle(${q('.resource-card')}).backgroundColor`);
-  expect(cardFill.startsWith("rgba(255, 255, 255"), `application card lost its glass fill: ${cardFill}`);
+  const sheetFill = await evaluate<string>(win, `getComputedStyle(${q(".page-host > .stage")}).backgroundColor`);
+  expect(sheetFill === "rgb(255, 255, 255)", `application cards are not on the opaque panel: ${sheetFill}`);
   await screenshot(win, "apps-1280x820");
   await click(win, '[data-testid="app-card-hello"]');
   await waitFor(win, `${q('[data-testid="app-active-release"]')}?.textContent === "r2"`, "active release");
@@ -399,6 +434,13 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   win.setSize(760, 520);
   // Windows rounds a transparent window by one CSS pixel at fractional DPI.
   await waitFor(win, "Math.abs(window.innerWidth - 760) <= 1", "minimum window size");
+  // Kenar çubuğunun göstergeleri boyut izleyicisiyle bir sonraki karede yeniden
+  // ölçülür (K-163); gizli pencerede o kare genişlik değişiminden sonra gelir.
+  await nextFrames(win);
+  // Dar düzende ikinci menü panelin üstüne geçer; logo yine en üstteki panele
+  // göre ölçülmeli. Windows CI'da pencere 1280 px açılmıyor: oradaki 50 px
+  // fark tam dar düzenin farkıydı (ikinci menü 42 px + 8 px boşluk).
+  await checkWordmark(win);
   await noHorizontalOverflow(win, "configuration at 760x520");
   await evaluate(win, `${q('[data-testid="app-form"]')}.scrollIntoView({block:'start'})`);
   await screenshot(win, "configuration-760x520");

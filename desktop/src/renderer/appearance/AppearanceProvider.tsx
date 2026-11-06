@@ -1,25 +1,27 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, startTransition, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { effectiveTheme, type Appearance, type Theme } from "../../shared/appearance.ts";
+import type { Appearance, Theme } from "../../shared/appearance.ts";
 import { bridge, type AppearanceBundle } from "../bridge.ts";
 import { applyAppearance, CODE_FALLBACK, UI_FALLBACK, type FontStacks } from "../lib/apply-appearance.ts";
 import { errorText } from "../lib/errors.ts";
 import { listLocalFonts, registerFamily } from "../lib/font-loader.ts";
 import { resolveStack } from "../lib/font-stack.ts";
 import { groupFaces, strongerWeight, type Face } from "../lib/fonts.ts";
+import { saveDelay, switchTheme } from "../lib/theme-switch.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
-
-/** Her seçimde hemen değil, kısa bekleyip yazılır. */
-const SAVE_DELAY_MS = 250;
 
 /** Kararlı boş liste: efekt bağımlılığı her çizimde değişmesin. */
 const NO_FACES: readonly Face[] = [];
 
+/** Stilleri o an hesaplatır: tema renkleri animasyonsuz oturur (lib/theme-switch.ts). */
+const settleStyles = (): void => void getComputedStyle(document.documentElement).color;
+const nextTurn = (fn: () => void): void => void setTimeout(fn, 0);
+
 export interface AppearanceApi {
   appearance: Appearance;
   defaults: Appearance;
-  /** Çizilen tema: cam desteklenmiyorsa koyu. */
   theme: Theme;
+  /** Çerçeve cam mı; değilse (malzemesiz sistem) opak çizilir. */
   glassAvailable: boolean;
   families: ReadonlyMap<string, Face[]>;
   fontsListed: boolean;
@@ -46,15 +48,17 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
     });
   }, []);
 
-  const theme = effectiveTheme(appearance.theme, initial.material);
+  const theme = appearance.theme;
 
-  // İlk çizimden önce: açık temada koyu bir kare görünmesin.
+  // İlk çizimden önce: açık temada koyu bir kare görünmesin. Sonraki
+  // geçişlerde renkler animasyonsuz, tek seferde döner (lib/theme-switch.ts).
   useLayoutEffect(() => {
-    document.documentElement.dataset.material = initial.material;
-    document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    root.dataset.material = initial.material;
+    switchTheme(root, theme, settleStyles, nextTurn);
   }, [initial.material, theme]);
 
-  // Yedek Acrylic odak gidince griye düşer; tokens.css o durumda zemini siyaha alır.
+  // Yedek Acrylic odak gidince griye düşer; tokens.css o durumda çerçeveyi opak yapar.
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.focused = String(document.hasFocus());
@@ -114,10 +118,22 @@ export function AppearanceProvider({ initial, children }: { initial: AppearanceB
   const update = useCallback(
     (patch: Partial<Appearance>) => {
       const next: Appearance = { ...latest.current, ...patch };
+      const delay = saveDelay(latest.current, next);
       latest.current = next;
-      setAppearance(next);
       if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => save(next), SAVE_DELAY_MS);
+      timer.current = null;
+      if (delay > 0) {
+        setAppearance(next);
+        timer.current = setTimeout(() => save(next), delay);
+        return;
+      }
+      // Tema: panel camdan geç dönüyordu, çünkü renkler ancak arayüzün tamamı
+      // (191 yazı tipli liste dahil) yeniden çizilince değişiyordu. Sıra:
+      // renkler hemen sayfaya, kayıt (pencerenin camı) hemen ana sürece,
+      // arayüzün yeniden çizimi en sona ve tarayıcı yeni renkleri çizdikten sonra.
+      switchTheme(document.documentElement, next.theme, settleStyles, nextTurn);
+      save(next);
+      startTransition(() => setAppearance(next));
     },
     [save],
   );

@@ -37,7 +37,7 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("usage: kadran backup create [target]")
+		return c.argCountError("usage: kadran backup create [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
@@ -83,7 +83,7 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("usage: kadran backup list [target]")
+		return c.argCountError("usage: kadran backup list [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)

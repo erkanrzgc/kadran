@@ -9,10 +9,12 @@
  * - reload her zaman yeniden okur: pencere odağa gelince CLI'da yapılan
  *   değişiklik görünür.
  *
- * Hatalar çağırana döner; bildirimi çağıran gösterir.
+ * Hatalar çağırana döner; bildirimi çağıran gösterir. "Kayıt yok" (CLI'da
+ * silinmiş) listenin eskidiğini söyler: liste yeniden okunur.
  */
 
 import type { Profile } from "../bridge.ts";
+import { serverListReason } from "./errors.ts";
 import { createSerial } from "./serial.ts";
 
 export interface ProfileChange {
@@ -57,7 +59,26 @@ export function createProfileStore(io: ProfileIO): ProfileStore {
       }),
     reload: () => serial(read),
     add: (profile) => serial(async () => io.onChange(await io.add(profile))),
-    remove: (target) => serial(async () => io.onChange(await io.remove(target))),
-    update: (target, change) => serial(async () => io.onChange(await io.update(target, change))),
+    // Kayıt CLI'da zaten silinmişse amaç olmuştur: güncel liste okunur, kart
+    // gider. (serial içinde read; reload kendi sırasını beklerdi.)
+    remove: (target) =>
+      serial(async () => {
+        try {
+          io.onChange(await io.remove(target));
+        } catch (err) {
+          if (serverListReason(err) !== "not_found") throw err;
+          await read();
+        }
+      }),
+    // Düzenlenen kayıt silinmişse liste tazelenir ama hata yine pencerede söylenir.
+    update: (target, change) =>
+      serial(async () => {
+        try {
+          io.onChange(await io.update(target, change));
+        } catch (err) {
+          if (serverListReason(err) === "not_found") await read().catch(() => undefined);
+          throw err;
+        }
+      }),
   };
 }

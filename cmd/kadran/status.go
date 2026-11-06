@@ -19,7 +19,7 @@ func (c *cli) runStatus(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`status` takes at most one target, got %d", fs.NArg())
+		return c.argCountError("`status` takes at most one target, got %d", fs.NArg())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)

@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"text/tabwriter"
 	"time"
@@ -222,9 +223,20 @@ Options go after the command and before the target:
 //
 // ContinueOnError kullanılıyor: flag paketinin varsayılanı os.Exit çağırır
 // ve bu, çıkış kodunu tek bir yerden yönetmeyi imkânsız kılardı.
+//
+// `-s` bayrak kümesinde değil, run() onu komuttan önce çıkarır (K-162); `-h`
+// yine de söylesin diye hedef alan komutların yardımına eklenir.
 func (c *cli) newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(c.stderr)
+	command, _, _ := strings.Cut(name, " ")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage of %s:\n", name)
+		fs.PrintDefaults()
+		if !noTargetCommands[command] {
+			fmt.Fprintln(fs.Output(), "  -s name\n    \ta server saved with `kadran server add`, instead of the target")
+		}
+	}
 	return fs
 }
 
@@ -286,22 +298,46 @@ func (c *cli) dialTarget(ctx context.Context, rawTarget string) (*client.Client,
 func (c *cli) fail(err error) int {
 	fmt.Fprintln(c.stderr, progName+":", err)
 	if client.IsSessionError(err) {
-		if c.serverName != "" {
-			fmt.Fprintf(c.stderr, "  run: %s login -s %s\n", progName, c.serverName)
-		} else if t, perr := client.ParseTarget(c.target); perr == nil && !t.IsLocal() {
-			fmt.Fprintf(c.stderr, "  run: %s login %s\n", progName, c.target)
+		if hint := c.loginHint(); hint != "" {
+			fmt.Fprintf(c.stderr, "  run: %s\n", hint)
 		}
 	}
 	return exitError
 }
 
-// usageError, kullanım hatasını bildirir. -s ile çağrıldıysa en olası
-// sebebi de söyler: kayıtlı hedef sona eklendiği için ayrıca yazılan hedef
-// fazladan argüman olur.
+// loginHint, oturum hatasında yazılacak giriş komutu (yoksa boş). -s ile
+// gelindiyse aynı adla; ad kabukta güvenle yazılamıyorsa kayıtlı hedefle.
+func (c *cli) loginHint() string {
+	if c.serverName != "" {
+		if name, ok := shellName(c.serverName); ok {
+			return progName + " login -s " + name
+		}
+		if plainTarget(c.serverTarget) {
+			return progName + " login " + c.serverTarget
+		}
+		return ""
+	}
+	if t, err := client.ParseTarget(c.target); err == nil && !t.IsLocal() {
+		return progName + " login " + c.target
+	}
+	return ""
+}
+
+// usageError, kullanım hatasını bildirir.
 func (c *cli) usageError(format string, args ...any) int {
 	fmt.Fprintf(c.stderr, progName+": "+format+"\n", args...)
+	return exitUsage
+}
+
+// argCountError, konumsal argüman sayısı yanlışken kullanım hatası. -s ile
+// çağrıldıysa en olası sebebi de söyler: kayıtlı hedef sona eklendiği için
+// ayrıca yazılan hedef fazladan argüman olur. Not başka kullanım hatalarında
+// (bilinmeyen alt komut, geçersiz bayrak) yanıltırdı; orada usageError.
+func (c *cli) argCountError(format string, args ...any) int {
+	c.usageError(format, args...)
 	if c.serverName != "" {
-		fmt.Fprintf(c.stderr, "  note: -s %s already names the server; do not also give a target\n", c.serverName)
+		shown, _ := shellName(c.serverName)
+		fmt.Fprintf(c.stderr, "  note: -s %s already names the server; do not also give a target\n", shown)
 	}
 	return exitUsage
 }
@@ -347,7 +383,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() != 1 {
-		return c.usageError("usage: kadran bootstrap [options] root@server  |  kadran bootstrap -sudo user@server")
+		return c.argCountError("usage: kadran bootstrap [options] root@server  |  kadran bootstrap -sudo user@server")
 	}
 	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
 		return c.fail(err)
@@ -401,9 +437,19 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return c.fail(err)
 	}
 
-	fmt.Fprintf(c.stdout, "\nTo verify:\n  kadran status %s@%s\n",
-		client.DefaultSSHUser, target.SSHHost)
+	fmt.Fprintf(c.stdout, "\nTo verify:\n  %s\n", verifyHint(c.serverName, target.SSHHost))
 	return exitOK
+}
+
+// verifyHint, kurulumdan sonraki doğrulama komutu: -s ile kurulduysa aynı adla
+// (kayıtlı istemci hedefi, portu da bilir), yoksa kadran-client@sunucu.
+func verifyHint(serverName, host string) string {
+	if serverName != "" {
+		if name, ok := shellName(serverName); ok {
+			return progName + " status -s " + name
+		}
+	}
+	return fmt.Sprintf("%s status %s@%s", progName, client.DefaultSSHUser, host)
 }
 
 // useRelease, bootstrap'ın sunucu dosyalarını istemcinin kendi sürümünün

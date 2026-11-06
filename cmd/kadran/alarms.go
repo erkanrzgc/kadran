@@ -25,7 +25,7 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("usage: kadran alarms [target]")
+		return c.argCountError("usage: kadran alarms [target]")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)

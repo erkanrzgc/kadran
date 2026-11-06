@@ -8,6 +8,15 @@ import (
 	"testing"
 )
 
+// Görünmez biçim karakterleri: kaynakta kod noktasıyla yazılır, gözle görülsün.
+var (
+	zwsp = string(rune(0x200B)) // sıfır genişlikli boşluk
+	rlo  = string(rune(0x202E)) // sağdan sola zorlama
+	shy  = string(rune(0x00AD)) // yumuşak tire
+	wj   = string(rune(0x2060)) // kelime birleştirici
+	bom  = string(rune(0xFEFF)) // bayt sırası işareti
+)
+
 func TestNormalizeName(t *testing.T) {
 	got, err := NormalizeName("  hetzner ")
 	if err != nil || got != "hetzner" {
@@ -22,6 +31,38 @@ func TestNormalizeName(t *testing.T) {
 		if _, err := NormalizeName(bad); err == nil {
 			t.Errorf("%q kabul edildi", bad)
 		}
+	}
+}
+
+// Görünmez biçim karakterleri (\p{Cf}): sıfır genişlikli boşluk iki "aynı"
+// adı ayrı kılar, sağdan sola yön işareti adı ekranda ters gösterir.
+func TestNormalizeNameRejectsInvisibleFormat(t *testing.T) {
+	for _, bad := range []string{"gcp" + zwsp, rlo + "gcp", "a" + shy + "b", "a" + wj + "b", bom + "gcp"} {
+		if _, err := NormalizeName(bad); err == nil {
+			t.Errorf("%q kabul edildi", bad)
+		}
+	}
+}
+
+// Eski profil adındaki görünmez karakter, profili göçte düşürmemeli: atılır.
+func TestImportStripsInvisibleFormat(t *testing.T) {
+	out, added, skipped := Import(nil, []Server{{Name: "web" + zwsp + rlo, Target: "kadran-client@t1", Provider: "Het" + zwsp + "zner"}})
+	if added != 1 || len(skipped) != 0 || out[0].Name != "web" || out[0].Provider != "Hetzner" {
+		t.Fatalf("görünmez karakterli profil: %+v, %d, %+v", out, added, skipped)
+	}
+}
+
+func TestAddTrimsProvider(t *testing.T) {
+	out, err := Add(nil, Server{Name: "a", Target: "kadran-client@203.0.113.10", Provider: "  Hetzner \t"})
+	if err != nil || out[0].Provider != "Hetzner" {
+		t.Fatalf("sağlayıcı kırpılmadı: %+v, %v", out, err)
+	}
+}
+
+func TestValidateRejectsInvisibleProvider(t *testing.T) {
+	err := Validate([]Server{{Name: "a", Target: "kadran-client@203.0.113.10", Provider: "Het" + rlo + "zner"}})
+	if err == nil {
+		t.Fatal("görünmez karakterli sağlayıcı kabul edildi")
 	}
 }
 

@@ -194,7 +194,7 @@ func (c *cli) runLogin(ctx context.Context, args []string) int {
 	}
 	raw, ok := singleTarget(fs.Args())
 	if !ok {
-		return c.usageError("usage: kadran login [-recovery] [target] (the code is read from stdin, never an argument)")
+		return c.argCountError("usage: kadran login [-recovery] [target] (the code is read from stdin, never an argument)")
 	}
 
 	// Kod bağlanmadan önce soruluyor: kullanıcı telefonunu ararken bir
@@ -234,7 +234,7 @@ func (c *cli) runLogin(ctx context.Context, args []string) int {
 func (c *cli) runLogout(_ context.Context, args []string) int {
 	raw, ok := singleTarget(args)
 	if !ok {
-		return c.usageError("usage: kadran logout [target]")
+		return c.argCountError("usage: kadran logout [target]")
 	}
 	key, err := c.deleteSession(raw)
 	if err != nil {
@@ -260,7 +260,7 @@ func (c *cli) runTotp(ctx context.Context, args []string) int {
 	case "status":
 		raw, ok := singleTarget(args[1:])
 		if !ok {
-			return c.usageError("%s", totpUsage)
+			return c.argCountError("%s", totpUsage)
 		}
 		return c.runTotpStatus(ctx, raw)
 	case "enable", "disable":
@@ -271,7 +271,7 @@ func (c *cli) runTotp(ctx context.Context, args []string) int {
 		}
 		raw, ok := singleTarget(fs.Args())
 		if !ok {
-			return c.usageError("%s", totpUsage)
+			return c.argCountError("%s", totpUsage)
 		}
 		if args[0] == "enable" {
 			return c.runTotpEnable(ctx, raw, *recovery)
@@ -292,7 +292,7 @@ func (c *cli) runTotpReset(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() != 1 {
-		return c.usageError("%s", totpUsage)
+		return c.argCountError("%s", totpUsage)
 	}
 	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
 		return c.fail(err)

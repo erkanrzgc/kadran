@@ -132,6 +132,25 @@ func TestLoadRejectsOptionLikeTarget(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "-oProxyCommand") || !strings.Contains(err.Error(), "evil") {
 		t.Fatalf("seçenek gibi hedef okundu: %v", err)
 	}
+	// Geçersiz kayıt bütün listeyi kapatır; kullanıcı ne yapacağını bilmeli.
+	if !strings.Contains(err.Error(), "fix or remove the file") {
+		t.Errorf("ne yapılacağı söylenmedi: %v", err)
+	}
+}
+
+// Sınırı aşan dosya "bozuk" değil "çok büyük" denerek reddedilir: okuma sınırı
+// sınırın bir bayt fazlası, kesilmiş JSON'la karışmaz.
+func TestLoadRejectsOversizedFile(t *testing.T) {
+	s := testStore(t)
+	writeRaw(t, s, `{"version":1,"servers":[]}`+strings.Repeat(" ", maxFileSize))
+	_, err := s.Load()
+	if err == nil || !strings.Contains(err.Error(), "larger than") {
+		t.Fatalf("büyük dosya: %v", err)
+	}
+	writeRaw(t, s, `{"version":1,"servers":[]}`+strings.Repeat(" ", maxFileSize-30))
+	if _, err := s.Load(); err != nil {
+		t.Fatalf("sınırın altındaki dosya reddedildi: %v", err)
+	}
 }
 
 func TestLoadRejectsMissingVersion(t *testing.T) {

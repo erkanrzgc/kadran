@@ -204,6 +204,10 @@ mutate_in src/renderer/lib/serial.ts "profil yazmaları sırasız" \
     "s=s.replace('const result = tail.then(job, job);','const result = job();',1)"
 mutate_in src/renderer/lib/profile-store.ts "odakta yeniden okumuyor (CLI'ın eklediği görünmez)" \
     "s=s.replace('reload: () => serial(read),','reload: () => serial(async () => { if (!loaded) await read(); }),',1)"
+mutate_in src/renderer/lib/profile-store.ts "CLI'da silinmiş sunucu kaldırılınca kart kalıyor" \
+    "s=s.replace('if (serverListReason(err) !== \"not_found\") throw err;','if (serverListReason(err) !== \"not_found_x\") throw err;',1)"
+mutate_in src/renderer/lib/profile-store.ts "CLI'da silinmiş sunucu düzenlenince liste tazelenmiyor" \
+    "s=s.replace('if (serverListReason(err) === \"not_found\") await read()','if (serverListReason(err) === \"not_found_x\") await read()',1)"
 mutate_in src/renderer/lib/audit-view.ts "yükleme hatası 'kayıt yok' gösteriyor" \
     "s=s.replace('if (failed) return \"audit.load_failed\";','void failed;',1)"
 mutate_in src/main/ipc-validate.ts "'-' ile başlayan hedef kabul ediliyor" \

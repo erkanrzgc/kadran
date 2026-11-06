@@ -37,7 +37,7 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`audit list` takes at most one target, got %d", fs.NArg())
+		return c.argCountError("`audit list` takes at most one target, got %d", fs.NArg())
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, *timeout)
@@ -129,7 +129,7 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 		return exitUsage
 	}
 	if fs.NArg() > 1 {
-		return c.usageError("`audit verify` takes at most one target, got %d", fs.NArg())
+		return c.argCountError("`audit verify` takes at most one target, got %d", fs.NArg())
 	}
 	if *anchorsDir != "" && *asJSON {
 		return c.usageError("-anchors and -json cannot be used together")

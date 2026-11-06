@@ -39,11 +39,11 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 	var appID, target string
 	switch {
 	case *all && fs.NArg() > 1:
-		return c.usageError("usage: kadran prune -all [target]")
+		return c.argCountError("usage: kadran prune -all [target]")
 	case *all:
 		target = fs.Arg(0)
 	case fs.NArg() < 1 || fs.NArg() > 2:
-		return c.usageError("usage: kadran prune <app> [target] " +
+		return c.argCountError("usage: kadran prune <app> [target] " +
 			"or kadran prune -all [target] — options go BEFORE the app name")
 	default:
 		appID, target = fs.Arg(0), fs.Arg(1)

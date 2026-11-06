@@ -12427,7 +12427,13 @@ Gerçek sunucuyla (sunucu tarafı değişmedi); macOS ve Linux'ta masaüstü; Li
 
 ## K-163 — Cam yalnız çerçevede: iki tema, içerik opak panelde (2026-11-06)
 
-**Durum:** dal `glass-frame`, yerelde; kullanıcı gerçek pencerede bakacak. Yayınlanmadı (K-160: birikince). Sunucu değişmedi.
+**Durum:** PR #30 → `dd97795`, main'de (6 Kasım). Kullanıcı gerçek pencerede onayladı. CI 13/13 yeşil, Windows kurulum betiğinin mutasyonu atlandı; masaüstü mutasyonu 10 dk 35 sn sürdü.
+
+İlk CI koşusunda iki kırmızı vardı:
+- **Masaüstü (windows):** Windows CI'da pencere 1280 px açılmıyor, dar düzene düşüyor. Duman testi logoyu içerik paneline göre ölçtüğü için 50 px fark buldu: ikinci menü 42 px, boşluk 8 px. Test artık en üstteki panele göre ölçüyor, 760 px'te de ölçüyor (`719501b`).
+- **Güvenlik değişmezleri:** bu PR'dan değildi. Caddy'nin dolaylı bağımlılığı `klauspost/compress` v1.20.1'de GO-2026-6865 açığı vardı; o gün main de kırmızıydı. PR #31 ile v1.20.2'ye çıkıldı (`8db8716`).
+
+Yayınlanmadı (K-160: birikince). K-163 sunucuya dokunmuyor. #31 ise `kadran-caddy` ikilisini değiştiriyor; sunuculara bir sonraki sunucu sürümüyle gider.
 
 ### Neden
 

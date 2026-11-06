@@ -12253,7 +12253,8 @@ zincir geçerli, uygulamalar duruyor, TOTP oturumu yeniden başlatmayı geçti, 
 ## K-160 — Süreci hafifletme: PR'da seçilen mutasyon, tamamı gecelik (2026-10-30)
 
 **Durum:** PR #26 → `d0f73b7`, main'de; CI 14/14 yeşil (Linux mutasyonu bütün betiklerle 1 sa 16 dk).
-Dar seçim gerçek bir PR'da, gecelik koşu da ilk gecesinde henüz görülmedi.
+Dar seçim gerçek bir PR'da, gecelik koşu da ilk gecesinde henüz görülmedi. **7 Kasım:** alt modülün
+`go.mod`/`go.sum`'ı artık ortak değil, mutasyon işi beş parçada (K-164).
 
 ### Neden
 
@@ -12585,8 +12586,8 @@ yüklemiyor") testi sonsuz döngüye sokuyor; `go test` 10 dk'lık varsayılan z
   ölçüm (proxywatch 300, tahmin). Tabloda olmayan betik 60 sn sayılır ve yine bir parçaya girer: tablonun
   eskimesi yalnız dengeyi bozar. Betik sayısı beşten azsa o kadar parça; tek betiklik PR'da tek iş.
   - Neden beş: ölçülen sürelerle LPT, proxywatch 300 iken: 3 parça 18,7 dk, 4 parça 14 dk, 5 parça 11,2 dk,
-    6 parça 10 dk (bootstrapssh tek başına). Kurulum ~1 dk. Beş parça, aynı anda koşan diğer işlerle 20
-    işin altında kalıyor.
+    6 parça 10 dk (bootstrapssh tek başına). Kurulum ~1 dk. Beş parça, aynı anda koşan diğer işlerle
+    20 işin altında kalıyor; 20, GitHub Free'nin eşzamanlı iş sınırı varsayımı, ölçülmedi.
   - Proxywatch düzelmeseydi parça sayısı fark etmezdi: 4, 5 ve 6 parçada en ağır parça 21 dk.
 - **Birleşim CI'da parçalayıcıdan bağımsız denetleniyor** (`changes` işi, `sort -u` ve karşılaştırma):
   parçaların birleşimi seçimin kendisi olmalı. Liste tekrarsız olduğu için eşitlik her betiğin TAM BİR
@@ -12626,7 +12627,11 @@ kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozul
   `mutate-mutation-select.sh`'ı da seçti. Yorum yolsuz yazıldı.
 - `actionlint` 1.7.7 temiz. `shard` adımı yerelde üç seçimle (hepsi, boş, tek betik) doğru matris verdi.
   Bozuk parçalayıcı taklitleri (son parça düşer, bir betik iki parçada, ortada boş parça, her satır iki kez)
-  dördü de birleşim denetiminde düştü.
+  dördü de birleşim denetiminde düştü. Birleşimi bozmadan bir parçayı ikiye bölen taklidi yalnız "5
+  parçadan fazla" denetimi yakaladı; kontrol grubu (6 parçaya izin, ilk parça tek betik) yeşil kaldı.
+  Parçadaki boş liste koruması `""` ve `" "` ile düştü, tek betikle geçti.
+- `go.work` ya da kök `go.mod`'a `replace example.com/x => ./build/caddy` eklenince
+  `check-mutation-select.sh` ikisinde de düştü; dosyalar geri alındı.
 
 ### Açık
 

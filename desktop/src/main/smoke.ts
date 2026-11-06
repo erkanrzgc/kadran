@@ -209,7 +209,9 @@ async function checkWordmark(win: BrowserWindow): Promise<void> {
   const mark = await evaluate<{ readable: boolean; weight: string; spacing: string; text: string; offCenter: number; offPanel: number }>(win, `(() => {
     const el = ${q('[data-testid="brand-logo"]')};
     const rail = ${q(".rail")};
-    const stage = ${q(".stage")};
+    // En üstteki panelin üst kenarı: sunucu sayfasında dar düzende o panel
+    // ikinci menüdür, içerik paneli onun altına iner.
+    const stage = ${q(".main > .stage, .main > .page-host")};
     if (!(el instanceof HTMLElement) || !(rail instanceof HTMLElement) || !(stage instanceof HTMLElement)) return { readable: false, weight: '', spacing: '', text: '', offCenter: 0, offPanel: 0 };
     const rect = el.getBoundingClientRect();
     const style = getComputedStyle(el);
@@ -435,6 +437,10 @@ async function managementJourney(win: BrowserWindow): Promise<void> {
   // Kenar çubuğunun göstergeleri boyut izleyicisiyle bir sonraki karede yeniden
   // ölçülür (K-163); gizli pencerede o kare genişlik değişiminden sonra gelir.
   await nextFrames(win);
+  // Dar düzende ikinci menü panelin üstüne geçer; logo yine en üstteki panele
+  // göre ölçülmeli. Windows CI'da pencere 1280 px açılmıyor: oradaki 50 px
+  // fark tam dar düzenin farkıydı (ikinci menü 42 px + 8 px boşluk).
+  await checkWordmark(win);
   await noHorizontalOverflow(win, "configuration at 760x520");
   await evaluate(win, `${q('[data-testid="app-form"]')}.scrollIntoView({block:'start'})`);
   await screenshot(win, "configuration-760x520");

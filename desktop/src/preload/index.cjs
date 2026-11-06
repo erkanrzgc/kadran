@@ -43,8 +43,11 @@ const CHANNELS = {
   alarmsList: "kadran:alarms-list",
   backupsList: "kadran:backups-list",
   backupCreate: "kadran:backup-create",
-  loadProfiles: "kadran:profiles-load",
-  saveProfiles: "kadran:profiles-save",
+  serversList: "kadran:servers-list",
+  serversAdd: "kadran:servers-add",
+  serversUpdate: "kadran:servers-update",
+  serversRemove: "kadran:servers-remove",
+  serversImportStatus: "kadran:servers-import-status",
   loadAppearance: "kadran:appearance-load",
   saveAppearance: "kadran:appearance-save",
   windowControl: "kadran:window",
@@ -76,17 +79,21 @@ contextBridge.exposeInMainWorld("kadran", {
   /** İki denetim zincirini de doğrular. */
   auditVerify: (target) => ipcRenderer.invoke(CHANNELS.auditVerify, target),
 
-  /** Kayıtlı sunucu profillerini okur. */
-  loadProfiles: () => ipcRenderer.invoke(CHANNELS.loadProfiles),
-
   /**
-   * Sunucu profillerini kaydeder.
+   * Ortak sunucu listesi (servers.json, K-162); CLI ile aynı liste. Her
+   * değişiklik tek kayıt gönderir ve güncel listeyi döner.
    *
-   * Profil bir SIR DEĞİLDİR: yalnızca `kadran-client@1.2.3.4` gibi bir
+   * Kayıt bir SIR DEĞİLDİR: yalnızca `kadran-client@1.2.3.4` gibi bir
    * hedef dizesi. Anahtar malzemesi ssh-agent'ta kalır ve bu uygulamaya
    * hiç girmez — bu yüzden işletim sistemi anahtarlığı kullanılmıyor.
    */
-  saveProfiles: (profiles) => ipcRenderer.invoke(CHANNELS.saveProfiles, profiles),
+  listServers: () => ipcRenderer.invoke(CHANNELS.serversList),
+  addServer: (profile) => ipcRenderer.invoke(CHANNELS.serversAdd, profile),
+  updateServer: (target, change) => ipcRenderer.invoke(CHANNELS.serversUpdate, target, change),
+  removeServer: (target) => ipcRenderer.invoke(CHANNELS.serversRemove, target),
+
+  /** Açılışta eski listenin ortak listeye taşınmasının sonucu. */
+  serversImportStatus: () => ipcRenderer.invoke(CHANNELS.serversImportStatus),
 
   /** Çalışılan işletim sistemi; başlık çubuğu macOS'ta trafik ışıklarına yer bırakır. */
   platform: process.platform,

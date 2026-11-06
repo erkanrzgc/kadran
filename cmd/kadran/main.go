@@ -32,6 +32,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/client"
 	"github.com/erkanrzgc/kadran/internal/domaincheck"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/servers"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
@@ -90,12 +91,18 @@ type cli struct {
 	keys keyManager
 	// TOTP oturum jetonları (Dir boş: kullanıcının yapılandırma dizini).
 	sessions client.SessionStore
+	// Kayıtlı sunucu listesi (Path boş: kullanıcının yapılandırma dizini).
+	servers servers.Store
 	// `totp reset`: root yolundan sıfırlama (nil: gerçek ssh).
 	totpReset func(ctx context.Context, opts bootstrap.KeyOptions, out io.Writer) error
 
 	// target, connect'e verilen ham hedef: oturum hatasında "kadran login
 	// <hedef>" ipucu için.
 	target string
+	// serverName, `-s` ile seçilen kayıtlı sunucu (yoksa boş): ipuçları
+	// hedef yerine onu söyler. serverTarget, onun yerine konan hedef.
+	serverName   string
+	serverTarget string
 }
 
 func main() {
@@ -127,6 +134,7 @@ func commands() []command {
 		{"backup", "<create|list> [target]", "takes and lists database backups", (*cli).runBackup},
 		{"domain", "check <domain> [target]", "checks a domain's DNS, ports and certificate", (*cli).runDomain},
 		{"audit", "<list|verify> [target]", "reads and verifies the audit chain", (*cli).runAudit},
+		{"server", "<add|list|rm|rename> …", "manages the saved server list", (*cli).runServer},
 		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
 		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
 		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
@@ -147,6 +155,20 @@ func (c *cli) run(ctx context.Context, args []string) int {
 	if name == "-h" || name == "--help" || name == "help" {
 		c.usage()
 		return exitOK
+	}
+
+	// `-s ad` burada kayıtlı hedefe çevrilir (K-162, serverflag.go).
+	args, server, err := expandServerFlag(args, c.serverStore().Load)
+	if err != nil {
+		var sfe *serverFlagError
+		if errors.As(err, &sfe) && sfe.usage {
+			return c.usageError("%s", err)
+		}
+		return c.fail(err)
+	}
+	c.serverName = server
+	if server != "" {
+		c.serverTarget = args[len(args)-1]
 	}
 
 	for _, cmd := range commands() {
@@ -182,6 +204,7 @@ Target forms:
   user@server               SSH (default user: %s)
   user@server:2222          SSH, custom port
   server                    SSH, default user
+  -s name                   a server saved with kadran server add
 
 Exit codes:
   %d  success
@@ -208,6 +231,13 @@ func (c *cli) newFlagSet(name string) *flag.FlagSet {
 // connect, hedefi çözümler, bağlanır ve protokol uyumunu doğrular. Sunucu
 // TOTP istiyorsa kayıtlı oturum jetonunu bağlantıya ekler (K-155).
 func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
+	// -s ile kayıtlı hedef sona eklendi. Komut başka bir hedefle bağlanmak
+	// istiyorsa bir konumsal argüman eksik demektir (`deploy -s gcp` gibi):
+	// kayıtlı hedef uygulama adının yerine geçmiş, hedef boş (yerel soket)
+	// kalmıştır. Hiçbir bağlantı denenmez (K-162).
+	if err := c.checkServerTarget(rawTarget); err != nil {
+		return nil, nil, err
+	}
 	c.target = rawTarget
 	conn, ping, err := c.dialTarget(ctx, rawTarget)
 	if err != nil {
@@ -256,16 +286,23 @@ func (c *cli) dialTarget(ctx context.Context, rawTarget string) (*client.Client,
 func (c *cli) fail(err error) int {
 	fmt.Fprintln(c.stderr, progName+":", err)
 	if client.IsSessionError(err) {
-		if t, perr := client.ParseTarget(c.target); perr == nil && !t.IsLocal() {
+		if c.serverName != "" {
+			fmt.Fprintf(c.stderr, "  run: %s login -s %s\n", progName, c.serverName)
+		} else if t, perr := client.ParseTarget(c.target); perr == nil && !t.IsLocal() {
 			fmt.Fprintf(c.stderr, "  run: %s login %s\n", progName, c.target)
 		}
 	}
 	return exitError
 }
 
-// usageError, kullanım hatasını bildirir.
+// usageError, kullanım hatasını bildirir. -s ile çağrıldıysa en olası
+// sebebi de söyler: kayıtlı hedef sona eklendiği için ayrıca yazılan hedef
+// fazladan argüman olur.
 func (c *cli) usageError(format string, args ...any) int {
 	fmt.Fprintf(c.stderr, progName+": "+format+"\n", args...)
+	if c.serverName != "" {
+		fmt.Fprintf(c.stderr, "  note: -s %s already names the server; do not also give a target\n", c.serverName)
+	}
 	return exitUsage
 }
 
@@ -311,6 +348,9 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	}
 	if fs.NArg() != 1 {
 		return c.usageError("usage: kadran bootstrap [options] root@server  |  kadran bootstrap -sudo user@server")
+	}
+	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
+		return c.fail(err)
 	}
 
 	target, err := client.ParseTarget(fs.Arg(0))

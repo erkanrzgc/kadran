@@ -53,6 +53,7 @@ FILES=(
     src/main/management-payload.ts
     src/main/sidecar-error.ts
     src/main/sidecar-reads.ts
+    src/main/server-list.ts
 )
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -201,12 +202,20 @@ mutate_in src/renderer/lib/single-flight.ts "aynı sunucuya üst üste istek" \
     "s=s.replace('if (existing) return existing;','void existing;',1)"
 mutate_in src/renderer/lib/serial.ts "profil yazmaları sırasız" \
     "s=s.replace('const result = tail.then(job, job);','const result = job();',1)"
-mutate_in src/renderer/lib/profile-store.ts "diskten okumadan yazıyor" \
-    "s=s.replace('current ?? apply(await io.load());','current ?? [];',1)"
+mutate_in src/renderer/lib/profile-store.ts "odakta yeniden okumuyor (CLI'ın eklediği görünmez)" \
+    "s=s.replace('reload: () => serial(read),','reload: () => serial(async () => { if (!loaded) await read(); }),',1)"
 mutate_in src/renderer/lib/audit-view.ts "yükleme hatası 'kayıt yok' gösteriyor" \
     "s=s.replace('if (failed) return \"audit.load_failed\";','void failed;',1)"
 mutate_in src/main/ipc-validate.ts "'-' ile başlayan hedef kabul ediliyor" \
     "s=s.replace('trimmed.startsWith(\"-\")','trimmed.startsWith(\"--\")',1)"
+# Ortak listeye göç (K-162): yarım kalan göç "bitti" sayılırsa eski liste bir
+# daha hiç taşınmaz ve kullanıcının sunucuları kartlardan kaybolur.
+mutate_in src/main/server-list.ts "liste olmayan eski dosya boş liste sayılıyor" \
+    "s=s.replace('if (!Array.isArray(parsed)) {','parsed = Array.isArray(parsed) ? parsed : []; if (!Array.isArray(parsed)) {',1)"
+mutate_in src/main/server-list.ts "yan süreç hatasında da göç bitti sayılıyor" \
+    "s=s.replace('(await call(\"servers.import\", { profiles }))','(await call(\"servers.import\", { profiles }).catch(() => null))',1)"
+mutate_in src/main/server-list.ts "100'ü aşan eski liste göçü hiç bitirmiyor" \
+    "s=s.replace('const profiles = all.slice(0, MAX_IMPORT);','const profiles = all;',1)"
 
 echo "== Yönetim yüzeyi (ana süreç onayı) =="
 # Her durum değiştiren kanalın onay çağrısı AYRI ayrı silinir: biri unutulursa

@@ -27,7 +27,8 @@ import { loadAppearance, saveAppearance } from "./appearance.ts";
 import { requireCopyText, requireWindowAction } from "./ipc-validate.ts";
 import { lockDownPermissions } from "./permissions.ts";
 import { registerManagementHandlers } from "./management-handlers.ts";
-import { loadProfiles, migrateLegacyProfiles, saveProfiles } from "./profiles.ts";
+import { migrateLegacyProfiles } from "./profiles.ts";
+import { importProfiles, registerServerList, type ImportStatus } from "./server-list.ts";
 import { prepareSmokeUserData, runSmokeTest, SMOKE_TEST } from "./smoke.ts";
 import { registerSidecarReads } from "./sidecar-reads.ts";
 import { resolveSidecarCommand } from "./spawn-sidecar.ts";
@@ -48,6 +49,8 @@ if (SMOKE_TEST) prepareSmokeUserData();
 
 let client: SidecarClient | null = null;
 let host: WindowHost | null = null;
+// Açılışta eski profil listesinin ortak listeye taşınmasının sonucu (K-162).
+let importResult: ImportStatus | null = null;
 
 function sidecar(): SidecarClient {
   if (client) return client;
@@ -79,8 +82,11 @@ function registerHandlers(): void {
   const syntheticFixture = SMOKE_TEST && !app.isPackaged && command.args.some((arg) => resolve(arg) === join(repoRoot, "desktop", "test", "fixtures", "fake-sidecar.mjs"));
   registerManagementHandlers(sidecar, syntheticFixture, async () => (await loadAppearance(userData(), warn)).language);
   registerSidecarReads({ handle: (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(event, ...args)), call: (method, params, options) => sidecar().call(method, params, options) });
-  ipcMain.handle(CHANNELS.loadProfiles, () => loadProfiles(userData(), (msg) => console.warn("[profiller]", msg)));
-  ipcMain.handle(CHANNELS.saveProfiles, (_event, profiles: unknown) => saveProfiles(userData(), profiles));
+  registerServerList({
+    handle: (channel, fn) => ipcMain.handle(channel, (event, ...args) => fn(event, ...args)),
+    call: (method, params, options) => sidecar().call(method, params, options),
+    importStatus: () => importResult,
+  });
   ipcMain.handle(CHANNELS.loadAppearance, async () => ({
     appearance: await loadAppearance(userData(), warn),
     defaults: defaultAppearance(),
@@ -130,6 +136,15 @@ if (!app.requestSingleInstanceLock()) {
     await migrateLegacyProfiles(userData(), join(app.getPath("appData"), "panely-desktop"), (msg) =>
       console.warn("[profiller]", msg),
     ).catch((err: unknown) => console.warn("[profiller]", (err as Error).message));
+    // Sonra o liste bir kez ortak sunucu listesine (servers.json) taşınır;
+    // pencere listeyi okumadan önce. Hata uygulamayı durdurmaz, sonraki
+    // açılış yeniden dener ve arayüz bildirir (K-162).
+    importResult = await importProfiles(userData(), (method, params, options) => sidecar().call(method, params, options), warn).catch(
+      (err: unknown): ImportStatus => {
+        warn(`could not import the old server list: ${(err as Error).message}`);
+        return { result: "failed", skipped: [] };
+      },
+    );
 
     const accent: WindowAccent | null = material === "acrylic" ? await loadWindowAccent(warn) : null;
     if (accent) material = "accent";

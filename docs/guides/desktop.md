@@ -13,6 +13,8 @@ Masaüstü sürüm dosyalarında yok; kaynaktan derlenir. Gerekenler: Go 1.26.10
 3. Sunucunun SSH host anahtarını sağlayıcı konsolu veya güvenilir bir kanaldan doğrula, sonra OpenSSH'nin bilinen sunucu kaydını hazırla. Masaüstü `BatchMode=yes` kullanır: ilk güven veya parola istemi açmaz.
 4. **Sunucular** ekranında **Sunucu ekle**'ye bas, `kadran-client@sunucu` veya `kadran-client@sunucu:2222` hedefini yaz. Profil adı bu bilgisayarda saklanır. Hata metni kimlik, host güveni veya ağ sorununu ayırt etmek için korunur.
 
+Sunucu listesi CLI ile ortaktır (K-162): `kadran server add` ile eklenen sunucu, pencereye dönünce kart olarak görünür; masaüstünde eklenen de `kadran status -s <ad>` ile kullanılır. Liste yapılandırma dizininde durur (`%AppData%\kadran\servers.json`, Linux'ta `~/.config/kadran/servers.json`) ve anahtar, parola ya da jeton taşımaz. Bu sürüme ilk geçişte masaüstünün eski listesi bir kez bu dosyaya taşınır; eski `profiles.json` silinmez. Taşıma başarısız olursa uygulama söyler ve bir sonraki açılışta yeniden dener; taşınamayan tek tek sunucuları (geçersiz hedef, 100'ü aşan liste) adlarıyla söyler.
+
 Uygulama **Sunucular** ekranında açılır: kayıtlı her sunucu bir kart. Karta basınca sunucu açılır; üst çubuktaki `Sunucular / ad ⌄` menüsünden başka sunucuya geçilir, iki ya da daha çok sunucu açıkken üst çubukta sekmeler çıkar. Eski sunucunun geç gelen yanıtı yeni sunucunun ekranını değiştirmez. Başlatılmış bir işlem, ekranı kapatınca otomatik olarak geri alınmış sayılmaz; yeniden bağlanıp sürüm geçmişini kontrol et.
 
 ## Uygulamalar

@@ -11,12 +11,14 @@ import (
 
 	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/servers"
 	"github.com/erkanrzgc/kadran/internal/version"
 )
 
 // newTestCLI, çıktısı yakalanabilen bir cli üretir. Oturum dizini geçici
 // bir yer: hiçbir test geliştiricinin gerçek oturumlarını okuyup yazmasın.
-// Oturum dosyasına bakan testler t.TempDir() verir.
+// Oturum dosyasına bakan testler t.TempDir() verir. Sunucu listesi de hiçbir
+// testte kullanıcının gerçek dosyası olmasın; yazan testler kendi yolunu verir.
 func newTestCLI(stdin string) (*cli, *bytes.Buffer, *bytes.Buffer) {
 	out, errOut := &bytes.Buffer{}, &bytes.Buffer{}
 	return &cli{
@@ -24,6 +26,7 @@ func newTestCLI(stdin string) (*cli, *bytes.Buffer, *bytes.Buffer) {
 		stdout:   out,
 		stderr:   errOut,
 		sessions: client.SessionStore{Dir: filepath.Join(os.TempDir(), "kadran-cli-test-sessions")},
+		servers:  servers.Store{Path: filepath.Join(os.TempDir(), "kadran-cli-test-servers", "servers.json")},
 	}, out, errOut
 }
 

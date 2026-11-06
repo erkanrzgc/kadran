@@ -12359,3 +12359,67 @@ Bilinen eksik: sürükleme bölgesinin tıklamayı yutması testle yakalanamıyo
 ### Ölçülmedi
 
 macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri" kapalıyken `prefers-reduced-transparency` (ayarı değiştirmek sistem ayarı, yalnız kural var); gerçek sunucuyla yeni arayüz.
+
+## K-162 — Ortak sunucu listesi: `servers.json`, `kadran server`, `-s <ad>` (2026-11-05)
+
+**Durum:** dal `server-list`, yerelde yeşil; PR açılmadı. Tasarım:
+`docs/specs/2026-11-05-filo-2-sunucu-listesi-design.md`; plan:
+`docs/plans/2026-11-05-filo-2-sunucu-listesi.md`. Filo tasarımının 2. parçası.
+
+### Neden
+
+Liste iki yerde ve ikisi de yarımdı: CLI'da liste yoktu (her komuta hedef elle, yükseltmede root
+ya da sudo hedefi her seferinde hatırlanıyordu), masaüstü kendi listesini Electron'un veri
+dizininde tutuyordu. 4. parça ("+ Sunucu ekle") ve 5. parça ("Hepsini yükselt") tek listeye dayanıyor.
+
+### Karar
+
+- Tek dosya `os.UserConfigDir()/kadran/servers.json` (oturumların yanı), 0700/0600, `{"version": 1,
+  "servers": [...]}`. Biçimi yalnız `internal/servers` bilir. Daha yeni sürümün dosyası okunur ama
+  yazılmaz; bozuk dosya hatadır ve ezilmez. Okunan her hedef yazmadaki denetimden geçer
+  (`-oProxyCommand=…` ssh'a ulaşmaz).
+- Ad 1–64 karakter, denetim karakteri yok, `-` ile başlamaz; benzersizlik büyük/küçük harfe bakmaz,
+  arama tam eşleşme.
+- CLI: `kadran server add|list|rm|rename` (ağa çıkmaz) ve her komutta `-s <ad>`. Çözüm `run()`'da bir
+  kez: `-s ad` çıkarılır, kayıtlı hedef sona eklenir. `bootstrap`, `key`, `totp reset` yönetici
+  hedefini ve `-sudo`'yu alır. Konumsal argüman ad olarak aranmaz (`~/.ssh/config` takma adıyla
+  karışmasın).
+- Masaüstü dosyayı yan süreçle (`servers.*`) okur ve yazar; her değişiklik tek kayıt gönderir,
+  pencere odağa gelince yeniden okunur. Eski `profiles.json` bir kez içe aktarılır, silinmez.
+- Kapsam dışı: anahtar dosyası yolu (4. parça üretiyor), Kadran'ın kendi `known_hosts`'u, sunucuya
+  yeni çağrı. Protokol 3.
+
+### Ölçüm
+
+- Testin bulduğu hata: `deploy -s gcp` gibi uygulama adı unutulmuş bir komutta kayıtlı hedef adın
+  yerine kayıyor, hedef boş kalıyor ve bağlantı **yerel sokete** gidiyordu (deploy, rollback, logs,
+  prune, app show, app delete; altısı da ölçüldü). Çözüm: `-s` verildiyse `connect` yalnız kayıtlı
+  hedefi kabul ediyor, değilse hiçbir şey gönderilmeden duruyor. `-s` ile birlikte hedef yazılmasını
+  ise her komutun kendi argüman sayısı denetimi reddediyor; 18 komutun hepsi tek tek sınanıyor.
+- Windows'ta eşzamanlı yazma: 8 yazıcıyla okuma `ERROR_SHARING_VIOLATION`, rename erişim hatası
+  verdi. Okuma ve rename Windows'ta 10 kez, 20 ms × deneme aralıkla (toplam ~1,1 sn) yeniden
+  deneniyor; ilk bütçe (~0,55 sn) yüklü makinede 8 yazıcıyla bir kez tükendi. Testler: iki yazıcıda
+  (CLI + masaüstü) hiç hata yok; sekiz yazıcıda yalnız "dosya kullanımda" hatası olabilir, dosya hiç
+  bozulmaz; 30/30. POSIX'te yeniden deneme yok.
+- Bağımsız inceleme (Opus) iki "önemli" bulgu verdi, ikisi de kapatıldı:
+  - Göç sessizce sunucu düşürüyordu: boşluklu hedef (`ParseTarget` kırpıyor, eski masaüstü
+    bağlanıyordu), eski `panely-client@` kullanıcısı, "-   -y" gibi bir ad; 100'ü aşan eski
+    liste göçü hiç bitirmiyordu. Şimdi hedef kırpılır, ad sabit noktaya dek temizlenir, alınamayan
+    her profil sebebiyle döner ve arayüz adlarıyla söyler; 100'ü aşan liste kırpılır, fazlası söylenir.
+  - Kök yolunda (`bootstrap`, `key`, `totp reset`) ikinci kilit yoktu: `-s` ile başka bir hedef
+    yalnız argüman sayısı denetimine takılıyordu, test de yoktu. Şimdi bu üç yol da `connect` gibi
+    kayıtlı yönetici hedefinden başkasını reddediyor. Kilit yokken test kırmızıydı: bootstrap
+    başka bir makineye ssh denedi.
+- `mutate-servers.sh` 17/17 yakalandı (ad önek ya da harf duyarsız eşleşmesi, `-s` + hedef, kayan
+  hedef, dört kilit, yönetici yerine istemci hedefi, düşen `-sudo`, göçte sessiz kayıp ve boşluklu
+  hedef, okunan kaydın denetimi, yeni sürüm dosyası); dosya izni mutantı Windows'ta atlanıyor,
+  Linux'ta (CI) ölçülüyor.
+- `mutate-desktop.sh` 82/82 (göçün üç mutantı dahil: liste olmayan eski dosya, yan süreç hatası,
+  100'ü aşan liste).
+- Uçtan uca (sahte yan süreç): eski 11 profil açılışta ortak listeye taşındı; dosyaya "CLI gibi"
+  eklenen sunucu pencere odağa gelince kart oldu, silinince kayboldu.
+
+### Ölçülmedi
+
+Gerçek sunucuyla (sunucu tarafı değişmedi); macOS ve Linux'ta masaüstü; Linux'ta izin testi yerelde
+(CI'da koşar); iki gerçek süreç (CLI + masaüstü) aynı anda yazarken.

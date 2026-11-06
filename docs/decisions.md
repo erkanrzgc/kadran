@@ -12462,6 +12462,28 @@ Electron'da bir deneme penceresi açıldı ve çeşitleri kullanıcı canlı bak
   - "saydamlık efektleri" kapalı;
   - Windows camı yüklenemezse devreye giren yedek Electron Acrylic'i, odak gidince (griye düşüyor).
 - **Çökme ekranı** da opak panelde; yazı camın üstünde kalmaz.
+- **Gerçek pencerede ince ayar (kullanıcı, 6 Kasım):**
+  - Üst şerit 48 px'ten 32 px'e indi (Windows 11 başlığı kadar).
+  - KADRAN şeritten çıktı, panelin üst kenarının 16 px altından başlıyor.
+  - Kenar çubuğu 224 px'ten 200 px'e indi (Coolify'ın 224'ü kısa menü yazılarına genişti).
+- **Tema geçişi:** cam ile arayüz aynı anda, ekran tek seferde döner.
+  - Ayar 250 ms beklenip kaydediliyordu: o arada açık arayüzün arkasında koyu cam kalıyordu (ya da tersi). Tema artık beklemeden kaydedilir; yazı tipi ve dil yine kısa bekler.
+  - Menü satırı ve düğmeler renk değişimini 120 ms'de yapıyor, paneller anında; ekran parça parça dönüyordu. Geçiş anında bütün animasyonlar bir kareliğine kapatılır (`theme-switching`, `lib/theme-switch.ts`).
+- **Tema geçişi, ikinci tur (kullanıcı: "panel milisaniye ile geç"):** cam paneli geçiyordu.
+  - Sebep: renkler ancak arayüzün tamamı (191 yazı tipli liste dahil) yeniden çizilince değişiyordu.
+  - Sıra artık şöyle: renkler tıklandığı an sayfaya verilir (`switchTheme` doğrudan `update` içinde), kayıt hemen gider, arayüzün yeniden çizimi `startTransition` ile en sona kalır.
+  - Ana süreç de camı dosyayı diske yazmadan önce değiştirir.
+- **Hareket (kullanıcı: "seçtikten sonra seçili animasyonu kötü"):**
+  - K-161'deki büyüyerek solma (0,96 → 1, 180 ms) kalktı; geçişte eski ve yeni seçim bir an birlikte görünüyordu.
+  - Önce hareketsiz seçim denendi; kullanıcı onu ve beş hareketsiz stili de beğenmedi. Kenar denemesi penceresinde 7'yi seçti:
+    - Seçili satırın camı tek bir gösterge, yeni satıra kayar (220 ms).
+    - Üstüne gelme vurgusu fareyi satırdan satıra kayarak izler (160 ms).
+    - İkisi de satırların arkasında, menünün kabında (`NavSlider`; ana kenar çubuğu ve sunucu sayfasının ikinci menüsü).
+    - İlk yerleşimde, pencere boyutu değişince ve "hareketi azalt" açıkken kayma yok.
+  - Düğmeler yer değiştirmez: üstüne gelince 1 px kalkma ve basınca 2 px inme kalktı, yerine yalnız renk ve parlaklık değişir.
+  - Duman yolculuğunun ölçtükleri:
+    - cam, seçili satırın tam üstünde: kenar çubuğunda, satır değişince ve ikinci menüde;
+    - dar pencerede taşma yok. Gösterge bir sonraki karede yeniden ölçüldüğü için test pencere küçülünce iki kare bekliyor; beklemeden ölçünce eski 188 px boyu görüyordu.
 - **macOS referansı:** K-161'de "macOS'a göre değil" denmişti; bu kez görseli kullanıcı kendisi seçti. Birebir değil: macOS renkleri canlandırıyor, burada Akrilik var.
 - **Wails için ölçüt:** kabuklar arasında görünüm farkı var. Wails düz bulanıklığı (seçilen ilk görünüm) gösterebiliyor, Electron yalnız Akriliği. Görünümün geri kalanı arayüzün CSS'inde, Wails'e geçilirse aynen taşınır.
 
@@ -12474,7 +12496,7 @@ Electron'da bir deneme penceresi açıldı ve çeşitleri kullanıcı canlı bak
   - açıkta çerçeve rgb(237,237,240), panel rgb(255,255,255);
   - koyuda çerçeve rgb(10,10,10), panel rgb(20,20,20);
   - sunucu ekranında iki panel; dar pencerede (760×520) panel düzeni bozulmadı.
-- Masaüstü mutasyonu 95/95 yakalandı. Yeni mutantlar:
+- Masaüstü mutasyonu 106/106 yakalandı (ilk commit'te 95/95). Sonradan eklenenler: kaydın beklemesi, geçişte animasyonların kapanmaması ya da geri açılmaması, düğmenin yine inmesi, KADRAN hizası, camın ilk açılışta kayması, satırın kendi zeminini alması, göstergenin kenarlık ve kaydırma hesabı. İlk commit'tekiler:
   - tema başına ton, sıfır saydamlık, düz bulanıklığa dönüş;
   - tema değişince tonun yeniden verilmesi; yazı tipi kaydında hiçbir şeyin yeniden kurulmaması;
   - opak çerçeve ve opak panel; kapat düğmesinin köşede kalması;

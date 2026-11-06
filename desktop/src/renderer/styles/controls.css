@@ -15,10 +15,13 @@ textarea.field { height: auto; padding: 8px 12px; }
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; font: inherit; font-weight: 500;
   border-radius: var(--radius-sm); cursor: pointer; color: var(--fg); white-space: nowrap; box-shadow: 0 2px 0 var(--depth);
-  transition: color 120ms var(--ease-out), background-color 120ms var(--ease-out), border-color 120ms var(--ease-out), box-shadow 80ms var(--ease-out), transform 80ms var(--ease-out);
+  transition: color 120ms var(--ease-out), background-color 120ms var(--ease-out), border-color 120ms var(--ease-out), filter 120ms var(--ease-out);
 }
-.btn:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 3px 0 var(--depth); }
-.btn:not(:disabled):active { transform: translateY(2px); box-shadow: none; }
+/* Üstüne gelince ve basınca yalnız renk değişir; düğme yer değiştirmez (kullanıcı, 6 Kasım). */
+.btn-ghost:not(:disabled):hover { background-color: rgb(var(--ov) / 0.12); }
+.btn-danger:not(:disabled):hover { background-color: rgb(var(--ov) / 0.06); }
+.btn-primary:not(:disabled):hover { filter: brightness(1.08); }
+.btn:not(:disabled):active { filter: brightness(0.94); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
 .btn-primary {
   --depth: var(--accent-edge);

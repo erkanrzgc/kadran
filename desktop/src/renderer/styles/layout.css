@@ -1,10 +1,13 @@
-/* Kenar çubuğu: 224 px, dolgu ve çizgi yok; camın üstünde durur (K-163). */
-.rail { width: 224px; flex: none; display: flex; flex-direction: column; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; user-select: none; }
-.rail-brand { height: 48px; flex: none; display: flex; align-items: center; justify-content: center; padding: 0 16px; min-width: 0; }
+/* Kenar çubuğu: 200 px, dolgu ve çizgi yok; camın üstünde durur (K-163). */
+.rail { position: relative; width: 200px; flex: none; display: flex; flex-direction: column; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; user-select: none; }
+/*
+ * Logo panelin üst kenarının 16 px altından başlar: üst çubuk (32) + 16. Üstteki
+ * şerit pencereyi sürükler; macOS'ta trafik ışıkları da oraya sığar.
+ */
+.rail-brand { height: 76px; flex: none; display: flex; align-items: flex-start; justify-content: center; padding: 48px 16px 0; min-width: 0; }
 /* Harf aralığı son harften sonra da eklenir; sol dolgu logoyu gözle de ortalar. */
 .rail-brand .marka { padding-left: 0.22em; }
-.is-mac .rail-brand { height: 72px; padding-top: 40px; }
-.marka { font-size: 13.5px; font-weight: 700; letter-spacing: 0.22em; color: var(--brand-ink); white-space: nowrap; }
+.marka { font-size: 13.5px; font-weight: 700; letter-spacing: 0.22em; line-height: 1; color: var(--brand-ink); white-space: nowrap; }
 .rail-version { font-size: 10.5px; font-weight: 500; font-family: inherit; color: var(--fg-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .search {
   display: flex; align-items: center; gap: 8px; height: 32px; margin: 4px 10px 8px; padding: 0 10px; font: inherit; text-align: left; flex: none; width: calc(100% - 20px);
@@ -14,20 +17,25 @@
 .nav-group { padding: 6px 6px 8px; border-top: 1px solid var(--line-soft); flex: none; }
 .nav-section { margin: 0; padding: 4px 10px; font-size: 10.5px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--fg-faint); }
 .nav { display: flex; flex-direction: column; }
+/* Satır zemin almaz: seçili satırın camını ve üstüne gelme vurgusunu göstergeler verir. */
 .nav-item {
-  position: relative; isolation: isolate; display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; font: inherit; font-weight: 500; text-align: left; cursor: pointer;
-  color: var(--fg-dim); background: transparent; border: 0; border-radius: var(--radius); text-shadow: inherit; transition: color 120ms var(--ease-out), background-color 120ms var(--ease-out);
+  position: relative; z-index: 2; display: flex; align-items: center; gap: 10px; width: 100%; height: 36px; padding: 0 10px; font: inherit; font-weight: 500; text-align: left; cursor: pointer;
+  color: var(--fg-dim); background: transparent; border: 0; border-radius: var(--radius); text-shadow: inherit; transition: color 120ms var(--ease-out);
 }
-.nav-item:not(:disabled):not(.is-active):hover { color: var(--fg); background: var(--flat); }
-/* Seçili satır: parlak köşeli cam. Gradyan geçiş yapamaz; ayrı katmanda opaklıkla gelir, hover onu ezmez. */
+.nav-item:not(:disabled):hover { color: var(--fg); }
 .nav-item.is-active { color: var(--fg); }
-.nav-item::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
-  background: var(--pill); box-shadow: var(--pill-shadow); opacity: 0; transform: scale(0.96);
-  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out);
-}
-.nav-item.is-active::before { opacity: 1; transform: none; }
 .nav-item:disabled { opacity: 0.5; cursor: default; }
+/*
+ * Seçili satırın camı ve üstüne gelme vurgusu (K-163, kullanıcının seçtiği 7):
+ * satırların arkasında birer gösterge, NavSlider yerlerini ölçer. Cam seçilen
+ * satıra kayar, vurgu fareyi satırdan satıra kayarak izler. İlk yerleşimde
+ * kayma yok (data-ready yokken geçiş yok); K-161'deki büyüyerek solma kalktı.
+ */
+.nav-pill { position: absolute; top: 0; left: 0; z-index: 1; border-radius: var(--radius); pointer-events: none; opacity: 0; background: var(--pill); box-shadow: var(--pill-shadow); }
+.nav-hover { position: absolute; top: 0; left: 0; z-index: 0; border-radius: var(--radius); pointer-events: none; opacity: 0; background: var(--flat); transition: opacity 120ms var(--ease-out); }
+.nav-pill.is-on, .nav-hover.is-on { opacity: 1; }
+.nav-pill[data-ready] { transition: transform 220ms var(--ease-out), width 220ms var(--ease-out), height 220ms var(--ease-out); }
+.nav-hover[data-ready] { transition: transform 160ms var(--ease-out), width 160ms var(--ease-out), height 160ms var(--ease-out), opacity 120ms var(--ease-out); }
 .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-count { margin-left: auto; height: 18px; padding: 0 6px; line-height: 18px; font-size: 10.5px; font-weight: 600; color: var(--warn); background: rgba(251, 210, 78, 0.16); border-radius: 999px; }
 .rail-foot { margin-top: auto; display: flex; align-items: baseline; justify-content: center; gap: 6px; padding: 12px; border-top: 1px solid var(--line-soft); color: var(--fg-dim); font-weight: 500; min-width: 0; flex: none; }
@@ -38,7 +46,7 @@
 .main > .stage, .main > .page-host { margin: 0 var(--frame-gap) var(--frame-gap) 0; }
 
 /* Üst çubuk: Windows 11 başlığı gibi düz, zeminsiz; yol, sekmeler, köşede pencere düğmeleri. */
-.topbar { height: 48px; flex: none; display: flex; align-items: center; gap: 12px; padding-left: 24px; min-width: 0; }
+.topbar { height: 32px; flex: none; display: flex; align-items: center; gap: 12px; padding-left: 24px; min-width: 0; }
 .crumbs { display: flex; align-items: center; gap: 8px; min-width: 0; flex: none; max-width: 55%; }
 .crumb-sep, .crumb-static { color: var(--fg-faint); font-weight: 500; }
 .crumb {
@@ -78,8 +86,9 @@
 .page-host { flex: 1; min-height: 0; display: flex; gap: var(--frame-gap); }
 
 /* Sunucu sayfasının ikinci menüsü; dar pencerede tek satır olur. */
-.subnav { width: 188px; flex: none; padding: 8px 0 12px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
-.subnav .nav-group:first-child { border-top: 0; }
+.subnav { position: relative; width: 188px; flex: none; padding: 8px 0 12px; overflow: hidden auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+/* İlk grup çizgisiz; göstergeler (span) grupların önünde durduğu için türe göre seçilir. */
+.subnav .nav-group:first-of-type { border-top: 0; }
 
 /* İçerik opak panelde; cam yalnız çevresinde kalır (K-163). */
 .main > .stage, .page-host > .subnav, .page-host > .stage { background: var(--sheet); border: 1px solid var(--sheet-edge); border-radius: var(--sheet-radius); box-shadow: var(--sheet-shadow); }

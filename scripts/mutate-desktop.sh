@@ -37,6 +37,10 @@ FILES=(
     src/shared/appearance.ts
     src/renderer/styles/tokens.css
     src/renderer/styles/layout.css
+    src/renderer/styles/base.css
+    src/renderer/styles/controls.css
+    src/renderer/lib/theme-switch.ts
+    src/renderer/lib/nav-slider.ts
     src/renderer/lib/fleet.ts
     src/renderer/lib/providers.ts
     src/renderer/lib/audit-window.ts
@@ -176,6 +180,30 @@ mutate_in src/renderer/styles/layout.css "içerik paneli saydam (masaüstü içe
     "s=s.replace('.page-host > .stage { background: var(--sheet);','.page-host > .stage { background: transparent;',1)"
 mutate_in src/renderer/styles/layout.css "kapat düğmesi köşeden içeride (boşluk üst çubuğu da kapsıyor)" \
     "s=s.replace('.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }','.main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 0 var(--frame-gap) var(--frame-gap) 0; }',1)"
+
+echo "== Tema geçişi =="
+mutate_in src/renderer/lib/theme-switch.ts "tema kaydı bekliyor (cam arayüzden geç döner)" \
+    "s=s.replace('return next.theme !== prev.theme ? 0 : SAVE_DELAY_MS;','return SAVE_DELAY_MS;',1)"
+mutate_in src/renderer/lib/theme-switch.ts "geçişte animasyonlar kapanmıyor (ekran parça parça döner)" \
+    "s=s.replace('  root.classList.add(SWITCHING_CLASS);\n','',1)"
+mutate_in src/renderer/lib/theme-switch.ts "animasyonlar hiç geri açılmıyor" \
+    "s=s.replace('  later(() => root.classList.remove(SWITCHING_CLASS));\n','',1)"
+mutate_in src/renderer/lib/theme-switch.ts "renkler animasyonsuz hesaplanmadan sınıf kalkıyor" \
+    "s=s.replace('  settle();\n','',1)"
+mutate_in src/renderer/styles/base.css "geçiş sınıfı animasyonu kapatmıyor" \
+    "s=s.replace(':root.theme-switching *::after { transition: none !important; }',':root.theme-switching *::after { }',1)"
+mutate_in src/renderer/styles/layout.css "seçili satırın camı ilk açılışta da kayıyor" \
+    "s=s.replace('.nav-pill { position: absolute; top: 0;','.nav-pill { transition: transform 220ms; position: absolute; top: 0;',1)"
+mutate_in src/renderer/styles/layout.css "satır kendi zeminini alıyor (gösterge ile iki zemin)" \
+    "s=s.replace('.nav-item:not(:disabled):hover { color: var(--fg); }','.nav-item:not(:disabled):hover { color: var(--fg); background: var(--flat); }',1)"
+mutate_in src/renderer/lib/nav-slider.ts "gösterge kabın kenarlığını düşmüyor (panelde 1 px kayık)" \
+    "s=s.replace('x: item.left - container.left - border.left + scroll.left,','x: item.left - container.left + scroll.left,',1)"
+mutate_in src/renderer/lib/nav-slider.ts "gösterge kaydırılmış kapta içerikle kaymıyor" \
+    "s=s.replace('y: item.top - container.top - border.top + scroll.top,','y: item.top - container.top - border.top,',1)"
+mutate_in src/renderer/styles/controls.css "düğme basınca yine aşağı iniyor" \
+    "s=s.replace('.btn:not(:disabled):active { filter: brightness(0.94); }','.btn:not(:disabled):active { transform: translateY(2px); }',1)"
+mutate_in src/renderer/styles/layout.css "KADRAN panelle hizasız (şerit yüksekliği kadar değil)" \
+    "s=s.replace('padding: 48px 16px 0;','padding: 0 16px;',1)"
 
 echo "== Windows camı =="
 mutate_in src/main/window-accent.ts "cam kapatılınca efekt kalıyor" \

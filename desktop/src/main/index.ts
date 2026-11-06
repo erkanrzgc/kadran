@@ -19,7 +19,7 @@ import { release } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { defaultAppearance, materialFor, windowLook, type Material, type PlatformInfo } from "../shared/appearance.ts";
+import { defaultAppearance, materialFor, sanitizeAppearance, windowLook, type Material, type PlatformInfo } from "../shared/appearance.ts";
 import { CHANNELS } from "../shared/channels.ts";
 import { SidecarClient } from "../shared/sidecar-client.ts";
 import type { SidecarProcess } from "../shared/sidecar-client.ts";
@@ -93,11 +93,11 @@ function registerHandlers(): void {
     material,
   }));
   ipcMain.handle(CHANNELS.saveAppearance, async (_event, raw: unknown) => {
-    const saved = await saveAppearance(userData(), raw);
-    const look = windowLook(saved.theme, material);
+    // Cam önce, dosya sonra: diske yazmayı beklerse cam arayüzden geç dönerdi (K-163).
+    const look = windowLook(sanitizeAppearance(raw).theme, material);
     nativeTheme.themeSource = look.scheme;
     host?.setLook(look);
-    return saved;
+    return saveAppearance(userData(), raw);
   });
   ipcMain.handle(CHANNELS.windowControl, (event, action: unknown) => {
     const what = requireWindowAction(action);

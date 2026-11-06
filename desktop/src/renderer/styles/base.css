@@ -30,6 +30,9 @@ body {
 /* Kabuk: rengi temadan (tokens.css). */
 .shell { display: flex; height: 100%; background: var(--shell); }
 
+/* Tema geçişi anında animasyon yok: renkler tek seferde döner (lib/theme-switch.ts). */
+:root.theme-switching *, :root.theme-switching *::before, :root.theme-switching *::after { transition: none !important; }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

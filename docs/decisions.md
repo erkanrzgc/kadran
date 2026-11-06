@@ -12367,6 +12367,11 @@ mutasyonu ilgisiz olduğu için atlandı), henüz yayınlanmadı. Sunucu değiş
 `docs/specs/2026-11-05-filo-2-sunucu-listesi-design.md`; plan:
 `docs/plans/2026-11-05-filo-2-sunucu-listesi.md`. Filo tasarımının 2. parçası.
 
+**Ertelenen küçükler:** PR #29 → `e89a99a`, main'de (6 Kasım). CI 13/13 yeşil; Windows
+kurulum betiği mutasyonu atlandı, mutasyon 30 dk 22 sn. İlk koşuda Güvenlik değişmezleri
+kırmızıydı. Sebep #29 değildi, Caddy'deki GO-2026-6865'ti (K-163, PR #31). Dala main
+alındıktan sonra yeşile döndü. Henüz yayınlanmadı.
+
 ### Neden
 
 Liste iki yerde ve ikisi de yarımdı: CLI'da liste yoktu (her komuta hedef elle, yükseltmede root

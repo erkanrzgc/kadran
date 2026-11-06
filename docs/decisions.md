@@ -12362,7 +12362,8 @@ macOS ve Linux'ta gerçek pencere; Windows 10; Windows'un "saydamlık efektleri"
 
 ## K-162 — Ortak sunucu listesi: `servers.json`, `kadran server`, `-s <ad>` (2026-11-05)
 
-**Durum:** dal `server-list`, yerelde yeşil; PR açılmadı. Tasarım:
+**Durum:** PR #28 → `281aa3e`, main'de (6 Kasım); CI 13/13 yeşil (Windows kurulum betiği
+mutasyonu ilgisiz olduğu için atlandı), henüz yayınlanmadı. Sunucu değişmedi. Tasarım:
 `docs/specs/2026-11-05-filo-2-sunucu-listesi-design.md`; plan:
 `docs/plans/2026-11-05-filo-2-sunucu-listesi.md`. Filo tasarımının 2. parçası.
 

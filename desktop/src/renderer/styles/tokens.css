@@ -1,51 +1,21 @@
 /*
  * Tasarım belirteçleri. Ölçüler ve koyu/açık renkler Coolify'ın tasarım dili
  * (coollabsio/coolify, DESIGN.md, Apache-2.0); kenar çubuğu morsuz.
- * Üç tema: varsayılan blok cam (arkada gerçek masaüstü), altında koyu ve açık.
- * Karar: docs/decisions.md K-161.
+ * İki tema: açık (varsayılan) ve koyu. Cam her temada yalnız çerçevede: kenar
+ * çubuğu, üst çubuk ve paneller arası; içerik opak panelde. Kararlar:
+ * docs/decisions.md K-161, K-163.
  */
 :root {
   color-scheme: dark;
 
-  /* Yüzey katmanlarının rengi: koyu temalarda beyaz, açıkta siyah. */
-  --ov: 255 255 255;
+  /* Çerçeve: arkada Windows camı (Akrilik, ton temaya göre), üstünde temanın örtüsü. */
+  --shell: var(--frame);
+  --frame-gap: 8px;
+  --sheet-radius: 10px;
 
-  /* Pencere tonu: camın üstündeki koyu tül. Windows camı kendisi koyulaştırdığı için hafif. */
-  --tint: 0.2;
-  --shell: rgba(12, 12, 14, var(--tint));
-  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
-
-  --fg: #ffffff;
-  --brand-ink: #ffffff;
-  --fg-dim: rgba(255, 255, 255, 0.8);
-  --fg-faint: rgba(255, 255, 255, 0.62);
-  --line: rgba(255, 255, 255, 0.12);
-  --line-soft: rgba(255, 255, 255, 0.08);
-  --edge: rgba(255, 255, 255, 0.22);
-  --flat: rgba(255, 255, 255, 0.07);
-  --flat-on: rgba(255, 255, 255, 0.14);
-  --menu: rgb(34, 34, 38);
-  --depth: rgba(255, 255, 255, 0.1);
-
-  /* Glassmorphism kart: köşeden süzülen ışık, üst kenarda parlak çizgi. */
-  --card-bg: linear-gradient(155deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.04) 60%);
-  --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.32), 0 12px 36px rgba(0, 0, 0, 0.22);
-  --well-bg: rgba(0, 0, 0, 0.18);
-  --well-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  --kart-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03));
-  --kart-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16);
-  --thead: rgba(0, 0, 0, 0.14);
-  --code-bg: rgba(0, 0, 0, 0.45);
-  --pill: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.12));
-  --pill-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 6px 18px rgba(0, 0, 0, 0.25);
   --shadow-menu: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
   --shadow-modal: 0 24px 64px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.4);
   --backdrop: rgba(0, 0, 0, 0.5);
-
-  --ok: #4ade80;
-  --warn: #fbd24e;
-  --bad: #fb7185;
-  --muted: rgba(255, 255, 255, 0.62);
 
   /* Ana düğme: Coolify moru. Mor yalnız burada. */
   --accent-top: #7317ff;
@@ -68,21 +38,16 @@
   --w-mono: 400;
 }
 
-/* Yedek Acrylic Windows camından açık çizer (beyaz arkada rgb 100'e karşı 46-62): yazı okunsun diye tül koyu. */
-:root[data-theme="glass"][data-material="acrylic"] { --tint: 0.34; }
-
-/* Yedek Acrylic (Windows camı yüklenemezse) odak gidince griye düşer: o an siyah olur. */
-:root[data-theme="glass"][data-material="acrylic"][data-focused="false"] { --shell: #0a0a0a; }
-
-/* İşletim sisteminde "saydamlık efektleri" kapalıysa da yazı okunur kalsın. */
-@media (prefers-reduced-transparency: reduce) {
-  :root[data-theme="glass"] { --shell: #0a0a0a; }
-}
-
 :root[data-theme="dark"] {
   --ov: 255 255 255;
-  --shell: #0a0a0a;
   --text-shadow: none;
+
+  /* Koyu: Windows camının hafif koyu tonu üstünde hafif örtü (kullanıcı seçti, K-163). */
+  --frame: rgb(22 22 24 / 20%);
+  --frame-solid: #0a0a0a;
+  --sheet: #141414;
+  --sheet-edge: rgb(255 255 255 / 8%);
+  --sheet-shadow: 0 1px 2px rgb(0 0 0 / 30%), 0 8px 24px rgb(0 0 0 / 25%);
 
   --fg: oklch(96.12% 0 0);
   --brand-ink: oklch(96.12% 0 0);
@@ -116,8 +81,14 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --ov: 0 0 0;
-  --shell: #fafafa;
   --text-shadow: none;
+
+  /* Açık: buzlu beyazı Windows camının tonu veriyor, örtü yok (kullanıcı seçti, K-163). */
+  --frame: rgb(244 244 247 / 0%);
+  --frame-solid: #ededf0;
+  --sheet: #ffffff;
+  --sheet-edge: rgb(0 0 0 / 8%);
+  --sheet-shadow: 0 1px 2px rgb(0 0 0 / 6%), 0 8px 24px rgb(0 0 0 / 6%);
 
   --fg: oklch(14.5% 0 0);
   --brand-ink: oklch(14.5% 0 0);
@@ -148,4 +119,16 @@
   --bad: oklch(52% 0.2 27.33);
   --muted: oklch(50% 0 0);
   --focus: rgb(0 0 0 / 70%);
+}
+
+/*
+ * Cam yoksa çerçeve opak: yerel malzemesi olmayan sistem (Linux, eski Windows)
+ * ve odak gidince griye düşen yedek Acrylic (Windows camı yüklenemezse).
+ */
+:root[data-material="none"] { --shell: var(--frame-solid); }
+:root[data-material="acrylic"][data-focused="false"] { --shell: var(--frame-solid); }
+
+/* İşletim sisteminde "saydamlık efektleri" kapalıysa da yazı okunur kalsın. */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --shell: var(--frame-solid); }
 }

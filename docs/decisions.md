@@ -12301,7 +12301,7 @@ görülür. Sürüm öncesi tam koşu yayına kaçmasını önler. Kabul edildi 
 
 ## K-161 — Masaüstü görünümü: Coolify'ın aynısı, üstünde gerçek cam (2026-10-31)
 
-**Durum:** PR #27 → `ad23157`, main'de (2 Kasım); CI 14/14 yeşil (Linux mutasyonu 1 sa 17 dk). Kullanıcı gerçek pencerede onayladı ("cam güzel olmuş"); v0.10.0'da yayımlandı (2026-11-05; etiketli `76d6f4d`'de tam CI 14/14, iki LF klonda `SHA256SUMS` aynı). Masaüstü sürüm dosyalarında yok, kaynaktan derleniyor (kullanıcı kararı, 2 Kasım); sunucu değişmediği için yükseltme yok (K-160).
+**Durum:** PR #27 → `ad23157`, main'de (2 Kasım); CI 14/14 yeşil (Linux mutasyonu 1 sa 17 dk). Kullanıcı gerçek pencerede onayladı ("cam güzel olmuş"); v0.10.0'da yayımlandı (2026-11-05; etiketli `76d6f4d`'de tam CI 14/14, iki LF klonda `SHA256SUMS` aynı). Masaüstü sürüm dosyalarında yok, kaynaktan derleniyor (kullanıcı kararı, 2 Kasım); sunucu değişmediği için yükseltme yok (K-160). **6 Kasım:** üç tema ve tam pencere cam K-163 ile değişti (iki tema, cam yalnız çerçevede).
 
 ### Neden
 
@@ -12424,3 +12424,88 @@ dizininde tutuyordu. 4. parça ("+ Sunucu ekle") ve 5. parça ("Hepsini yükselt
 
 Gerçek sunucuyla (sunucu tarafı değişmedi); macOS ve Linux'ta masaüstü; Linux'ta izin testi yerelde
 (CI'da koşar); iki gerçek süreç (CLI + masaüstü) aynı anda yazarken.
+
+## K-163 — Cam yalnız çerçevede: iki tema, içerik opak panelde (2026-11-06)
+
+**Durum:** dal `glass-frame`, yerelde; kullanıcı gerçek pencerede bakacak. Yayınlanmadı (K-160: birikince). Sunucu değişmedi.
+
+### Neden
+
+K-161'in cam teması bütün pencereyi camlaştırıyordu. Kullanıcıya "arabadaki cam film gibi, dark glass" göründü. Wails denemesinde (6 Kasım, depo dışında, aynı React arayüzü) beş cam çeşidi canlı denendi. Kullanıcı önce bulanıksız saydamı beğendi, sonra 2 numarayı seçti: düz bulanıklık, ton yok. Ardından bir macOS posta uygulamasının görselini attı: buzlu kenar çubuğu, camın içinde yüzen opak beyaz paneller. Kararı: "sadece sidebar cam olacak", "her temada".
+
+Kararmanın tek sebebi ton değildi: hiç bulanıklık olmayan 1 numarada da arka plan kararıyordu. Kaynak, cam temasının koyu yarı saydam yüzeyleriydi.
+
+**Wails'te seçilen düz bulanıklık Electron'da çalışmadı.** İlk uygulama Wails'te seçilen değerleri (durum 3, ton 0) aldı. Kullanıcı gerçek pencerede "bu ne" dedi: kenar çubuğu açıkta düz gri, koyuda düz siyahtı. Görüntüsünden ölçülen renk açıkta 150, koyuda 17'ydi; ikisi de "örtü + siyah zemin" hesabına tutuyor (zemin yaklaşık rgb(9–10)). K-161'in testi bunu söylüyordu: "ton sıfır saydamlıkta pencere simsiyah çizilir". Wails sonucuna güvenip o uyarı kaldırılmıştı.
+
+Electron'da bir deneme penceresi açıldı ve çeşitleri kullanıcı canlı baktı. Ekrandan yakalayarak ölçüm iki kez bozuldu: kullanıcı makinedeydi ve en üstteki başka bir pencere bölgeyi kapattı. Sonuçlar:
+
+- Masaüstünü gösteren tek yol, normal pencerede Akrilik (4) ve sıfırdan büyük ton.
+- Düz bulanıklık (3), ton 0 ya da 0x01, düz gri kaldı.
+- Akrilik ve 0x01 beyaz ton neredeyse düz beyaz çıktı.
+- Çerçeveyi içeriğe uzatmak (`DwmExtendFrameIntoClientArea`, Wails'in yaptığı) düz bulanıklığı açmadı. Üstelik Akriliği de bozdu.
+- Kullanıcı Akrilik çeşitlerinden açıkta A3'ü, koyuda K1'i seçti.
+
+### Karar
+
+- **İki tema:** açık (varsayılan) ve koyu; ayrı "Cam" teması kalktı. Kayıtlı `"glass"` bilinmeyen değer gibi açığa döner, dil ve yazı tipi korunur. Dosya sürümü değişmedi (2).
+- **Cam her temada çerçevede:** kenar çubuğu, üst çubuk ve paneller arası (8 px). İçerik opak panelde: `.stage`, sunucu açıkken ikinci menü de ayrı panel. Panel 10 px köşe, 1 px kenar, hafif gölge. Kenar çubuğunun çizgisi kalktı. Boşluk panelin dışında; üst çubuk tam genişlik, kapat düğmesi köşede kalır.
+  - Açık: Windows camının tonu `0xa0f7f4f4` (buzlu beyaz), CSS örtüsü yok, panel `#ffffff`.
+  - Koyu: ton `0x30181816`, örtü `rgb(22 22 24 / 20%)`, panel `#141414`.
+- **Windows camı:** Akrilik (`ACCENT_ENABLE_ACRYLICBLURBEHIND`, 4), bayrak 2, ton temaya göre; tonun saydamlığı sıfır olamaz. Odak gidince düşmez (K-161'in ölçtüğü aynı çağrı).
+- **Pencere:** malzeme sistemin, temadan bağımsız: Windows 11'de iki temada da pencere saydam açılır. Tema değişince malzeme yeniden kurulmaz. Değişebilen iki şey var:
+  - Windows camının tonu (çağrı yeni tonla tekrarlanır);
+  - malzemesiz sistemde opak zeminin rengi.
+
+  Yazı tipi ya da dil kaydında hiçbir şey yeniden kurulmaz; bu karar saf `lookChange` işlevinde.
+- **Cam yoksa çerçeve opak** (koyu `#0a0a0a`, açık `#ededf0`). Üç durum:
+  - malzemesi olmayan sistem (Linux, Windows 10);
+  - "saydamlık efektleri" kapalı;
+  - Windows camı yüklenemezse devreye giren yedek Electron Acrylic'i, odak gidince (griye düşüyor).
+- **Çökme ekranı** da opak panelde; yazı camın üstünde kalmaz.
+- **Gerçek pencerede ince ayar (kullanıcı, 6 Kasım):**
+  - Üst şerit 48 px'ten 32 px'e indi (Windows 11 başlığı kadar).
+  - KADRAN şeritten çıktı, panelin üst kenarının 16 px altından başlıyor.
+  - Kenar çubuğu 224 px'ten 200 px'e indi (Coolify'ın 224'ü kısa menü yazılarına genişti).
+- **Tema geçişi:** cam ile arayüz aynı anda, ekran tek seferde döner.
+  - Ayar 250 ms beklenip kaydediliyordu: o arada açık arayüzün arkasında koyu cam kalıyordu (ya da tersi). Tema artık beklemeden kaydedilir; yazı tipi ve dil yine kısa bekler.
+  - Menü satırı ve düğmeler renk değişimini 120 ms'de yapıyor, paneller anında; ekran parça parça dönüyordu. Geçiş anında bütün animasyonlar bir kareliğine kapatılır (`theme-switching`, `lib/theme-switch.ts`).
+- **Tema geçişi, ikinci tur (kullanıcı: "panel milisaniye ile geç"):** cam paneli geçiyordu.
+  - Sebep: renkler ancak arayüzün tamamı (191 yazı tipli liste dahil) yeniden çizilince değişiyordu.
+  - Sıra artık şöyle: renkler tıklandığı an sayfaya verilir (`switchTheme` doğrudan `update` içinde), kayıt hemen gider, arayüzün yeniden çizimi `startTransition` ile en sona kalır.
+  - Ana süreç de camı dosyayı diske yazmadan önce değiştirir.
+- **Hareket (kullanıcı: "seçtikten sonra seçili animasyonu kötü"):**
+  - K-161'deki büyüyerek solma (0,96 → 1, 180 ms) kalktı; geçişte eski ve yeni seçim bir an birlikte görünüyordu.
+  - Önce hareketsiz seçim denendi; kullanıcı onu ve beş hareketsiz stili de beğenmedi. Kenar denemesi penceresinde 7'yi seçti:
+    - Seçili satırın camı tek bir gösterge, yeni satıra kayar (220 ms).
+    - Üstüne gelme vurgusu fareyi satırdan satıra kayarak izler (160 ms).
+    - İkisi de satırların arkasında, menünün kabında (`NavSlider`; ana kenar çubuğu ve sunucu sayfasının ikinci menüsü).
+    - İlk yerleşimde, pencere boyutu değişince ve "hareketi azalt" açıkken kayma yok.
+  - Düğmeler yer değiştirmez: üstüne gelince 1 px kalkma ve basınca 2 px inme kalktı, yerine yalnız renk ve parlaklık değişir.
+  - Duman yolculuğunun ölçtükleri:
+    - cam, seçili satırın tam üstünde: kenar çubuğunda, satır değişince ve ikinci menüde;
+    - dar pencerede taşma yok. Gösterge bir sonraki karede yeniden ölçüldüğü için test pencere küçülünce iki kare bekliyor; beklemeden ölçünce eski 188 px boyu görüyordu.
+- **macOS referansı:** K-161'de "macOS'a göre değil" denmişti; bu kez görseli kullanıcı kendisi seçti. Birebir değil: macOS renkleri canlandırıyor, burada Akrilik var.
+- **Wails için ölçüt:** kabuklar arasında görünüm farkı var. Wails düz bulanıklığı (seçilen ilk görünüm) gösterebiliyor, Electron yalnız Akriliği. Görünümün geri kalanı arayüzün CSS'inde, Wails'e geçilirse aynen taşınır.
+
+### Ölçülen
+
+- Wails denemesinde iki tema, CSS üzerine yazmayla; kullanıcı "güzel olmuş" dedi (düz bulanıklık).
+- Electron deneme penceresinde kullanıcının gözüyle: düz bulanıklık gri, Akrilik masaüstünü gösteriyor; seçilen A3/K1.
+- Duman yolculuğu (malzeme kapalı):
+  - kayıtlı eski cam teması açığa döndü (varsayılan);
+  - açıkta çerçeve rgb(237,237,240), panel rgb(255,255,255);
+  - koyuda çerçeve rgb(10,10,10), panel rgb(20,20,20);
+  - sunucu ekranında iki panel; dar pencerede (760×520) panel düzeni bozulmadı.
+- Masaüstü mutasyonu 106/106 yakalandı (ilk commit'te 95/95). Sonradan eklenenler: kaydın beklemesi, geçişte animasyonların kapanmaması ya da geri açılmaması, düğmenin yine inmesi, KADRAN hizası, camın ilk açılışta kayması, satırın kendi zeminini alması, göstergenin kenarlık ve kaydırma hesabı. İlk commit'tekiler:
+  - tema başına ton, sıfır saydamlık, düz bulanıklığa dönüş;
+  - tema değişince tonun yeniden verilmesi; yazı tipi kaydında hiçbir şeyin yeniden kurulmaması;
+  - opak çerçeve ve opak panel; kapat düğmesinin köşede kalması;
+  - varsayılan açık tema; eski cam kaydının açığa dönmesi.
+
+### Ölçülmedi
+
+Açık ve koyu Akriliğin parlak ve koyu masaüstünde yazı karşıtlığı: kullanıcı kendi masaüstünde gözle seçti, sayı yok. Ayrıca:
+
+- macOS, Linux ve Windows 10;
+- saydamlık efektleri kapalıyken;
+- Windows camı yüklenip çağrı sonradan reddedilirse: Electron Acrylic'ine dönülür ama `data-material` "accent" kalır, odak gidince çerçeve opaklaşmaz. Bu durum K-161'den beri var.

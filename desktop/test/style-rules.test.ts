@@ -9,6 +9,8 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { windowLook } from "../src/shared/appearance.ts";
+
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, "..", "src", "renderer");
 const stylesDir = join(rendererDir, "styles");
@@ -20,65 +22,91 @@ async function styles(): Promise<Map<string, string>> {
 }
 const read = async (name: string): Promise<string> => (await styles()).get(name) ?? "";
 
-test("Coolify ölçüleri: kart 12, denetim 8, küçük 6 px", async () => {
+test("Coolify ölçüleri: kart 12, denetim 8, küçük 6 px; kenar çubuğu 200 px", async () => {
   const tokens = await read("tokens.css");
   assert.match(tokens, /--radius-card:\s*12px/);
   assert.match(tokens, /--radius:\s*8px/);
   assert.match(tokens, /--radius-sm:\s*6px/);
   const layout = await read("layout.css");
-  assert.match(layout, /\.rail \{ width: 224px/);
+  // Coolify'da 224; kısa menü yazılarına geniş geldi (kullanıcı, 6 Kasım).
+  assert.match(layout, /\.rail \{[^}]*width: 200px/);
 });
 
 test("üst çubuk düz: zemin, gölge, yüzme yok; düğmeler sağ köşede", async () => {
   const layout = await read("layout.css");
   const bar = layout.slice(layout.indexOf(".topbar {"), layout.indexOf("}", layout.indexOf(".topbar {")));
-  assert.match(bar, /height: 48px/);
+  // İnce şerit, Windows 11 başlığı kadar (kullanıcı, 6 Kasım); panel hemen altından başlar.
+  assert.match(bar, /height: 32px/);
   assert.doesNotMatch(bar, /position: absolute|background|box-shadow|border-radius|filter/);
-  assert.match(layout, /\.rail-brand \{ height: 48px;/);
+  // KADRAN panelin üst kenarının 16 px altından başlar: şerit (32) + 16 (kullanıcı, 6 Kasım).
+  const brand = layout.slice(layout.indexOf(".rail-brand {"), layout.indexOf("}", layout.indexOf(".rail-brand {")));
+  assert.match(brand, /padding: 48px 16px 0;/);
+  assert.match(brand, /align-items: flex-start;/);
+  assert.doesNotMatch(layout, /\.is-mac \.rail-brand/);
   assert.match(layout, /\.win-btns \{[^}]*margin-left: auto/);
   assert.doesNotMatch(layout, /\.lens|--bar-/);
   assert.doesNotMatch(await read("tokens.css"), /--bar-/);
 });
 
-test("kenar çubuğunda dolgu ve mor yok; seçili satır köşeli cam", async () => {
+test("kenar çubuğunda dolgu ve mor yok; seçili satırın camı kayar, fareyi kayan vurgu izler (7, K-163)", async () => {
   const layout = await read("layout.css");
   const rail = layout.slice(layout.indexOf(".rail {"), layout.indexOf("}", layout.indexOf(".rail {")));
   assert.doesNotMatch(rail, /background/);
   assert.match(layout, /\.nav-item \{[^}]*border-radius: var\(--radius\);/);
-  assert.match(layout, /\.nav-item::before \{[^}]*background: var\(--pill\)[^}]*opacity: 0/);
-  assert.match(layout, /\.nav-item\.is-active::before \{ opacity: 1;/);
-  // Hover seçili satırı ezerse fare üstündeyken cam kaybolur, çekilince birden gelir.
-  assert.match(layout, /\.nav-item:not\(:disabled\):not\(\.is-active\):hover \{/);
-  assert.match(await read("tokens.css"), /--pill: linear-gradient\(180deg, rgba\(255, 255, 255/);
+  // Satırların arkasında tek gösterge: seçilen satıra kayar (büyüyerek solma yok).
+  const rule = (sel: string): string => {
+    const at = layout.indexOf(`${sel} {`);
+    assert.ok(at >= 0, sel);
+    return layout.slice(at, layout.indexOf("}", at));
+  };
+  assert.match(rule(".nav-pill"), /background: var\(--pill\); box-shadow: var\(--pill-shadow\);/);
+  assert.match(rule(".nav-hover"), /background: var\(--flat\);/);
+  // İlk yerleşim kaymaz: kayma yalnız gösterge yerine oturduktan sonra (data-ready).
+  assert.doesNotMatch(rule(".nav-pill"), /transition/);
+  assert.doesNotMatch(rule(".nav-hover"), /transition: transform/);
+  assert.match(rule(".nav-pill[data-ready]"), /transition: transform/);
+  assert.match(rule(".nav-hover[data-ready]"), /transition: transform/);
+  assert.doesNotMatch(layout, /scale\(/);
+  // Satırın kendisi zemin almaz; zemini gösterge verir (yoksa iki zemin üst üste biner).
+  assert.doesNotMatch(layout, /\.nav-item[^{]*:hover \{[^}]*background/);
+  assert.doesNotMatch(layout, /\.nav-item::before|\.nav-item\.is-active::before/);
+  assert.match(await read("tokens.css"), /--pill: linear-gradient\(180deg,/);
   assert.doesNotMatch(layout, /7317ff|5a12c7|6b16ed|120e1a/);
+  // İki menü de göstergeyi kullanır.
+  for (const file of ["Rail.tsx", "ServerSubnav.tsx"]) {
+    assert.match(await readFile(join(rendererDir, "components", file), "utf8"), /<NavSlider activeKey=/, file);
+  }
 });
 
-test("üç tema da aynı renk adlarını tanımlıyor; bileşende sabit beyaz ya da siyah yok", async () => {
+const THEME_BLOCKS = [':root[data-theme="dark"]', ':root[data-theme="light"]'];
+
+function block(tokens: string, selector: string): string {
+  const start = tokens.indexOf(`${selector} {`);
+  assert.ok(start >= 0, selector);
+  return tokens.slice(start, tokens.indexOf("}", start));
+}
+
+test("iki tema da aynı renk adlarını tanımlıyor; bileşende sabit beyaz ya da siyah yok", async () => {
   const tokens = await read("tokens.css");
-  const block = (selector: string): string => {
-    const start = tokens.indexOf(`${selector} {`);
-    assert.ok(start >= 0, selector);
-    return tokens.slice(start, tokens.indexOf("}", start));
-  };
   const named = (css: string): string[] => [...css.matchAll(/(--[a-z-]+):/g)].map((m) => m[1]!);
-  const glass = named(block(":root"));
-  for (const selector of [':root[data-theme="dark"]', ':root[data-theme="light"]']) {
-    const own = named(block(selector));
-    for (const name of ["--shell", "--ov", "--fg", "--fg-dim", "--fg-faint", "--line", "--edge", "--flat", "--menu", "--card-bg", "--well-bg", "--pill", "--text-shadow", "--kart-bg", "--kart-shadow"]) {
-      assert.ok(glass.includes(name), `cam: ${name}`);
+  for (const selector of THEME_BLOCKS) {
+    const own = named(block(tokens, selector));
+    for (const name of ["--frame", "--frame-solid", "--sheet", "--sheet-edge", "--sheet-shadow", "--ov", "--fg", "--fg-dim", "--fg-faint", "--line", "--edge", "--flat", "--menu", "--card-bg", "--well-bg", "--pill", "--text-shadow", "--kart-bg", "--kart-shadow"]) {
       assert.ok(own.includes(name), `${selector}: ${name}`);
     }
   }
-  assert.match(block(':root[data-theme="light"]'), /color-scheme: light/);
+  assert.match(block(tokens, ':root[data-theme="light"]'), /color-scheme: light/);
   for (const [name, css] of await styles()) {
     if (name === "tokens.css") continue;
     assert.doesNotMatch(css, /rgba\(255, 255, 255|rgba\(0, 0, 0|#1b1b1f|#16161a|#f2f2f2/, name);
   }
 });
 
-test("odak gidince siyah yalnız yedek Acrylic'te; Windows camı açık kalır", async () => {
+test("cam yoksa çerçeve opak: malzemesiz sistemde ve odak gidince yedek Acrylic'te; Windows camı açık kalır", async () => {
   const tokens = await read("tokens.css");
-  assert.match(tokens, /:root\[data-theme="glass"\]\[data-material="acrylic"\]\[data-focused="false"\] \{ --shell: #0a0a0a; \}/);
+  assert.match(tokens, /:root \{[^}]*--shell: var\(--frame\);/);
+  assert.match(tokens, /:root\[data-material="none"\] \{ --shell: var\(--frame-solid\); \}/);
+  assert.match(tokens, /:root\[data-material="acrylic"\]\[data-focused="false"\] \{ --shell: var\(--frame-solid\); \}/);
   assert.doesNotMatch(tokens, /data-material="accent"/);
 });
 
@@ -92,35 +120,87 @@ test("mor yalnız ana düğmede", async () => {
   }
 });
 
-test("pencere modu ve cam ayarı kalmadı", async () => {
+test("pencere modu, ton ve ayrı cam teması kalmadı", async () => {
   for (const [name, css] of await styles()) {
-    assert.doesNotMatch(css, /data-mode|data-tone|--panel|--glow/, name);
+    assert.doesNotMatch(css, /data-mode|data-tone|--panel|--glow|--tint|data-theme="glass"/, name);
   }
-  const tokens = await read("tokens.css");
-  // Windows camında hafif tül; yedek Acrylic daha açık çizdiği için orada koyu kalır.
-  assert.match(tokens, /--tint:\s*0\.2;/);
-  assert.match(tokens, /:root\[data-theme="glass"\]\[data-material="acrylic"\] \{ --tint: 0\.34; \}/);
 });
 
-test("camda kartlar glassmorphism: ışık süzmesi ve parlak üst kenar; hover süzmeyi silmez", async () => {
+test("cam yalnız çerçevede: kenar çubuğu çizgisiz, içerik opak panelde (K-163)", async () => {
+  const layout = await read("layout.css");
+  const rail = layout.slice(layout.indexOf(".rail {"), layout.indexOf("}", layout.indexOf(".rail {")));
+  assert.doesNotMatch(rail, /border-right/);
+  // Boşluk panelin dışında; üst çubuk tam genişlik kalır, kapat düğmesi pencerenin köşesinde.
+  assert.match(layout, /\.main > \.stage, \.main > \.page-host \{ margin: 0 var\(--frame-gap\) var\(--frame-gap\) 0; \}/);
+  const main = layout.slice(layout.indexOf(".main {"), layout.indexOf("}", layout.indexOf(".main {")));
+  assert.doesNotMatch(main, /padding/);
+  assert.match(layout, /\.page-host \{[^}]*gap: var\(--frame-gap\);/);
+  assert.match(
+    layout,
+    /\.main > \.stage, \.page-host > \.subnav, \.page-host > \.stage \{ background: var\(--sheet\); border: 1px solid var\(--sheet-edge\); border-radius: var\(--sheet-radius\); box-shadow: var\(--sheet-shadow\); \}/,
+  );
+  // Dar pencerede ikinci menü üste geçer; kendi kenarlığını silerse panel kenarsız kalır.
+  const narrow = layout.slice(layout.indexOf("@media (max-width: 1050px)"));
+  const narrowSubnav = narrow.slice(narrow.indexOf(".subnav {"), narrow.indexOf("}", narrow.indexOf(".subnav {")));
+  assert.ok(narrowSubnav.length > 0);
+  assert.doesNotMatch(narrowSubnav, /border/);
   const tokens = await read("tokens.css");
-  const glass = tokens.slice(tokens.indexOf(":root {"), tokens.indexOf("}", tokens.indexOf(":root {")));
-  assert.match(glass, /--card-bg: linear-gradient\(/);
-  assert.match(glass, /--card-shadow: inset 0 1px 0 rgba\(255, 255, 255/);
-  assert.match(glass, /--kart-bg: linear-gradient\(/);
-  // Kısaltılmış "background" hover'da gradyanı silerdi: kart düzleşip parlar.
-  assert.match(await read("screens.css"), /\.kart:hover \{[^}]*background-color:/);
-  assert.match(await read("management.css"), /\.resource-card:hover \{[^}]*background-color:/);
+  assert.match(tokens, /--sheet-radius:\s*10px/);
+  assert.match(tokens, /--frame-gap:\s*8px/);
+  for (const selector of THEME_BLOCKS) {
+    const css = block(tokens, selector);
+    // Panel ve opak çerçeve saydamlık taşımaz: içerik masaüstünün üstünde okunur kalır.
+    assert.match(css, /--sheet: #[0-9a-f]{6};/, selector);
+    assert.match(css, /--frame-solid: #[0-9a-f]{6};/, selector);
+  }
+  // Kullanıcının seçtiği örtüler (6 Kasım): açıkta Windows camının beyaz tonu yeter, koyuda hafif örtü.
+  assert.match(block(tokens, ':root[data-theme="light"]'), /--frame: rgb\(244 244 247 \/ 0%\);/);
+  assert.match(block(tokens, ':root[data-theme="dark"]'), /--frame: rgb\(22 22 24 \/ 20%\);/);
 });
 
-test("saydamlık kapalıysa cam opak", async () => {
+test("opak çerçeve rengi pencerenin açılış rengiyle aynı: renk sıçraması yok", async () => {
+  const tokens = await read("tokens.css");
+  for (const theme of ["dark", "light"] as const) {
+    const solid = /--frame-solid: (#[0-9a-f]{6});/.exec(block(tokens, `:root[data-theme="${theme}"]`));
+    assert.equal(solid?.[1], windowLook(theme, "none").background, theme);
+  }
+});
+
+test("düğmeler zıplamaz: üstüne gelince ve basınca yer değiştirmez, yalnız renk geçer", async () => {
+  const controls = await read("controls.css");
+  const btnRules = [...controls.matchAll(/\.btn[^{]*\{[^}]*\}/g)].map((m) => m[0]);
+  assert.ok(btnRules.length > 0);
+  for (const rule of btnRules) assert.doesNotMatch(rule, /transform|translate/, rule.slice(0, 60));
+});
+
+test("tema geçişinde animasyon yok: renkler tek seferde döner", async () => {
+  // Menü satırı ve düğme renkleri 120 ms'de, paneller anında dönüyordu: ekran parça parça değişiyordu.
+  assert.match(await read("base.css"), /:root\.theme-switching \*, :root\.theme-switching \*::before, :root\.theme-switching \*::after \{ transition: none !important; \}/);
+  const provider = await readFile(join(rendererDir, "appearance", "AppearanceProvider.tsx"), "utf8");
+  assert.match(provider, /saveDelay\(/);
+  // Panel camdan geç dönüyordu: renkler tıklandığı an sayfaya verilir, kayıt (cam) hemen
+  // gider, arayüzün yeniden çizimi en sona kalır.
+  const update = provider.slice(provider.indexOf("const update = useCallback"));
+  const flip = update.indexOf("switchTheme(");
+  const saved = update.indexOf("save(next)", flip);
+  const render = update.indexOf("startTransition(", flip);
+  assert.ok(flip >= 0, "tema değişince renkler update içinde, hemen verilir");
+  assert.ok(saved > flip, "kayıt (cam) renklerden sonra, hemen");
+  assert.ok(render > saved, "arayüzün yeniden çizimi en sonda");
+});
+
+test("saydamlık kapalıysa çerçeve opak", async () => {
   assert.match(await read("base.css"), /\.shell \{[^}]*background: var\(--shell\)/);
-  assert.match(await read("tokens.css"), /@media \(prefers-reduced-transparency: reduce\) \{\s*:root\[data-theme="glass"\] \{ --shell: #0a0a0a; \}/);
+  const tokens = await read("tokens.css");
+  assert.match(tokens, /@media \(prefers-reduced-transparency: reduce\) \{\s*:root \{ --shell: var\(--frame-solid\); \}/);
+  // Seçiciler eşit güçte: kural ancak varsayılan çerçeveden SONRA gelirse kazanır.
+  assert.ok(tokens.indexOf("@media (prefers-reduced-transparency") > tokens.indexOf("--shell: var(--frame);"));
 });
 
 test("yüzen yüzey opak: menü, kutu, bildirim", async () => {
   const tokens = await read("tokens.css");
-  assert.match(tokens, /--menu:\s*rgb\(/);
+  // Saydamlık payı ("/ %") olmayan renk: menü camın üstünde de okunur.
+  for (const selector of THEME_BLOCKS) assert.match(block(tokens, selector), /--menu:\s*(oklch|rgb)\([^/)]*\);/, selector);
   assert.match(await read("layout.css"), /\.crumb-menu \{[^}]*background: var\(--menu\)/);
   assert.match(await read("management.css"), /\.operation-dialog \{[^}]*background: var\(--menu\)/);
   assert.match(await read("controls.css"), /\.toast \{[^}]*background: var\(--menu\)/);

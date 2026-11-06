@@ -1,6 +1,7 @@
 import { useT } from "../i18n/I18nProvider.tsx";
 import type { LineIconName } from "./LineIcon.tsx";
 import { NavButton } from "./NavButton.tsx";
+import { NavSlider } from "./NavSlider.tsx";
 
 export type ServerView = "status" | "apps" | "alarms" | "backups" | "audit";
 
@@ -13,6 +14,7 @@ export function ServerSubnav({ view, onNavigate }: { view: ServerView; onNavigat
   );
   return (
     <aside className="subnav" aria-label={t("sub.label")}>
+      <NavSlider activeKey={view} />
       <div className="nav-group">
         <p className="nav-section">{t("sub.section_server")}</p>
         <nav className="nav">

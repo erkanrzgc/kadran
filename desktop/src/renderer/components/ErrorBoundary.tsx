@@ -7,13 +7,18 @@ function Crashed({ message, onRetry }: { message: string; onRetry: () => void })
   const t = useT();
   return (
     <div className="app">
-      <div className="shell" style={{ flexDirection: "column" }}>
-        {/* Çerçevesiz pencere: düğmeler ve sürükleme burada da olmalı, yoksa kapatılamaz. */}
-        <header className="topbar"><span style={{ flex: 1 }} /><WindowButtons /></header>
-        <div className="empty-state" role="alert" data-testid="crashed">
-          <h1 className="empty-title">{t("crash.title")}</h1>
-          <p className="empty-body mono">{message}</p>
-          <p><button type="button" className="btn btn-ghost" onClick={onRetry} data-testid="crash-retry">{t("action.retry")}</button></p>
+      <div className="shell">
+        <div className="main">
+          {/* Çerçevesiz pencere: düğmeler ve sürükleme burada da olmalı, yoksa kapatılamaz. */}
+          <header className="topbar"><span style={{ flex: 1 }} /><WindowButtons /></header>
+          {/* Yazı camın üstünde değil, diğer ekranlar gibi opak panelde (K-163). */}
+          <main className="stage">
+            <div className="empty-state" role="alert" data-testid="crashed">
+              <h1 className="empty-title">{t("crash.title")}</h1>
+              <p className="empty-body mono">{message}</p>
+              <p><button type="button" className="btn btn-ghost" onClick={onRetry} data-testid="crash-retry">{t("action.retry")}</button></p>
+            </div>
+          </main>
         </div>
       </div>
     </div>

@@ -12727,4 +12727,13 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 
 **Paket:** `desktop/dist/Kadran.exe` tek dosya, 18,6 MB (bütçe ≤ 20; kaynak haritaları gömülmüyor, ~1,4 MB). Simge ve manifest (ortak denetimler 6, DPI) `desktop/rsrc_windows_amd64.syso`'da; onu üreten kod `desktop/internal/winres` (bağımlılık eklemeden, `debug/pe` ile sınanıyor). Yanında `THIRD_PARTY_NOTICES.txt`: Go, 21 Go modülü, arayüz paketleri, Geist, Coolify.
 
+**Ölçütler, taşımadan sonra (7 Kasım, bu bilgisayar):**
+- Paket 18,6 MB ✓ (bütçe ≤ 20).
+- Boşta özel bellek, 5 sahte sunucu, 60/75/90. saniye: 280,0 / 278,7 / 279,0 MB ✗ (bütçe ≤ 250).
+  - Kadran'ın kendi süreci 59 MB, kalanı 7 WebView2 süreci. Sahte sunucunun Node süreci gerçek uygulamada yok, toplama girmedi.
+  - Duman ikilisiyle ölçüldü: cam kapalı, dağıtıcı yerine sahte sunucu istemcisi. Deneme 261–268 MB'tı (gRPC istemcisi yoktu); Electron aynı veriyle ~303 MB.
+  - Bütçeyi değiştirmek ya da düşürmek için iş açmak kullanıcının kararı.
+- Odak gidince cam: gerçek pencerede kullanıcı denemesi bekliyor (duman ikilisi camsız açılıyor).
+- Mutasyon: `mutate-desktop.sh` 101/101 yakalandı (41 arayüz, 60 Go).
+
 **Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.

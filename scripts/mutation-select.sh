@@ -14,8 +14,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Her betiğin ortak dayandığı yerler.
-ORTAK='^(\.github/|proto/|scripts/mutation-select\.sh$|(.*/)?go\.(mod|sum)$|buf\.)'
+# Her betiğin ortak dayandığı yerler. Yalnız KÖK modülün go.mod/go.sum'ı:
+# alt modülü (build/caddy) kök modülün testleri derlemiyor, onu anan betik
+# kapsamından seçilir (K-164).
+ORTAK='^(\.github/|proto/|scripts/mutation-select\.sh$|go\.(mod|sum)$|buf\.)'
 
 TRACKED="$(git ls-files)"
 

@@ -80,6 +80,10 @@ jobs:
       - name: Mutasyon seçicisi
         run: bash scripts/check-mutation-select.sh
 
+      # Seçilen betikleri paralel işlere bölen betik (K-164).
+      - name: Mutasyon parçalayıcısı
+        run: bash scripts/check-mutation-shard.sh
+
       # Hacim arşivleyicisi ve uzak yükleyici (K-111). rclone ve age sahte,
       # tar ve zstd gerçek. ROOT ile: iki betik de yapılandırmanın ve üst
       # dizinlerinin root'a ait olmasını şart koşuyor; testi geçsin diye o
@@ -617,6 +621,7 @@ jobs:
     outputs:
       mutate_sh: ${{ steps.diff.outputs.mutate_sh }}
       mutate_ps1: ${{ steps.diff.outputs.mutate_ps1 }}
+      shards: ${{ steps.shard.outputs.shards }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -652,6 +657,40 @@ jobs:
           echo "mutate_sh=$(printf '%s\n' $secilen | grep '\.sh$' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
           echo "mutate_ps1=$(printf '%s\n' $secilen | grep '\.ps1$' | tr '\n' ' ')" >> "$GITHUB_OUTPUT"
 
+      # K-164: seçilen betikler en çok beş işe bölünür (scripts/mutation-shard.sh).
+      # Birleşim burada parçalayıcıdan BAĞIMSIZ denetleniyor: hiçbir parçaya
+      # girmeyen betik koşmaz ve iş yeşil kalırdı.
+      - id: shard
+        env:
+          SECILEN: ${{ steps.diff.outputs.mutate_sh }}
+          PARCA: "5"
+        run: |
+          set -euo pipefail
+          parcalar="$(printf '%s\n' $SECILEN | bash scripts/mutation-shard.sh "$PARCA")"
+          # beklenen tekrarsız: eşitlik her betiğin TAM BİR parçada olduğunu
+          # da söyler (iki parçadaki betik `gelen`de iki satır olurdu).
+          beklenen="$(printf '%s\n' $SECILEN | grep -v '^$' | sort -u || true)"
+          gelen="$(printf '%s\n' $parcalar | grep -v '^$' | sort || true)"
+          if [ "$gelen" != "$beklenen" ]; then
+            echo "::error::parçaların birleşimi seçimle aynı değil" >&2
+            diff <(echo "$beklenen") <(echo "$gelen") >&2 || true
+            exit 1
+          fi
+          if [ -n "$parcalar" ]; then
+            if grep -q '^[[:space:]]*$' <<<"$parcalar"; then
+              echo "::error::boş parça" >&2
+              exit 1
+            fi
+            if [ "$(wc -l <<<"$parcalar")" -gt "$PARCA" ]; then
+              echo "::error::$PARCA parçadan fazla" >&2
+              exit 1
+            fi
+          fi
+          echo "parçalar:"; printf '%s\n' "$parcalar" | nl
+          # Önce değişkene: `echo "…$(jq …)"` içinde düşen jq adımı düşürmez.
+          matris="$(jq -cn --arg p "$parcalar" '{include: ($p | split("\n") | map(select(length > 0)) | to_entries | map({parca: (.key + 1), betikler: .value}))}')"
+          echo "shards=$matris" >> "$GITHUB_OUTPUT"
+
   # Aşağıdaki iş Linux'ta; Windows kurulum betiğinin denetimi Windows ister
   # (K-159). Elle çalıştırılan bir mutasyon guard değildir.
   mutation-windows:
@@ -680,11 +719,18 @@ jobs:
   # K-160: bütün betikler bir saatten uzun sürüyor. PR'da ve main'e push'ta
   # yalnız değişikliğin seçtikleri koşar; tamamı gecelik ve elle tetiklenince
   # (sürüm öncesi) koşar.
+  #
+  # K-164: seçilenler en çok beş paralel işe bölünüyor (`changes` işi, süreye
+  # göre). Kurulum ve kapılar her parçada AYNI; hiçbiri koşullu değil.
+  # fail-fast kapalı: kırmızı bir parça ötekilerin sonucunu gizlemesin.
   mutation:
-    name: Mutasyon (testler gerçekten koruyor mu)
+    name: Mutasyon ${{ matrix.parca }}/${{ strategy.job-total }} (testler gerçekten koruyor mu)
     needs: changes
     if: needs.changes.outputs.mutate_sh != ''
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.changes.outputs.shards) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
@@ -721,9 +767,15 @@ jobs:
         env:
           KADRAN_TEST_REAL_SUDO: "1"
           KADRAN_TEST_REQUIRE_KASA_TOOLS: "1"
-          SECILEN: ${{ needs.changes.outputs.mutate_sh }}
+          SECILEN: ${{ matrix.betikler }}
         run: |
           set -uo pipefail
+
+          # Boş parça hiçbir şey ölçmeden YEŞİL geçerdi.
+          if [ -z "${SECILEN//[[:space:]]/}" ]; then
+            echo "::error::bu parçada betik yok — hiçbir şey ölçülmezdi" >&2
+            exit 1
+          fi
 
           # Boş glob sessizce geçerdi: hiç betik bulunmazsa döngü hiç
           # dönmez ve adım YEŞİL olur — hiçbir şey ölçmeden.
@@ -769,7 +821,7 @@ jobs:
             exit 1
           fi
 
-          # Kapılar yukarıda BÜTÜN betiklere bakıyor, koşan yalnız seçilenler.
+          # Kapılar yukarıda BÜTÜN betiklere bakıyor, koşan yalnız bu parçadakiler.
           fail=0
           for s in $SECILEN; do
             echo "──────────────────────────────────────────"

@@ -65,7 +65,10 @@ taban_yesil() {
 mutate() {
     local name="$1" file="$2" pkgs="$3" expr="$4"
     restore
-    taban_yesil $pkgs -count=1
+    # -timeout: iki mutant testi sonsuz döngüye sokuyor; varsayılan 10 dk
+    # bekleniyordu (K-164). Zaman aşımı da testi düşürür, yakalanma sayılır.
+    # Taban aynı sınırla koşuyor: yavaşlayan taban sahte "yakalandı" vermez.
+    taban_yesil $pkgs -count=1 -timeout 120s
     if ! python -c "
 import io,sys
 class _S(str):
@@ -108,7 +111,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
     fi
 
     # shellcheck disable=SC2086
-    if go test $pkgs -count=1 >/dev/null 2>&1; then
+    if go test $pkgs -count=1 -timeout 120s >/dev/null 2>&1; then
         echo "  KIRMIZI OLMADI: $name"
         fail=1
     else

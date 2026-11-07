@@ -49,10 +49,23 @@ tum "boş liste"
 tum "ci.yml" .github/workflows/ci.yml
 tum "bileşik eylem" .github/actions/setup/action.yml
 tum "go.mod" go.mod
-tum "alt modülün go.sum'ı" build/caddy/go.sum
+tum "go.sum" go.sum
 tum "proto" proto/kadran/v1/api.proto
 tum "seçicinin kendisi" "$S"
 tum "karışık liste" LICENSE go.mod
+
+echo "== Alt modül yalnız kendini anan betiği seçer (K-164) =="
+# PR #31 yalnız build/caddy'nin go.mod/go.sum'ını değiştirdi ve bütün
+# betikleri 1 sa 12 dk koşturdu. Kök modülün testleri alt modülü derlemiyor.
+out="$(secim build/caddy/go.mod build/caddy/go.sum)"
+if [ "$out" = scripts/mutate-redirects.sh ]; then ok "build/caddy bağımlılığı yalnız mutate-redirects.sh'ı seçiyor"; else no "build/caddy bağımlılığı yalnız mutate-redirects.sh'ı seçiyor"; fi
+# Bu, kök modül alt modüle bağlı olmadıkça doğru. Bağlanırsa (go.work ya da
+# yerel replace) alt modülün go.mod'u yine ortak sayılmalı.
+if [ ! -e go.work ] && ! grep -qE '=>[[:space:]]*\.\.?/' go.mod; then
+    ok "kök modül yerel bir modüle bağlı değil"
+else
+    no "kök modül yerel bir modüle bağlı: alt modülün go.mod'u ORTAK'a dönmeli (K-164)"
+fi
 
 echo "== Her betiğin kapsamı var =="
 # Kapsamı boş betik PR'da hiç koşmaz, ancak gecelik görülür.

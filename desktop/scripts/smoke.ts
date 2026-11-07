@@ -28,7 +28,8 @@ import { checkWordmark, evaluate, journey, waitForRoot, type Page } from "../tes
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = resolve(here, "..");
-const exe = join(desktop, "dist", "Kadran-smoke.exe");
+// Dağıtılan dosyaların (dist/) yanına değil: duman ikilisi pakete girmez.
+const exe = join(desktop, "out", "smoke", "Kadran-smoke.exe");
 const quick = process.argv.includes("--quick");
 const PREFIX = "SMOKE ";
 

@@ -61,6 +61,9 @@ type Deps struct {
 	ResolveCommit func(ctx context.Context, rpc kadranv1.KadranServiceClient, appID, commit, branch string) (string, error)
 	// Warn, çağrıyı durdurmayan sorunlar (okunamayan oturum dosyası).
 	Warn func(message string)
+	// HideConsole, Windows'ta ssh'ye konsol penceresi açtırmaz (masaüstü;
+	// bkz. client.DialOptions).
+	HideConsole bool
 }
 
 // Dispatcher, yöntemleri çalıştırır ve hedef başına bağlantıları saklar.
@@ -274,7 +277,7 @@ func (d *Dispatcher) connFor(ctx context.Context, rawTarget string) (*client.Cli
 		return nil, errors.New("`ssh` not found")
 	}
 
-	conn, err := client.Dial(target)
+	conn, err := client.DialWith(target, client.DialOptions{HideConsole: d.deps.HideConsole})
 	if err != nil {
 		return nil, err
 	}

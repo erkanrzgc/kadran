@@ -56,10 +56,14 @@ func (s Stores) LoadSession(rawTarget string) (string, error) {
 
 // Dispatcher, masaüstünün süreç içi dağıtıcısı.
 func Dispatcher(stores Stores, warn func(string)) *sidecar.Dispatcher {
+	return sidecar.New(deps(stores, warn))
+}
+
+func deps(stores Stores, warn func(string)) sidecar.Deps {
 	if warn == nil {
 		warn = func(string) {}
 	}
-	return sidecar.New(sidecar.Deps{
+	return sidecar.Deps{
 		CallTimeout: CallTimeout,
 		Servers:     stores.Servers,
 		LoadSession: stores.LoadSession,
@@ -67,5 +71,8 @@ func Dispatcher(stores Stores, warn func(string)) *sidecar.Dispatcher {
 			return gitref.ResolveCommit(ctx, rpc, appID, commit, branch, writer(warn))
 		},
 		Warn: warn,
-	})
+		// Masaüstünün konsolu yok: her sunucu bağlantısı (ssh) açık kalan bir
+		// konsol penceresi olurdu (K-165).
+		HideConsole: true,
+	}
 }

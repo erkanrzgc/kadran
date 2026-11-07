@@ -583,7 +583,15 @@ jobs:
         run: |
           go vet -tags desktop,production ./...
           go test -count=1 ./...
-      - name: golangci-lint (masaüstü modülü)
+      # İki derleme ayrı denetlenir: dağıtılan ikili ve duman ikilisi
+      # (dispatcher_release.go ile dispatcher_smoke.go birbirini dışlar).
+      - name: golangci-lint (masaüstü, dağıtılan ikili)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: desktop
+          args: --build-tags desktop,production
+      - name: golangci-lint (masaüstü, duman ikilisi)
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.12.2

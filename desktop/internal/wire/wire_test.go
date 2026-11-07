@@ -52,3 +52,13 @@ func TestProgressGoesToWarnings(t *testing.T) {
 		t.Fatalf("%q", got)
 	}
 }
+
+func TestDesktopHidesTheSSHConsole(t *testing.T) {
+	d := deps(Stores{}, nil)
+	if !d.HideConsole {
+		t.Fatal("masaüstünde ssh konsol penceresi açar")
+	}
+	if d.CallTimeout != CallTimeout || d.LoadSession == nil || d.ResolveCommit == nil || d.Warn == nil {
+		t.Fatalf("eksik bağımlılık: %+v", d)
+	}
+}

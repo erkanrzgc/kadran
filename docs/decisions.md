@@ -12476,6 +12476,14 @@ Gerçek sunucuyla (sunucu tarafı değişmedi); macOS ve Linux'ta masaüstü; Li
 
 v0.11.0'da yayımlandı (7 Kasım; etiket `06fb86c`, tam CI 14/14 yeşil, iki temiz kopyada `SHA256SUMS` aynı); masaüstü yine sürüm dosyalarında yok, kaynaktan derleniyor. K-163 sunucuya dokunmuyor. #31 ise `kadran-caddy` ikilisini değiştiriyor; sunuculara v0.11.0'a yükseltilince gider (canlı adım, ayrı onay).
 
+**Canlı (7 Kasım, saatler TR):** iki sunucu da v0.11.0'da. İkisi de boş bir dizinden yayın istemcisiyle kuruldu: paket GitHub'dan indi, gömülü özetle doğrulandı, kurulum sonu denetimlerinin hepsi geçti. Kesinti iki ayrı noktadan 0,5 sn arayla yoklanarak ölçüldü.
+- **Hetzner** (12:55, `bootstrap root@`, 47 sn): Caddy 12:56:17'de yeniden başladı, kadrand rotaları 12:56:19'da geri yazdı. Kesinti ~2 sn: GCP'den atılan 4 istek, bu bilgisayardan 1 istek yanıtsız kaldı. Konteynerler yeniden başlamadı; `authorized_keys` özetleri ve `allow-repo` drop-in'i aynı kaldı.
+- **GCP** (13:18, `bootstrap -sudo`, 42 sn): Caddy 13:18:44'te yeniden başladı, rotalar 13:18:45,7'de geri geldi. Kesinti ~2 sn: Hetzner'den atılan 2 istek yanıtsız kaldı. Caddy 23 Ekim'den beri diskten silinmiş eski ikiliyle (`(deleted)`) çalışıyordu; artık yenisiyle çalışıyor.
+
+**Bulgu:** 5 Kasım 09:27'de Hetzner'de unattended-upgrades bind9 paketlerini güncelledi. Hemen ardından Caddy ve aracı yeniden başladı; kadrand rotaları 6 sn sonra geri yazdı (`reverse proxy had lost its routes — reloaded`). Sebep çıkarım, tetikleyiciyi kaydeden satır yok: v0.9.2 kurulumunun bıraktığı silinmiş Caddy ikilisi. K-158 bu tek seferlik artığı öngörmüştü; v0.9.3 aynı içeriği artık yeniden yazmıyor. 7 Kasım'daki apt koşusunda tekrarlamadı.
+
+**Açık:** GCP'de 4 Kasım'dan beri `/var/run/reboot-required` var. Sunucuyu yeniden başlatmak ayrı bir karar; dokunulmadı.
+
 ### Neden
 
 K-161'in cam teması bütün pencereyi camlaştırıyordu. Kullanıcıya "arabadaki cam film gibi, dark glass" göründü. Wails denemesinde (6 Kasım, depo dışında, aynı React arayüzü) beş cam çeşidi canlı denendi. Kullanıcı önce bulanıksız saydamı beğendi, sonra 2 numarayı seçti: düz bulanıklık, ton yok. Ardından bir macOS posta uygulamasının görselini attı: buzlu kenar çubuğu, camın içinde yüzen opak beyaz paneller. Kararı: "sadece sidebar cam olacak", "her temada".

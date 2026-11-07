@@ -12482,7 +12482,7 @@ v0.11.0'da yayımlandı (7 Kasım; etiket `06fb86c`, tam CI 14/14 yeşil, iki te
 
 **Bulgu:** 5 Kasım 09:27'de Hetzner'de unattended-upgrades bind9 paketlerini güncelledi. Hemen ardından Caddy ve aracı yeniden başladı; kadrand rotaları 6 sn sonra geri yazdı (`reverse proxy had lost its routes — reloaded`). Sebep çıkarım, tetikleyiciyi kaydeden satır yok: v0.9.2 kurulumunun bıraktığı silinmiş Caddy ikilisi. K-158 bu tek seferlik artığı öngörmüştü; v0.9.3 aynı içeriği artık yeniden yazmıyor. 7 Kasım'daki apt koşusunda tekrarlamadı.
 
-**Açık:** GCP'de 4 Kasım'dan beri `/var/run/reboot-required` var. Sunucuyu yeniden başlatmak ayrı bir karar; dokunulmadı.
+**Yeniden başlatma (7 Kasım 15:08, ayrı onayla):** GCP'de 4 Kasım'dan beri `/var/run/reboot-required` vardı. Sunucu yeni çekirdekle (6.12.115) açıldı, işaret kalktı. Konteynerler 15:09:49'da, rotalar 15:09:50'de geri geldi; başarısız birim yok. Kesinti ~75 sn: bu bilgisayardan atılan 48 istekten 21'i yanıtsız kaldı. 23 Ekim'deki açılışla aynı süre. Aynı gün iki sunucudaki `kadran.db.pre-0011_totp` kopyaları da silindi.
 
 ### Neden
 

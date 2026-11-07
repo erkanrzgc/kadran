@@ -12682,3 +12682,42 @@ kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozul
   denenmedi.
 - Masaüstü 454 → 618 sn (+%36) farkının sebebi ölçülmedi. İlk ölçüm (PR #31) K-163 birleşmeden önceydi;
   K-163 masaüstü mutantlarını artırdı. Paralel koşu da etkili olabilir.
+
+## K-165 — Masaüstü Wails'e taşınıyor (2026-11-07)
+
+**Karar (kullanıcı, 7 Kasım):** "tamam wails ile devam edelim", "aynı uygulama yeterli, doğrudan başla". Masaüstü kabuğu Electron'dan Wails v2'ye (v2.17.0) geçiyor. Ekranlar ve görünüm aynı kalıyor, yalnız kabuk değişiyor.
+
+**Ölçütler (6 Kasım denemesi, filo tasarımındaki bütçe):**
+- Odak gidince cam kalıyor ✓.
+- Paket 13,1 MB ✓ (bütçe ≤ 20).
+- Boşta özel bellek 261–268 MB ✗ (bütçe ≤ 250).
+
+Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi. Taşıma bitince üç ölçüt yeniden ölçülüp bildirilecek; bütçeyi değiştirmek kullanıcının kararı.
+
+**Nasıl:**
+- Yan süreç yok. `kadran sidecar`'ın dağıtıcısı bir `internal` paketine taşınıyor. CLI'ın stdio kipi aynı kalıyor, masaüstü aynı dağıtıcıyı süreç içinde çağırıyor. Arayüzün gördüğü JSON değişmiyor.
+- Masaüstünün Go kodu kendi modülünde (`desktop/go.mod`, kök modüle `replace`). Sunucu ikilileri Wails bağımlılığı almıyor.
+  - Mantık paketleri Wails'i içe aktarmıyor; Linux'ta ve mutasyon işinde test ediliyor. Yalnız `main` paketi Wails'e bağlı.
+- Güven sınırı Go'ya geçiyor:
+  - doğrulama: hedef, uygulama adı, ref, log satır sayısı, kopyalanan metin, uygulama yükü;
+  - akış: işlem kapısı, aynı anda tek yerel onay kutusu, onay metni (tr/en), zaman aşımları;
+  - hata metninin arıtılması.
+- Renderer'ı bozuk yanıttan koruyan denetim (`management-results`) TypeScript'te kalıyor, renderer'a taşınıyor.
+- Bağlanan Go yapısının dışa açık yöntemleri beyaz liste: eski köprünün listesiyle birebir aynı, yansımayla test ediliyor.
+- Kullanıcı verisi aynı dizinde: `%APPDATA%\kadran-desktop\appearance.json`.
+
+**Wails'in getirdiği farklar ve önlemler:**
+- **Onay kutusu:** Wails'in `MessageDialog`'u Windows'ta düz `MessageBox`: düğmeler Evet/Hayır, ad verilemiyor. Yerine `TaskDialogIndirect` kullanılıyor; "Vazgeç" / "Kalıcı olarak sil" gibi düğmeler ve varsayılan Vazgeç korunuyor.
+- **İzinler:** Wails WebView2'de bütün izin isteklerini kendiliğinden onaylıyor (`SetGlobalPermission(Allow)`); Electron'da yalnız yazı tipi listesi açıktı.
+  - Önlem: belgeye `Permissions-Policy` başlığı, varlık sunucusu ara katmanından. Kamera, mikrofon, konum ve benzerleri kapalı; `local-fonts` açık.
+- **Gezinme ve yeni pencere:** Wails bunlara kanca vermiyor; Electron hepsini engelliyordu.
+  - Kalan risk: ele geçmiş bir renderer pencereyi başka bir sayfaya götürebilir ya da açılır pencere açabilir.
+  - Sınır: Wails bağlama çağrılarını yalnız uygulamanın kökeninden kabul ediyor (kaynak doğrulaması). Uzak sayfa Go yöntemlerine ulaşamıyor. CSP aynı kalıyor.
+- **`window.runtime`:** ele geçmiş bir renderer pencereyi küçültüp kapatabilir ve varsayılan tarayıcıda bir http(s) adresi açabilir (`BrowserOpenURL`). Electron'da yalnız https bağlantısı, kullanıcı tıklayınca açılıyordu. Kabul edildi.
+- **Eski göçler taşınmıyor:** `panely-desktop` profilleri (K-136) ve `profiles.json` → `servers.json` aktarımı (K-162).
+  - Masaüstü hiçbir sürümde dağıtılmadı. Tek kurulumda aktarım 6 Kasım'da bitti (`servers-imported` işareti var).
+  - Bu benim kararım.
+
+**Duman testi:** Electron'daki yolculuk (`smoke.ts`) korunuyor; pencere yerine WebView2'nin hata ayıklama portuna (CDP) bağlanılıyor. Sahte dağıtıcı yalnız `smoke` etiketiyle derlenen ikilide var; dağıtılan ikili onu içermiyor.
+
+**Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.

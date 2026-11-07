@@ -208,8 +208,8 @@ test("yüzen yüzey opak: menü, kutu, bildirim", async () => {
 
 test("sürükleme bölgesi düğmeleri ve açılan menüyü yutmaz", async () => {
   const layout = await read("layout.css");
-  assert.match(layout, /\.rail-brand, \.topbar \{ -webkit-app-region: drag; \}/);
-  assert.match(layout, /button, input, select, a, summary, \.crumb-menu, \.operation-dialog, \.toast \{ -webkit-app-region: no-drag; \}/);
+  assert.match(layout, /\.rail-brand, \.topbar \{ -webkit-app-region: drag; --wails-draggable: drag; \}/);
+  assert.match(layout, /button, input, select, a, summary, \.crumb-menu, \.operation-dialog, \.toast \{ -webkit-app-region: no-drag; --wails-draggable: no-drag; \}/);
 });
 
 test("Geist iki alt kümeyle gömülü: ş, ğ, İ dosyada", async () => {

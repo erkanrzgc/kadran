@@ -1,0 +1,118 @@
+// Kadran masaüstü: Wails v2 kabuğu (K-165).
+//
+// Tek ikili: arayüz (React, Vite ile derlenmiş) gömülü, sunucuyla konuşan
+// dağıtıcı (internal/sidecar) süreç içinde. Arayüze yalnız bridge.Bridge'in
+// yöntemleri açılır.
+//
+// Derleme (desktop/ içinde): önce `npm run build`, sonra
+//
+//	go build -tags desktop,production -trimpath -ldflags "-H windowsgui" -o Kadran.exe .
+package main
+
+import (
+	"embed"
+	"fmt"
+	"io/fs"
+	"log"
+	"os"
+	"path/filepath"
+	goruntime "runtime"
+
+	"github.com/wailsapp/wails/v2"
+	"github.com/wailsapp/wails/v2/pkg/options"
+	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
+	"github.com/wailsapp/wails/v2/pkg/options/windows"
+
+	"github.com/erkanrzgc/kadran/desktop/internal/appearance"
+	"github.com/erkanrzgc/kadran/desktop/internal/bridge"
+	"github.com/erkanrzgc/kadran/desktop/internal/headers"
+	"github.com/erkanrzgc/kadran/desktop/internal/win"
+)
+
+//go:embed all:out/renderer
+var assets embed.FS
+
+// userDataName, ayarların dizini: Electron'un kullandığıyla aynı (K-165).
+const userDataName = "kadran-desktop"
+
+// singleInstanceID, ikinci kopyanın tanıdığı ad: aynı listeye iki pencere
+// birden yazmasın.
+const singleInstanceID = "kadran-desktop-6a1f0c3e"
+
+func main() {
+	if err := run(); err != nil {
+		log.Printf("kadran: %v", err)
+		os.Exit(1)
+	}
+}
+
+func warn(message string) { log.Printf("kadran: %s", message) }
+
+func run() error {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return fmt.Errorf("could not find the user config directory: %w", err)
+	}
+	userData := filepath.Join(config, userDataName)
+	front, err := fs.Sub(assets, "out/renderer")
+	if err != nil {
+		return err
+	}
+
+	material := appearance.MaterialFor(goruntime.GOOS, win.Build())
+	if material == appearance.Accent && !win.AccentAvailable() {
+		material = appearance.Acrylic
+	}
+	if smokeBuild {
+		// Duman testi yerel malzeme istemez: görüntü ve CI aynı kalsın.
+		material = appearance.None
+	}
+	settings := appearance.Store{Dir: userData}
+	look := appearance.Look(settings.Load(warn).Theme, material)
+
+	dispatcher := newDispatcher(warn)
+	defer dispatcher.Close()
+	h := &host{warn: warn, material: material, look: look}
+	b := bridge.New(bridge.Deps{
+		Dispatcher: dispatcher,
+		Host:       h,
+		Settings:   settings,
+		Material:   func() appearance.Material { return material },
+		Fixture:    smokeBuild,
+		Warn:       warn,
+	})
+
+	theme := windows.Light
+	if look.Scheme == "dark" {
+		theme = windows.Dark
+	}
+	bg := look.Background
+	return wails.Run(&options.App{
+		Title:            "KΛDRΛN",
+		Width:            1280,
+		Height:           820,
+		MinWidth:         760,
+		MinHeight:        520,
+		Frameless:        true,
+		BackgroundColour: &options.RGBA{R: bg.R, G: bg.G, B: bg.B, A: bg.A},
+		AssetServer:      &assetserver.Options{Assets: front, Middleware: headers.Middleware},
+		OnStartup:        h.startup,
+		OnDomReady:       h.domReady,
+		Bind:             []any{b},
+		SingleInstanceLock: &options.SingleInstanceLock{
+			UniqueId:               singleInstanceID,
+			OnSecondInstanceLaunch: func(options.SecondInstanceData) { h.focus() },
+		},
+		// Pencereye bırakılan dosya WebView'i o dosyaya götürürdü.
+		DragAndDrop: &options.DragAndDrop{DisableWebViewDrop: true},
+		Windows: &windows.Options{
+			// Cam yalnız SetWindowCompositionAttribute'tan (Electron'daki gibi);
+			// Wails'in yarı saydam penceresi kapalı (6 Kasım denemesi).
+			WebviewIsTransparent: material != appearance.None,
+			WindowIsTranslucent:  false,
+			BackdropType:         windows.None,
+			Theme:                theme,
+			WebviewUserDataPath:  filepath.Join(userData, "WebView2"),
+		},
+	})
+}

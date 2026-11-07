@@ -18,9 +18,9 @@ CRED=internal/api/credentials.go
 ROLE=internal/connproto/role.go
 CONN=cmd/kadran-connect/main.go
 LOCAL=internal/client/client.go
-DEPLOY=cmd/kadran/deploy.go
+DEPLOY=internal/gitref/commit.go
 SSHENV=internal/sshenv/sshenv.go
-PKGS=(./internal/api/ ./internal/connproto/ ./cmd/kadran-connect/ ./internal/client/ ./cmd/kadran/ ./internal/sshenv/)
+PKGS=(./internal/api/ ./internal/connproto/ ./cmd/kadran-connect/ ./internal/client/ ./cmd/kadran/ ./internal/gitref/ ./internal/sshenv/)
 TESTS='TestDeployKey|TestAdminReaches|TestDeployAllowlist|TestInvalidRole|TestInterceptorRejects|TestUnaryScope|TestAppIDPatternMatches|TestParseDeployScope|TestCheckRole|TestCanDeploy|TestRoleRoundTrips|TestNoFlagMeansAdmin|TestDeployFlagSetsScope|TestBadArguments|TestIdentityCarriesRole|TestLocalIdentityIsAdmin|TestParseReadsSSHUserAuthFile|TestFirstPublickeyLineWins|TestMalformedAuthInfo|TestMissingAuthInfo'
 FILES=("$AUTHZ" "$CRED" "$ROLE" "$CONN" "$LOCAL" "$DEPLOY" "$SSHENV")
 

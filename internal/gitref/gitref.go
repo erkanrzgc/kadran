@@ -1,4 +1,6 @@
-package main
+// Package gitref, bir deponun dalını ya da etiketini tam commit özetine
+// çevirir. CLI (`kadran deploy`) ve masaüstü aynı kodu kullanır.
+package gitref
 
 import (
 	"context"
@@ -16,8 +18,8 @@ import (
 //
 // `git` ikilisine SHELL ÇAĞRISI YAPILMIYOR. İki sebep:
 //
-//  1. Bağımlılık: iş istasyonunda git kurulu olmayabilir ve Electron
-//     kabuğu bu ikiliyi sidecar olarak çalıştırıyor. Kurulum şartını
+//  1. Bağımlılık: iş istasyonunda git kurulu olmayabilir; CLI ve masaüstü
+//     tek ikili olarak dağıtılıyor. Kurulum şartını
 //     "tek binary" vaadinin üstüne eklemek istemiyoruz.
 //  2. Argüman güvenliği: bir alt sürece dal adı geçirmek, projenin
 //     baştan beri kaçındığı sınıfı (serbest argv) istemci tarafında geri
@@ -42,9 +44,8 @@ const (
 	maxRefsBytes = 8 << 20
 )
 
-// resolveRemoteBranch, uzak deponun bir dalının işaret ettiği commit'i
-// döner.
-func resolveRemoteBranch(ctx context.Context, host, owner, repo, branch string) (string, error) {
+// ResolveBranch, uzak deponun bir dalının işaret ettiği commit'i döner.
+func ResolveBranch(ctx context.Context, host, owner, repo, branch string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, refDiscoveryTimeout)
 	defer cancel()
 

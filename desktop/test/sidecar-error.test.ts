@@ -15,7 +15,7 @@ import { registerSidecarReads } from "../src/main/sidecar-reads.ts";
 import { callForUi, MAX_ERROR_CHARS, sidecarErrorText, userFacingError } from "../src/main/sidecar-error.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
-// Gerçek sidecar'ın hata biçimi: cmd/kadran/sidecar_error_test.go bu dosyayı denetler.
+// Gerçek sidecar'ın hata biçimi: internal/sidecar/error_test.go bu dosyayı denetler.
 const golden = JSON.parse(readFileSync(join(here, "fixtures", "sidecar-error.json"), "utf8")) as Record<"connect" | "call", { code: number; message: string; data: string }>;
 
 const fail = (data: string, message = "call failed") => new SidecarError(message, -32603, data);

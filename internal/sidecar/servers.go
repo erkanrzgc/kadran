@@ -1,4 +1,4 @@
-package main
+package sidecar
 
 import (
 	"bytes"
@@ -47,26 +47,26 @@ type serverList struct {
 	Skipped  []servers.Skipped `json:"skipped,omitempty"`
 }
 
-func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
-	// İstekler eşzamanlı işlenir (serve); oku-değiştir-yaz sırayla olmazsa
-	// iki ekleme birbirininkini silerdi. Başka bir sürece (CLI) karşı kilit
-	// yok: orada son yazan kazanır (K-162).
-	s.serversMu.Lock()
-	defer s.serversMu.Unlock()
-	store := s.cli.serverStore()
+func (d *Dispatcher) dispatchServers(method string, params json.RawMessage) (any, *Error) {
+	// İstekler eşzamanlı işlenir (Serve, masaüstü); oku-değiştir-yaz sırayla
+	// olmazsa iki ekleme birbirininkini silerdi. Başka bir sürece (CLI) karşı
+	// kilit yok: orada son yazan kazanır (K-162).
+	d.serversMu.Lock()
+	defer d.serversMu.Unlock()
+	store := d.deps.Servers
 	var (
 		list []servers.Server
 		err  error
 	)
-	switch req.Method {
+	switch method {
 	case "servers.list":
-		if perr := decodeStrict(req.Params, &struct{}{}, true); perr != nil {
+		if perr := decodeStrict(params, &struct{}{}, true); perr != nil {
 			return nil, perr
 		}
 		list, err = store.Load()
 	case "servers.add":
 		var p serverAddParams
-		if perr := decodeStrict(req.Params, &p, false); perr != nil {
+		if perr := decodeStrict(params, &p, false); perr != nil {
 			return nil, perr
 		}
 		list, err = store.Update(func(l []servers.Server) ([]servers.Server, error) {
@@ -74,7 +74,7 @@ func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
 		})
 	case "servers.update":
 		var p serverUpdateParams
-		if perr := decodeStrict(req.Params, &p, false); perr != nil {
+		if perr := decodeStrict(params, &p, false); perr != nil {
 			return nil, perr
 		}
 		list, err = store.Update(func(l []servers.Server) ([]servers.Server, error) {
@@ -82,7 +82,7 @@ func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
 		})
 	case "servers.remove":
 		var p serverRemoveParams
-		if perr := decodeStrict(req.Params, &p, false); perr != nil {
+		if perr := decodeStrict(params, &p, false); perr != nil {
 			return nil, perr
 		}
 		list, err = store.Update(func(l []servers.Server) ([]servers.Server, error) {
@@ -90,11 +90,11 @@ func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
 		})
 	case "servers.import":
 		var p serverImportParams
-		if perr := decodeStrict(req.Params, &p, false); perr != nil {
+		if perr := decodeStrict(params, &p, false); perr != nil {
 			return nil, perr
 		}
 		if len(p.Profiles) > maxImport {
-			return nil, &rpcError{Code: codeInvalidParams, Message: fmt.Sprintf("at most %d profiles can be imported", maxImport)}
+			return nil, &Error{Code: CodeInvalidParams, Message: fmt.Sprintf("at most %d profiles can be imported", maxImport)}
 		}
 		in := make([]servers.Server, len(p.Profiles))
 		for i, pr := range p.Profiles {
@@ -112,24 +112,24 @@ func (s *sidecar) dispatchServers(req rpcRequest) (any, *rpcError) {
 		}
 	}
 	if err != nil {
-		return nil, &rpcError{Code: codeInternalError, Message: err.Error(), Data: serverErrorReason(err)}
+		return nil, &Error{Code: CodeInternalError, Message: err.Error(), Data: serverErrorReason(err)}
 	}
 	return serverList{Servers: nonNil(list)}, nil
 }
 
 // decodeStrict, yalnız tanımlı alanları kabul eder (iç içe olanlar dahil):
 // bilinmeyen alan diske de ssh'a da ulaşmaz. optional, boş parametreye izin.
-func decodeStrict(raw json.RawMessage, dst any, optional bool) *rpcError {
+func decodeStrict(raw json.RawMessage, dst any, optional bool) *Error {
 	if len(bytes.TrimSpace(raw)) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 		if optional {
 			return nil
 		}
-		return &rpcError{Code: codeInvalidParams, Message: "params object is required"}
+		return &Error{Code: CodeInvalidParams, Message: "params object is required"}
 	}
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(dst); err != nil {
-		return &rpcError{Code: codeInvalidParams, Message: fmt.Sprintf("could not parse the parameters: %v", err)}
+		return &Error{Code: CodeInvalidParams, Message: fmt.Sprintf("could not parse the parameters: %v", err)}
 	}
 	return nil
 }

@@ -35,7 +35,7 @@ const MAX_IMPORT = 100;
 const MAX_NAME = 200;
 const MAX_PROVIDER = 64;
 
-/** Yan sürecin çevrilebilir sebepleri (cmd/kadran/sidecar_servers.go). */
+/** Yan sürecin çevrilebilir sebepleri (internal/sidecar/servers.go). */
 const REASONS = new Set(["duplicate_name", "duplicate_target", "not_found", "newer_file"]);
 
 function requireName(value: unknown): string {

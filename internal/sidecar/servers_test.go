@@ -1,4 +1,4 @@
-package main
+package sidecar
 
 import (
 	"context"
@@ -19,17 +19,15 @@ type serversResult struct {
 	Skipped  []servers.Skipped `json:"skipped"`
 }
 
-// serversSidecar, kendi geçici listesi olan bir sidecar.
-func serversSidecar(t *testing.T) *sidecar {
+// serversSidecar, kendi geçici listesi olan bir dağıtıcı.
+func serversSidecar(t *testing.T) *Dispatcher {
 	t.Helper()
-	c, _, _ := newTestCLI("")
-	c.servers = servers.Store{Path: filepath.Join(t.TempDir(), "kadran", "servers.json")}
-	return &sidecar{cli: c}
+	return New(Deps{Servers: servers.Store{Path: filepath.Join(t.TempDir(), "kadran", "servers.json")}})
 }
 
-func callServers(t *testing.T, s *sidecar, method, params string) (serversResult, *rpcError) {
+func callServers(t *testing.T, s *Dispatcher, method, params string) (serversResult, *Error) {
 	t.Helper()
-	res, rpcErr := s.dispatch(context.Background(), rpcRequest{Method: method, Params: json.RawMessage(params)})
+	res, rpcErr := s.Dispatch(context.Background(), method, json.RawMessage(params))
 	if rpcErr != nil {
 		return serversResult{}, rpcErr
 	}
@@ -56,7 +54,7 @@ func TestSidecarServersConcurrentAddsAllLand(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			params := fmt.Sprintf(`{"name":"s%d","target":"kadran-client@192.0.2.%d"}`, i, i+1)
-			if _, rpcErr := s.dispatch(context.Background(), rpcRequest{Method: "servers.add", Params: json.RawMessage(params)}); rpcErr != nil {
+			if _, rpcErr := s.Dispatch(context.Background(), "servers.add", json.RawMessage(params)); rpcErr != nil {
 				errs <- rpcErr.Message
 			}
 		}()
@@ -71,7 +69,7 @@ func TestSidecarServersConcurrentAddsAllLand(t *testing.T) {
 	}
 }
 
-func mustServers(t *testing.T, s *sidecar, method, params string) serversResult {
+func mustServers(t *testing.T, s *Dispatcher, method, params string) serversResult {
 	t.Helper()
 	out, rpcErr := callServers(t, s, method, params)
 	if rpcErr != nil {
@@ -87,7 +85,7 @@ func TestSidecarServersRoundTrip(t *testing.T) {
 	}
 	mustServers(t, s, "servers.add", `{"name":"hetzner","target":"kadran-client@a","provider":"Hetzner"}`)
 	// CLI yönetici hedefi ekledi; masaüstünün düzenlemesi onu silmemeli.
-	if _, err := s.cli.servers.Update(func(l []servers.Server) ([]servers.Server, error) {
+	if _, err := s.deps.Servers.Update(func(l []servers.Server) ([]servers.Server, error) {
 		l[0].Admin, l[0].Sudo = "ops@a", true
 		return l, nil
 	}); err != nil {
@@ -117,11 +115,11 @@ func TestSidecarServersRejectUnknownFields(t *testing.T) {
 		{"servers.add", `null`},
 	} {
 		_, rpcErr := callServers(t, s, tc.method, tc.params)
-		if rpcErr == nil || rpcErr.Code != codeInvalidParams {
+		if rpcErr == nil || rpcErr.Code != CodeInvalidParams {
 			t.Errorf("%s %s: %+v", tc.method, tc.params, rpcErr)
 		}
 	}
-	if list, _ := s.cli.servers.Load(); len(list) != 0 {
+	if list, _ := s.deps.Servers.Load(); len(list) != 0 {
 		t.Errorf("reddedilen istek yazdı: %+v", list)
 	}
 }
@@ -145,10 +143,10 @@ func TestSidecarServersImport(t *testing.T) {
 func TestSidecarServersDamagedFile(t *testing.T) {
 	s := serversSidecar(t)
 	body := `{"version":1,"servers":[`
-	if err := os.MkdirAll(filepath.Dir(s.cli.servers.Path), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.deps.Servers.Path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(s.cli.servers.Path, []byte(body), 0o600); err != nil {
+	if err := os.WriteFile(s.deps.Servers.Path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ method, params string }{
@@ -161,7 +159,7 @@ func TestSidecarServersDamagedFile(t *testing.T) {
 			t.Errorf("%s: %+v", tc.method, rpcErr)
 		}
 	}
-	if raw, _ := os.ReadFile(s.cli.servers.Path); string(raw) != body {
+	if raw, _ := os.ReadFile(s.deps.Servers.Path); string(raw) != body {
 		t.Errorf("bozuk dosya değişti: %s", raw)
 	}
 }

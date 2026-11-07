@@ -25,7 +25,7 @@ MAIN=cmd/kadran/main.go
 KEY=cmd/kadran/key.go
 TOT=cmd/kadran/totp.go
 DOM=cmd/kadran/domain.go
-SCS=cmd/kadran/sidecar_servers.go
+SCS=internal/sidecar/servers.go
 FILES=("$SRV" "$FIL" "$FLG" "$STA" "$MAIN" "$KEY" "$TOT" "$DOM" "$SCS")
 
 BAKDIR=$(mktemp -d)
@@ -37,7 +37,7 @@ trap restore EXIT
 fail=0
 
 olc() {
-    go test -count=1 -timeout 120s ./internal/servers ./cmd/kadran >/dev/null 2>&1
+    go test -count=1 -timeout 120s ./internal/servers ./internal/sidecar ./cmd/kadran >/dev/null 2>&1
 }
 
 # mutate_in <dosya> <ad> <python-ifadesi>
@@ -153,7 +153,7 @@ echo "== Masaüstünün listesi (yan süreç) =="
 
 # Kilitsiz ölçüldü: 10 koşunun 10'unda eklemelerin bir kısmı kayboldu.
 mutate_in "$SCS" "eşzamanlı eklemeler birbirini siliyor (kilit yok)" \
-    "s=s.replace('defer s.serversMu.Unlock()','',1); s=s.replace('s.serversMu.Lock()','',1)"
+    "s=s.replace('defer d.serversMu.Unlock()','',1); s=s.replace('d.serversMu.Lock()','',1)"
 
 echo "== Kök yolu =="
 

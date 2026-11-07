@@ -1,6 +1,6 @@
 //go:build linux
 
-package main
+package sidecar
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,11 +59,11 @@ func TestManagementTimeoutIncludesInitialConnection(t *testing.T) {
 	kadranv1.RegisterKadranServiceServer(server, fixture)
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
-	s := &sidecar{callTimeout: time.Second, conns: map[string]*client.Client{}}
-	defer s.closeAll()
+	d := New(Deps{CallTimeout: time.Second})
+	defer d.Close()
 	params, _ := json.Marshal(targetParams{Target: path})
 	called := false
-	_, failure := s.withConnTimeout(context.Background(), params, 20*time.Millisecond, func(context.Context, *client.Client) (any, error) {
+	_, failure := d.withConnTimeout(context.Background(), params, 20*time.Millisecond, func(context.Context, *client.Client) (any, error) {
 		called = true
 		return "mutation", nil
 	})
@@ -133,8 +134,11 @@ func TestDesktopManagementRealUnixGRPCJourney(t *testing.T) {
 	go func() { _ = server.Serve(listener) }()
 	defer server.Stop()
 	var out bytes.Buffer
-	s := &sidecar{cli: &cli{stdout: &out, stderr: &bytes.Buffer{}}, callTimeout: time.Second * 5, conns: map[string]*client.Client{}}
-	defer s.closeAll()
+	d := New(Deps{CallTimeout: time.Second * 5, ResolveCommit: func(_ context.Context, _ kadranv1.KadranServiceClient, _, commit, _ string) (string, error) {
+		return commit, nil
+	}})
+	defer d.Close()
+	s := &stdio{d: d, out: &out}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*20)
 	defer cancel()
 	sha := "1111111111111111111111111111111111111111"
@@ -181,4 +185,22 @@ func TestDesktopManagementRealUnixGRPCJourney(t *testing.T) {
 	if fixture.commit != sha || fixture.tail != 100 || fixture.app.Spec.Domain != "new.example.com" {
 		t.Fatal("management fields did not reach actual gRPC")
 	}
+}
+
+// parseResponses, Serve'ün yazdığı satırları çözümler; bozuk satır testi düşürür.
+func parseResponses(t *testing.T, out *bytes.Buffer) []Response {
+	t.Helper()
+
+	var responses []Response
+	for _, line := range strings.Split(strings.TrimSpace(out.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var resp Response
+		if err := json.Unmarshal([]byte(line), &resp); err != nil {
+			t.Fatalf("yanıt çözümlenemedi (%q): %v", line, err)
+		}
+		responses = append(responses, resp)
+	}
+	return responses
 }

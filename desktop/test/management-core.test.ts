@@ -325,7 +325,7 @@ test("onay kutusu tek: başka uygulama/hedef için ikinci kutu açılmaz (kutu y
  * Sidecar'ın yöntem başına süresi Go kaynağından okunur (iki dilde iki
  * sabit; biri değişince öbürü sessizce eskimesin). Okunamazsa test düşer.
  */
-const SIDECAR_SOURCE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../cmd/kadran/sidecar_management.go"), "utf8");
+const SIDECAR_SOURCE = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../../internal/sidecar/management.go"), "utf8");
 
 function goDurationMs(expr: string): number {
   const match = /^(\d+) \* time\.(Minute|Second)$/.exec(expr.trim());

@@ -1,4 +1,4 @@
-package main
+package sidecar
 
 import (
 	"bytes"
@@ -39,6 +39,9 @@ const lifecycleTimeout = 4 * time.Minute
 var desktopAppID = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 var desktopRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,254}$`)
 
+// fullSHA, tam commit özeti: ref buna uyuyorsa dal değil commit'tir.
+var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
 type managementParams struct {
 	Target       string          `json:"target"`
 	AppID        string          `json:"app_id,omitempty"`
@@ -50,17 +53,17 @@ type managementParams struct {
 }
 
 // Every method has its own field whitelist; unknown fields never reach SSH.
-func decodeManagement(req rpcRequest) (managementParams, error) {
+func decodeManagement(method string, params json.RawMessage) (managementParams, error) {
 	var p managementParams
-	if len(req.Params) == 0 || bytes.Equal(bytes.TrimSpace(req.Params), []byte("null")) {
+	if len(params) == 0 || bytes.Equal(bytes.TrimSpace(params), []byte("null")) {
 		return p, errors.New("params object is required")
 	}
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(req.Params, &fields); err != nil {
+	if err := json.Unmarshal(params, &fields); err != nil {
 		return p, err
 	}
 	allowed := map[string]bool{"target": true}
-	switch req.Method {
+	switch method {
 	case "apps.get":
 		allowed["app_id"] = true
 	case "apps.create":
@@ -83,25 +86,25 @@ func decodeManagement(req rpcRequest) (managementParams, error) {
 			return p, fmt.Errorf("unknown parameter %q", field)
 		}
 	}
-	if err := json.Unmarshal(req.Params, &p); err != nil {
+	if err := json.Unmarshal(params, &p); err != nil {
 		return p, err
 	}
 	if strings.TrimSpace(p.Target) == "" {
 		return p, errors.New("target is required")
 	}
-	if req.Method != "apps.list" && req.Method != "apps.create" && strings.HasPrefix(req.Method, "apps.") && !desktopAppID.MatchString(p.AppID) {
+	if method != "apps.list" && method != "apps.create" && strings.HasPrefix(method, "apps.") && !desktopAppID.MatchString(p.AppID) {
 		return p, errors.New("invalid app_id")
 	}
-	if req.Method == "apps.deploy" && p.Ref != "" && !desktopRef.MatchString(p.Ref) {
+	if method == "apps.deploy" && p.Ref != "" && !desktopRef.MatchString(p.Ref) {
 		return p, errors.New("invalid branch, tag or full commit")
 	}
-	if (req.Method == "apps.delete" || req.Method == "apps.rollback") && p.Confirmation != p.AppID {
+	if (method == "apps.delete" || method == "apps.rollback") && p.Confirmation != p.AppID {
 		return p, errors.New("confirmation must match app_id exactly")
 	}
-	if req.Method == "apps.logs" && (p.Tail < 1 || p.Tail > 10000) {
+	if method == "apps.logs" && (p.Tail < 1 || p.Tail > 10000) {
 		return p, errors.New("tail must be 1-10000")
 	}
-	if req.Method == "apps.create" {
+	if method == "apps.create" {
 		var spec kadranv1.AppSpec
 		if len(p.Spec) == 0 || string(p.Spec) == "null" {
 			return p, errors.New("spec is required")
@@ -113,7 +116,7 @@ func decodeManagement(req rpcRequest) (managementParams, error) {
 			return p, errors.New("invalid app_id")
 		}
 	}
-	if req.Method == "apps.update" {
+	if method == "apps.update" {
 		var update kadranv1.UpdateAppRequest
 		if len(p.Update) == 0 || string(p.Update) == "null" {
 			return p, errors.New("update is required")
@@ -128,13 +131,13 @@ func decodeManagement(req rpcRequest) (managementParams, error) {
 	return p, nil
 }
 
-func (s *sidecar) dispatchManagement(ctx context.Context, req rpcRequest) (any, *rpcError) {
-	p, err := decodeManagement(req)
+func (d *Dispatcher) dispatchManagement(ctx context.Context, method string, params json.RawMessage) (any, *Error) {
+	p, err := decodeManagement(method, params)
 	if err != nil {
-		return nil, &rpcError{Code: codeInvalidParams, Message: err.Error()}
+		return nil, &Error{Code: CodeInvalidParams, Message: err.Error()}
 	}
-	timeout := s.callTimeout
-	switch req.Method {
+	timeout := d.deps.CallTimeout
+	switch method {
 	case "apps.deploy":
 		timeout = 10 * time.Minute
 	case "apps.rollback", "apps.delete":
@@ -142,21 +145,21 @@ func (s *sidecar) dispatchManagement(ctx context.Context, req rpcRequest) (any, 
 	case "backups.create":
 		timeout = 90 * time.Second
 	}
-	return s.withConnTimeout(ctx, req.Params, timeout, func(ctx context.Context, conn *client.Client) (any, error) {
+	return d.withConnTimeout(ctx, params, timeout, func(ctx context.Context, conn *client.Client) (any, error) {
 		rpc := conn.RPC()
-		switch req.Method {
+		switch method {
 		case "apps.list":
 			resp, err := rpc.ListApps(ctx, &kadranv1.ListAppsRequest{})
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "apps.get":
 			resp, err := rpc.GetApp(ctx, &kadranv1.GetAppRequest{AppId: p.AppID, ReleaseLimit: 100})
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "apps.create":
 			var spec kadranv1.AppSpec
 			if err := protojson.Unmarshal(p.Spec, &spec); err != nil {
@@ -166,7 +169,7 @@ func (s *sidecar) dispatchManagement(ctx context.Context, req rpcRequest) (any, 
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "apps.update":
 			var update kadranv1.UpdateAppRequest
 			if err := protojson.Unmarshal(p.Update, &update); err != nil {
@@ -177,25 +180,28 @@ func (s *sidecar) dispatchManagement(ctx context.Context, req rpcRequest) (any, 
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "apps.delete":
 			resp, err := rpc.DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: p.AppID})
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "apps.rollback":
 			resp, err := rpc.Rollback(ctx, &kadranv1.RollbackRequest{AppId: p.AppID})
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "apps.deploy":
 			commit, branch := "", p.Ref
 			if fullSHA.MatchString(p.Ref) {
 				commit, branch = p.Ref, ""
 			}
-			sha, err := s.cli.resolveCommit(ctx, rpc, p.AppID, commit, branch)
+			if d.deps.ResolveCommit == nil {
+				return nil, errors.New("commit resolution is not available")
+			}
+			sha, err := d.deps.ResolveCommit(ctx, rpc, p.AppID, commit, branch)
 			if err != nil {
 				return nil, err
 			}
@@ -225,19 +231,19 @@ func (s *sidecar) dispatchManagement(ctx context.Context, req rpcRequest) (any, 
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "backups.list":
 			resp, err := rpc.ListBackups(ctx, &kadranv1.ListBackupsRequest{})
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		case "backups.create":
 			resp, err := rpc.CreateBackup(ctx, &kadranv1.CreateBackupRequest{})
 			if err != nil {
 				return nil, err
 			}
-			return protoToJSON(resp)
+			return ProtoToJSON(resp)
 		}
 		return nil, errors.New("unknown management method")
 	})

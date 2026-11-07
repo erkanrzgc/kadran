@@ -33,7 +33,7 @@ const READ_TIMEOUT_MS = 35_000;
 
 /**
  * Durum değiştiren çağrıların IPC süresi, sidecar'ın aynı yöntem için
- * kullandığı süreden (cmd/kadran/sidecar_management.go) bir dakika UZUN.
+ * kullandığı süreden (internal/sidecar/management.go) bir dakika UZUN.
  * Önce sidecar düşmeli ve gerçek sebebi döndürmeli: masaüstü önce
  * vazgeçerse kapı serbest kalır ve iş sunucuda sürerken aynı geri alma
  * ikinci kez başlatılabilir (uygulama bir sürüm DAHA geri gider). Test,

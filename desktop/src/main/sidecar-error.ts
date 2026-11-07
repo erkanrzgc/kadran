@@ -1,7 +1,7 @@
 /**
  * Sidecar hatasından kullanıcıya gidecek metnin TEK kurucusu.
  *
- * Gerçek sidecar (cmd/kadran/sidecar.go) hatayı `{message: "call failed" |
+ * Gerçek sidecar (internal/sidecar) hatayı `{message: "call failed" |
  * "could not connect", data: "<gerçek sebep>"}` biçiminde döndürür; yalnız
  * `message`'ı göstermek kullanıcıya "call failed" demekti. Burada ikisi
  * birleştirilir, sır sızdırabilecek parçalar silinir ve uzunluk sınırlanır.

@@ -1,4 +1,4 @@
-package main
+package sidecar
 
 import (
 	"context"
@@ -23,9 +23,9 @@ func TestManagementRejectsInvalidInputBeforeConnecting(t *testing.T) {
 		{"backups.create", `null`},
 	} {
 		t.Run(tc.method+tc.params, func(t *testing.T) {
-			s := &sidecar{}
-			_, rpcErr := s.dispatch(context.Background(), rpcRequest{Method: tc.method, Params: json.RawMessage(tc.params)})
-			if rpcErr == nil || rpcErr.Code != codeInvalidParams {
+			d := New(Deps{})
+			_, rpcErr := d.Dispatch(context.Background(), tc.method, json.RawMessage(tc.params))
+			if rpcErr == nil || rpcErr.Code != CodeInvalidParams {
 				t.Fatalf("expected invalid params before SSH, got %+v", rpcErr)
 			}
 		})

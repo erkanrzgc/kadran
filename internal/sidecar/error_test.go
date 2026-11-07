@@ -1,11 +1,13 @@
-package main
+package sidecar
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -20,12 +22,14 @@ import (
 // "call", gerçek callFailure kurucusundan (başarılı bağlantı gerektirdiği
 // için uçtan uca üretilemez).
 func TestSidecarErrorShapeMatchesGolden(t *testing.T) {
-	responses := runSidecarWith(t, `{"jsonrpc":"2.0","id":1,"method":"status","params":{"target":"erkan@"}}`+"\n")
-	if len(responses) != 1 || responses[0].Error == nil {
-		t.Fatalf("beklenen tek hata yanıtı, gelen %+v", responses)
+	d := New(Deps{CallTimeout: 5 * time.Second})
+	defer d.Close()
+	_, connectErr := d.Dispatch(context.Background(), "status", json.RawMessage(`{"target":"erkan@"}`))
+	if connectErr == nil {
+		t.Fatal("geçersiz hedef hata döndürmedi")
 	}
-	got := map[string]*rpcError{
-		"connect": responses[0].Error,
+	got := map[string]*Error{
+		"connect": connectErr,
 		"call":    callFailure(status.Error(codes.Unavailable, "connection reset by peer")),
 	}
 
@@ -45,7 +49,7 @@ func TestSidecarErrorShapeMatchesGolden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("%s okunamadı (KADRAN_UPDATE_FIXTURES=1 ile üret): %v", path, err)
 	}
-	var want map[string]*rpcError
+	var want map[string]*Error
 	if err := json.Unmarshal(body, &want); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +57,7 @@ func TestSidecarErrorShapeMatchesGolden(t *testing.T) {
 		t.Errorf("hata biçimi altın dosyadan sapıyor; bilinçli değişiklikse KADRAN_UPDATE_FIXTURES=1 ile yenile\ngot:  %+v\nwant: %+v", got, want)
 	}
 	for name, e := range got {
-		if e.Code != codeInternalError || e.Message == "" || e.Data == "" {
+		if e.Code != CodeInternalError || e.Message == "" || e.Data == "" {
 			t.Errorf("%s: code/message/data üçlüsü eksik: %+v", name, e)
 		}
 	}

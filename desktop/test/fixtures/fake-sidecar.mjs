@@ -35,7 +35,7 @@ const load = (name) => JSON.parse(readFileSync(join(here, name), "utf8"));
 const status = load("status.json");
 const verify = load("verify.json");
 const template = load("audit-record.json");
-// Hata biçimi gerçek sidecar'dan: cmd/kadran/sidecar_error_test.go bu altın dosyayı üretir/denetler.
+// Hata biçimi gerçek sidecar'dan: internal/sidecar/error_test.go bu altın dosyayı üretir/denetler.
 // `message` sabit sınıf adı, gerçek sebep `data`'dadır.
 const goldenError = load("sidecar-error.json");
 const rpcFail = (kind, data) => ({ error: { ...goldenError[kind], data } });

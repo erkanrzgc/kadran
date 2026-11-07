@@ -207,5 +207,9 @@ func TestCatalogParity(t *testing.T) {
 		if turkish.MatchString(en[k]) {
 			t.Errorf("%s: İngilizce metinde Türkçe harf", k)
 		}
+		// İki dilde aynı değer yalnız dilden bağımsız anahtarlarda.
+		if same := en[k] == tr[k]; same != (k == "title" || k == "line.dockerfile") {
+			t.Errorf("%s: iki dilde aynı mı = %v (çevrilmemiş ya da listede eskimiş)", k, same)
+		}
 	}
 }

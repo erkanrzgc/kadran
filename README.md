@@ -361,9 +361,9 @@ place** (K-136):
 ```
 ┌─ WORKSTATION ─────────────────┐        ┌─ SERVER ──────────────────────────────────────┐
 │                               │        │                                               │
-│  Electron GUI (local confirm) │        │  kadrand            user: kadran              │
-│      ↕ stdio JSON-RPC         │        │    • business logic, supervisor, SQLite       │
-│  kadran (Go CLI / sidecar) ───┼──SSH───┼──► • api.sock (0660, group kadran-client)     │
+│  Desktop GUI (local confirm)  │        │  kadrand            user: kadran              │
+│  kadran (Go CLI)              │        │    • business logic, supervisor, SQLite       │
+│    same Go client in both ────┼──SSH───┼──► • api.sock (0660, group kadran-client)     │
 │                               │        │    • CANNOT reach Docker, no network access   │
 └───────────────────────────────┘        │          ↕ exec.sock — typed gRPC             │
                                          │  kadran-exec        user: root                │
@@ -385,7 +385,7 @@ place** (K-136):
 | `kadran-caddy` | `kadran-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME |
 | `kadran-proxy` | `kadran-proxy` | Unix sockets only; no Docker, vault or Caddy state access | Validates typed route sets and builds fixed Caddy config; sole raw admin client |
 | `kadran-connect` | `kadran-client` | None; ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
-| `kadran` | workstation | — | CLI, and sidecar for the Electron GUI |
+| `kadran` | workstation | — | CLI; the desktop app (Wails) embeds the same Go client |
 
 ## Security model
 
@@ -741,7 +741,7 @@ cmd/kadran-connect/  Forced-command stdio proxy
 cmd/kadran/          Workstation CLI + `kadran sidecar`
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
-desktop/             Electron + React + Vite: light and dark themes, glass sidebar
+desktop/             Wails (Go) + React + Vite: one binary, light and dark themes, glass sidebar
 deploy/              systemd units, offsite backup, alarm delivery, heartbeat
 docs/                Architecture decision records
 scripts/             Surface checks, mutation tests — and the tests for those checks

@@ -87,6 +87,12 @@ func TestAppearanceGlassBeforeFile(t *testing.T) {
 	if bundle.Appearance != appearance.Defaults() || bundle.Defaults != appearance.Defaults() || bundle.Material != appearance.Accent {
 		t.Fatalf("%+v", bundle)
 	}
+	// Cam önce, dosya sonra (K-163): cam değişirken dosyada hâlâ eski tema var.
+	hs.h.onLook = func() {
+		if got := hs.b.deps.Settings.Load(nil).Theme; got != "light" {
+			t.Errorf("cam diske yazıldıktan sonra değişti (dosyada %s)", got)
+		}
+	}
 	saved, err := hs.b.SaveAppearance(json.RawMessage(`{"version":2,"theme":"dark","language":"tr","extra":1}`))
 	if err != nil || saved.Theme != "dark" || saved.Language != "tr" {
 		t.Fatalf("%+v %v", saved, err)

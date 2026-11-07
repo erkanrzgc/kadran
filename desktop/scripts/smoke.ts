@@ -16,7 +16,8 @@
  * Pencere görünür açılır: gizli pencerede WebView2 kare çizmez.
  */
 
-import { spawn, execFileSync, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, execFileSync, type ChildProcessByStdio } from "node:child_process";
+import type { Readable, Writable } from "node:stream";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -74,7 +75,7 @@ class Session {
   private next = 0;
   private readonly pending = new Map<number, (r: Reply) => void>();
 
-  constructor(child: ChildProcessWithoutNullStreams) {
+  constructor(child: ChildProcessByStdio<Writable, Readable, null>) {
     this.child = child;
     createInterface({ input: child.stdout }).on("line", (line) => {
       if (!line.startsWith(PREFIX)) {
@@ -88,7 +89,7 @@ class Session {
     });
   }
 
-  private readonly child: ChildProcessWithoutNullStreams;
+  private readonly child: ChildProcessByStdio<Writable, Readable, null>;
 
   /** Yanıt gelmezse null: sayfa (ya da Wails çalışma zamanı) henüz hazır değil. */
   request(command: Record<string, unknown>, timeoutMs: number): Promise<Reply | null> {

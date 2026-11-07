@@ -56,12 +56,17 @@ type fakeHost struct {
 	looks     []appearance.WindowLook
 	clipboard string
 	actions   []string
+	// onLook, SetLook çağrıldığı anda koşar (sıra testleri için).
+	onLook func()
 }
 
 func (h *fakeHost) Minimise()       { h.actions = append(h.actions, "minimise") }
 func (h *fakeHost) ToggleMaximise() { h.actions = append(h.actions, "maximise") }
 func (h *fakeHost) Close()          { h.actions = append(h.actions, "close") }
 func (h *fakeHost) SetLook(l appearance.WindowLook) {
+	if h.onLook != nil {
+		h.onLook()
+	}
 	h.looks = append(h.looks, l)
 }
 func (h *fakeHost) SetClipboard(text string) error {

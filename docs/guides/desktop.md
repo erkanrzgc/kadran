@@ -4,7 +4,7 @@ Kadran masaüstü, SSH üzerinden kendi sunucunu yönetir. Uygulama özel SSH an
 
 ## Derleme
 
-Masaüstü sürüm dosyalarında yok; kaynaktan derlenir. Gerekenler: Go 1.26.10+, Node 22.6+, [`buf`](https://buf.build/docs/installation) ve `buf.gen.yaml`'daki iki yerel eklenti. Depo kökünde `buf generate`, sonra `desktop/` içinde `npm ci` ve `npm run dist`. Paket bu makinenin platformu için `desktop/dist/Kadran-<platform>-x64/` altına çıkar ve imzasızdır. Kenar çubuğundaki sürüm, pakete gömülen `kadran` ikilisinin sürümüdür.
+Masaüstü sürüm dosyalarında yok; kaynaktan derlenir ve bugün yalnız Windows'ta çalışır (Wails, K-165). Gerekenler: Go 1.26.10+, Node 22.18+, [`buf`](https://buf.build/docs/installation) ve `buf.gen.yaml`'daki iki yerel eklenti. Depo kökünde `buf generate`, sonra `desktop/` içinde `npm ci` ve `npm run dist`. Paket tek dosya: `desktop/dist/Kadran.exe` (yanında `THIRD_PARTY_NOTICES.txt`), imzasız. Pencereyi Windows'un WebView2'si çizer; Windows 10 ve 11'de kurulu gelir. Kenar çubuğundaki sürüm, ikilinin derlendiği etikettir.
 
 ## İlk bağlantı
 
@@ -13,7 +13,7 @@ Masaüstü sürüm dosyalarında yok; kaynaktan derlenir. Gerekenler: Go 1.26.10
 3. Sunucunun SSH host anahtarını sağlayıcı konsolu veya güvenilir bir kanaldan doğrula, sonra OpenSSH'nin bilinen sunucu kaydını hazırla. Masaüstü `BatchMode=yes` kullanır: ilk güven veya parola istemi açmaz.
 4. **Sunucular** ekranında **Sunucu ekle**'ye bas, `kadran-client@sunucu` veya `kadran-client@sunucu:2222` hedefini yaz. Profil adı bu bilgisayarda saklanır. Hata metni kimlik, host güveni veya ağ sorununu ayırt etmek için korunur.
 
-Sunucu listesi CLI ile ortaktır (K-162): `kadran server add` ile eklenen sunucu, pencereye dönünce kart olarak görünür; masaüstünde eklenen de `kadran status -s <ad>` ile kullanılır. Liste yapılandırma dizininde durur (`%AppData%\kadran\servers.json`, Linux'ta `~/.config/kadran/servers.json`) ve anahtar, parola ya da jeton taşımaz. Bu sürüme ilk geçişte masaüstünün eski listesi bir kez bu dosyaya taşınır; eski `profiles.json` silinmez. Taşıma başarısız olursa uygulama söyler ve bir sonraki açılışta yeniden dener; taşınamayan tek tek sunucuları (geçersiz hedef, 100'ü aşan liste) adlarıyla söyler.
+Sunucu listesi CLI ile ortaktır (K-162): `kadran server add` ile eklenen sunucu, pencereye dönünce kart olarak görünür; masaüstünde eklenen de `kadran status -s <ad>` ile kullanılır. Liste yapılandırma dizininde durur (`%AppData%\kadran\servers.json`, Linux'ta `~/.config/kadran/servers.json`) ve anahtar, parola ya da jeton taşımaz. Electron sürümündeki eski profil listesinin bu dosyaya bir kez taşınması Wails sürümünde yok (K-165); eski `profiles.json` olduğu yerde durur.
 
 Uygulama **Sunucular** ekranında açılır: kayıtlı her sunucu bir kart. Karta basınca sunucu açılır; üst çubuktaki `Sunucular / ad ⌄` menüsünden başka sunucuya geçilir, iki ya da daha çok sunucu açıkken üst çubukta sekmeler çıkar. Eski sunucunun geç gelen yanıtı yeni sunucunun ekranını değiştirmez. Başlatılmış bir işlem, ekranı kapatınca otomatik olarak geri alınmış sayılmaz; yeniden bağlanıp sürüm geçmişini kontrol et.
 

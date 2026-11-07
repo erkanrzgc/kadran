@@ -2,8 +2,10 @@ package appearance
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -171,5 +173,28 @@ func TestStoreFailedWriteLeavesNoTemp(t *testing.T) {
 	entries, _ := os.ReadDir(dir)
 	if len(entries) != 1 {
 		t.Fatalf("geçici dosya kaldı: %d girdi", len(entries))
+	}
+}
+
+// TestSolidFrameMatchesTokens: malzemesiz pencerenin açılış rengi arayüzün
+// --frame-solid'iyle aynı; yoksa açılışta renk sıçrar.
+func TestSolidFrameMatchesTokens(t *testing.T) {
+	css, err := os.ReadFile(filepath.Join("..", "..", "src", "renderer", "styles", "tokens.css"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, theme := range []string{"dark", "light"} {
+		head := `:root[data-theme="` + theme + `"]`
+		i := strings.Index(string(css), head)
+		if i < 0 {
+			t.Fatalf("%s bloğu yok", head)
+		}
+		block := string(css[i:])
+		block = block[:strings.Index(block, "}")]
+		m := regexp.MustCompile(`--frame-solid: (#[0-9a-f]{6});`).FindStringSubmatch(block)
+		bg := Look(theme, None).Background
+		if want := fmt.Sprintf("#%02x%02x%02x", bg.R, bg.G, bg.B); m == nil || m[1] != want {
+			t.Errorf("%s: tokens.css %v, Go %s", theme, m, want)
+		}
 	}
 }

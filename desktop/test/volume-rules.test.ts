@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { validateAppUpdate } from "../src/main/management-payload.ts";
 import { draftToSpec, newAppDraft, validateAppDraft } from "../src/renderer/lib/management.ts";
 
-// Aynı örnek tablosu hem arayüz (metin biçimi) hem ana süreç (yük) doğrulayıcısına
-// verilir; ikisi de sunucunun internal/api/volumevalidate.go kuralıyla aynı olmalı.
+// Arayüzün metin doğrulayıcısı; aynı tablo Go tarafında yük doğrulayıcısına da
+// verilir (desktop/internal/guard/payload_test.go). İkisi de sunucunun
+// internal/api/volumevalidate.go kuralıyla aynı olmalı.
 interface Row { text: string; volumes: Array<{ name: string; mount_path: string; read_only: boolean }>; ok: boolean; why: string }
 const v = (name: string, mount_path: string, read_only = false) => ({ name, mount_path, read_only });
 const many = Array.from({ length: 17 }, (_, i) => v(`v${i}`, `/m${i}`));
@@ -51,12 +51,5 @@ test("arayüz hacim metni doğrulayıcısı sunucu kuralını birebir izler", ()
     const draft = { ...newAppDraft(), appId: "hello", gitOwner: "team", gitRepo: "site", volumesText: row.text };
     assert.equal(validateAppDraft(draft), row.ok ? null : "form.invalid_volumes", row.why);
     if (row.ok) assert.deepEqual(draftToSpec(draft).volumes, row.volumes, row.why);
-  }
-});
-
-test("ana süreç yük doğrulayıcısı aynı tabloda aynı kararı verir", () => {
-  for (const row of TABLE) {
-    const run = () => validateAppUpdate({ volumes: row.volumes });
-    if (row.ok) assert.doesNotThrow(run, row.why); else assert.throws(run, row.why);
   }
 });

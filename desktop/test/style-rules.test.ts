@@ -9,8 +9,6 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { windowLook } from "../src/shared/appearance.ts";
-
 const here = dirname(fileURLToPath(import.meta.url));
 const rendererDir = join(here, "..", "src", "renderer");
 const stylesDir = join(rendererDir, "styles");
@@ -158,14 +156,6 @@ test("cam yalnız çerçevede: kenar çubuğu çizgisiz, içerik opak panelde (K
   assert.match(block(tokens, ':root[data-theme="dark"]'), /--frame: rgb\(22 22 24 \/ 20%\);/);
 });
 
-test("opak çerçeve rengi pencerenin açılış rengiyle aynı: renk sıçraması yok", async () => {
-  const tokens = await read("tokens.css");
-  for (const theme of ["dark", "light"] as const) {
-    const solid = /--frame-solid: (#[0-9a-f]{6});/.exec(block(tokens, `:root[data-theme="${theme}"]`));
-    assert.equal(solid?.[1], windowLook(theme, "none").background, theme);
-  }
-});
-
 test("düğmeler zıplamaz: üstüne gelince ve basınca yer değiştirmez, yalnız renk geçer", async () => {
   const controls = await read("controls.css");
   const btnRules = [...controls.matchAll(/\.btn[^{]*\{[^}]*\}/g)].map((m) => m[0]);
@@ -208,8 +198,8 @@ test("yüzen yüzey opak: menü, kutu, bildirim", async () => {
 
 test("sürükleme bölgesi düğmeleri ve açılan menüyü yutmaz", async () => {
   const layout = await read("layout.css");
-  assert.match(layout, /\.rail-brand, \.topbar \{ -webkit-app-region: drag; --wails-draggable: drag; \}/);
-  assert.match(layout, /button, input, select, a, summary, \.crumb-menu, \.operation-dialog, \.toast \{ -webkit-app-region: no-drag; --wails-draggable: no-drag; \}/);
+  assert.match(layout, /\.rail-brand, \.topbar \{ --wails-draggable: drag; \}/);
+  assert.match(layout, /button, input, select, a, summary, \.crumb-menu, \.operation-dialog, \.toast \{ --wails-draggable: no-drag; \}/);
 });
 
 test("Geist iki alt kümeyle gömülü: ş, ğ, İ dosyada", async () => {

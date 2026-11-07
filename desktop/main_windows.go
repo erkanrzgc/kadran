@@ -10,10 +10,12 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"fmt"
 	"io/fs"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -26,6 +28,7 @@ import (
 	"github.com/erkanrzgc/kadran/desktop/internal/appearance"
 	"github.com/erkanrzgc/kadran/desktop/internal/bridge"
 	"github.com/erkanrzgc/kadran/desktop/internal/headers"
+	"github.com/erkanrzgc/kadran/desktop/internal/redact"
 	"github.com/erkanrzgc/kadran/desktop/internal/win"
 )
 
@@ -46,7 +49,11 @@ func main() {
 	}
 }
 
-func warn(message string) { log.Printf("kadran: %s", message) }
+// warn, günlüğe satır yazar. İleti sunucudan gelen metin taşıyabilir:
+// denetim karakterleri ve sırlar arıtılır (satır enjeksiyonu yok).
+func warn(message string) {
+	log.Printf("kadran: %s", redact.Text(message, "")) //nolint:gosec // redact.Text denetim karakterlerini atıyor
+}
 
 func run() error {
 	config, err := os.UserConfigDir()
@@ -54,6 +61,11 @@ func run() error {
 		return fmt.Errorf("could not find the user config directory: %w", err)
 	}
 	userData := filepath.Join(config, userDataName)
+	instanceID := singleInstanceID
+	if dir := smokeUserData(); dir != "" {
+		// Duman testi kullanıcının açık penceresine bağlanmasın.
+		userData, instanceID = dir, singleInstanceID+"-smoke"
+	}
 	front, err := fs.Sub(assets, "out/renderer")
 	if err != nil {
 		return err
@@ -95,12 +107,15 @@ func run() error {
 		MinHeight:        520,
 		Frameless:        true,
 		BackgroundColour: &options.RGBA{R: bg.R, G: bg.G, B: bg.B, A: bg.A},
-		AssetServer:      &assetserver.Options{Assets: front, Middleware: headers.Middleware},
+		AssetServer:      &assetserver.Options{Assets: front, Middleware: func(next http.Handler) http.Handler { return headers.Middleware(smokeMiddleware(next)) }},
 		OnStartup:        h.startup,
-		OnDomReady:       h.domReady,
-		Bind:             []any{b},
+		OnDomReady: func(ctx context.Context) {
+			h.domReady(ctx)
+			startSmoke(ctx, h)
+		},
+		Bind: []any{b},
 		SingleInstanceLock: &options.SingleInstanceLock{
-			UniqueId:               singleInstanceID,
+			UniqueId:               instanceID,
 			OnSecondInstanceLaunch: func(options.SecondInstanceData) { h.focus() },
 		},
 		// Pencereye bırakılan dosya WebView'i o dosyaya götürürdü.

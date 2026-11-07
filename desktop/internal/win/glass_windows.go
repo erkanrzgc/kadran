@@ -19,14 +19,11 @@ import (
 // düşmez (K-161). Çağrı belgelenmemiş: bir Windows güncellemesi kaldırırsa
 // Backdrop'a geçilir.
 const (
-	wcaAccentPolicy               = 19
-	accentDisabled                = 0
-	accentEnableAcrylicBlurBehind = 4
-	accentFlagGradientColor       = 2
-	dwmwaWindowCornerPreference   = 33
-	dwmwcpRound                   = 2
-	dwmwaSystemBackdropType       = 38
-	dwmsbtTransientWindow         = 3 // Acrylic
+	wcaAccentPolicy             = 19
+	dwmwaWindowCornerPreference = 33
+	dwmwcpRound                 = 2
+	dwmwaSystemBackdropType     = 38
+	dwmsbtTransientWindow       = 3 // Acrylic
 )
 
 var (
@@ -38,27 +35,10 @@ var (
 	setDwmAttr      = dwmapi.NewProc("DwmSetWindowAttribute")
 )
 
-// AccentPolicy, SetWindowCompositionAttribute'un yükü.
-type AccentPolicy struct {
-	State       int32
-	Flags       int32
-	Color       uint32
-	AnimationID int32
-}
-
 type compositionData struct {
 	Attribute int32
 	Data      *AccentPolicy
 	Size      uintptr
-}
-
-// Policy, cam açıkken Akrilik, ton temaya göre (AABBGGRR); kapalıyken efekt yok.
-func Policy(on bool, tint uint32) AccentPolicy {
-	state := int32(accentDisabled)
-	if on {
-		state = accentEnableAcrylicBlurBehind
-	}
-	return AccentPolicy{State: state, Flags: accentFlagGradientColor, Color: tint}
 }
 
 // AccentAvailable, SetWindowCompositionAttribute bu sistemde var mı.

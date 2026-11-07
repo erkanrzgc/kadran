@@ -37,20 +37,22 @@
 
 | Test | Fate |
 |---|---|
-| appearance-schema, appearance-store | Go (`appearance`); TS schema test stays for the renderer's copy |
-| window-options, window-accent | Go (look, accent policy) |
-| permissions | Go (`Permissions-Policy` header) |
-| ipc-validate, management-ipc, management-ipc-payload, volume-rules (main half) | Go (validation) |
-| management-confirmation, i18n (dialog-text half) | Go (confirmation text, catalog parity) |
-| management-core | Go (bridge flow) |
-| server-list | Go (bridge server list) |
-| sidecar-error | Go (redaction) |
-| channels | Go reflection test + TS test that `bridge.ts` calls exactly those names |
-| management-results | stays TS, moves to `src/renderer/lib` |
-| errors-english | Go test over desktop Go error strings; TS part dropped with `src/main` |
+| appearance-schema, appearance-store | Go: `internal/appearance` (sanitize, look, atomic store, `--frame-solid` vs `tokens.css`) |
+| window-options, window-accent | Go: `internal/appearance` (Diff, GlassTint), `internal/win` (Policy) |
+| permissions | Go: `internal/headers` (Permissions-Policy); the smoke checks that geolocation is denied in WebView2 |
+| ipc-validate, management-ipc, management-ipc-payload, volume-rules (main half) | Go: `internal/guard` |
+| management-confirmation, i18n (dialog-text half) | Go: `internal/confirm` (box text, catalog parity, same-in-both list) |
+| management-core | Go: `internal/bridge` (flow, gate, single dialog, fixture skip, redacted errors) |
+| server-list | Go: `internal/bridge` servers tests (migration part dropped, K-165) |
+| sidecar-error | Go: `internal/redact` |
+| channels | Go: reflection test (`Whitelist`) + test that `bridge.ts` calls exactly those methods; the smoke checks `window.go` |
+| errors-english | Go: `internal/english` (every `errors.New`/`fmt.Errorf` in the desktop module) |
+| theme-switch (glass before file) | Go: `internal/bridge` `TestAppearanceGlassBeforeFile` |
+| management-results | stays TS, moved to `src/renderer/lib` |
 | profiles | deleted: legacy migration not ported (K-165) |
 | sidecar-client, sidecar-integration | deleted: no sidecar process; dispatcher covered by `internal/sidecar` tests |
-| fixtures-shape, csp, built/html, forbidden-patterns, no-raw-text, style-rules, licenses, packaging-icon, i18n-families, renderer lib tests | stay TS (licenses gains Go modules) |
-| smoke.ts + scripts/e2e.mjs | CDP runner (task 5) |
+| management-core timeout rule | dropped: in process the gate releases only when the dispatcher returns, after its own per-method timeout |
+| fixtures-shape, csp, built/html, forbidden-patterns, no-raw-text, style-rules, licenses, packaging-icon, i18n-families, renderer lib tests | stay TS |
+| smoke.ts + scripts/e2e.mjs | `test/smoke/journey.ts` + `scripts/smoke.ts` (stdio + ExecJS, not CDP: go-webview2 blocks debugger arguments) |
 
-`mutate-desktop.sh`: mutants on `src/main/*.ts` (window-options, window-accent, permissions, ipc-validate, management-*, server-list, sidecar-error, sidecar-reads) move to Go equivalents; renderer and `shared/appearance.ts` mutants stay.
+`mutate-desktop.sh`: the `src/main` and `src/shared/appearance.ts` mutants were rewritten as Go mutants (`mutate_go`, `go test ./internal/...`); renderer mutants stay.

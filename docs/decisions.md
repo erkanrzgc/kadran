@@ -12718,6 +12718,13 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
   - Masaüstü hiçbir sürümde dağıtılmadı. Tek kurulumda aktarım 6 Kasım'da bitti (`servers-imported` işareti var).
   - Bu benim kararım.
 
-**Duman testi:** Electron'daki yolculuk (`smoke.ts`) korunuyor; pencere yerine WebView2'nin hata ayıklama portuna (CDP) bağlanılıyor. Sahte dağıtıcı yalnız `smoke` etiketiyle derlenen ikilide var; dağıtılan ikili onu içermiyor.
+**Duman testi:** Electron'daki yolculuk (`smoke.ts`) korunuyor (`desktop/test/smoke/journey.ts`, koşucu `desktop/scripts/smoke.ts`).
+- İlk plan WebView2'nin hata ayıklama portuydu (CDP). Olmadı: go-webview2 ortam değişkeni ve kayıt defteri üzerinden tarayıcı argümanı verilmesini kasıtlı olarak engelliyor (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`'ı boşaltıyor). Dağıtılan ikili için bu iyi: dışarıdan hata ayıklama portu açtırılamıyor.
+- Yerine: duman ikilisi stdin'den `{"id","code"}` alıyor, kodu `ExecJS` ile sayfada çalıştırıyor, sonucu Wails olayıyla geri alıp stdout'a `SMOKE {…}` satırı yazıyor. Ekran görüntüsü `PrintWindow` ile. Konsol, yakalanmayan hata ve CSP ihlallerini sayfa betiklerinden önce yüklenen bir toplayıcı biriktiriyor.
+- Sahte sunucu `test/fixtures/fake-sidecar.mjs` olarak kaldı; duman ikilisi onu alt süreç olarak başlatıp JSON-RPC konuşuyor. Bunların hepsi `smoke` etiketiyle derlenen ikilide; dağıtılan ikili içermiyor.
+- Electron'dan iki fark: pencere camı denetimi yok (duman ikilisi malzemesiz açılır); "yerel tema" `prefers-color-scheme` ile değil kökün `color-scheme`'iyle ölçülüyor (Wails WebView2'nin renk düzenini ayarlamıyor; arayüz yerel denetimleri zaten `color-scheme` ile temaya bağlıyor).
+- 7 Kasım, bu bilgisayarda (kullanıcı onayıyla): kısa test ve tam yolculuk ilk denemede geçti; ekran görüntüleri Electron'dakiyle aynı arayüzü gösteriyor.
+
+**Paket:** `desktop/dist/Kadran.exe` tek dosya, 18,6 MB (bütçe ≤ 20; kaynak haritaları gömülmüyor, ~1,4 MB). Simge ve manifest (ortak denetimler 6, DPI) `desktop/rsrc_windows_amd64.syso`'da; onu üreten kod `desktop/internal/winres` (bağımlılık eklemeden, `debug/pe` ile sınanıyor). Yanında `THIRD_PARTY_NOTICES.txt`: Go, 21 Go modülü, arayüz paketleri, Geist, Coolify.
 
 **Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.

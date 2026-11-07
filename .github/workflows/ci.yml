@@ -499,8 +499,12 @@ jobs:
           # Kök tarama ayrı Caddy modülüne girmez; onu ayrıca tara.
           (cd build/caddy && govulncheck ./...)
 
-  # Masaüstü uygulaması (K-142). Bu işe kadar CI masaüstünü HİÇ koşmuyordu:
-  # ne birim testleri ne pencerenin gerçekten açıldığı ölçülüyordu.
+  # Masaüstü (K-142, K-165): Wails kabuğu, React arayüzü. Arayüzün testleri ve
+  # masaüstünün Go mantık paketleri burada (Linux); pencere Windows işinde
+  # açılıyor. desktop/ ayrı bir Go modülü ve kök modülün internal/sidecar'ını
+  # kullanıyor: protobuf kodu depoda yok, kurulum adımı üretir. Kök modülün
+  # `./...` adımları bu modüle girmiyor; biçim, analiz, test ve zafiyet
+  # taraması burada ayrıca koşuyor.
   desktop:
     name: Masaüstü (ubuntu)
     runs-on: ubuntu-latest
@@ -509,55 +513,55 @@ jobs:
         working-directory: desktop
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          buf-version: ${{ env.BUF_VERSION }}
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: npm
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
-      # Gerçek sidecar: sahte süreçle geçen istemci gerçeğine karşı bozuk
-      # olabilir (K-012) ve hata biçimi (message + data) yalnız gerçek
-      # ikiliyle sınanır. protobuf kodu depoda yok, kurulum adımı üretir.
-      - uses: ./.github/actions/setup
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          buf-version: ${{ env.BUF_VERSION }}
-      - name: Gerçek sidecar'ı derle
-        working-directory: .
-        run: go build -o bin/kadran ./cmd/kadran
       - run: npm run typecheck
-      # KADRAN_REQUIRE_SIDECAR=1: ikili yoksa entegrasyon testi ATLAMAZ, düşer.
-      - run: npm test
-        env:
-          KADRAN_REQUIRE_SIDECAR: "1"
+      - name: Arayüz testleri
+        run: npm test
       - run: npm run build
       - run: npm run test:built
       - name: Çalışma zamanı bağımlılık zafiyetleri
         run: npm audit --omit=dev --audit-level=high
-      # Electron'un Chromium kum havuzu yardımcısı SUID root olmalı;
-      # --no-sandbox ile çalıştırmak ölçtüğümüz şeyi gevşetirdi.
-      # Electron 43'te postinstall yok: ikili ilk `require('electron')` anında
-      # iniyor. chrome-sandbox'a dokunmadan ÖNCE indirme açıkça tetikleniyor.
-      - name: Electron kum havuzu ve sanal ekran
+      - name: Go biçimi ve analiz (masaüstü modülü)
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb libnss3 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
-          node node_modules/electron/install.js
-          test -f node_modules/electron/dist/chrome-sandbox
-          sudo chown root:root node_modules/electron/dist/chrome-sandbox
-          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-      - name: Uçtan uca (sahte sidecar)
-        run: xvfb-run -a npm run e2e
+          unformatted="$(gofmt -l $(git ls-files '*.go'))"
+          if [[ -n "$unformatted" ]]; then
+            echo "Biçimlendirilmemiş dosyalar:" >&2
+            echo "$unformatted" >&2
+            exit 1
+          fi
+          go vet ./...
+          # Wails kabuğu ve Windows çağrıları yalnız Windows'ta derleniyor.
+          GOOS=windows go vet -tags desktop,production ./...
+          GOOS=windows go vet -tags desktop,production,smoke ./...
+      - name: Go testleri (masaüstü modülü)
+        run: go test -race -count=1 ./...
+      # Wails ve WebView2 modülleri yalnız Windows derlemesine giriyor; tarama
+      # o derlemeyle yapılır (gömülü arayüz yukarıda derlendi).
+      - name: govulncheck (masaüstü modülü)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          GOOS=windows govulncheck -tags desktop,production ./...
 
-  # Çalışma dizini adım başına veriliyor (job düzeyinde `defaults` YOK):
-  # bileşik eylemin adımları depo kökünde koşmak zorunda (buf generate,
-  # find internal/pb), job varsayılanına güvenmek bu belirsizliği taşırdı.
+  # Gerçek pencere: duman ikilisi (`-tags smoke`) sahte sunucuya karşı
+  # kullanıcı yolculuğunu yürütür (scripts/smoke.ts); sonra dağıtılan ikili
+  # paketlenir. Çalışma dizini adım başına veriliyor (job düzeyinde
+  # `defaults` YOK): bileşik eylemin adımları depo kökünde koşmak zorunda
+  # (buf generate, find internal/pb).
   desktop-windows:
     name: Masaüstü (windows)
     runs-on: windows-latest
     steps:
-      # Sığ klonda etiket yok: sidecar sürümü `git describe --always`
-      # yüzünden kısa commit özetine düşer (dist.mjs aynı değeri doğrular).
+      # Sığ klonda etiket yok: sürüm damgası `git describe --always` yüzünden
+      # kısa commit özetine düşer (dist.ts aynı değeri ikilide arar).
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
         with:
@@ -570,21 +574,24 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - run: npm ci
         working-directory: desktop
-      - name: Gerçek sidecar'ı derle
-        run: go build -o bin/kadran.exe ./cmd/kadran
-      - name: Tip denetimi (iki tsconfig)
+      - name: Arayüzü derle
         working-directory: desktop
-        run: npm run typecheck
-      - name: Birim ve entegrasyon testleri
+        run: npm run build
+      - name: Go testleri (Windows çağrıları dahil)
         working-directory: desktop
-        env:
-          KADRAN_REQUIRE_SIDECAR: "1"
-        run: npm test
-      - run: npm run build
+        shell: bash
+        run: |
+          go vet -tags desktop,production ./...
+          go test -count=1 ./...
+      - name: golangci-lint (masaüstü modülü)
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: desktop
+          args: --build-tags desktop,production,smoke
+      - name: Duman testi (gerçek pencere, sahte sunucu)
         working-directory: desktop
-      - name: Uçtan uca (sahte sidecar)
-        working-directory: desktop
-        run: npm run e2e
+        run: node scripts/smoke.ts
       - name: Paket (imzasız)
         working-directory: desktop
         run: npm run dist
@@ -593,14 +600,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          d=dist/Kadran-win32-x64
-          for f in Kadran.exe resources/kadran.exe resources/THIRD_PARTY_NOTICES.txt resources/app.asar resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node; do
-            test -f "$d/$f" || { echo "::error::pakette yok: $f"; exit 1; }
+          for f in dist/Kadran.exe dist/THIRD_PARTY_NOTICES.txt; do
+            test -f "$f" || { echo "::error::pakette yok: $f"; exit 1; }
           done
-          # Windows camının köprüsü (koffi) dışında node_modules girmez.
-          if npx asar list "$d/resources/app.asar" | grep node_modules | grep -v koffi | grep -qvE 'node_modules([/\\]@koromix)?$'; then
-            echo "::error::app.asar koffi dışında node_modules taşıyor"; exit 1
-          fi
+          grep -q "github.com/wailsapp/wails/v2@" dist/THIRD_PARTY_NOTICES.txt || { echo "::error::Wails'in lisansı bildirimde yok"; exit 1; }
 
   # ══════════════════════════════════════════════════════════════════
   #  Değişiklik türü: hangi mutasyon betikleri koşacak?
@@ -744,8 +747,8 @@ jobs:
         with:
           python-version: '3.x'
 
-      # mutate-desktop.sh birim testlerini node ile koşuyor; Electron
-      # ikilisi gerekmiyor (indirme atlanıyor).
+      # mutate-desktop.sh arayüz testlerini node ile, masaüstünün Go
+      # paketlerini go test ile koşuyor (K-165); pencere açılmıyor.
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
@@ -753,8 +756,6 @@ jobs:
           cache-dependency-path: desktop/package-lock.json
       - name: Masaüstü bağımlılıkları
         working-directory: desktop
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         run: npm ci
 
       # mutate-kasa.sh geri dönüş betiğini gerçek sqlite3 ve age ile ölçüyor.

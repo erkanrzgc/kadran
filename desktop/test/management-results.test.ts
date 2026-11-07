@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { validateManagementResult } from "../src/main/management-results.ts";
+import { validateManagementResult } from "../src/renderer/lib/management-results.ts";
 test("typed management rejects valid JSON with wrong nested shapes", () => {
   for (const [method, value] of [
     ["apps.list", { apps: null }], ["apps.get", { app: {}, releases: [] }],

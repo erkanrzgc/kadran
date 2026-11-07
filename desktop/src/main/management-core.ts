@@ -15,7 +15,7 @@ import { cancelled } from "../shared/management.ts";
 import { requireTarget } from "./ipc-validate.ts";
 import { managementConfirmation, type ConfirmationOptions, type ConfirmRequest } from "./management-confirmation.ts";
 import { createManagementGate, requireAppId, requireAppPayload, requireConfirmation, requireRef, requireTail } from "./management-ipc.ts";
-import { validateManagementResult } from "./management-results.ts";
+import { validateManagementResult } from "../renderer/lib/management-results.ts";
 import { callForUi, type SidecarCall } from "./sidecar-error.ts";
 
 export interface ManagementDeps {

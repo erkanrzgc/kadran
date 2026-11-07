@@ -54,7 +54,7 @@ FILES=(
     src/renderer/lib/verification-state.ts
     src/main/management-core.ts
     src/main/management-ipc.ts
-    src/main/management-results.ts
+    src/renderer/lib/management-results.ts
     src/main/management-confirmation.ts
     src/main/management-payload.ts
     src/main/sidecar-error.ts
@@ -311,12 +311,12 @@ mutate_in src/main/management-core.ts "IPC payı sıfır (sidecar ile aynı anda
     "s=s.replace('const SIDECAR_MARGIN_MS = 60_000;','const SIDECAR_MARGIN_MS = 0;',1)"
 mutate_in src/main/management-core.ts "geri alma okuma süresiyle çağrılıyor" \
     "s=s.replace('return invoke(\"apps.rollback\", target, { app_id, confirmation }, LIFECYCLE_TIMEOUT_MS);','return invoke(\"apps.rollback\", target, { app_id, confirmation });',1)"
-mutate_in src/main/management-results.ts "validateManagementResult her şeyi geçiriyor" \
+mutate_in src/renderer/lib/management-results.ts "validateManagementResult her şeyi geçiriyor" \
     "s=s.replace('if (!valid)','if (false)',1)"
 mutate_in src/main/management-payload.ts "update'te null skaler geçiyor (kutu ile sunucu farklı anlar)" \
     "s=s.replace('if (nullKey !== undefined) throw','if (nullKey === \"never\") throw',1)"
 # Sidecar'ın iptal taklidi: sunucuda koşmuş iş "vazgeçildi" diye gösterilir.
-mutate_in src/main/management-results.ts "sidecar'ın {cancelled:true} yanıtı iptal sayılıyor" \
+mutate_in src/renderer/lib/management-results.ts "sidecar'ın {cancelled:true} yanıtı iptal sayılıyor" \
     "s=s.replace('  let valid = false;','  if (JSON.stringify(value) === JSON.stringify({ cancelled: true })) return value;\n  let valid = false;',1)"
 mutate_in src/renderer/lib/verification-state.ts "başarısız doğrulama kırık zincir kanıtını siliyor" \
     "s=s.replace('? previous : null','? null : null',1)"

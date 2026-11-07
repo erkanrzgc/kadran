@@ -12559,7 +12559,9 @@ Açık ve koyu Akriliğin parlak ve koyu masaüstünde yazı karşıtlığı: ku
 
 ## K-164 — Mutasyon işi beş parçada; Caddy alt modülü bütün betikleri koşturmuyor (2026-11-07)
 
-**Durum:** PR #32, açık. İlk CI koşusunda bir parça runner kapanmasıyla düştü (aşağıda, "CI'da ilk koşu"); düzeltme aynı PR'da.
+**Durum:** PR #32 → `b9e6e00`, main'de (7 Kasım). İlk CI koşusunda bir parça runner kapanmasıyla düştü
+(aşağıda, "CI'da ilk koşu"); düzeltildi, ikinci koşu 18/18 yeşil. Tam koşu 15 dk 53 sn (önce 1 sa 12–17 dk).
+Süre tablosu ikinci koşunun ölçümüyle yenilendi.
 
 ### Neden
 
@@ -12651,10 +12653,24 @@ kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozul
 - Ders (`go test -timeout` ile aynı): mutant sonsuz döngüye girebilir. Ölçen çağrının süresi sınırlı olmalı,
   yoksa mutant işi değil runner'ı öldürür.
 
+### CI'da ikinci koşu (run 42360594478, 7 Kasım)
+
+- 18/18 yeşil. Koşu 09:38:34 → 09:54:27, **15 dk 53 sn**.
+- Parça süreleri (iş, kurulum dahil): 1/5 11:46, 2/5 15:42, 3/5 12:11, 4/5 12:02, 5/5 14:03.
+- Proxywatch 331 sn (önce 1258). "Her zaman birebir" ve "hiç yüklemiyor" mutantları zaman aşımıyla
+  yaklaşık 2 dk'da yakalandı; taban sınırın altında kaldı.
+- `mutate-mutation-shard.sh` 7 sn, takılmadı.
+- **Tablo yanıldı:** ilk tablo (tek iş) masaüstünü 454 sanıyordu, beş parçada 618 çıktı. `mutate-servers.sh`
+  73 → 130, `mutate-totp.sh` 252 → 322 sn. Masaüstü parçası betiklerde 907 sn ile en uzunuydu. Eski
+  tabloyla bölünüp gerçek sürelerle hesaplanınca da 907 çıkıyor: ölçümle tutarlı.
+- Tablo bu koşunun ölçümüyle yenilendi (37 betik, `mutate-mutation-shard.sh` dahil). Toplam 3781 sn.
+  LPT en ağır parça: 4 parça 947 sn, 5 parça 757 sn (~12,6 dk), 6 parça 632 sn. Beş korundu.
+
 ### Açık
 
-- Yeni tam koşu süresi ölçülmedi: bu PR `ci.yml`'yi değiştirdiği için CI'da bütün betikler koşacak, ilk
-  ölçüm o.
-- `mutate-proxywatch.sh` 120 sn ile yerelde koşturulmadı; iki mutantın zaman aşımıyla
-  yakalandığı ve tabanın sınırın altında kaldığı CI'da görülecek. Süre tablosundaki 300 sn tahmin.
-- `mutate-mutation-shard.sh` tabloda yok (60 sn sayılıyor); ilk tam koşudan sonra tablo güncellenebilir.
+- Yeni tablonun getirdiği süre (beklenen: betiklerde ~757 sn + ~1 dk kurulum) bir sonraki tam koşuda
+  görülecek.
+- Altı parça en ağır parçayı ~2 dk daha kısaltır (masaüstü tek başına 618). Bir koşucu daha demek;
+  denenmedi.
+- Masaüstü 454 → 618 sn (+%36) farkının sebebi ölçülmedi. İlk ölçüm (PR #31) K-163 birleşmeden önceydi;
+  K-163 masaüstü mutantlarını artırdı. Paralel koşu da etkili olabilir.

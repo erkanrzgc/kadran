@@ -86,8 +86,12 @@ if [ "$n" -gt "$k" ]; then
     n="$k"
 fi
 
+# int(n): yukarıdaki denetim atlanırsa (mutasyon) `x` dize olarak kıyaslanır,
+# `p <= n` hiç yanlış olmaz ve döngü belleği bitirir. CI'da runner böyle
+# kapandı (K-164); sayıya zorlanınca döngü hiç dönmez.
 sureli <<<"$betikler" | sort -k1,1nr -k2,2 |
-    awk -v n="$n" '{
+    awk -v n="$n" 'BEGIN { n = int(n) }
+        {
             en = 1
             for (p = 2; p <= n; p++) if (yuk[p] < yuk[en]) en = p
             yuk[en] += $1

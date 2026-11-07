@@ -14,15 +14,19 @@ no() { echo "  ✗ $1"; fail=1; }
 
 hepsi="$(git ls-files 'scripts/mutate-*.sh' | LC_ALL=C sort)"
 
+# Her çağrı süreyle sınırlı: bir mutant parçalayıcıyı sonsuz döngüye soktu ve
+# CI runner'ı belleği bitince kapandı (K-164). Takılan çağrı 124 döner.
+parcalayici() { timeout 10 bash "$P" "$@"; }
+
 # parcala <n> <girdi>: düşerse "DÜŞTÜ" basar, birleşim denetimi yakalar.
-parcala() { printf '%s\n' "$2" | bash "$P" "$1" 2>/dev/null || echo "DÜŞTÜ"; }
+parcala() { printf '%s\n' "$2" | parcalayici "$1" 2>/dev/null || echo "DÜŞTÜ"; }
 
 birlesim() { printf '%s\n' $1 | LC_ALL=C sort; }
 
 # Satırlar borudan sayılıyor: `$(…)` sondaki boş satırları siler, sondaki
 # boş parçalar görünmez olurdu (mutate-mutation-shard.sh bunu buldu).
 # ham_say <n> <girdi> <desen>
-ham_say() { printf '%s\n' "$2" | bash "$P" "$1" 2>/dev/null | grep -c "$3"; }
+ham_say() { printf '%s\n' "$2" | parcalayici "$1" 2>/dev/null | grep -c "$3"; }
 
 # tam <ad> <n> <girdi> <beklenen parça sayısı>
 tam() {
@@ -64,7 +68,7 @@ enagir=0
 while IFS= read -r parca; do
     yuk=0
     for b in $parca; do
-        w="$(bash "$P" --agirlik "$b" 2>/dev/null)"
+        w="$(parcalayici --agirlik "$b" 2>/dev/null)"
         if ! [[ "$w" =~ ^[0-9]+$ ]]; then
             no "süresi okunamadı: $b"
             w=0
@@ -82,12 +86,21 @@ if [ "$toplam" -gt 0 ] && [ $((enagir * 3)) -le $((alt * 4)) ]; then
 else
     no "en ağır parça ${enagir} sn, sınır $((alt * 4 / 3)) sn"
 fi
-w="$(bash "$P" --agirlik scripts/mutate-yeni.sh 2>/dev/null)"
+w="$(parcalayici --agirlik scripts/mutate-yeni.sh 2>/dev/null)"
 if [[ "$w" =~ ^[0-9]+$ ]] && [ "$w" -gt 0 ]; then ok "ölçülmemiş betiğin süresi sıfır değil"; else no "ölçülmemiş betiğin süresi sıfır değil"; fi
 
 echo "== Geçersiz parça sayısı düşer =="
 for n in 0 -1 x ""; do
-    if printf 'scripts/mutate-env.sh\n' | bash "$P" "$n" >/dev/null 2>&1; then no "parça sayısı '$n' kabul edildi"; else ok "parça sayısı '$n' reddedildi"; fi
+    printf 'scripts/mutate-env.sh\n' | parcalayici "$n" >/dev/null 2>&1
+    rc=$?
+    # Zaman aşımı ret sayılmaz: takılan bir parçalayıcı yeşil geçerdi.
+    if [ "$rc" -eq 124 ]; then
+        no "parça sayısı '$n' takıldı (zaman aşımı)"
+    elif [ "$rc" -eq 0 ]; then
+        no "parça sayısı '$n' kabul edildi"
+    else
+        ok "parça sayısı '$n' reddedildi"
+    fi
 done
 
 echo

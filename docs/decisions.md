@@ -12559,7 +12559,7 @@ Açık ve koyu Akriliğin parlak ve koyu masaüstünde yazı karşıtlığı: ku
 
 ## K-164 — Mutasyon işi beş parçada; Caddy alt modülü bütün betikleri koşturmuyor (2026-11-07)
 
-**Durum:** dalda, push edilmedi; CI'da henüz koşmadı.
+**Durum:** PR #32, açık. İlk CI koşusunda bir parça runner kapanmasıyla düştü (aşağıda, "CI'da ilk koşu"); düzeltme aynı PR'da.
 
 ### Neden
 
@@ -12632,6 +12632,24 @@ kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozul
   Parçadaki boş liste koruması `""` ve `" "` ile düştü, tek betikle geçti.
 - `go.work` ya da kök `go.mod`'a `replace example.com/x => ./build/caddy` eklenince
   `check-mutation-select.sh` ikisinde de düştü; dosyalar geri alındı.
+
+### CI'da ilk koşu (run 42359170910, 7 Kasım)
+
+- Mutasyon dışı 13 iş yeşil; matris beş parça açtı, adlar `Mutasyon 1/5` … `5/5`. Parça 4/5 yeşil, 10 dk 52 sn.
+- **Parça 3/5 runner kapanmasıyla düştü** (çıkış 143, "The runner has received a shutdown signal").
+  Ölüm anı `mutate-mutation-shard.sh`'ın "geçersiz parça sayısı kabul ediliyor" mutantıydı:
+  - Doğrulama kaldırılınca `-v n=x` awk'ta dize olarak kıyaslanıyor, `p <= n` hiç yanlış olmuyor.
+  - Döngü her turda `yuk[p]` öğesi yaratıp belleği bitiriyor.
+  - Yerelde yeniden üretildi: gawk da busybox awk da dönmüyor, `timeout 3` ile 124. İlk yerel 9/9'da bu
+    mutant da "yakalandı" görünmüştü; sebebi ölçülmedi (tahmin: bellek tükenip awk düştü).
+- Düzeltme iki katlı:
+  - Parçalayıcı awk'ta `n = int(n)`: doğrulama atlanırsa döngü hiç dönmüyor.
+  - Denetim her parçalayıcı çağrısını `timeout 10` ile koşuyor. "Geçersiz parça sayısı" testinde zaman
+    aşımı (124) ret değil kırmızı sayılıyor: takılan parçalayıcı yeşil geçmesin.
+  - Yerelde: eski mutant "takıldı" ile kırmızı, yeni mutant "kabul edildi" ile kırmızı;
+    `mutate-mutation-shard.sh` yine 9/9, 3 dk 35 sn.
+- Ders (`go test -timeout` ile aynı): mutant sonsuz döngüye girebilir. Ölçen çağrının süresi sınırlı olmalı,
+  yoksa mutant işi değil runner'ı öldürür.
 
 ### Açık
 

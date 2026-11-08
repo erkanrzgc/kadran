@@ -12715,7 +12715,7 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
   - Sınır: Wails bağlama çağrılarını yalnız uygulamanın kökeninden kabul ediyor (kaynak doğrulaması). Uzak sayfa Go yöntemlerine ulaşamıyor. CSP aynı kalıyor.
 - **`window.runtime`:** ele geçmiş bir renderer pencereyi küçültüp kapatabilir ve varsayılan tarayıcıda bir http(s) adresi açabilir (`BrowserOpenURL`). Electron'da yalnız https bağlantısı, kullanıcı tıklayınca açılıyordu. Kabul edildi.
 - **Eski göçler taşınmıyor:** `panely-desktop` profilleri (K-136) ve `profiles.json` → `servers.json` aktarımı (K-162).
-  - Masaüstü hiçbir sürümde dağıtılmadı. Tek kurulumda aktarım 6 Kasım'da bitti (`servers-imported` işareti var).
+  - Masaüstü hiçbir sürümde dağıtılmadı. Tek kurulumda aktarım 6 Kasım'da koştu (`servers-imported` işareti var), ama aktaracak profil bulmadı (aşağıda, 8 Kasım).
   - Bu benim kararım.
 
 **Duman testi:** Electron'daki yolculuk (`smoke.ts`) korunuyor (`desktop/test/smoke/journey.ts`, koşucu `desktop/scripts/smoke.ts`).
@@ -12729,11 +12729,24 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 
 **Ölçütler, taşımadan sonra (7 Kasım, bu bilgisayar):**
 - Paket 18,6 MB ✓ (bütçe ≤ 20).
-- Boşta özel bellek, 5 sahte sunucu, 60/75/90. saniye: 280,0 / 278,7 / 279,0 MB ✗ (bütçe ≤ 250).
+- Boşta özel bellek, 5 sahte sunucu, 60/75/90. saniye: 280,0 / 278,7 / 279,0 MB ✓ (bütçe ≤ 300; 7 Kasım'da ≤ 250'ye göre ✗ idi).
   - Kadran'ın kendi süreci 59 MB, kalanı 7 WebView2 süreci. Sahte sunucunun Node süreci gerçek uygulamada yok, toplama girmedi.
   - Duman ikilisiyle ölçüldü: cam kapalı, dağıtıcı yerine sahte sunucu istemcisi. Deneme 261–268 MB'tı (gRPC istemcisi yoktu); Electron aynı veriyle ~303 MB.
-  - Bütçeyi değiştirmek ya da düşürmek için iş açmak kullanıcının kararı.
-- Odak gidince cam: gerçek pencerede kullanıcı denemesi bekliyor (duman ikilisi camsız açılıyor).
+  - **Bütçe 300 MB (kullanıcı, 8 Kasım):** "279 kabul gibi ya 300'ü geçmesin".
 - Mutasyon: `mutate-desktop.sh` 101/101 yakalandı (41 arayüz, 60 Go).
+
+**Gerçek pencerede deneme (8 Kasım, bu bilgisayar):**
+- **Cam bozuktu, düzeltildi.** Kullanıcı açık temada çerçevede cam görmedi. Koyu temada odaklanınca camın üstüne koyu bir örtü geliyordu.
+  - Sebep: çerçevesiz pencerede Wails'in çerçeve süsü (`framelessWithDecorations`). Wails her `WM_ACTIVATE`'te `DwmExtendFrameIntoClientArea(1,1,1,1)` çağırıyor; Akrilik düz tona dönüyor. K-163'te Electron'da ölçülen bozulmanın aynısı.
+  - Odak hiç almamış pencerede cam vardı; odak alınca gidiyordu. Pencereye `WM_ACTIVATE` göndermek de bozuyordu.
+  - Düzeltme: cam varken `DisableFramelessWindowDecorations` (`windowOptions`, `desktop/main_windows.go`). Kullanıcı yeni derlemede iki temada, odakta ve odak dışında baktı: "duruyor cam".
+  - Wails'e göre süs gölge ve yuvarlak köşe veriyor; cam ayrıca DWM'den yuvarlak köşe istiyor. Süs kapalıyken gölge ve köşe ölçülmedi.
+  - Test: `main_windows_test.go`, eski kodda kırmızı. Windows'a özgü olduğu için Linux'taki mutasyon işine girmiyor; Windows CI'daki `go test ./...` koşuyor.
+- **Konsol penceresi yok.** Gerçek uygulama, iki gerçek sunucuyla açıldı; iki `ssh.exe` çalıştı ve yeni görünür pencere yalnız Kadran'ınki oldu.
+  - Ölçüm kontrolle doğrulandı: aynı betik, kısa süre açık kalan bir `ping` için Terminal ile `PseudoConsoleWindow` penceresini yakaladı.
+- **Onay kutusu:** yerleşim artık ayrı bir işlevde (`layout`, `accepted`) ve testli. Varsayılan düğme Vazgeç, Esc açık, yalnız eylem düğmesi onay sayılıyor.
+  - Üç mutant yakalandı: varsayılan düğme eylem, Esc bayrağı yok, Vazgeç dışındaki her dönüş onay.
+  - Gerçek pencerede kutu henüz açılmadı: iki sunucu da TOTP girişi istiyor (`kadran login`). Sürükleme de kullanıcıda.
+- **Sunucu listesi boştu.** `%APPDATA%\kadran\servers.json` hiç yoktu. 6 Kasım'daki aktarım `profiles.json` bulamamış, yalnız `servers-imported` işaretini yazmış. 8 Kasım'da iki sunucu CLI ile eklendi (`kadran server add`).
 
 **Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.

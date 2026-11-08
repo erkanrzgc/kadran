@@ -12746,7 +12746,8 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
   - Ölçüm kontrolle doğrulandı: aynı betik, kısa süre açık kalan bir `ping` için Terminal ile `PseudoConsoleWindow` penceresini yakaladı.
 - **Onay kutusu:** yerleşim artık ayrı bir işlevde (`layout`, `accepted`) ve testli. Varsayılan düğme Vazgeç, Esc açık, yalnız eylem düğmesi onay sayılıyor.
   - Üç mutant yakalandı: varsayılan düğme eylem, Esc bayrağı yok, Vazgeç dışındaki her dönüş onay.
-  - Gerçek pencerede kutu henüz açılmadı: iki sunucu da TOTP girişi istiyor (`kadran login`). Sürükleme de kullanıcıda.
+  - Gerçek pencerede (Hetzner, `kadran login` sonrası): uyarı simgeli kutu, "Create a backup now?", düğmeler Cancel ve Create backup, Cancel varsayılan. Kullanıcı Cancel, Esc ve Enter'la kapattı. Sunucunun yedek listesinde yeni kayıt yok; en yenisi saatlik zamanlayıcının, saniyesine kadar aynı düzende.
+- **Sürükleme:** kullanıcı başlık çubuğundan sürükledi ("tamam yaptım").
 - **Sunucu listesi boştu.** `%APPDATA%\kadran\servers.json` hiç yoktu. 6 Kasım'daki aktarım `profiles.json` bulamamış, yalnız `servers-imported` işaretini yazmış. 8 Kasım'da iki sunucu CLI ile eklendi (`kadran server add`).
 
 **Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.

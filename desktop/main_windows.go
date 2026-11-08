@@ -94,10 +94,6 @@ func run() error {
 		Warn:       warn,
 	})
 
-	theme := windows.Light
-	if look.Scheme == "dark" {
-		theme = windows.Dark
-	}
 	bg := look.Background
 	return wails.Run(&options.App{
 		Title:            "KΛDRΛN",
@@ -120,14 +116,30 @@ func run() error {
 		},
 		// Pencereye bırakılan dosya WebView'i o dosyaya götürürdü.
 		DragAndDrop: &options.DragAndDrop{DisableWebViewDrop: true},
-		Windows: &windows.Options{
-			// Cam yalnız SetWindowCompositionAttribute'tan (Electron'daki gibi);
-			// Wails'in yarı saydam penceresi kapalı (6 Kasım denemesi).
-			WebviewIsTransparent: material != appearance.None,
-			WindowIsTranslucent:  false,
-			BackdropType:         windows.None,
-			Theme:                theme,
-			WebviewUserDataPath:  filepath.Join(userData, "WebView2"),
-		},
+		Windows:     windowOptions(look, userData),
 	})
+}
+
+// windowOptions, pencerenin Windows'a özgü ayarları.
+//
+// Cam yalnız SetWindowCompositionAttribute'tan (Electron'daki gibi); Wails'in
+// yarı saydam penceresi kapalı (6 Kasım denemesi). Camlı pencerede Wails'in
+// çerçeve süsü de kapalı: süs için her odaklanmada
+// DwmExtendFrameIntoClientArea çağırıyor ve bu Akriliği düz tona çeviriyor
+// (K-163'te Electron'da ölçüldü; 8 Kasım'da gerçek pencerede açık temada
+// çerçeve opak kaldı, süs kapalıyken iki temada da cam geldi).
+func windowOptions(look appearance.WindowLook, userData string) *windows.Options {
+	glass := look.Material != appearance.None
+	theme := windows.Light
+	if look.Scheme == "dark" {
+		theme = windows.Dark
+	}
+	return &windows.Options{
+		WebviewIsTransparent:              glass,
+		DisableFramelessWindowDecorations: glass,
+		WindowIsTranslucent:               false,
+		BackdropType:                      windows.None,
+		Theme:                             theme,
+		WebviewUserDataPath:               filepath.Join(userData, "WebView2"),
+	}
 }

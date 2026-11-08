@@ -55,11 +55,30 @@ func Confirm(owner windows.HWND, box Box) (bool, error) {
 		}
 		texts = append(texts, p)
 	}
-	title, message, detail, cancel, action := texts[0], texts[1], texts[2], texts[3], texts[4]
+	mem := layout(owner, texts)
 
-	// Yapı ve düğmeler TEK blokta: blok çağrıya uintptr olarak gider ve
-	// LazyProc.Call (go:uintptrescapes) yüzünden yığında değil heap'te
-	// durur; düğmelerin adresi çağrı boyunca değişmez.
+	// Kutu kendi ileti döngüsünü bu iş parçacığında döndürür.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var pressed int32
+	hr, _, _ := taskDialogIndirect.Call(uintptr(unsafe.Pointer(&mem[0])), uintptr(unsafe.Pointer(&pressed)), 0, 0)
+	runtime.KeepAlive(texts)
+	runtime.KeepAlive(mem)
+	if int32(hr) < 0 {
+		return false, fmt.Errorf("the confirmation dialog failed: 0x%x", uint32(hr))
+	}
+	return accepted(pressed), nil
+}
+
+// accepted: onay yalnız eylem düğmesi. Esc ve kapatma IDCANCEL (2) döner.
+func accepted(pressed int32) bool { return pressed == buttonAction }
+
+// layout, TASKDIALOGCONFIG ve iki düğme; texts sırası başlık, ileti,
+// ayrıntı, vazgeç, eylem. Yapı ve düğmeler TEK blokta: blok çağrıya uintptr
+// olarak gider ve LazyProc.Call (go:uintptrescapes) yüzünden yığında değil
+// heap'te durur; düğmelerin adresi çağrı boyunca değişmez.
+func layout(owner windows.HWND, texts []*uint16) []byte {
+	title, message, detail, cancel, action := texts[0], texts[1], texts[2], texts[3], texts[4]
 	mem := make([]byte, taskDialogConfigSize+2*taskDialogButtonSize)
 	cfg, buttons := mem[:taskDialogConfigSize], mem[taskDialogConfigSize:]
 	le := binary.LittleEndian
@@ -81,16 +100,5 @@ func Confirm(owner windows.HWND, box Box) (bool, error) {
 	le.PutUint32(cfg[60:], 2)
 	le.PutUint64(cfg[64:], uint64(uintptr(unsafe.Pointer(&buttons[0]))))
 	le.PutUint32(cfg[72:], buttonCancel) // varsayılan düğme: Vazgeç
-
-	// Kutu kendi ileti döngüsünü bu iş parçacığında döndürür.
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	var pressed int32
-	hr, _, _ := taskDialogIndirect.Call(uintptr(unsafe.Pointer(&mem[0])), uintptr(unsafe.Pointer(&pressed)), 0, 0)
-	runtime.KeepAlive(texts)
-	runtime.KeepAlive(mem)
-	if int32(hr) < 0 {
-		return false, fmt.Errorf("the confirmation dialog failed: 0x%x", uint32(hr))
-	}
-	return pressed == buttonAction, nil
+	return mem
 }

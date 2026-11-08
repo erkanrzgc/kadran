@@ -11,6 +11,7 @@
 import type { Appearance, Material } from "../shared/appearance.ts";
 import { isCancelled, type Cancellable } from "../shared/management.ts";
 import { validateManagementResult } from "./lib/management-results.ts";
+import { parseResources, type ResourceSnapshot } from "./lib/resources.ts";
 import type { AuditListPayload, StatusPayload, VerifyPayload, VersionPayload } from "./lib/types.ts";
 import type { AppSpec, AppUpdate, AppsListPayload, AppGetPayload, AppWritePayload, AppDeletePayload, RollbackPayload, DeployPayload, LogsPayload, AlarmsPayload, BackupsPayload, BackupCreatePayload } from "./lib/types.ts";
 
@@ -33,6 +34,8 @@ export interface KadranBridge {
   readonly platform: string;
   version(): Promise<VersionPayload>;
   status(target: string): Promise<StatusPayload>;
+  /** Canlı kaynak kullanımı (K-166); biçim denetlenmiş anlık görüntü. */
+  resources(target: string, includeApps: boolean): Promise<ResourceSnapshot>;
   auditList(target: string, afterSeq: number, limit: number): Promise<AuditListPayload>;
   auditVerify(target: string): Promise<VerifyPayload>;
   appsList(target: string): Promise<AppsListPayload>;
@@ -62,6 +65,7 @@ export interface KadranBridge {
 interface GoBridge {
   Version(): Promise<unknown>;
   Status(target: string): Promise<unknown>;
+  ResourceUsage(target: string, includeApps: boolean): Promise<unknown>;
   AuditList(target: string, afterSeq: number, limit: number): Promise<unknown>;
   AuditVerify(target: string): Promise<unknown>;
   AppsList(target: string): Promise<unknown>;
@@ -122,6 +126,7 @@ export const bridge: KadranBridge = {
   platform: platformOf(navigator.userAgent),
   version: () => call((go) => go.Version()),
   status: (target) => call((go) => go.Status(target)),
+  resources: (target, includeApps) => call<unknown>((go) => go.ResourceUsage(target, includeApps)).then(parseResources),
   auditList: (target, afterSeq = 0, limit = 50) => call((go) => go.AuditList(target, afterSeq, limit)),
   auditVerify: (target) => call((go) => go.AuditVerify(target)),
   appsList: (target) => managed("apps.list", (go) => go.AppsList(target)),

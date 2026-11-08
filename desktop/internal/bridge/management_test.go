@@ -308,15 +308,16 @@ func TestDispatcherErrorReachesUIRedacted(t *testing.T) {
 	failure := &sidecar.Error{Code: sidecar.CodeInternalError, Message: "call failed", Data: "clone https://user:hunter2@git.example/x.git failed" + string(rune(0x202e)) + ": ghp_abcdef123456"}
 	want := "call failed: clone https://***@git.example/x.git failed: ***"
 	calls := map[string]func(b *Bridge) (any, error){
-		"Status":      func(b *Bridge) (any, error) { return b.Status(target) },
-		"AuditList":   func(b *Bridge) (any, error) { return b.AuditList(target, json.RawMessage(`0`), json.RawMessage(`50`)) },
-		"AuditVerify": func(b *Bridge) (any, error) { return b.AuditVerify(target) },
-		"AppsList":    func(b *Bridge) (any, error) { return b.AppsList(target) },
-		"AppGet":      func(b *Bridge) (any, error) { return b.AppGet(target, "blog") },
-		"AppLogs":     func(b *Bridge) (any, error) { return b.AppLogs(target, "blog", 100) },
-		"AlarmsList":  func(b *Bridge) (any, error) { return b.AlarmsList(target) },
-		"BackupsList": func(b *Bridge) (any, error) { return b.BackupsList(target) },
-		"Version":     func(b *Bridge) (any, error) { return b.Version() },
+		"Status":        func(b *Bridge) (any, error) { return b.Status(target) },
+		"ResourceUsage": func(b *Bridge) (any, error) { return b.ResourceUsage(target, true) },
+		"AuditList":     func(b *Bridge) (any, error) { return b.AuditList(target, json.RawMessage(`0`), json.RawMessage(`50`)) },
+		"AuditVerify":   func(b *Bridge) (any, error) { return b.AuditVerify(target) },
+		"AppsList":      func(b *Bridge) (any, error) { return b.AppsList(target) },
+		"AppGet":        func(b *Bridge) (any, error) { return b.AppGet(target, "blog") },
+		"AppLogs":       func(b *Bridge) (any, error) { return b.AppLogs(target, "blog", 100) },
+		"AlarmsList":    func(b *Bridge) (any, error) { return b.AlarmsList(target) },
+		"BackupsList":   func(b *Bridge) (any, error) { return b.BackupsList(target) },
+		"Version":       func(b *Bridge) (any, error) { return b.Version() },
 	}
 	for _, m := range mutations() {
 		calls[m.name] = func(b *Bridge) (any, error) { return m.run(b, target) }
@@ -337,5 +338,27 @@ func TestAuditListParamsAreLenient(t *testing.T) {
 	}
 	if p := hs.d.calls[0].params; p["after_seq"] != float64(0) || p["limit"] != float64(20) {
 		t.Fatalf("%+v", p)
+	}
+}
+
+// Canlı kaynak kullanımı (K-166): okuma, kapı yok; include_apps geçer.
+func TestResourceUsagePassesIncludeApps(t *testing.T) {
+	hs := newHarness(t, true)
+	for _, include := range []bool{false, true} {
+		if _, err := hs.b.ResourceUsage(target, include); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if hs.d.count() != 2 || hs.h.boxCount() != 0 {
+		t.Fatalf("çağrı %d, kutu %d", hs.d.count(), hs.h.boxCount())
+	}
+	for i, include := range []bool{false, true} {
+		c := hs.d.calls[i]
+		if c.method != "resources" || c.params["target"] != target || c.params["include_apps"] != include {
+			t.Fatalf("%d. çağrı %s %+v", i, c.method, c.params)
+		}
+	}
+	if _, err := hs.b.ResourceUsage("-oProxyCommand=x", false); err == nil || hs.d.count() != 2 {
+		t.Fatal("geçersiz hedef çağrıya ulaştı")
 	}
 }

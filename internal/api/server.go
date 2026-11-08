@@ -23,6 +23,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/deploy"
 	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/hostmetrics"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/pbconv"
 	"github.com/erkanrzgc/kadran/internal/store"
@@ -40,6 +41,7 @@ type Server struct {
 	reconciler  Reconciler
 	coordinator *deploy.Coordinator
 	alarms      Alarms
+	host        HostMetrics
 	// now, TOTP adımlarının ve jeton sürelerinin saati; testler sabitler.
 	now       func() time.Time
 	startedAt time.Time
@@ -52,6 +54,13 @@ type Server struct {
 type Alarms interface {
 	Raise(ctx context.Context, a store.Alarm)
 	Clear(ctx context.Context, id string)
+}
+
+// HostMetrics, hostun kaynak sayaçları (K-166); hostmetrics.Reader
+// karşılıyor. Arayüz testler için: gerçek /proc her makinede başka.
+type HostMetrics interface {
+	Read() *kadranv1.HostUsage
+	Memory() (total, available uint64, ok bool)
 }
 
 // Executor, kadrand'nin ayrıcalıklı executor'dan ihtiyaç duyduğu yüzeydir.
@@ -70,6 +79,8 @@ type Executor interface {
 	ReadJournal(ctx context.Context, afterSeq uint64, limit uint32) (execclient.JournalPage, error)
 	ImageBuild(ctx context.Context, req *kadranv1.ImageBuildRequest, sink execclient.BuildSink) (string, error)
 	ContainerLogs(ctx context.Context, opts execclient.LogOptions, sink execclient.LogSink) error
+	// ContainerStats, çalışan Kadran konteynerlerinin sayaçları (K-166).
+	ContainerStats(ctx context.Context) ([]*kadranv1.ContainerUsage, error)
 
 	// Aşağıdaki üçü YALNIZCA silme yolunda kullanılıyor.
 	//
@@ -114,6 +125,9 @@ type ServerOptions struct {
 	// İsteğe bağlı: TOTP kilidini ve kurtarma kodu kullanımını bildirir
 	// (K-155). kadrand gerçek yöneticiyi veriyor.
 	Alarms Alarms
+
+	// İsteğe bağlı: hostun sayaçları. Nil ise hostmetrics.Default().
+	Host HostMetrics
 }
 
 // Rollout, derlenmiş bir sürümü ayağa kaldırıp trafiği ona çevirir.
@@ -168,7 +182,12 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		runAs = u.Username
 	}
 
+	if opts.Host == nil {
+		opts.Host = hostmetrics.Default()
+	}
+
 	return &Server{
+		host:        opts.Host,
 		store:       opts.Store,
 		exec:        opts.Executor,
 		rollout:     opts.Rollout,
@@ -268,6 +287,12 @@ func (s *Server) GetSystemInfo(ctx context.Context, _ *kadranv1.GetSystemInfoReq
 	resp.ExecutorVersion = ping.Version
 
 	if host, err := s.exec.HostInfo(ctx); err == nil {
+		// Bellek executor'dan gelmiyor: o birimde ProcSubset=pid var ve
+		// /proc/meminfo görünmüyor (K-166). Okunamazsa alan 0 kalır ve
+		// istemci satırı göstermez; değer uydurulmaz.
+		if total, available, ok := s.host.Memory(); ok {
+			host.MemoryTotalBytes, host.MemoryAvailableBytes = total, available
+		}
 		resp.Host = host
 	}
 	return resp, nil

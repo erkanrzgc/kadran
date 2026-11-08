@@ -8,7 +8,6 @@ import (
 	"context"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"golang.org/x/sys/unix"
@@ -34,9 +33,10 @@ func collectHostInfo(ctx context.Context, probe *dockerdrv.Client) *kadranv1.Hos
 		info.Architecture = nullTerminated(uts.Machine[:])
 	}
 
-	total, available := readMemInfo()
-	info.MemoryTotalBytes = total
-	info.MemoryAvailableBytes = available
+	// Bellek burada OKUNMUYOR: bu birimde ProcSubset=pid var ve
+	// /proc/meminfo görünmüyor. Okuma kodu yıllarca sessizce 0 döndü
+	// (K-166); alanları artık yetkisiz kadrand dolduruyor
+	// (internal/hostmetrics). Ayrıcalıklı yüzey bir okuyucu kadar küçüldü.
 
 	// Disk: durum dizinini taşıyan dosya sistemi. Gerekçe common.proto'da.
 	//
@@ -90,48 +90,4 @@ func readOSPrettyName() string {
 		return strings.Trim(value, `"`)
 	}
 	return runtime.GOOS
-}
-
-// readMemInfo, /proc/meminfo'dan toplam ve kullanılabilir belleği okur.
-//
-// MemAvailable, MemFree'den daha anlamlıdır: çekirdeğin geri
-// kazanabileceği önbelleği de hesaba katar. Kaynak kotası kararlarında
-// bakılması gereken değer budur.
-func readMemInfo() (total, available uint64) {
-	f, err := os.Open("/proc/meminfo")
-	if err != nil {
-		return 0, 0
-	}
-	defer func() { _ = f.Close() }()
-
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		key, value, ok := strings.Cut(sc.Text(), ":")
-		if !ok {
-			continue
-		}
-		switch key {
-		case "MemTotal":
-			total = parseKilobytes(value)
-		case "MemAvailable":
-			available = parseKilobytes(value)
-		}
-		if total > 0 && available > 0 {
-			break
-		}
-	}
-	return total, available
-}
-
-// parseKilobytes, "  16316420 kB" biçimindeki değeri bayta çevirir.
-func parseKilobytes(s string) uint64 {
-	fields := strings.Fields(s)
-	if len(fields) == 0 {
-		return 0
-	}
-	kb, err := strconv.ParseUint(fields[0], 10, 64)
-	if err != nil {
-		return 0
-	}
-	return kb * 1024
 }

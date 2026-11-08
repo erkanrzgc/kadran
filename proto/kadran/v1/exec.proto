@@ -98,6 +98,10 @@ service ExecutorService {
   // ContainerList, Kadran'ın yönettiği konteynerleri sayar. Salt okunur.
   rpc ContainerList(ContainerListRequest) returns (ContainerListResponse);
 
+  // ContainerStats, Kadran'ın yönettiği ÇALIŞAN konteynerlerin kaynak
+  // sayaçlarını döner. Salt okunur (K-166).
+  rpc ContainerStats(ContainerStatsRequest) returns (ContainerStatsResponse);
+
   // ContainerLogs, bir replikanın çıktısını akıtır.
   rpc ContainerLogs(ContainerLogsRequest) returns (stream ContainerLogsResponse);
 
@@ -307,6 +311,46 @@ message ManagedContainer {
   // hedefi bu değerden KURULUR; çağıranın verdiği bir dizeden değil
   // (docs/decisions.md K-050'nin yükümlülüğü).
   string ip_address = 4;
+}
+
+// ContainerStatsRequest boş: kadrand bütün uygulamaları birlikte gösterir,
+// süzme istemcide. Seçici yok, çünkü sayılar zaten yalnız Kadran'ın
+// etiketlediği konteynerlerden geliyor.
+message ContainerStatsRequest {}
+
+message ContainerStatsResponse {
+  repeated ContainerUsage containers = 1;
+}
+
+// ContainerUsage, bir replikanın Docker'dan okunan sayaçları (K-166).
+//
+// ── Neden yeni bir YETKİ değil ───────────────────────────────────
+//
+// Sayılar salt okunur ve konteyner kimliği yanıtta YOK: replika yine
+// etiket üçlüsüyle (ContainerRef) adlandırılıyor. Ele geçirilmiş bir
+// kadrand bundan "hangi uygulama ne kadar kullanıyor"u öğrenir; hiçbir
+// konteynere işaret edemez, hiçbir şey yaptıramaz.
+//
+// Sayaçlar KÜMÜLATİF: hızı (CPU %, bayt/sn) istemci iki ölçümün farkından
+// hesaplıyor. Konteyner yeniden başlarsa sayaçlar sıfırlanır; istemci
+// geri giden sayacı "bilinmiyor" sayar.
+message ContainerUsage {
+  ContainerRef ref = 1;
+  // Toplam CPU zamanı, nanosaniye.
+  uint64 cpu_usage_ns = 2;
+  // Kullanılan bellek: Docker'ın `usage` değerinden `inactive_file`
+  // çıkarılmış hali (docker stats ile aynı hesap).
+  uint64 memory_bytes = 3;
+  // Docker'ın bildirdiği sınır. Sınır konmamışsa hostun belleğidir.
+  uint64 memory_limit_bytes = 4;
+  // Bütün ağ arayüzlerinin toplamı.
+  uint64 net_rx_bytes = 5;
+  uint64 net_tx_bytes = 6;
+  // Blok cihazlardan okunan ve yazılan bayt.
+  uint64 disk_read_bytes = 7;
+  uint64 disk_write_bytes = 8;
+  // Görev sayısı (iş parçacıkları dahil; docker stats'taki PIDS).
+  uint32 tasks = 9;
 }
 
 enum ContainerState {

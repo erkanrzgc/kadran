@@ -81,7 +81,11 @@ ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
 ProtectProc=invisible
-ProcSubset=pid
+# ProcSubset=pid YOK (K-166): kadrand hostun sayaçlarını /proc/stat,
+# meminfo, loadavg, net/dev, diskstats ve pressure'dan okuyor. Bunlar
+# herhangi bir yerel kullanıcının okuyabildiği dosyalar; root gerekmiyor.
+# ProtectProc=invisible duruyor: başka kullanıcıların süreçleri görünmez.
+# Executor'da ProcSubset=pid kalıyor (cmd/kadrand/procsubset_test.go).
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes

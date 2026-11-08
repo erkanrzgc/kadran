@@ -142,7 +142,19 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # daemon.json yazmak (bootstrap, K-150) — operatörün kendi daemon.json'u varsa
 # havuz sabitlenmiyor ve sessiz bozulma geri geliyor. Yanıt tipi adsız yapı,
 # alan etiketsiz: +40'tan +34'e indi.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2925}"
+# ── 2925 → 2990: uygulama başına kaynak sayaçları (K-166), kullanıcı kararı ──
+# Ölçüm önce: 2920 → 2982 (+62). Executor, Kadran'ın etiketlediği ÇALIŞAN
+# konteynerlerin Docker istatistiğini tek seferlik okuyor (dockerdrv/stats.go)
+# ve yalnız sayıları ContainerRef ile döndürüyor (exec/stats.go); kimlik
+# yanıtta yok. Aynı işte çalışmayan bellek okuyucusu ÇIKTI: birimde
+# ProcSubset=pid var, /proc/meminfo görünmüyor, hep 0 dönüyordu (~30 satır
+# geri). Host sayaçları executor'a hiç girmedi; yetkisiz kadrand okuyor
+# (internal/hostmetrics). Küçültme seçenekleri tartıldı: (1) cgroup
+# dosyalarını kadrand okusun — konteyner kimliğini kadrand'ye vermek
+# gerekiyor (container_id yasak alan), reddedildi. (2) Uygulama başına
+# CgroupParent dilimi — systemd '-' ile iç içe geçiriyor (my uygulaması
+# my-api'yi de sayardı) ve cgroup_parent yasak alan, reddedildi.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2990}"
 
 fail=0
 note_failure() {

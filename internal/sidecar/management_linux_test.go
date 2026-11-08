@@ -39,6 +39,13 @@ type desktopAPIFixture struct {
 	commit    string
 	tail      uint32
 	pingDelay time.Duration
+	// includeApps, GetResourceUsage'a gelen istek (K-166).
+	includeApps bool
+}
+
+func (f *desktopAPIFixture) GetResourceUsage(_ context.Context, r *kadranv1.GetResourceUsageRequest) (*kadranv1.GetResourceUsageResponse, error) {
+	f.includeApps = r.GetIncludeApps()
+	return &kadranv1.GetResourceUsageResponse{SampledAtUnixMs: 1, Host: &kadranv1.HostUsage{CpuCount: 2}, AppsMeasured: r.GetIncludeApps()}, nil
 }
 
 func (f *desktopAPIFixture) Ping(context.Context, *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
@@ -159,6 +166,7 @@ func TestDesktopManagementRealUnixGRPCJourney(t *testing.T) {
 		{"backups.list", nil, "keep", float64(7)},
 		{"backups.create", nil, "volumes_excluded", true},
 		{"apps.delete", map[string]any{"app_id": "blog", "confirmation": "blog"}, "volumes_kept", nil},
+		{"resources", map[string]any{"include_apps": true}, "apps_measured", true},
 	}
 	for i, call := range calls {
 		params := call.params
@@ -182,7 +190,7 @@ func TestDesktopManagementRealUnixGRPCJourney(t *testing.T) {
 			t.Fatalf("%s: %s=%v", call.method, call.field, value)
 		}
 	}
-	if fixture.commit != sha || fixture.tail != 100 || fixture.app.Spec.Domain != "new.example.com" {
+	if fixture.commit != sha || fixture.tail != 100 || fixture.app.Spec.Domain != "new.example.com" || !fixture.includeApps {
 		t.Fatal("management fields did not reach actual gRPC")
 	}
 }

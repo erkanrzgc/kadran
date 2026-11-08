@@ -42,6 +42,10 @@ service KadranService {
   // kayıtlarını düşüren ele geçirilmiş bir kadrand için ikisi de geçerli döner.
   rpc VerifyAuditChain(VerifyAuditChainRequest) returns (VerifyAuditChainResponse);
 
+  // GetResourceUsage, hostun ve uygulamaların ANLIK kaynak sayaçlarını
+  // döner (K-166). Salt okunur; denetim zincirine yazılmaz.
+  rpc GetResourceUsage(GetResourceUsageRequest) returns (GetResourceUsageResponse);
+
   // ── Uygulamalar ────────────────────────────────────────────────────
 
   // CreateApp, yeni bir uygulama tanımı kaydeder. Hiçbir şey derlemez
@@ -387,6 +391,83 @@ message VerifyAuditChainResponse {
   ChainStatus executor_status = 8;
   uint64 executor_records_checked = 9;
   string executor_detail = 6;
+}
+
+message GetResourceUsageRequest {
+  // false: yalnız host (filo kartı). true: uygulamalar da; bunun için
+  // kadrand executor'a sorar.
+  bool include_apps = 1;
+}
+
+// GetResourceUsageResponse, kümülatif sayaçlar ve ölçüm anı (K-166).
+//
+// Sunucu DURUMSUZ: hızları (CPU %, bayt/sn) istemci iki yanıtın farkından
+// hesaplıyor. Birden fazla istemci aynı anda baksa da birbirini bozmaz.
+message GetResourceUsageResponse {
+  // Ölçüm anı, Unix milisaniye (sunucunun saati).
+  int64 sampled_at_unix_ms = 1;
+  HostUsage host = 2;
+  // Çalışan konteyneri olan uygulamalar, app_id'ye göre sıralı.
+  repeated AppUsage apps = 3;
+  // include_apps istendi VE executor yanıt verdiyse true. false iken boş
+  // `apps` "uygulama yok" değil, "ölçülemedi" demek.
+  bool apps_measured = 4;
+}
+
+// HostUsage, hostun sayaçları. Her biri AYRI bir dosyadan okunuyor;
+// okunamayan dosya yalnız kendi alanlarını boş bırakır. Bu yüzden
+// `optional`: yok "ölçülemedi" demek, sıfır "sıfır" demek. Bellek bir kez
+// sessizce 0 raporlandı (ProcSubset=pid, K-166); bu ayrım onu görünür kılar.
+message HostUsage {
+  uint32 cpu_count = 1;
+  // /proc/stat'ın `cpu` satırı, saat tıkı, kümülatif. idle = idle + iowait.
+  optional uint64 cpu_total_ticks = 2;
+  optional uint64 cpu_idle_ticks = 3;
+  optional uint64 cpu_iowait_ticks = 4;
+  // Hipervizörün başka makineye verdiği zaman (paylaşılan çekirdek).
+  optional uint64 cpu_steal_ticks = 5;
+  optional uint64 memory_total_bytes = 6;
+  optional uint64 memory_available_bytes = 7;
+  optional uint64 swap_total_bytes = 8;
+  optional uint64 swap_free_bytes = 9;
+  optional double load1 = 10;
+  optional double load5 = 11;
+  optional double load15 = 12;
+  // Görev sayısı (iş parçacıkları dahil; /proc/loadavg).
+  optional uint32 tasks = 13;
+  // Durum dizinini taşıyan dosya sistemi (HostInfo ile aynı birim).
+  optional uint64 disk_total_bytes = 14;
+  optional uint64 disk_available_bytes = 15;
+  optional uint64 inodes_total = 16;
+  optional uint64 inodes_free = 17;
+  // Fiziksel disklerin toplamı, kümülatif bayt.
+  optional uint64 disk_read_bytes = 18;
+  optional uint64 disk_write_bytes = 19;
+  // Fiziksel arayüzlerin toplamı (lo, veth, docker ve köprüler hariç).
+  optional uint64 net_rx_bytes = 20;
+  optional uint64 net_tx_bytes = 21;
+  // Baskı (PSI): son 10 saniyede görevlerin bekleyerek geçirdiği zamanın
+  // yüzdesi ("some avg10").
+  optional double cpu_pressure = 22;
+  optional double memory_pressure = 23;
+  optional double io_pressure = 24;
+  optional uint64 uptime_seconds = 25;
+}
+
+// AppUsage, bir uygulamanın çalışan replikalarının toplamı.
+message AppUsage {
+  string app_id = 1;
+  // Çalışan replika sayısı.
+  uint32 containers = 2;
+  // Sayaçlar ContainerUsage ile aynı anlamda, replikalar toplanmış.
+  uint64 cpu_usage_ns = 3;
+  uint64 memory_bytes = 4;
+  uint64 memory_limit_bytes = 5;
+  uint64 net_rx_bytes = 6;
+  uint64 net_tx_bytes = 7;
+  uint64 disk_read_bytes = 8;
+  uint64 disk_write_bytes = 9;
+  uint32 tasks = 10;
 }
 
 // ════════════════════════════════════════════════════════════════════

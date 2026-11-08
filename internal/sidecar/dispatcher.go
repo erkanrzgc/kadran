@@ -116,6 +116,24 @@ func (d *Dispatcher) Dispatch(ctx context.Context, method string, params json.Ra
 			return ProtoToJSON(info)
 		})
 
+	case "resources":
+		// Canlı kaynak kullanımı (K-166): filo kartı yalnız hostu ister,
+		// sunucu sayfası uygulamaları da.
+		var p struct {
+			targetParams
+			IncludeApps bool `json:"include_apps"`
+		}
+		if err := decodeParams(params, &p); err != nil {
+			return nil, &Error{Code: CodeInvalidParams, Message: err.Error()}
+		}
+		return d.withConn(ctx, params, func(ctx context.Context, conn *client.Client) (any, error) {
+			resp, err := conn.RPC().GetResourceUsage(ctx, &kadranv1.GetResourceUsageRequest{IncludeApps: p.IncludeApps})
+			if err != nil {
+				return nil, err
+			}
+			return ProtoToJSON(resp)
+		})
+
 	case "audit.list":
 		var p struct {
 			targetParams

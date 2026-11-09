@@ -6,7 +6,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { parseResources, rates, type ResourceSnapshot } from "../src/renderer/lib/resources.ts";
+import { chartPath, scaleMax } from "../src/renderer/lib/resource-chart.ts";
+import { emptyHistory, parseResources, percentUsed, pushHistory, rates, resourceFailure, sortApps, type ResourceSnapshot } from "../src/renderer/lib/resources.ts";
 
 /** Sidecar'ın ürettiği biçim: 64 bit sayılar dize, olmayan alan yok. */
 function payload(over: { at?: number; host?: Record<string, unknown>; apps?: unknown[] | null } = {}): unknown {
@@ -158,4 +159,52 @@ test("new app has no rates until its second sample", () => {
   const a: ResourceSnapshot = parseResources(payload({ apps: [] }));
   const b = parseResources(payload({ at: 1_002_000, apps: [app("api", 1e9)] }));
   assert.equal(rates(a, b).apps.get("api")?.cpu ?? null, null);
+});
+
+test("unsupported server is not an error toast", () => {
+  // Eski sunucu: RPC yok. Bildirim değil, "sunucuyu yükseltin".
+  assert.equal(resourceFailure(new Error("call failed: rpc error: code = Unimplemented desc = unknown method GetResourceUsage for service kadran.v1.KadranService")), "unsupported");
+  // Wails Go hatasını JS'e DİZE olarak veriyor, Error değil.
+  assert.equal(resourceFailure("call failed: rpc error: code = Unimplemented desc = unknown method GetResourceUsage"), "unsupported");
+  assert.equal(resourceFailure("call failed: connection refused"), "failed");
+  assert.equal(resourceFailure(undefined), "failed");
+});
+
+test("percent used needs both numbers", () => {
+  assert.equal(percentUsed(4000, 1000), 75);
+  assert.equal(percentUsed(null, 1000), null);
+  assert.equal(percentUsed(4000, null), null);
+  assert.equal(percentUsed(0, 0), null);
+  assert.equal(percentUsed(100, 150), 0); // bozuk ölçüm eksi yüzde vermez
+});
+
+test("history keeps the last samples and nulls as gaps", () => {
+  let h = emptyHistory();
+  const a = parseResources(payload());
+  const b = parseResources(payload({ at: 1_002_000, host: { cpu_total_ticks: "1200", cpu_idle_ticks: "850" } }));
+  h = pushHistory(h, a, rates(null, a), 3);
+  h = pushHistory(h, b, rates(a, b), 3);
+  assert.deepEqual(h.cpu, [null, 75]);
+  assert.deepEqual(h.memory, [75, 75]);
+  for (let i = 0; i < 5; i++) h = pushHistory(h, b, rates(a, b), 3);
+  assert.equal(h.cpu.length, 3);
+});
+
+test("apps sort by cpu, unknown last, then memory and name", () => {
+  const a = parseResources(payload({ apps: [app("a", 0), app("b", 0), app("c", 0, { memory_bytes: "900" }), app("d", 0)] }));
+  const b = parseResources(payload({ at: 1_002_000, apps: [app("a", 1e9), app("b", 3e9), app("c", 0, { memory_bytes: "900" }), app("d", 0, { containers: 2 })] }));
+  assert.deepEqual(sortApps(b.apps ?? [], rates(a, b)).map((x) => x.appId), ["b", "a", "c", "d"]);
+});
+
+test("chart path breaks at gaps and scales to the maximum", () => {
+  assert.equal(chartPath([], 100, 10, 100), "");
+  assert.equal(chartPath([null, 50], 100, 10, 100), "M100.0 5.0");
+  // İki nokta arası boşluk: çizgi kopar, yeni "M".
+  assert.equal(chartPath([0, null, 100], 100, 10, 100), "M0.0 10.0 M100.0 0.0");
+  assert.equal(chartPath([0, 50, 100], 100, 10, 100), "M0.0 10.0 L50.0 5.0 L100.0 0.0");
+});
+
+test("scale max leaves headroom and never divides by zero", () => {
+  assert.equal(scaleMax([null, 0]), 1);
+  assert.equal(scaleMax([10, 100]), 120);
 });

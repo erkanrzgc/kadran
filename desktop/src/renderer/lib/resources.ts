@@ -1,3 +1,5 @@
+import { errorText } from "./errors.ts";
+
 /**
  * Canlı kaynak kullanımı (K-166). Sunucu kümülatif sayaç ve ölçüm anı
  * dönüyor; hızlar (CPU %, bayt/sn) burada iki ölçümün farkından çıkıyor.
@@ -225,4 +227,68 @@ export function rates(prev: ResourceSnapshot | null, next: ResourceSnapshot): Re
     diskWrite: perSecond(p.diskWrite, n.diskWrite, seconds),
     apps,
   };
+}
+
+/**
+ * Eski sunucuda RPC yok (gRPC Unimplemented): hata bildirimi değil, "sunucuyu
+ * yükseltin". Wails Go hatasını dize olarak veriyor; ikisi de errorText'ten geçer.
+ */
+export function resourceFailure(error: unknown): "unsupported" | "failed" {
+  if (error === undefined || error === null) return "failed";
+  return /code = Unimplemented|unknown method GetResourceUsage/.test(errorText(error)) ? "unsupported" : "failed";
+}
+
+/** Kullanılan yüzde (0–100); biri bilinmiyorsa null. */
+export function percentUsed(total: number | null, available: number | null): number | null {
+  if (total === null || available === null || total <= 0) return null;
+  return Math.max(0, ((total - available) / total) * 100);
+}
+
+/** Grafiklerin son örnekleri; null bir boşluk (çizgi kopar). */
+export interface ResourceHistory {
+  cpu: (number | null)[];
+  memory: (number | null)[];
+  netRx: (number | null)[];
+  netTx: (number | null)[];
+  diskRead: (number | null)[];
+  diskWrite: (number | null)[];
+}
+
+export const HISTORY_SAMPLES = 60;
+
+export function emptyHistory(): ResourceHistory {
+  return { cpu: [], memory: [], netRx: [], netTx: [], diskRead: [], diskWrite: [] };
+}
+
+function push(list: readonly (number | null)[], value: number | null, max: number): (number | null)[] {
+  const next = [...list, value];
+  return next.length > max ? next.slice(next.length - max) : next;
+}
+
+/** Yeni ölçümü geçmişe ekler; eski geçmiş değişmez. */
+export function pushHistory(h: ResourceHistory, snap: ResourceSnapshot, r: ResourceRates, max = HISTORY_SAMPLES): ResourceHistory {
+  return {
+    cpu: push(h.cpu, r.cpu, max),
+    memory: push(h.memory, percentUsed(snap.host.memoryTotal, snap.host.memoryAvailable), max),
+    netRx: push(h.netRx, r.netRx, max),
+    netTx: push(h.netTx, r.netTx, max),
+    diskRead: push(h.diskRead, r.diskRead, max),
+    diskWrite: push(h.diskWrite, r.diskWrite, max),
+  };
+}
+
+/** Tablo sırası: en çok CPU kullanan üstte; hızı bilinmeyen alta; eşitlikte bellek, sonra ad. */
+export function sortApps(apps: readonly AppCounters[], r: ResourceRates): AppCounters[] {
+  const cpu = (a: AppCounters) => r.apps.get(a.appId)?.cpu ?? null;
+  return [...apps].sort((x, y) => {
+    const cx = cpu(x);
+    const cy = cpu(y);
+    if (cx !== cy) {
+      if (cx === null) return 1;
+      if (cy === null) return -1;
+      return cy - cx;
+    }
+    if (x.memory !== y.memory) return y.memory - x.memory;
+    return x.appId.localeCompare(y.appId);
+  });
 }

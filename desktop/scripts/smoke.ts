@@ -37,7 +37,7 @@ const PREFIX = "SMOKE ";
 const EXPECTED_BRIDGE = [
   "AddServer", "AlarmsList", "AppCreate", "AppDelete", "AppDeploy", "AppGet", "AppLogs", "AppRollback", "AppUpdate", "AppsList",
   "AuditList", "AuditVerify", "BackupCreate", "BackupsList", "CopyText", "ListServers", "LoadAppearance", "RemoveServer",
-  "SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
+  "ResourceUsage", "SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
 ];
 
 /** Çok uzun ad ve hedef: kartta taşma olmamalı. */

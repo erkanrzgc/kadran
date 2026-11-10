@@ -1,6 +1,7 @@
 import type { Profile } from "../bridge.ts";
 import { ServerCards } from "../components/ServerCards.tsx";
 import { SetupHelp } from "../components/SetupHelp.tsx";
+import { useFleetResources } from "../hooks/useFleetResources.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { summarize, type FleetCard } from "../lib/fleet.ts";
 
@@ -25,10 +26,15 @@ function useSummary(cards: readonly FleetCard[]): string {
   return parts.join(" · ");
 }
 
+/** Kart ölçerlerinin yoklama aralığı (K-166). */
+const METER_POLL_MS = 5_000;
+
 /** Uygulamanın açılış ekranı: bütün sunucular, sağlayıcıya göre gruplu. */
 export function ServersScreen({ profiles, cards, clientVersion, onOpen, onNewApp, onEdit, onAdd }: Props) {
   const t = useT();
   const summary = useSummary(cards);
+  // Yalnız bağlı sunucular: erişilemeyen ya da giriş bekleyene her turda bağlanılmaz.
+  const meters = useFleetResources(cards.filter((c) => c.state === "ready").map((c) => c.profile.target), METER_POLL_MS);
   return (
     <div className="screen" data-testid="screen-servers">
       <header className="stage-head"><h1 className="title">{t("nav.servers")}</h1><p className="meta" data-testid="fleet-summary">{summary}</p></header>
@@ -44,7 +50,7 @@ export function ServersScreen({ profiles, cards, clientVersion, onOpen, onNewApp
           </div>
         </div>
         <div className="well">
-          {profiles.length === 0 ? <SetupHelp /> : <ServerCards cards={cards} clientVersion={clientVersion} onOpen={onOpen} onNewApp={onNewApp} onEdit={onEdit} />}
+          {profiles.length === 0 ? <SetupHelp /> : <ServerCards cards={cards} clientVersion={clientVersion} meters={meters} onOpen={onOpen} onNewApp={onNewApp} onEdit={onEdit} />}
         </div>
       </section>
     </div>

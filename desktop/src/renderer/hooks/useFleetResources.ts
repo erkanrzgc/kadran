@@ -6,9 +6,12 @@
  * Hata bildirim olarak fırlatılmaz: kartın kendi durumu (useFleet) zaten
  * bağlantı sorununu gösteriyor. Ölçülemeyen sunucunun ölçeri görünmez;
  * eski sunucu bir kez anlaşılır ve bir daha sorulmaz.
+ *
+ * Önceki ölçümler hedef listesinden bağımsız tutulur: bir kart hazır olunca
+ * liste değişir, ötekilerin CPU'su bir tur "—"ya düşmesin.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { bridge } from "../bridge.ts";
 import { percentUsed, rates, resourceFailure, type ResourceSnapshot } from "../lib/resources.ts";
@@ -22,13 +25,16 @@ export interface FleetMeter {
 export function useFleetResources(targets: readonly string[], intervalMs: number): ReadonlyMap<string, FleetMeter> {
   const [meters, setMeters] = useState<ReadonlyMap<string, FleetMeter>>(new Map());
   const key = targets.join("\n");
+  const prevRef = useRef(new Map<string, ResourceSnapshot>());
+  const unsupportedRef = useRef(new Set<string>());
 
   useEffect(() => {
     const list = key ? key.split("\n") : [];
-    const prev = new Map<string, ResourceSnapshot>();
+    const prev = prevRef.current;
+    const unsupported = unsupportedRef.current;
     const busy = new Set<string>();
-    const unsupported = new Set<string>();
     let stopped = false;
+    for (const t of [...prev.keys()]) if (!list.includes(t)) prev.delete(t);
 
     const update = (target: string, meter: FleetMeter | null) =>
       setMeters((m) => {

@@ -155,6 +155,16 @@ test("replica count change makes app rates unknown", () => {
   assert.equal(r.netRx, null);
 });
 
+test("restarted container with the same replica count yields null, not a negative rate", () => {
+  // Dağıtım konteyneri yeniden yarattı: replika sayısı aynı, sayaç sıfırdan.
+  const a = parseResources(payload({ apps: [app("blog", 9e9, { net_rx_bytes: "5000" })] }));
+  const b = parseResources(payload({ at: 1_002_000, apps: [app("blog", 1e8, { net_rx_bytes: "10" })] }));
+  const r = rates(a, b).apps.get("blog");
+  assert.ok(r);
+  assert.equal(r.cpu, null);
+  assert.equal(r.netRx, null);
+});
+
 test("new app has no rates until its second sample", () => {
   const a: ResourceSnapshot = parseResources(payload({ apps: [] }));
   const b = parseResources(payload({ at: 1_002_000, apps: [app("api", 1e9)] }));
@@ -202,6 +212,8 @@ test("chart path breaks at gaps and scales to the maximum", () => {
   // İki nokta arası boşluk: çizgi kopar, yeni "M".
   assert.equal(chartPath([0, null, 100], 100, 10, 100), "M0.0 10.0 M100.0 0.0");
   assert.equal(chartPath([0, 50, 100], 100, 10, 100), "M0.0 10.0 L50.0 5.0 L100.0 0.0");
+  // Ölçeği aşan değer kutunun dışına çıkmaz, tepede kalır.
+  assert.equal(chartPath([0, 150], 100, 10, 100), "M0.0 10.0 L100.0 0.0");
 });
 
 test("scale max leaves headroom and never divides by zero", () => {

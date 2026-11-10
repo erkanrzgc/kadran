@@ -12773,3 +12773,9 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 - **Nerede:** filo kartında CPU, RAM ve disk ölçerleri (5 sn); sunucunun durum sayfasında canlı panel ve uygulama tablosu (2 sn). Pencere gizliyken ya da başka ekrandayken yoklama yok. Filo kartı uygulamaları istemez (`include_apps=false`), yürütücüye gitmez.
 
 **Durum:** plan `docs/plans/2026-11-08-canli-kaynak.md`, dal `resources` (`wails` üstünde; #34 birleşince `main`'e yeniden hedeflenecek).
+
+**Uygulama (11 Kasım):**
+- Arayüz: kartta üç ölçer (yalnız bağlı sunucuda; disk ölçeri varken alt yazıda disk yüzdesi yazılmaz); durum sayfasında özetin üstünde canlı bölüm (dört karo + ayrıntılar) ve uygulama tablosu. Eski bellek karosu kalktı: üretimde hep 0'dı, artık panel gösteriyor. Grafik sabit 60 örneklik pencerede sağdan dolar; ipucu kutusu sağ yarıda sola açılır (yoksa karonun dışına taşıyordu).
+- Sahte sunucunun kaynak yanıtı elle yazılmadı: `resources.json` gerçek `protoToJSON` çıktısı (`cmd/kadran/sidecar_fixtures_test.go`); 64 bit alanlar metin, ölçülen sıfır `"0"` yazılıyor. Sahte sayaçlar her çağrıda artar, ölçüm anı 2 sn ilerler: hızlar gerçek aralıktan bağımsız (CPU %35, uygulamalar %15 ve %7,5).
+- Duman testi yeni denetimler: kart ölçerleri (35/57/45), Türkçede "%35", panel özetin üstünde, tablo sırası, CPU çizgisi sağ kenarda biter, ipucu karodan taşmaz, eski sunucu "Upgrade" der ve bildirim çıkarmaz, 760×520'de taşma yok.
+- Mutasyon: masaüstüne 19 (`mutate-desktop.sh`), sunucuya 32 (yeni `mutate-resources.sh`), hepsi yakalandı. İlk koşuda bir mutant sağ kaldı: `MemAvailable`'ı olmayan meminfo "ölçüldü" sayılıyordu (durum sayfası belleği dolu gösterirdi); testi eklendi. CPU fikstüründe guest sütunu 0'dı, guest'i toplama katan hata görünmezdi; 40 yapıldı. Konteyner yeniden başlayınca (replika sayısı aynı) uygulama CPU'sunun eksi çıkmadığını sınayan test yoktu; eklendi.

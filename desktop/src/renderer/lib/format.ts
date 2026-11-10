@@ -3,7 +3,7 @@
  * kullanıcı aynı değeri iki araçta farklı okumamalı.
  */
 
-import type { Actor, HostInfo } from "./types.ts";
+import type { Actor } from "./types.ts";
 
 const UNITS: ReadonlyArray<readonly [number, string]> = [
   [86_400, "d"],
@@ -67,23 +67,14 @@ export function describeActor(actor: Actor | null): string | null {
   return null;
 }
 
-const GIB = 1024 ** 3;
-
-/** memoryUsedGiB, çizgi grafik örneği için kullanılan belleği GiB olarak verir. */
-export function memoryUsedGiB(host: HostInfo | null): number {
-  if (!host) return Number.NaN;
-  const total = Number(host.memory_total_bytes);
-  const available = Number(host.memory_available_bytes);
-  if (!Number.isFinite(total) || !Number.isFinite(available) || total <= 0) return Number.NaN;
-  return (total - available) / GIB;
+/** decimal: sayıyı arayüz dilinde sabit ondalıkla yazar ("0,42"). */
+export function decimal(value: number, digits: number, locale: string): string {
+  return value.toLocaleString(locale, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-/** memoryText, "kullanılan / toplam" biçiminde yazar. */
-export function memoryText(host: HostInfo | null): string {
-  if (!host || Number(host.memory_total_bytes) <= 0) return "—";
-  const total = Number(host.memory_total_bytes);
-  const used = total - Number(host.memory_available_bytes);
-  return `${humanBytes(used)} / ${humanBytes(total)}`;
+/** percentNumber: yüzdenin sayı kısmı; 10'un altında bir ondalık ("4,2"), üstünde tam ("37"). */
+export function percentNumber(value: number, locale: string): string {
+  return decimal(value, Math.round(value * 10) / 10 < 10 ? 1 : 0, locale);
 }
 
 /** formatTime, RFC 3339 zamanı arayüz dilinde yazar. */

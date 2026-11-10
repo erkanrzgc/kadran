@@ -11,6 +11,8 @@ import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { parseResources } from "../src/renderer/lib/resources.ts";
+
 const here = dirname(fileURLToPath(import.meta.url));
 async function fixture(name: string): Promise<Record<string, unknown>> {
   return JSON.parse(await readFile(join(here, "fixtures", name), "utf8")) as Record<string, unknown>;
@@ -40,4 +42,18 @@ test("audit kaydı: seq metin, zaman RFC 3339, sonuç adla", async () => {
   assert.match(String(r.ts), /^2026-10-06T18:42:10Z$/);
   assert.equal(r.outcome, "AUDIT_OUTCOME_SUCCESS");
   assert.equal((r.actor as Record<string, unknown>).source_ip, "");
+});
+
+test("kaynak: 64 bit sayaç metin, optional sıfır yazılmış, arayüz ayrıştırıyor", async () => {
+  const r = await fixture("resources.json");
+  assert.equal(typeof r.sampled_at_unix_ms, "string");
+  const host = r.host as Record<string, unknown>;
+  assert.equal(typeof host.cpu_total_ticks, "string");
+  assert.equal(host.swap_total_bytes, "0");
+  assert.equal(host.memory_pressure, 0);
+  assert.equal(typeof host.tasks, "number");
+  const snap = parseResources(r);
+  assert.equal(snap.host.swapTotal, 0);
+  assert.equal(snap.host.memoryPressure, 0);
+  assert.deepEqual(snap.apps?.map((a) => a.appId), ["hello", "worker"]);
 });

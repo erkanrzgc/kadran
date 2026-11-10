@@ -66,6 +66,8 @@ const SAME_IN_BOTH = new Set([
   "tile.executor",
   "fleet.alarm_count_one",
   "row.docker",
+  "res.cpu",
+  "res.disk",
 ]);
 
 test("iki dilde aynı değer yalnız dilden bağımsız anahtarlarda", async () => {

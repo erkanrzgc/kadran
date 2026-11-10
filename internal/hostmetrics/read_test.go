@@ -105,6 +105,15 @@ func TestMemoryHelper(t *testing.T) {
 	if _, _, ok := (Reader{Proc: t.TempDir()}).Memory(); ok {
 		t.Fatal("meminfo yokken ok dönmemeli")
 	}
+	// MemAvailable'ı olmayan çekirdek (3.14 öncesi): kullanılabilir 0 sanılıp
+	// durum ekranı belleği tamamen dolu göstermesin.
+	proc := t.TempDir()
+	if err := os.WriteFile(filepath.Join(proc, "meminfo"), []byte("MemTotal: 4000000 kB\nMemFree: 500000 kB\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := (Reader{Proc: proc}).Memory(); ok {
+		t.Fatal("MemAvailable yokken ok dönmemeli")
+	}
 }
 
 func TestDefaultPaths(t *testing.T) {

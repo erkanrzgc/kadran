@@ -49,6 +49,9 @@ FILES=(
     src/renderer/lib/audit-view.ts
     src/renderer/lib/verification-state.ts
     src/renderer/lib/management-results.ts
+    src/renderer/lib/resources.ts
+    src/renderer/lib/resource-chart.ts
+    src/renderer/lib/format.ts
     internal/guard/ipc.go
     internal/guard/payload.go
     internal/confirm/confirm.go
@@ -367,6 +370,46 @@ mutate_go internal/appearance/appearance.go "bilinmeyen tema dosyadan geçiyor" 
     "s=s.replace('[]string{\"dark\", \"light\"}','[]string{\"dark\", \"light\", \"glass\", \"mica\", \"__proto__\"}',1)"
 mutate_go internal/appearance/appearance.go "varsayılan tema koyu" \
     "s=s.replace('Theme:    \"light\",','Theme:    \"dark\",',1)"
+
+echo "== Canlı kaynak kullanımı (K-166) =="
+mutate_in src/renderer/lib/resources.ts "sayaç geri gidince hız eksi (host yeniden başladı)" \
+    "s=s.replace('if (prev === null || next === null || next < prev) return null;','if (prev === null || next === null) return null;',1)"
+mutate_in src/renderer/lib/resources.ts "yeniden başlayan konteynerin CPU'su eksi" \
+    "s=s.replace('if (prev === null || next === null || next < prev || total <= 0) return null;','if (prev === null || next === null || total <= 0) return null;',1)"
+mutate_in src/renderer/lib/resources.ts "replika değişince uygulama hızı hesaplanıyor" \
+    "s=s.replace('if (!prev || prev.containers !== next.containers) return EMPTY_APP;','if (!prev) return EMPTY_APP;',1)"
+mutate_in src/renderer/lib/resources.ts "uygulama CPU'su çekirdek sayısını yok sayıyor" \
+    "s=s.replace('const hostNs = seconds * 1e9 * cores;','const hostNs = seconds * 1e9;',1)"
+mutate_in src/renderer/lib/resources.ts "CPU boşta oranını gösteriyor" \
+    "s=s.replace('? null : 100 - idle,','? null : idle,',1)"
+mutate_in src/renderer/lib/resources.ts "aynı anlı iki ölçüm sonsuz hız veriyor" \
+    "s=s.replace('if (!prev || seconds <= 0) {','if (!prev) {',1)"
+mutate_in src/renderer/lib/resources.ts "eski sunucu hata sayılıyor (yükseltin demiyor)" \
+    "s=s.replace('? \"unsupported\" : \"failed\";','? \"failed\" : \"failed\";',1)"
+mutate_in src/renderer/lib/resources.ts "ölçülemeyen alan 0 oluyor" \
+    "s=s.replace('=== null ? null : read(raw[key]);','=== null ? 0 : read(raw[key]);',1)"
+mutate_in src/renderer/lib/resources.ts "eksi sayaç metni kabul ediliyor" \
+    "s=s.replace('/^'+chr(92)+'d+\$/.test(value)','/^-?'+chr(92)+'d+\$/.test(value)',1)"
+mutate_in src/renderer/lib/resources.ts "ölçülemeyen uygulamalar 'uygulama yok' sayılıyor" \
+    "s=s.replace('if (r.apps_measured === true) {','if (r.apps_measured !== undefined) {',1)"
+mutate_in src/renderer/lib/resources.ts "hızı bilinmeyen uygulama tablonun üstünde" \
+    "s=s.replace('if (cx === null) return 1;','if (cx === null) return -1;',1)"
+mutate_in src/renderer/lib/resources.ts "grafik geçmişi sınırsız büyüyor" \
+    "s=s.replace('return next.length > max ? next.slice(next.length - max) : next;','return next;',1)"
+mutate_in src/renderer/lib/resources.ts "bozuk ölçüm eksi yüzde veriyor" \
+    "s=s.replace('return Math.max(0, ((total - available) / total) * 100);','return ((total - available) / total) * 100;',1)"
+mutate_in src/renderer/lib/resource-chart.ts "ölçülemeyen aralık çizgiyle bağlanıyor" \
+    "s=s.replace('      pen = false;','      pen = pen;',1)"
+mutate_in src/renderer/lib/resource-chart.ts "ölçeği aşan değer kutudan taşıyor" \
+    "s=s.replace('(Math.min(v, max) / max)','(v / max)',1)"
+mutate_in src/renderer/lib/resource-chart.ts "boş grafikte ölçek sıfır (sıfıra bölme)" \
+    "s=s.replace('return top > 0 ? top * 1.2 : 1;','return top * 1.2;',1)"
+mutate_in src/renderer/lib/format.ts "küçük yüzde ondalıksız" \
+    "s=s.replace('< 10 ? 1 : 0, locale)','< 10 ? 0 : 0, locale)',1)"
+mutate_in src/renderer/lib/format.ts "yüzde arayüz dilinde yazılmıyor" \
+    "s=s.replace('return value.toLocaleString(locale, {','return value.toLocaleString(\"en\", {',1)"
+mutate_in src/renderer/i18n/tr.json "Türkçe yüzde işareti sonda" \
+    "s=s.replace('\"unit.percent\": \"%{value}\",','\"unit.percent\": \"{value}%\",',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

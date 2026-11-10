@@ -16,6 +16,8 @@
  * - `fake@noalarms`: alarm listesi okunamaz, gerisi çalışır; arayüz "alarm yok"
  *   dememeli.
  * - `fake@root`: daemon root ile çalışıyor (bozuk kurulum).
+ * - `fake@noalarms` kaynak çağrısını da tanımaz (eski sunucu, K-166): arayüz
+ *   bunu hata değil "sunucuyu yükseltin" diye göstermeli.
  * - `fake@totp…`: sunucunun gerçek TOTP mesajını döner; kart "erişilemiyor"
  *   değil "TOTP girişi gerekli" demeli.
  * - `fake@flaky…`: zincir doğrulanana (bağlanılana) dek status başarılı, sonra
@@ -34,6 +36,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const load = (name) => JSON.parse(readFileSync(join(here, name), "utf8"));
 const status = load("status.json");
 const verify = load("verify.json");
+const resourcesBase = load("resources.json");
 const template = load("audit-record.json");
 // Hata biçimi gerçek sidecar'dan: internal/sidecar/error_test.go bu altın dosyayı üretir/denetler.
 // `message` sabit sınıf adı, gerçek sebep `data`'dadır.
@@ -71,6 +74,7 @@ function auditList(params) {
 const flakyConnected = new Set();
 let verificationCalls = 0;
 let backupCalls = 0;
+const resourceCalls = new Map();
 const appSpec = (id) => ({ app_id: id, git_host: "github.com", git_owner: "team", git_repo: "site", git_branch: "main", dockerfile_path: "Dockerfile", container_port: 3000, replicas: 1, health_path: "/healthz", domain: `${id}.example.com`, limits: { memory_bytes: "536870912", cpu_millis: 1000, blkio_weight: 100 }, build_args: {}, env: { MODE: "old", OLD: "remove" }, volumes: [{ name: "data", mount_path: "/app/data", read_only: false }] });
 const app = (spec) => ({ spec, created_at: "2026-10-10T12:00:00Z", updated_at: "2026-10-11T12:00:00Z", release_count: 2 });
 // Like the real API, values are never returned to the renderer.
@@ -142,6 +146,41 @@ function serversCall(method, params) {
   return { error: { code: -32601, message: `unknown method "${method}"` } };
 }
 
+/**
+ * Kaynak sayaçları (K-166): resources.json tabanından her çağrıda artar,
+ * ölçüm anı her çağrıda 2 sn ilerler. Hız böylece gerçek aralıktan bağımsız:
+ * CPU %35 (bekleme %1,5), "hello" %7,5, "worker" %15. Replika sayısı sabit;
+ * değişseydi uygulama hızı bilinmez olurdu.
+ */
+function resourceUsage(params) {
+  const n = (resourceCalls.get(params.target) ?? 0) + 1;
+  resourceCalls.set(params.target, n);
+  const bump = (value, step) => String(Number(value) + step * n);
+  const h = resourcesBase.host;
+  const host = {
+    ...h,
+    cpu_total_ticks: bump(h.cpu_total_ticks, 400),
+    cpu_idle_ticks: bump(h.cpu_idle_ticks, 260),
+    cpu_iowait_ticks: bump(h.cpu_iowait_ticks, 6),
+    cpu_steal_ticks: bump(h.cpu_steal_ticks, 2),
+    disk_read_bytes: bump(h.disk_read_bytes, 40_960),
+    disk_write_bytes: bump(h.disk_write_bytes, 262_144),
+    net_rx_bytes: bump(h.net_rx_bytes, 180_000),
+    net_tx_bytes: bump(h.net_tx_bytes, 52_000),
+    uptime_seconds: bump(h.uptime_seconds, 2),
+  };
+  const sampled = bump(resourcesBase.sampled_at_unix_ms, 2000);
+  if (!params.include_apps) return { sampled_at_unix_ms: sampled, host, apps: [], apps_measured: false };
+  const apps = resourcesBase.apps.map((a, i) => ({
+    ...a,
+    cpu_usage_ns: bump(a.cpu_usage_ns, (i + 1) * 300_000_000),
+    net_rx_bytes: bump(a.net_rx_bytes, 20_000),
+    net_tx_bytes: bump(a.net_tx_bytes, 90_000),
+    disk_write_bytes: bump(a.disk_write_bytes, i * 65_536),
+  }));
+  return { ...resourcesBase, sampled_at_unix_ms: sampled, host, apps };
+}
+
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   let req;
@@ -178,6 +217,11 @@ rl.on("line", (line) => {
       if (["fake@verifyfail", "fake@slow"].includes(params.target)) { reply({ result: healthyStatus }); return; }
       if (params.target === "fake@root") { reply({ result: { ...healthyStatus, running_as_user: "root" } }); return; }
       reply({ result: status });
+      return;
+    case "resources":
+      if (params.target === "fake@noalarms") { reply(rpcFail("call", "rpc error: code = Unimplemented desc = unknown method GetResourceUsage for service kadran.v1.KadranService")); return; }
+      if (flakyConnected.has(params.target)) { reply(rpcFail("call", FLAKY_MESSAGE)); return; }
+      reply({ result: resourceUsage(params) });
       return;
     case "audit.list":
       reply({ result: auditList(params) });

@@ -12,10 +12,10 @@ import {
   formatTime,
   humanBytes,
   humanDuration,
-  memoryText,
+  decimal,
   formatUnix,
+  percentNumber,
   relativeTime,
-  memoryUsedGiB,
   railVersion,
   shortFingerprint,
   versionLabel,
@@ -67,17 +67,20 @@ test("describeActor: parmak izi > etiket > köken > null", () => {
   );
 });
 
-test("bellek: kullanılan GiB ve metin; eksik host güvenli", () => {
-  const host = {
-    os: "linux", kernel_version: "", architecture: "", cpu_count: 2,
-    memory_total_bytes: "4294967296", memory_available_bytes: "1073741824",
-    docker_version: "", disk_total_bytes: "0", disk_available_bytes: "0",
-  };
-  assert.equal(memoryUsedGiB(host), 3);
-  assert.equal(memoryText(host), "3.0 GiB / 4.0 GiB");
-  assert.ok(Number.isNaN(memoryUsedGiB(null)));
-  assert.equal(memoryText(null), "—");
-  assert.equal(memoryText({ ...host, memory_total_bytes: "0" }), "—");
+test("decimal: arayüz dilinde sabit ondalık", () => {
+  assert.equal(decimal(0.42, 2, "en"), "0.42");
+  assert.equal(decimal(0.42, 2, "tr"), "0,42");
+  assert.equal(decimal(1, 2, "en"), "1.00");
+});
+
+test("percentNumber: 10'un altında bir ondalık, üstünde tam sayı", () => {
+  assert.equal(percentNumber(4.24, "en"), "4.2");
+  assert.equal(percentNumber(4.24, "tr"), "4,2");
+  assert.equal(percentNumber(0, "en"), "0.0");
+  assert.equal(percentNumber(37.4, "en"), "37");
+  // Yuvarlanınca 10 olan değer "10.0" değil "10" yazılır.
+  assert.equal(percentNumber(9.96, "en"), "10");
+  assert.equal(percentNumber(100, "tr"), "100");
 });
 
 test("formatTime ve formatCount", () => {

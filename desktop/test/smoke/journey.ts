@@ -445,7 +445,9 @@ async function managementJourney(win: Page): Promise<void> {
   await waitFor(win, `${q('[data-testid="verification-time"]')}?.textContent.includes("out of date")`, "stale verification marker");
   expect((await text(win, '[data-testid="health"]')) === "Attention required", "failed verification retained healthy status");
   expect(!(await evaluate<boolean>(win, `Boolean(document.querySelector('.chains .badge.is-ok'))`)), "failed verification retained current green chain");
-  await waitFor(win, `document.querySelectorAll('[data-testid="app-usage-row"]').length === 2`, "application usage at 760x520");
+  // Executor'ı erişilebilir sunucu: uygulamalar en çok CPU kullanan üstte (ikinci okumadan sonra).
+  const appOrder = `[...document.querySelectorAll('[data-testid="app-usage-row"]')].map((r) => r.dataset.app + "=" + r.querySelector('[data-testid="app-cpu"]').textContent).join(",")`;
+  await waitFor(win, `${appOrder} === "worker=15%,hello=7.5%"`, "application usage order at 760x520");
   await noHorizontalOverflow(win, "status at 760x520");
   await evaluate(win, `${q('[data-testid="resources"]')}.scrollIntoView({block:'start'})`);
   await screenshot(win, "resources-760x520");
@@ -462,7 +464,8 @@ async function managementJourney(win: Page): Promise<void> {
 
 /**
  * Sunucu sayfasının canlı kaynak bölümü (K-166): özetin üstünde; ikinci
- * okumadan sonra hızlar "—" değil; uygulamalar en çok CPU kullanan üstte;
+ * okumadan sonra hızlar "—" değil; executor'a ulaşılamıyorsa uygulamalar
+ * "ölçülemedi" (tablonun sırası 760×520'de, executor'ı erişilebilir sunucuda);
  * grafiğin ipucu kutusu sağ kenarda karonun dışına taşmaz.
  */
 async function resourceJourney(win: Page): Promise<void> {
@@ -474,9 +477,10 @@ async function resourceJourney(win: Page): Promise<void> {
   expect((await text(win, '[data-testid="res-network"] .tile-value')) === "in 87.9 KiB/s", "network in rate");
   expect((await text(win, '[data-testid="res-memory"] .res-sub')) === "no swap", "swap line");
   expect((await text(win, '[data-testid="resource-details"]')).includes("0.42 · 0.31 · 0.25 on 2 cores"), "load row");
-  await waitFor(win, `document.querySelectorAll('[data-testid="app-usage-row"]').length === 2`, "application usage rows");
-  const order = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="app-usage-row"]')].map((r) => r.dataset.app + "=" + r.querySelector('[data-testid="app-cpu"]').textContent)`);
-  expect(order.join(",") === "worker=15%,hello=7.5%", `application usage order: ${order.join(",")}`);
+  // fake@test'in executor'ı erişilemez: uygulamalar "ölçülemedi", "uygulama yok" DEĞİL (K-166).
+  const appsNote = q('[data-testid="app-usage-placeholder"]');
+  await waitFor(win, `${appsNote}?.textContent.includes("could not be measured")`, "unmeasured applications are not 'no applications'");
+  expect(!(await text(win, '[data-testid="app-usage-placeholder"]')).includes("No running"), "unmeasured applications read as none");
   // Üçüncü okumada iki ardışık hız var: CPU çizgisi çizilir ve grafiğin sağında durur.
   // Tek nokta ("M…") hiçbir şey çizmez: en az bir doğru parçası ("L") şart.
   await waitFor(win, `${q('[data-testid="res-cpu"] .chart-line')}?.getAttribute("d")?.includes("L")`, "CPU line drawn");

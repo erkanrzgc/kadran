@@ -170,7 +170,10 @@ function resourceUsage(params) {
     uptime_seconds: bump(h.uptime_seconds, 2),
   };
   const sampled = bump(resourcesBase.sampled_at_unix_ms, 2000);
-  if (!params.include_apps) return { sampled_at_unix_ms: sampled, host, apps: [], apps_measured: false };
+  // Gerçek kadrand gibi: executor'a ulaşılamıyorsa (status.json, fake@test)
+  // uygulamalar "ölçülemedi"; host sayaçları yine gelir.
+  const executorUp = String(params.target).startsWith("fake@flaky") || ["fake@verifyfail", "fake@slow", "fake@root"].includes(params.target);
+  if (!params.include_apps || !executorUp) return { sampled_at_unix_ms: sampled, host, apps: [], apps_measured: false };
   const apps = resourcesBase.apps.map((a, i) => ({
     ...a,
     cpu_usage_ns: bump(a.cpu_usage_ns, (i + 1) * 300_000_000),

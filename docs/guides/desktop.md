@@ -4,7 +4,7 @@ Kadran masaüstü, SSH üzerinden kendi sunucunu yönetir. Uygulama özel SSH an
 
 ## Derleme
 
-Masaüstü sürüm dosyalarında yok; kaynaktan derlenir ve bugün yalnız Windows'ta çalışır (Wails, K-165). Gerekenler: Go 1.26.10+, Node 22.18+, [`buf`](https://buf.build/docs/installation) ve `buf.gen.yaml`'daki iki yerel eklenti. Depo kökünde `buf generate`, sonra `desktop/` içinde `npm ci` ve `npm run dist`. Paket tek dosya: `desktop/dist/Kadran.exe` (yanında `THIRD_PARTY_NOTICES.txt`), imzasız. Pencereyi Windows'un WebView2'si çizer; Windows 10 ve 11'de kurulu gelir. Kenar çubuğundaki sürüm, ikilinin derlendiği etikettir.
+Masaüstü sürüm dosyalarında yok; kaynaktan derlenir ve bugün yalnız Windows'ta çalışır (Wails, K-165). Gerekenler: Go 1.26.11+, Node 22.18+, [`buf`](https://buf.build/docs/installation) ve `buf.gen.yaml`'daki iki yerel eklenti. Depo kökünde `buf generate`, sonra `desktop/` içinde `npm ci` ve `npm run dist`. Paket tek dosya: `desktop/dist/Kadran.exe` (yanında `THIRD_PARTY_NOTICES.txt`), imzasız. Pencereyi Windows'un WebView2'si çizer; Windows 10 ve 11'de kurulu gelir. Kenar çubuğundaki sürüm, ikilinin derlendiği etikettir.
 
 ## İlk bağlantı
 

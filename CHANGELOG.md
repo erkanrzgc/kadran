@@ -3,6 +3,17 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Security
+
+- All three Go modules and CI require Go 1.26.11, which fixes
+  [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859) in `net/http`. Kadran reaches it through the
+  HTTP health probe, the git branch resolver and the gRPC pipe. Building from source needs Go 1.26.11.
+- `golang.org/x/net` is v0.62.0 in all three modules, which fixes
+  [GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860) and
+  [GO-2026-6866](https://pkg.go.dev/vuln/GO-2026-6866) in its HTML parser and renderer.
+
 ## v0.11.0 — 2026-11-06
 
 A saved server list for the CLI and the desktop app (K-162) and a new desktop frame (K-163). The

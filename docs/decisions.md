@@ -12682,3 +12682,72 @@ kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozul
   denenmedi.
 - Masaüstü 454 → 618 sn (+%36) farkının sebebi ölçülmedi. İlk ölçüm (PR #31) K-163 birleşmeden önceydi;
   K-163 masaüstü mutantlarını artırdı. Paralel koşu da etkili olabilir.
+
+## K-165 — Masaüstü Wails'e taşınıyor (2026-11-07)
+
+**Karar (kullanıcı, 7 Kasım):** "tamam wails ile devam edelim", "aynı uygulama yeterli, doğrudan başla". Masaüstü kabuğu Electron'dan Wails v2'ye (v2.17.0) geçiyor. Ekranlar ve görünüm aynı kalıyor, yalnız kabuk değişiyor.
+
+**Ölçütler (6 Kasım denemesi, filo tasarımındaki bütçe):**
+- Odak gidince cam kalıyor ✓.
+- Paket 13,1 MB ✓ (bütçe ≤ 20).
+- Boşta özel bellek 261–268 MB ✗ (bütçe ≤ 250).
+
+Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi. Taşıma bitince üç ölçüt yeniden ölçülüp bildirilecek; bütçeyi değiştirmek kullanıcının kararı.
+
+**Nasıl:**
+- Yan süreç yok. `kadran sidecar`'ın dağıtıcısı bir `internal` paketine taşınıyor. CLI'ın stdio kipi aynı kalıyor, masaüstü aynı dağıtıcıyı süreç içinde çağırıyor. Arayüzün gördüğü JSON değişmiyor.
+- Masaüstünün Go kodu kendi modülünde (`desktop/go.mod`, kök modüle `replace`). Sunucu ikilileri Wails bağımlılığı almıyor.
+  - Mantık paketleri Wails'i içe aktarmıyor; Linux'ta ve mutasyon işinde test ediliyor. Yalnız `main` paketi Wails'e bağlı.
+- Güven sınırı Go'ya geçiyor:
+  - doğrulama: hedef, uygulama adı, ref, log satır sayısı, kopyalanan metin, uygulama yükü;
+  - akış: işlem kapısı, aynı anda tek yerel onay kutusu, onay metni (tr/en), zaman aşımları;
+  - hata metninin arıtılması.
+- Renderer'ı bozuk yanıttan koruyan denetim (`management-results`) TypeScript'te kalıyor, renderer'a taşınıyor.
+- Bağlanan Go yapısının dışa açık yöntemleri beyaz liste: eski köprünün listesiyle birebir aynı, yansımayla test ediliyor.
+- Kullanıcı verisi aynı dizinde: `%APPDATA%\kadran-desktop\appearance.json`.
+
+**Wails'in getirdiği farklar ve önlemler:**
+- **Onay kutusu:** Wails'in `MessageDialog`'u Windows'ta düz `MessageBox`: düğmeler Evet/Hayır, ad verilemiyor. Yerine `TaskDialogIndirect` kullanılıyor; "Vazgeç" / "Kalıcı olarak sil" gibi düğmeler ve varsayılan Vazgeç korunuyor.
+- **İzinler:** Wails WebView2'de bütün izin isteklerini kendiliğinden onaylıyor (`SetGlobalPermission(Allow)`); Electron'da yalnız yazı tipi listesi açıktı.
+  - Önlem: belgeye `Permissions-Policy` başlığı, varlık sunucusu ara katmanından. Kamera, mikrofon, konum ve benzerleri kapalı; `local-fonts` açık.
+- **Gezinme ve yeni pencere:** Wails bunlara kanca vermiyor; Electron hepsini engelliyordu.
+  - Kalan risk: ele geçmiş bir renderer pencereyi başka bir sayfaya götürebilir ya da açılır pencere açabilir.
+  - Sınır: Wails bağlama çağrılarını yalnız uygulamanın kökeninden kabul ediyor (kaynak doğrulaması). Uzak sayfa Go yöntemlerine ulaşamıyor. CSP aynı kalıyor.
+- **`window.runtime`:** ele geçmiş bir renderer pencereyi küçültüp kapatabilir ve varsayılan tarayıcıda bir http(s) adresi açabilir (`BrowserOpenURL`). Electron'da yalnız https bağlantısı, kullanıcı tıklayınca açılıyordu. Kabul edildi.
+- **Eski göçler taşınmıyor:** `panely-desktop` profilleri (K-136) ve `profiles.json` → `servers.json` aktarımı (K-162).
+  - Masaüstü hiçbir sürümde dağıtılmadı. Tek kurulumda aktarım 6 Kasım'da koştu (`servers-imported` işareti var), ama aktaracak profil bulmadı (aşağıda, 8 Kasım).
+  - Bu benim kararım.
+
+**Duman testi:** Electron'daki yolculuk (`smoke.ts`) korunuyor (`desktop/test/smoke/journey.ts`, koşucu `desktop/scripts/smoke.ts`).
+- İlk plan WebView2'nin hata ayıklama portuydu (CDP). Olmadı: go-webview2 ortam değişkeni ve kayıt defteri üzerinden tarayıcı argümanı verilmesini kasıtlı olarak engelliyor (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS`'ı boşaltıyor). Dağıtılan ikili için bu iyi: dışarıdan hata ayıklama portu açtırılamıyor.
+- Yerine: duman ikilisi stdin'den `{"id","code"}` alıyor, kodu `ExecJS` ile sayfada çalıştırıyor, sonucu Wails olayıyla geri alıp stdout'a `SMOKE {…}` satırı yazıyor. Ekran görüntüsü `PrintWindow` ile. Konsol, yakalanmayan hata ve CSP ihlallerini sayfa betiklerinden önce yüklenen bir toplayıcı biriktiriyor.
+- Sahte sunucu `test/fixtures/fake-sidecar.mjs` olarak kaldı; duman ikilisi onu alt süreç olarak başlatıp JSON-RPC konuşuyor. Bunların hepsi `smoke` etiketiyle derlenen ikilide; dağıtılan ikili içermiyor.
+- Electron'dan iki fark: pencere camı denetimi yok (duman ikilisi malzemesiz açılır); "yerel tema" `prefers-color-scheme` ile değil kökün `color-scheme`'iyle ölçülüyor (Wails WebView2'nin renk düzenini ayarlamıyor; arayüz yerel denetimleri zaten `color-scheme` ile temaya bağlıyor).
+- 7 Kasım, bu bilgisayarda (kullanıcı onayıyla): kısa test ve tam yolculuk ilk denemede geçti; ekran görüntüleri Electron'dakiyle aynı arayüzü gösteriyor.
+
+**Paket:** `desktop/dist/Kadran.exe` tek dosya, 18,6 MB (bütçe ≤ 20; kaynak haritaları gömülmüyor, ~1,4 MB). Simge ve manifest (ortak denetimler 6, DPI) `desktop/rsrc_windows_amd64.syso`'da; onu üreten kod `desktop/internal/winres` (bağımlılık eklemeden, `debug/pe` ile sınanıyor). Yanında `THIRD_PARTY_NOTICES.txt`: Go, 21 Go modülü, arayüz paketleri, Geist, Coolify.
+
+**Ölçütler, taşımadan sonra (7 Kasım, bu bilgisayar):**
+- Paket 18,6 MB ✓ (bütçe ≤ 20).
+- Boşta özel bellek, 5 sahte sunucu, 60/75/90. saniye: 280,0 / 278,7 / 279,0 MB ✓ (bütçe ≤ 300; 7 Kasım'da ≤ 250'ye göre ✗ idi).
+  - Kadran'ın kendi süreci 59 MB, kalanı 7 WebView2 süreci. Sahte sunucunun Node süreci gerçek uygulamada yok, toplama girmedi.
+  - Duman ikilisiyle ölçüldü: cam kapalı, dağıtıcı yerine sahte sunucu istemcisi. Deneme 261–268 MB'tı (gRPC istemcisi yoktu); Electron aynı veriyle ~303 MB.
+  - **Bütçe 300 MB (kullanıcı, 8 Kasım):** "279 kabul gibi ya 300'ü geçmesin".
+- Mutasyon: `mutate-desktop.sh` 101/101 yakalandı (41 arayüz, 60 Go).
+
+**Gerçek pencerede deneme (8 Kasım, bu bilgisayar):**
+- **Cam bozuktu, düzeltildi.** Kullanıcı açık temada çerçevede cam görmedi. Koyu temada odaklanınca camın üstüne koyu bir örtü geliyordu.
+  - Sebep: çerçevesiz pencerede Wails'in çerçeve süsü (`framelessWithDecorations`). Wails her `WM_ACTIVATE`'te `DwmExtendFrameIntoClientArea(1,1,1,1)` çağırıyor; Akrilik düz tona dönüyor. K-163'te Electron'da ölçülen bozulmanın aynısı.
+  - Odak hiç almamış pencerede cam vardı; odak alınca gidiyordu. Pencereye `WM_ACTIVATE` göndermek de bozuyordu.
+  - Düzeltme: cam varken `DisableFramelessWindowDecorations` (`windowOptions`, `desktop/main_windows.go`). Kullanıcı yeni derlemede iki temada, odakta ve odak dışında baktı: "duruyor cam".
+  - Wails'e göre süs gölge ve yuvarlak köşe veriyor; cam ayrıca DWM'den yuvarlak köşe istiyor. Süs kapalıyken gölge ve köşe ölçülmedi.
+  - Test: `main_windows_test.go`, eski kodda kırmızı. Windows'a özgü olduğu için Linux'taki mutasyon işine girmiyor; Windows CI'daki `go test ./...` koşuyor.
+- **Konsol penceresi yok.** Gerçek uygulama, iki gerçek sunucuyla açıldı; iki `ssh.exe` çalıştı ve yeni görünür pencere yalnız Kadran'ınki oldu.
+  - Ölçüm kontrolle doğrulandı: aynı betik, kısa süre açık kalan bir `ping` için Terminal ile `PseudoConsoleWindow` penceresini yakaladı.
+- **Onay kutusu:** yerleşim artık ayrı bir işlevde (`layout`, `accepted`) ve testli. Varsayılan düğme Vazgeç, Esc açık, yalnız eylem düğmesi onay sayılıyor.
+  - Üç mutant yakalandı: varsayılan düğme eylem, Esc bayrağı yok, Vazgeç dışındaki her dönüş onay.
+  - Gerçek pencerede (Hetzner, `kadran login` sonrası): uyarı simgeli kutu, "Create a backup now?", düğmeler Cancel ve Create backup, Cancel varsayılan. Kullanıcı Cancel, Esc ve Enter'la kapattı. Sunucunun yedek listesinde yeni kayıt yok; en yenisi saatlik zamanlayıcının, saniyesine kadar aynı düzende.
+- **Sürükleme:** kullanıcı başlık çubuğundan sürükledi ("tamam yaptım").
+- **Sunucu listesi boştu.** `%APPDATA%\kadran\servers.json` hiç yoktu. 6 Kasım'daki aktarım `profiles.json` bulamamış, yalnız `servers-imported` işaretini yazmış. 8 Kasım'da iki sunucu CLI ile eklendi (`kadran server add`).
+
+**Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.

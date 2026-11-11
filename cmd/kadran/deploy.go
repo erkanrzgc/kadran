@@ -5,15 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"regexp"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
+	"github.com/erkanrzgc/kadran/internal/gitref"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
-
-var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
 // runDeploy, bir commit'i derler, ayağa kaldırır ve trafiği ona çevirir.
 //
@@ -132,63 +127,11 @@ func (c *cli) consumeDeploy(stream kadranv1.KadranService_DeployClient) int {
 	return exitOK
 }
 
-// resolveCommit, dağıtılacak commit'i belirler.
-//
-// ── Neden çözümü İSTEMCİ yapıyor? ──────────────────────────────────
-//
-// kadrand yapamaz. Gerekçe dilim 4c'de DEĞİŞTİ ama sonuç aynı kaldı:
-// birim artık AF_INET açıyor (sağlık yoklaması için), ancak
-// `IPAddressDeny=any` + `IPAddressAllow=172.16.0.0/12` yalnızca Docker'ın
-// özel ağına izin veriyor. GitHub'a bağlanmak hâlâ imkânsız — gerçek
-// sunucuda ölçüldü: 1.1.1.1'e bağlanma denemesi engelleniyor, aynı
-// deneme cgroup dışında başarılı.
-//
-// Yani kontrol düzlemi süreci internete hiç çıkmıyor; bu bir eksiklik
-// değil, en-az-yetkinin ölçülebilir hâli. `git ls-remote` karşılığı
-// burada, iş istasyonunda koşar.
+// resolveCommit, dağıtılacak commit'i belirler; ilerleme satırı stderr'e
+// gider. Kural ve gerekçe internal/gitref'te (masaüstü de onu kullanır).
 func (c *cli) resolveCommit(
 	ctx context.Context, rpc kadranv1.KadranServiceClient,
 	appID, commit, branch string,
 ) (string, error) {
-	if commit != "" {
-		if !fullSHA.MatchString(commit) {
-			return "", fmt.Errorf(
-				"-commit must be a full 40-character lowercase hex sha (%q) — "+
-					"short shas and branch names are refused: builds must be reproducible", commit)
-		}
-		return commit, nil
-	}
-
-	// Dal çözümü için deponun nerede olduğunu bilmek gerekiyor; onu
-	// sunucudaki tanımdan okuyoruz. Böylece kullanıcı depoyu iki kez
-	// yazmıyor ve `app create`'te kaydedilen tanım tek gerçek kaynak
-	// olarak kalıyor.
-	resp, err := rpc.GetApp(ctx, &kadranv1.GetAppRequest{AppId: appID})
-	if status.Code(err) == codes.PermissionDenied {
-		// Dağıtım anahtarı uygulama tanımını okuyamaz: ortam
-		// değişkenlerinin değerlerini taşıyor (K-131). Dal çözülemez.
-		return "", fmt.Errorf("this key cannot read the app definition, so the branch cannot be resolved: "+
-			"pass the commit with -commit (in GitHub Actions -commit \"$GITHUB_SHA\"): %w", err)
-	}
-	if err != nil {
-		return "", fmt.Errorf("could not get the app definition: %w", err)
-	}
-	spec := resp.GetApp().GetSpec()
-
-	if branch == "" {
-		branch = spec.GetGitBranch()
-	}
-	if branch == "" {
-		return "", errors.New("could not determine the branch: pass -branch or -commit")
-	}
-
-	fmt.Fprintf(c.stderr, "resolving branch %[4]q of %[1]s/%[2]s/%[3]s…\n",
-		spec.GetGitHost(), spec.GetGitOwner(), spec.GetGitRepo(), branch)
-
-	sha, err := resolveRemoteBranch(ctx,
-		spec.GetGitHost(), spec.GetGitOwner(), spec.GetGitRepo(), branch)
-	if err != nil {
-		return "", err
-	}
-	return sha, nil
+	return gitref.ResolveCommit(ctx, rpc, appID, commit, branch, c.stderr)
 }

@@ -1,11 +1,8 @@
 {
-  // Kaynakta içe aktarımlar `.ts` uzantısıyla yazılıyor; böylece
-  // `node --test` derleme olmadan doğrudan çalışabiliyor ve testler
-  // bağımlılıksız kalıyor.
-  //
-  // rewriteRelativeImportExtensions (TS 5.7+) tsc çıktısında bu uzantıları
-  // `.js`'e çeviriyor — Electron derlenmiş kodu çalıştırıyor. İki kip de
-  // aynı kaynaktan besleniyor, ayrı bir dosya kopyası yok.
+  // Node tarafının tip denetimi (yalnız noEmit): paylaşılan türler, duman
+  // testi ve paketleme betiği. Bunlar `node` ile derlemeden çalışıyor
+  // (tür ayıklama); içe aktarımlar bu yüzden `.ts` uzantısıyla yazılıyor.
+  // Arayüz ayrı: tsconfig.renderer.json (DOM + JSX), Vite derliyor.
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],
@@ -13,21 +10,17 @@
     "moduleResolution": "nodenext",
 
     "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": false,
 
-    "outDir": "out",
-    "rootDir": "src",
-    "sourceMap": true,
+    "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  // renderer/ burada derlenmiyor: Vite derliyor, tip denetimi
-  // tsconfig.renderer.json'da (DOM + JSX). İki dünya ayrı tutuluyor.
-  "include": ["src/main/**/*.ts", "src/preload/**/*.ts", "src/shared/**/*.ts"]
+  "include": ["src/shared/**/*.ts", "scripts/smoke.ts", "scripts/dist.ts", "test/smoke/**/*.ts"]
 }

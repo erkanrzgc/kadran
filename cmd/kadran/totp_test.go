@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -568,22 +567,16 @@ func TestTotpResetUsesRootPath(t *testing.T) {
 }
 
 // TestSidecarSendsSavedSession: masaüstü açıkken CLI'da yapılan login ve
-// logout, ÖNBELLEKTEKİ bağlantının bir sonraki çağrısında geçerli.
+// logout, sidecar'ın bir sonraki çağrısında geçerli. Dağıtıcı oturumu her
+// çağrıda yeniden okuyor (internal/sidecar session_test.go); burada CLI'ın
+// verdiği okuyucunun kayıtlı dosyayı her seferinde okuduğu ölçülüyor.
 func TestSidecarSendsSavedSession(t *testing.T) {
 	d := totpCLI(t, "", true)
-	conn := client.NewWithRPC(d.rpc)
-	s := &sidecar{cli: d.c, callTimeout: 5 * time.Second, conns: map[string]*client.Client{totpAnahtar: conn}}
-	params, err := json.Marshal(targetParams{Target: totpHedef})
-	if err != nil {
-		t.Fatal(err)
-	}
+	load := d.c.sidecarDeps(5 * time.Second).LoadSession
 	gorulen := func() string {
-		var tok string
-		if _, fail := s.withConn(context.Background(), params, func(_ context.Context, c *client.Client) (any, error) {
-			tok = c.Session()
-			return nil, nil
-		}); fail != nil {
-			t.Fatalf("çağrı: %+v", fail)
+		tok, err := load(totpHedef)
+		if err != nil {
+			t.Fatalf("oturum okunamadı: %v", err)
 		}
 		return tok
 	}

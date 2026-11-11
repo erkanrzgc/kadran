@@ -11,7 +11,7 @@
 [![CI](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml/badge.svg)](https://github.com/erkanrzgc/kadran/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/erkanrzgc/kadran?color=F59E0B)](https://github.com/erkanrzgc/kadran/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache_2.0-0E1116.svg)](LICENSE)
-[![Go 1.26.10+](https://img.shields.io/badge/Go-1.26.10%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
+[![Go 1.26.11+](https://img.shields.io/badge/Go-1.26.11%2B-00ADD8?logo=go&logoColor=white)](https://go.dev/dl/)
 
 [Quick start](#quick-start) · [Why](#why-kadran) · [Features](#what-it-does) · [Security model](#security-model) · [Upgrading](#upgrading-from-v030) · [Known gaps](#known-gaps)
 
@@ -149,7 +149,7 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
   binaries are built and CI runs the tests on real ARM hardware, but no arm64 server has
   been installed yet.
 - **Workstation:** an OpenSSH client and a key pair. `~/.ssh/id_ed25519.pub` is used by
-  default; `-client-key` picks another. Building from source also needs Go 1.26.10+.
+  default; `-client-key` picks another. Building from source also needs Go 1.26.11+.
 - **Ports 80 and 443** must be free. The installer stops if `caddy`, `nginx`, `apache2`,
   `httpd` or `lighttpd` is running.
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`): use
@@ -361,9 +361,9 @@ place** (K-136):
 ```
 ┌─ WORKSTATION ─────────────────┐        ┌─ SERVER ──────────────────────────────────────┐
 │                               │        │                                               │
-│  Electron GUI (local confirm) │        │  kadrand            user: kadran              │
-│      ↕ stdio JSON-RPC         │        │    • business logic, supervisor, SQLite       │
-│  kadran (Go CLI / sidecar) ───┼──SSH───┼──► • api.sock (0660, group kadran-client)     │
+│  Desktop GUI (local confirm)  │        │  kadrand            user: kadran              │
+│  kadran (Go CLI)              │        │    • business logic, supervisor, SQLite       │
+│    same Go client in both ────┼──SSH───┼──► • api.sock (0660, group kadran-client)     │
 │                               │        │    • CANNOT reach Docker, no network access   │
 └───────────────────────────────┘        │          ↕ exec.sock — typed gRPC             │
                                          │  kadran-exec        user: root                │
@@ -385,7 +385,7 @@ place** (K-136):
 | `kadran-caddy` | `kadran-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME |
 | `kadran-proxy` | `kadran-proxy` | Unix sockets only; no Docker, vault or Caddy state access | Validates typed route sets and builds fixed Caddy config; sole raw admin client |
 | `kadran-connect` | `kadran-client` | None; ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
-| `kadran` | workstation | — | CLI, and sidecar for the Electron GUI |
+| `kadran` | workstation | — | CLI; the desktop app (Wails) embeds the same Go client |
 
 ## Security model
 
@@ -741,13 +741,13 @@ cmd/kadran-connect/  Forced-command stdio proxy
 cmd/kadran/          Workstation CLI + `kadran sidecar`
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
-desktop/             Electron + React + Vite: light and dark themes, glass sidebar
+desktop/             Wails (Go) + React + Vite: one binary, light and dark themes, glass sidebar
 deploy/              systemd units, offsite backup, alarm delivery, heartbeat
 docs/                Architecture decision records
 scripts/             Surface checks, mutation tests — and the tests for those checks
 ```
 
-Requirements: Go 1.26.10+, Node 22.6+ (desktop only), [`buf`](https://buf.build/docs/installation),
+Requirements: Go 1.26.11+, Node 22.6+ (desktop only), [`buf`](https://buf.build/docs/installation),
 Docker for integration tests.
 
 ```bash

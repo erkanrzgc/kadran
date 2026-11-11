@@ -49,13 +49,3 @@ test("ilk çizimde ve aynı temada geçiş yok", () => {
   assert.equal(same.theme, "dark");
   assert.deepEqual(log, []);
 });
-
-test("ana süreç camı diske yazmadan önce değiştirir: kayıt beklerse cam arayüzden geç döner", async () => {
-  const { readFile } = await import("node:fs/promises");
-  const index = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
-  const handler = index.slice(index.indexOf("CHANNELS.saveAppearance"));
-  const look = handler.indexOf("host?.setLook(");
-  const write = handler.indexOf("saveAppearance(userData()");
-  assert.ok(look >= 0 && write >= 0);
-  assert.ok(look < write, "cam diske yazmadan önce");
-});

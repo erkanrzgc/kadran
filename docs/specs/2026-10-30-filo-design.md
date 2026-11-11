@@ -265,7 +265,7 @@ için bellekte mucize yok. Seçenekler:
   daha da düşük (ölçülmedi). Bedeli: React arayüzü atılır, ekranlar baştan yazılır, cam görünüm
   zorlaşır.
 
-**Bütçe (karar):** Wails seçilirse paket ≤ 20 MB, 5 sunucuyla boşta özel bellek ≤ 250 MB.
+**Bütçe (karar):** Wails seçilirse paket ≤ 20 MB, 5 sunucuyla boşta özel bellek ≤ 250 MB. 8 Kasım 2026'da kullanıcı bellek bütçesini ≤ 300 MB'a çekti (ölçülen 279 MB; K-165).
 Electron'da kalınırsa ikisi de bugünkü değerin altında tutulur (≤ 380 MB, ≤ 390 MB).
 
 Karar 3. parçadan önce gerekli.

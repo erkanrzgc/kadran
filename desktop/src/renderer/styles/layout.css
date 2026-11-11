@@ -117,6 +117,8 @@
   .win-btn { width: 36px; }
 }
 
-/* no-drag: sürükleme bölgesi tıklamayı yutar, üstüne açılan menüyü de. */
-.rail-brand, .topbar { -webkit-app-region: drag; }
-button, input, select, a, summary, .crumb-menu, .operation-dialog, .toast { -webkit-app-region: no-drag; }
+/* no-drag: sürükleme bölgesi tıklamayı yutar, üstüne açılan menüyü de.
+   Wails pencereyi --wails-draggable ile sürükler (K-165); özel özellik
+   kalıtılır, düğmeler kendi değeriyle çıkar. */
+.rail-brand, .topbar { --wails-draggable: drag; }
+button, input, select, a, summary, .crumb-menu, .operation-dialog, .toast { --wails-draggable: no-drag; }

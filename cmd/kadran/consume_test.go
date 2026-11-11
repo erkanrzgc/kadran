@@ -37,6 +37,9 @@ func (f *fakeDeployStream) Recv() (*kadranv1.DeployResponse, error) {
 	return nil, io.EOF
 }
 
+// measuredMainSHA, gerçek bir commit özeti (internal/gitref testlerindeki ölçülmüş yanıttan).
+const measuredMainSHA = "e60b4d22063f2b627e60bc699bd31bb0ba572557"
+
 func acceptedMsg(id string) *kadranv1.DeployResponse {
 	return &kadranv1.DeployResponse{Event: &kadranv1.DeployResponse_Accepted{
 		Accepted: &kadranv1.DeployAccepted{ReleaseId: id, CommitSha: measuredMainSHA},

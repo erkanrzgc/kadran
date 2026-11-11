@@ -14,7 +14,8 @@ export default defineConfig({
   build: {
     outDir: fileURLToPath(new URL("./out/renderer", import.meta.url)),
     emptyOutDir: true,
-    sourcemap: true,
+    // Kaynak haritası ikiliye gömülmez: dağıtılan pakette işe yaramaz, ~1,4 MB.
+    sourcemap: false,
     target: "esnext",
   },
 });

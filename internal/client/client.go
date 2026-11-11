@@ -240,7 +240,21 @@ type Client struct {
 // SSH alt sürecini ancak gerçekten ihtiyaç duyulduğunda başlatmak, `kadran
 // --help` gibi komutların sunucuya dokunmamasını sağlar.
 func Dial(target Target) (*Client, error) {
-	dialer, err := dialerFor(target)
+	return DialWith(target, DialOptions{})
+}
+
+// DialOptions, bağlantı kurmanın seçenekleri.
+type DialOptions struct {
+	// HideConsole, Windows'ta ssh alt sürecine konsol penceresi açtırmaz.
+	// Konsolu olmayan masaüstü uygulaması (Wails, K-165) için: orada her
+	// sunucu bağlantısı açık kalan bir konsol penceresi olurdu. CLI'da ssh
+	// kullanıcının konsolunu paylaşır; orada kapalı kalır.
+	HideConsole bool
+}
+
+// DialWith, Dial'ın seçenekli hâli.
+func DialWith(target Target, opts DialOptions) (*Client, error) {
+	dialer, err := dialerFor(target, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +306,7 @@ func (c *Client) RPC() kadranv1.KadranServiceClient { return c.rpc }
 // Burada da yazmak iki önsöz üretirdi: kadrand ilkini okur, ardından
 // HTTP/2 beklediği yerde dört baytlık bir uzunluk artı JSON bulurdu ve
 // bağlantı kurulmadan ölürdü.
-func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error) {
+func dialerFor(t Target, opts DialOptions) (func(context.Context, string) (net.Conn, error), error) {
 	if t.IsLocal() {
 		return func(ctx context.Context, _ string) (net.Conn, error) {
 			return dialLocal(ctx, t.SocketPath)
@@ -302,7 +316,7 @@ func dialerFor(t Target) (func(context.Context, string) (net.Conn, error), error
 		return nil, errors.New("client: no target given")
 	}
 	return func(ctx context.Context, _ string) (net.Conn, error) {
-		return dialSSH(ctx, t)
+		return dialSSHWith(ctx, t, opts)
 	}, nil
 }
 
@@ -369,6 +383,11 @@ var sshCommand = "ssh"
 // Buraya kimlik önsözü YAZILMAZ; sunucuda kadran-connect yazıyor.
 // Gerekçe için dialerFor'daki "önsöz asimetrisi" notuna bakın.
 func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
+	return dialSSHWith(ctx, t, DialOptions{})
+}
+
+// dialSSHWith, dialSSH'ın seçenekli hâli.
+func dialSSHWith(ctx context.Context, t Target, opts DialOptions) (net.Conn, error) {
 	// ParseTarget tek savunma olsaydı, doğrudan kurulan bir Target
 	// (diskteki profilden okunan alanlar gibi) korumayı baypas ederdi.
 	// Doğrulama argv'nin kurulduğu yerde de duruyor; bkz. rejectOptionLike.
@@ -410,6 +429,9 @@ func dialSSH(ctx context.Context, t Target) (net.Conn, error) {
 		return nil, fmt.Errorf("client: cancelled before connecting: %w", err)
 	}
 	cmd := exec.Command(sshCommand, args...) //nolint:noctx // gerekçe yukarıda
+	if opts.HideConsole {
+		hideConsole(cmd)
+	}
 	// ssh ölüp stderr'i açık tutan bir alt süreç bırakırsa (ör.
 	// ControlPersist ustası) Wait, stderr kopyasını o süreç bitene kadar
 	// bekler; Kill yalnızca doğrudan çocuğa ulaşır. Okuyucu EOF'ta Wait'i

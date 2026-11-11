@@ -4,25 +4,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/erkanrzgc/kadran/internal/sidecar"
 )
 
-// protoToJSON, bir protobuf mesajını JSON'a çevirir.
-//
-// EmitUnpopulated açık: boş alanlar da yazılır. Tüketici (Electron, jq,
-// betikler) böylece "alan yok" ile "alan boş" ayrımını yapmak zorunda
-// kalmaz; şema neyse çıktı odur.
+// protoToJSON, bir protobuf mesajını JSON'a çevirir. Sidecar ile aynı
+// biçim (boş alanlar da yazılır, .proto alan adları): tek kaynak orada.
 func protoToJSON(m proto.Message) (json.RawMessage, error) {
-	opts := protojson.MarshalOptions{
-		EmitUnpopulated: true,
-		UseProtoNames:   true, // .proto'daki alan adları — şemayla birebir
-	}
-	b, err := opts.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("could not encode as JSON: %w", err)
-	}
-	return b, nil
+	return sidecar.ProtoToJSON(m)
 }
 
 // writeJSON, değeri girintili JSON olarak stdout'a yazar.

@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 # Masaüstünün korumalarını sınayan testlerin GERÇEKTEN bir şey koruduğunu
-# ölçer (K-142).
+# ölçer (K-142, K-165).
 #
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
-#   - Pencerenin güvenlik ayarları (sandbox, contextIsolation): bir XSS
-#     renderer'dan Node'a geçer.
-#   - İzinler: kamera, mikrofon, bildirim sessizce açılır.
+#   - Güven sınırı (Go, desktop/internal): doğrulama, yerel onay, işlem
+#     kapısı, hata arıtma. Ele geçmiş bir arayüz sunucuya istediğini yaptırır.
+#   - İzinler: kamera, mikrofon, konum sessizce açılır (Permissions-Policy).
 #   - CSP: satır içi betik çalışır.
 #   - Audit penceresi: "son kayıtlar" en ESKİ kayıtları gösterir.
 #   - Dil dosyaları: Türkçesi eksik ekran ya da İngilizcede Türkçe.
 #
-# Hepsi birim düzeyinde ölçülüyor (npm test); Electron açılmıyor. Düzenek
-# diğer betiklerle aynı: tek eşleşme şartı (K-127), yeşil taban şartı,
-# derleme kapısı (K-096).
+# İki ölçüm: arayüz (TypeScript, npm test) ve masaüstünün Go paketleri
+# (go test ./internal/...). İkisi de birim düzeyinde; pencere açılmıyor.
+# Düzenek diğer betiklerle aynı: tek eşleşme şartı (K-127), yeşil taban
+# şartı, derleme kapısı (K-096).
 #
 # kapsam: desktop/
 set -uo pipefail
@@ -21,20 +22,15 @@ set -uo pipefail
 cd "$(dirname "$0")/../desktop"
 
 if [ ! -d node_modules ]; then
-    echo "!! desktop/node_modules yok — önce 'npm ci' (ELECTRON_SKIP_BINARY_DOWNLOAD=1 yeterli). Ölçüm YAPILMADI"
+    echo "!! desktop/node_modules yok — önce 'npm ci'. Ölçüm YAPILMADI"
     exit 1
 fi
 
 FILES=(
-    src/main/window-options.ts
-    src/main/window-accent.ts
-    src/main/permissions.ts
-    src/main/ipc-validate.ts
     src/renderer/index.html
     src/renderer/i18n/tr.json
     src/renderer/i18n/en.json
     src/renderer/toast/Toast.tsx
-    src/shared/appearance.ts
     src/renderer/styles/tokens.css
     src/renderer/styles/layout.css
     src/renderer/styles/base.css
@@ -52,14 +48,19 @@ FILES=(
     src/renderer/lib/profile-store.ts
     src/renderer/lib/audit-view.ts
     src/renderer/lib/verification-state.ts
-    src/main/management-core.ts
-    src/main/management-ipc.ts
-    src/main/management-results.ts
-    src/main/management-confirmation.ts
-    src/main/management-payload.ts
-    src/main/sidecar-error.ts
-    src/main/sidecar-reads.ts
-    src/main/server-list.ts
+    src/renderer/lib/management-results.ts
+    internal/guard/ipc.go
+    internal/guard/payload.go
+    internal/confirm/confirm.go
+    internal/confirm/box.go
+    internal/redact/redact.go
+    internal/appearance/appearance.go
+    internal/appearance/look.go
+    internal/win/policy.go
+    internal/headers/headers.go
+    internal/bridge/bridge.go
+    internal/bridge/management.go
+    internal/bridge/servers.go
 )
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -74,8 +75,15 @@ tests_pass() { node --test --test-timeout=120000 "test/*.test.ts" >/dev/null 2>&
 
 fail=0
 
-# mutate_in <dosya> <ad> <python-ifadesi>
-mutate_in() {
+go_compiles() { go vet ./internal/... >/dev/null 2>&1; }
+go_tests_pass() { go test -count=1 -timeout 120s ./internal/... >/dev/null 2>&1; }
+
+# mutate_in <dosya> <ad> <python-ifadesi>: arayüz (TypeScript) ölçümü.
+mutate_in() { HARNESS=ts mutate "$@"; }
+# mutate_go <dosya> <ad> <python-ifadesi>: masaüstünün Go paketleri.
+mutate_go() { HARNESS=go mutate "$@"; }
+
+mutate() {
     local file="$1" name="$2" expr="$3"
     restore
     if ! python -c "
@@ -105,13 +113,15 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
     # ── MUTANT DERLENMELİ ───────────────────────────────
     # Derlenmeyen bir mutant testleri düşürür ve betik bunu "yakalandı"
     # diye okur (K-096).
-    if ! compiles; then
+    local build=compiles pass=tests_pass
+    if [ "$HARNESS" = go ]; then build=go_compiles pass=go_tests_pass; fi
+    if ! "$build"; then
         echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI"
         fail=1
         return
     fi
 
-    if tests_pass; then
+    if "$pass"; then
         echo "  KIRMIZI OLMADI: $name"
         fail=1
     else
@@ -120,22 +130,10 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
 }
 
 # Taban YEŞİL olmalı: kırmızı bir taban her mutantı "yakalandı" gösterirdi.
-if ! compiles || ! tests_pass; then
+if ! compiles || ! tests_pass || ! go_compiles || ! go_tests_pass; then
     echo "!! TABAN KIRMIZI: mutasyonsuz kodda derleme ya da testler düşüyor — ölçüm YAPILMADI"
     exit 1
 fi
-
-echo "== Pencere ve izinler =="
-mutate_in src/main/window-options.ts "sandbox kapalı" \
-    "s=s.replace('sandbox: true,','sandbox: false,',1)"
-mutate_in src/main/window-options.ts "contextIsolation kapalı" \
-    "s=s.replace('contextIsolation: true,','contextIsolation: false,',1)"
-mutate_in src/main/permissions.ts "her izin kontrolüne evet" \
-    "s=s.replace('return ALLOWED_CHECKS.has(permission);','return true;',1)"
-mutate_in src/main/permissions.ts "her izin isteğine evet" \
-    "s=s.replace('export function allowPermissionRequest(_permission: string): boolean {\n  return false;','export function allowPermissionRequest(_permission: string): boolean {\n  return true;',1)"
-mutate_in src/main/ipc-validate.ts "pencere eylemi beyaz listesi yok" \
-    "s=s.replace('(WINDOW_ACTIONS as readonly string[]).includes(value)','value.length > 0',1)"
 
 echo "== CSP ve HTML =="
 mutate_in src/renderer/index.html "CSP'ye unsafe-inline" \
@@ -150,26 +148,6 @@ mutate_in src/renderer/i18n/en.json "İngilizcede Türkçe metin" \
     "s=s.replace('\"nav.settings\": \"Settings\"','\"nav.settings\": \"Ayarlar\"',1)"
 mutate_in src/renderer/lib/i18n.ts "çoğul ters" \
     "s=s.replace('=== 1 ? \"one\" : \"other\"','=== 1 ? \"other\" : \"one\"',1)"
-
-echo "== Görünüm şeması =="
-mutate_in src/shared/appearance.ts "Windows 10'a Acrylic veriliyor" \
-    "s=s.replace('if (isWindows11(info)) return \"acrylic\";','if (info.platform === \"win32\") return \"acrylic\";',1)"
-mutate_in src/shared/appearance.ts "eski sürümün yazı tipi taşınıyor" \
-    "s=s.replace('if (o.version !== APPEARANCE_VERSION) return { ...d, language };','',1)"
-mutate_in src/shared/appearance.ts "yazı tipi kalınlığı sınırsız" \
-    "s=s.replace('weight: clampInt(o.weight, LIMITS.weight, fallback.weight)','weight: typeof o.weight === \"number\" ? o.weight : fallback.weight',1)"
-mutate_in src/shared/appearance.ts "bilinmeyen tema dosyadan geçiyor" \
-    "s=s.replace('theme: pick(o.theme, THEMES, d.theme)','theme: o.theme as Theme',1)"
-mutate_in src/shared/appearance.ts "malzemesiz sistemde pencere saydam açılıyor" \
-    "s=s.replace('  if (available === \"none\") return { material: \"none\", background: SOLID_FRAME[theme], scheme: theme };\n','',1)"
-mutate_in src/shared/appearance.ts "açık temada cam kapanıyor (cam yalnız koyuda)" \
-    "s=s.replace('return { material: available, background: \"#00000000\", scheme: theme };','return theme === \"light\" ? { material: \"none\", background: SOLID_FRAME[theme], scheme: theme } : { material: available, background: \"#00000000\", scheme: theme };',1)"
-mutate_in src/shared/appearance.ts "açık tema yerel koyuda kalıyor" \
-    "s=s.replace('background: \"#00000000\", scheme: theme','background: \"#00000000\", scheme: \"dark\"',1)"
-mutate_in src/shared/appearance.ts "varsayılan tema koyu" \
-    "s=s.replace('    theme: \"light\",','    theme: \"dark\",',1)"
-mutate_in src/shared/appearance.ts "kaldırılan cam teması dosyadan geçiyor" \
-    "s=s.replace('export const THEMES: readonly Theme[] = [\"dark\", \"light\"];','export const THEMES: readonly Theme[] = [\"dark\", \"light\", \"glass\" as unknown as Theme];',1)"
 
 echo "== Cam yalnız çerçevede (stil) =="
 mutate_in src/renderer/styles/tokens.css "malzemesiz sistemde çerçeve saydam kalıyor" \
@@ -204,28 +182,6 @@ mutate_in src/renderer/styles/controls.css "düğme basınca yine aşağı iniyo
     "s=s.replace('.btn:not(:disabled):active { filter: brightness(0.94); }','.btn:not(:disabled):active { transform: translateY(2px); }',1)"
 mutate_in src/renderer/styles/layout.css "KADRAN panelle hizasız (şerit yüksekliği kadar değil)" \
     "s=s.replace('padding: 48px 16px 0;','padding: 0 16px;',1)"
-
-echo "== Windows camı =="
-mutate_in src/main/window-accent.ts "cam kapatılınca efekt kalıyor" \
-    "s=s.replace('State: on ? ACCENT_ENABLE_ACRYLICBLURBEHIND : ACCENT_DISABLED','State: ACCENT_ENABLE_ACRYLICBLURBEHIND',1)"
-mutate_in src/main/window-accent.ts "düz bulanıklık (Electron'da arka siyah)" \
-    "s=s.replace('const ACCENT_ENABLE_ACRYLICBLURBEHIND = 4;','const ACCENT_ENABLE_ACRYLICBLURBEHIND = 3;',1)"
-mutate_in src/main/window-accent.ts "koyu tonun saydamlığı sıfır (simsiyah)" \
-    "s=s.replace('dark: 0x30181816','dark: 0x00181816',1)"
-mutate_in src/main/window-accent.ts "açık temada koyu ton (cam film)" \
-    "s=s.replace('light: 0xa0f7f4f4','light: 0x30181816',1)"
-mutate_in src/main/window-accent.ts "ton temaya bakmıyor" \
-    "s=s.replace('Color: GLASS_TINT[scheme]','Color: GLASS_TINT.dark',1)"
-mutate_in src/main/window-accent.ts "ton bayrağı yok (renk yok sayılır)" \
-    "s=s.replace('Flags: ACCENT_FLAG_GRADIENT_COLOR','Flags: 0',1)"
-mutate_in src/main/window-options.ts "tema değişince camın tonu yeniden verilmiyor" \
-    "s=s.replace('accent: next.material === \"accent\" && next.scheme !== prev.scheme ? next.scheme : null,','accent: null,',1)"
-mutate_in src/main/window-options.ts "yazı tipi kaydı camı yeniden kuruyor (titreme)" \
-    "s=s.replace('next.material === \"accent\" && next.scheme !== prev.scheme ? next.scheme','next.material === \"accent\" ? next.scheme',1)"
-mutate_in src/main/window-options.ts "zemin rengi her kayıtta yeniden veriliyor" \
-    "s=s.replace('background: next.background !== prev.background ? next.background : null,','background: next.background,',1)"
-mutate_in src/main/window-options.ts "Windows camı Electron malzemesiyle açılıyor (simsiyah)" \
-    "s=s.replace('case \"accent\":\n      return { ...base, ...chrome };','case \"accent\":\n      return { ...base, ...chrome, backgroundMaterial: \"acrylic\" };',1)"
 
 echo "== Filo doğruluğu =="
 mutate_in src/renderer/lib/fleet.ts "bozuk kurulum yeşil görünüyor" \
@@ -268,107 +224,149 @@ mutate_in src/renderer/lib/profile-store.ts "CLI'da silinmiş sunucu düzenlenin
     "s=s.replace('if (serverListReason(err) === \"not_found\") await read()','if (serverListReason(err) === \"not_found_x\") await read()',1)"
 mutate_in src/renderer/lib/audit-view.ts "yükleme hatası 'kayıt yok' gösteriyor" \
     "s=s.replace('if (failed) return \"audit.load_failed\";','void failed;',1)"
-mutate_in src/main/ipc-validate.ts "'-' ile başlayan hedef kabul ediliyor" \
-    "s=s.replace('trimmed.startsWith(\"-\")','trimmed.startsWith(\"--\")',1)"
-# Ortak listeye göç (K-162): yarım kalan göç "bitti" sayılırsa eski liste bir
-# daha hiç taşınmaz ve kullanıcının sunucuları kartlardan kaybolur.
-mutate_in src/main/server-list.ts "liste olmayan eski dosya boş liste sayılıyor" \
-    "s=s.replace('if (!Array.isArray(parsed)) {','parsed = Array.isArray(parsed) ? parsed : []; if (!Array.isArray(parsed)) {',1)"
-mutate_in src/main/server-list.ts "yan süreç hatasında da göç bitti sayılıyor" \
-    "s=s.replace('(await call(\"servers.import\", { profiles }))','(await call(\"servers.import\", { profiles }).catch(() => null))',1)"
-mutate_in src/main/server-list.ts "100'ü aşan eski liste göçü hiç bitirmiyor" \
-    "s=s.replace('const profiles = all.slice(0, MAX_IMPORT);','const profiles = all;',1)"
 
-echo "== Yönetim yüzeyi (ana süreç onayı) =="
-# Her durum değiştiren kanalın onay çağrısı AYRI ayrı silinir: biri unutulursa
-# öbürlerinin testi onu örtemez (son inceleme C1).
-for kind in 'create|{ kind: \"create\", target, spec }' \
-            'update|{ kind: \"update\", target, app: app_id, update }' \
-            'deploy|{ kind: \"deploy\", target, app: app_id, ref }' \
-            'delete|{ kind: \"delete\", target, app: app_id }' \
-            'rollback|{ kind: \"rollback\", target, app: app_id }' \
-            'backup|{ kind: \"backup\", target }'; do
-    name="${kind%%|*}"
-    arg="${kind#*|}"
-    mutate_in src/main/management-core.ts "$name işleminin yerel onayı silinmiş" \
-        "s=s.replace('if (!(await confirm(event, $arg))) return cancelled();','void 0;',1)"
-done
-mutate_in src/main/management-core.ts "iptal düğmesi onay sayılıyor" \
-    "s=s.replace('return response === CONFIRM_BUTTON;','return true;',1)"
-mutate_in src/main/management-core.ts "fake@test koşulu gevşetilmiş (her hedefte atlanıyor)" \
-    "s=s.replace('if (deps.isFixture && request.target === \"fake@test\") return true;','if (deps.isFixture) return true;',1)"
-mutate_in src/main/management-ipc.ts "requireConfirmation her şeyi kabul ediyor" \
-    "s=s.replace('if (value !== appId)','if (false)',1)"
-mutate_in src/main/management-core.ts "tek kutu sınırı devre dışı (kutu yağmuru)" \
-    "s=s.replace('if (dialogOpen) throw','if (dialogOpen && false) throw',1)"
-mutate_in src/main/management-ipc.ts "kapı devre dışı (aynı işi iki kez başlatır)" \
-    "s=s.replace('if (active.has(key)) throw new Error(\"an operation for this app is already running\");','void key;',1)"
-# IPC süresi sidecar'ınkinden kısaysa masaüstü önce vazgeçer, kapı iş
-# sunucuda sürerken serbest kalır ve ikinci bir geri alma başlatılabilir.
-mutate_in src/main/management-core.ts "geri alma/silme IPC süresi sidecar'dan kısa (eski 2 dk)" \
-    "s=s.replace('const LIFECYCLE_TIMEOUT_MS = 4 * 60_000 + SIDECAR_MARGIN_MS;','const LIFECYCLE_TIMEOUT_MS = 2 * 60_000;',1)"
-mutate_in src/main/management-core.ts "IPC payı sıfır (sidecar ile aynı anda düşer)" \
-    "s=s.replace('const SIDECAR_MARGIN_MS = 60_000;','const SIDECAR_MARGIN_MS = 0;',1)"
-mutate_in src/main/management-core.ts "geri alma okuma süresiyle çağrılıyor" \
-    "s=s.replace('return invoke(\"apps.rollback\", target, { app_id, confirmation }, LIFECYCLE_TIMEOUT_MS);','return invoke(\"apps.rollback\", target, { app_id, confirmation });',1)"
-mutate_in src/main/management-results.ts "validateManagementResult her şeyi geçiriyor" \
+echo "== Yönetim yanıtları (arayüz) =="
+mutate_in src/renderer/lib/management-results.ts "validateManagementResult her şeyi geçiriyor" \
     "s=s.replace('if (!valid)','if (false)',1)"
-mutate_in src/main/management-payload.ts "update'te null skaler geçiyor (kutu ile sunucu farklı anlar)" \
-    "s=s.replace('if (nullKey !== undefined) throw','if (nullKey === \"never\") throw',1)"
 # Sidecar'ın iptal taklidi: sunucuda koşmuş iş "vazgeçildi" diye gösterilir.
-mutate_in src/main/management-results.ts "sidecar'ın {cancelled:true} yanıtı iptal sayılıyor" \
+mutate_in src/renderer/lib/management-results.ts "sidecar'ın {cancelled:true} yanıtı iptal sayılıyor" \
     "s=s.replace('  let valid = false;','  if (JSON.stringify(value) === JSON.stringify({ cancelled: true })) return value;\n  let valid = false;',1)"
 mutate_in src/renderer/lib/verification-state.ts "başarısız doğrulama kırık zincir kanıtını siliyor" \
     "s=s.replace('? previous : null','? null : null',1)"
-mutate_in src/main/management-confirmation.ts "update kutusuna env DEĞERİ giriyor" \
-    "s=s.replace('Object.keys(record(u.env))','Object.entries(record(u.env)).map(([k, v]) => k + \"=\" + String(v))',1)"
-mutate_in src/main/management-confirmation.ts "oluşturma kutusunda kopya sayısı yok" \
-    "s=s.replace('lines.push(text(\"line.replicas\", { count: count(s.replicas) }));','void 0;',1)"
-mutate_in src/main/management-confirmation.ts "kutu JSON sayısı biçimindeki sınırı boş gösteriyor (onaylanan ≠ gönderilen)" \
-    "s=s.replace('if (typeof value === \"number\" && Number.isSafeInteger(value) && value >= 0) return BigInt(value);','void 0;',1)"
-mutate_in src/main/management-confirmation.ts "oluşturma kutusunda kaynak sınırları yok" \
-    "s=s.replace('lines.push(text(\"line.limits\",','void (text(\"line.limits\",',1)"
-mutate_in src/main/management-confirmation.ts "oluşturma kutusuna derleme argümanı DEĞERİ giriyor" \
-    "s=s.replace('Object.keys(record(s.build_args))','Object.entries(record(s.build_args)).map(([k, v]) => k + \"=\" + String(v))',1)"
-mutate_in src/main/management-confirmation.ts "kutuda uzun değer baştan kesiliyor (host gizlenir)" \
-    "s=s.replace('return \`\${head}…\${tail}\`;','return \`\${head}…\`;',1)"
-mutate_in src/main/management-confirmation.ts "kesme kaçışsız uzunluğu sayıyor (değer ~6 kat büyür)" \
-    "s=s.replace('head.length + parts[i]!.length <= half','i < half',1)"
-mutate_in src/main/management-confirmation.ts "U+2000 üstü görünmezler kaçışlanmıyor (bidi, U+2028, U+3000)" \
-    "s=s.replace('(INVISIBLE.test(ch) ?','(INVISIBLE.test(ch) && ch.codePointAt(0)! < 0x2000 ?',1)"
-# İğnelerdeki ters bölü chr(92) ile kuruluyor: kabuk/Python kaçış katmanlarına takılmasın.
-mutate_in src/main/management-confirmation.ts "birleşik işaretler kaçışlanmıyor" \
-    "s=s.replace(chr(92)+'p{M}','',1)"
-mutate_in src/main/management-confirmation.ts "boş görünen Hangul dolgusu kaçışlanmıyor" \
-    "s=s.replace(chr(92)+'u3164','',1)"
-mutate_in src/main/management-confirmation.ts "değerdeki … kaçışlanmıyor (sahte kesme)" \
-    "s=s.replace(chr(92)+'u2026','',1)"
-mutate_in src/main/management-payload.ts "yasak bağlama kökü /dev kabul ediliyor" \
-    "s=s.replace('[\"/proc\", \"/sys\", \"/dev\"]','[\"/proc\", \"/sys\"]',1)"
-mutate_in src/main/ipc-validate.ts "hedefte biçim karakteri (bidi) kabul ediliyor" \
-    "s=s.replace('[\\\\p{Cc}\\\\p{Cf}]','[\\\\p{Cc}]',1)"
 
-echo "== Sidecar hata metni (gerçek sebep, redaksiyon) =="
-mutate_in src/main/sidecar-error.ts "gerçek sebep (data) atılıyor, yalnız 'call failed' kalıyor" \
-    "s=s.replace('}: \${err.data}\`','}\`',1)"
-mutate_in src/main/sidecar-error.ts "URL kimlik bilgisi silinmiyor" \
-    "s=s.replace('.replace(URL_USERINFO,','.replace(/(?!)/g,',1)"
-mutate_in src/main/sidecar-error.ts "x-access-token silinmiyor" \
-    "s=s.replace('.replace(X_ACCESS_TOKEN,','.replace(/(?!)/g,',1)"
-mutate_in src/main/sidecar-error.ts "ghp_/gho_/ghu_/ghs_/ghr_ jetonu silinmiyor" \
-    "s=s.replace('.replace(GITHUB_TOKEN,','.replace(/(?!)/g,',1)"
-mutate_in src/main/sidecar-error.ts "github_pat_ jetonu silinmiyor" \
-    "s=s.replace('.replace(GITHUB_PAT,','.replace(/(?!)/g,',1)"
-mutate_in src/main/sidecar-error.ts "biçim (bidi) karakterleri geçiyor" \
-    "s=s.replace('[\\\\p{Cc}\\\\p{Cf}]','[\\\\p{Cc}]',1)"
-mutate_in src/main/sidecar-error.ts "uzunluk sınırı yok" \
-    "s=s.replace('chars.length > MAX_ERROR_CHARS ?','false ?',1)"
-mutate_in src/main/sidecar-error.ts "redaksiyon karakter temizliğinden ÖNCE (bölünmüş jeton kaçar)" \
-    "s=s.replace('redactSecrets(stripUnsafeCharacters(raw))','stripUnsafeCharacters(redactSecrets(raw))',1)"
-mutate_in src/main/management-core.ts "yönetim kanalları ham sidecar hatasını geçiriyor" \
-    "s=s.replace('callForUi(deps.call, method,','deps.call(method,',1)"
-mutate_in src/main/sidecar-reads.ts "durum/denetim kanalları ham sidecar hatasını geçiriyor" \
-    "s=s.replace('callForUi(deps.call, method, params)','deps.call(method, params)',1)"
+echo "== Güven sınırı: girdi doğrulama (Go) =="
+# İğnelerdeki ters bölü chr(92), dolar chr(36) ile kuruluyor: kabuk/Python
+# kaçış katmanlarına takılmasın.
+mutate_go internal/guard/ipc.go "hedefte biçim karakteri (bidi) kabul ediliyor" \
+    "s=s.replace(chr(92)+'p{Cc}'+chr(92)+'p{Cf}]',chr(92)+'p{Cc}]',1)"
+mutate_go internal/guard/ipc.go "'-' ile başlayan hedef kabul ediliyor" \
+    "s=s.replace('if strings.HasPrefix(trimmed, \"-\") {','if strings.HasPrefix(trimmed, \"--\") {',1)"
+mutate_go internal/guard/ipc.go "pencere eylemi beyaz listesi yok" \
+    "s=s.replace('if value == a {','if value == a || value != \"\" {',1)"
+mutate_go internal/guard/ipc.go "onay metni her şeyi kabul ediyor" \
+    "s=s.replace('if value != appID {','if false && value != appID {',1)"
+mutate_go internal/guard/payload.go "update'te null skaler geçiyor (kutu ile sunucu farklı anlar)" \
+    "s=s.replace('if update.Has(key) && field(update, key) == nil {','if false && update.Has(key) && field(update, key) == nil {',1)"
+mutate_go internal/guard/payload.go "yasak bağlama kökü /dev kabul ediliyor" \
+    "s=s.replace('[]string{\"/proc\", \"/sys\", \"/dev\"}','[]string{\"/proc\", \"/sys\"}',1)"
+mutate_go internal/guard/payload.go "yükte bilinmeyen alan geçiyor" \
+    "s=s.replace('if !slices.Contains(fields, key) {','if false && !slices.Contains(fields, key) {',1)"
+
+echo "== Güven sınırı: yerel onay ve kapı (Go) =="
+mutate_go internal/bridge/management.go "onay kutusu atlanıyor" \
+    "s=s.replace('ok, err := b.confirmed(req)','ok, err := true, error(nil)',1)"
+mutate_go internal/bridge/management.go "vazgeç onay sayılıyor" \
+    "s=s.replace('if !ok {','if false && !ok {',1)"
+mutate_go internal/bridge/management.go "fake@test koşulu gevşetilmiş (her hedefte atlanıyor)" \
+    "s=s.replace('if b.deps.Fixture && req.Target == fixtureTarget {','if b.deps.Fixture {',1)"
+mutate_go internal/bridge/management.go "tek kutu sınırı devre dışı (kutu yağmuru)" \
+    "s=s.replace('if b.dialogOpen {','if b.dialogOpen && false {',1)"
+mutate_go internal/bridge/management.go "kapı devre dışı (aynı işi iki kez başlatır)" \
+    "s=s.replace('if b.active[key] {','if false && b.active[key] {',1)"
+# Her durum değiştiren yöntemin onaylı akışı AYRI ayrı atlatılır: biri
+# doğrudan dağıtıcıya giderse öbürlerinin testi onu örtemez.
+mutate_go internal/bridge/management.go "oluşturma onaysız gidiyor" \
+    "s=s.replace('return b.mutate(app, confirm.Request{Kind: confirm.KindCreate, Target: t, Spec: s}, \"apps.create\",','_ = app; return b.dispatch(\"apps.create\",',1)"
+mutate_go internal/bridge/management.go "güncelleme onaysız gidiyor" \
+    "s=s.replace('return b.mutate(id, confirm.Request{Kind: confirm.KindUpdate, Target: t, App: id, Update: u}, \"apps.update\",','return b.dispatch(\"apps.update\",',1)"
+mutate_go internal/bridge/management.go "dağıtım onaysız gidiyor" \
+    "s=s.replace('return b.mutate(id, confirm.Request{Kind: confirm.KindDeploy, Target: t, App: id, Ref: r}, \"apps.deploy\",','return b.dispatch(\"apps.deploy\",',1)"
+mutate_go internal/bridge/management.go "silme ve geri alma onaysız gidiyor" \
+    "s=s.replace('return b.mutate(id, confirm.Request{Kind: kind, Target: t, App: id}, method,','_ = kind; return b.dispatch(method,',1)"
+mutate_go internal/bridge/management.go "yedek onaysız gidiyor" \
+    "s=s.replace('return b.mutate(\"'+chr(36)+'backup\", confirm.Request{Kind: confirm.KindBackup, Target: t}, \"backups.create\",','return b.dispatch(\"backups.create\",',1)"
+mutate_go internal/bridge/bridge.go "arayüze beyaz listede olmayan yöntem açılıyor" \
+    "s=s+chr(10)+'func (b *Bridge) Debug() string { return \"x\" }'+chr(10)"
+mutate_go internal/bridge/bridge.go "cam diske yazıldıktan sonra değişiyor (geç döner)" \
+    "s=s.replace('	b.deps.Host.SetLook(appearance.Look(appearance.Sanitize(raw).Theme, b.deps.Material()))'+chr(10)+'	return b.deps.Settings.Save(raw)','	saved, err := b.deps.Settings.Save(raw)'+chr(10)+'	b.deps.Host.SetLook(appearance.Look(appearance.Sanitize(raw).Theme, b.deps.Material()))'+chr(10)+'	return saved, err',1)"
+
+echo "== Güven sınırı: onay kutusunun metni (Go) =="
+mutate_go internal/confirm/box.go "update kutusuna env DEĞERİ giriyor" \
+    "s=s.replace('if keys := record(get(u, \"env\")).Keys(); len(keys) > 0 {','if keys := withValues(record(get(u, \"env\"))); len(keys) > 0 {',1); s=s+chr(10)+'func withValues(o *jsonv.Object) []string {'+chr(10)+'	var out []string'+chr(10)+'	for _, k := range o.Keys() {'+chr(10)+'		v, _ := o.Get(k)'+chr(10)+'		out = append(out, k+\"=\"+jsString(v))'+chr(10)+'	}'+chr(10)+'	return out'+chr(10)+'}'+chr(10)"
+mutate_go internal/confirm/box.go "oluşturma kutusuna derleme argümanı DEĞERİ giriyor" \
+    "s=s.replace('if keys := record(get(s, \"build_args\")).Keys(); len(keys) > 0 {','if keys := withValues(record(get(s, \"build_args\"))); len(keys) > 0 {',1); s=s+chr(10)+'func withValues(o *jsonv.Object) []string {'+chr(10)+'	var out []string'+chr(10)+'	for _, k := range o.Keys() {'+chr(10)+'		v, _ := o.Get(k)'+chr(10)+'		out = append(out, k+\"=\"+jsString(v))'+chr(10)+'	}'+chr(10)+'	return out'+chr(10)+'}'+chr(10)"
+mutate_go internal/confirm/box.go "oluşturma kutusunda kopya sayısı yok" \
+    "s=s.replace('lines = append(lines, t(\"line.replicas\", params{\"count\": count(get(s, \"replicas\"))}))','_ = s',1)"
+mutate_go internal/confirm/box.go "oluşturma kutusunda kaynak sınırları yok" \
+    "s=s.replace('lines = append(lines, t(\"line.limits\", params{','_ = append(lines, t(\"line.limits\", params{',1)"
+mutate_go internal/confirm/confirm.go "kutu JSON sayısı biçimindeki sınırı boş gösteriyor (onaylanan ≠ gönderilen)" \
+    "s=s.replace('if err == nil && f >= 0 && f == math.Trunc(f)','if err == nil && f < 0 && f == math.Trunc(f)',1)"
+mutate_go internal/confirm/confirm.go "kutuda uzun değer baştan kesiliyor (host gizlenir)" \
+    "s=s.replace('return head.String() + string(rune(ellipsis)) + tail.String()','return head.String() + string(rune(ellipsis))',1)"
+mutate_go internal/confirm/confirm.go "kesme kaçışsız uzunluğu sayıyor (değer ~6 kat büyür)" \
+    "s=s.replace('for i < len(parts) && headLen+units(parts[i]) <= half {','for i < len(parts) && i < half {',1)"
+mutate_go internal/confirm/confirm.go "U+2000 üstü görünmezler kaçışlanmıyor (bidi, U+2028, U+3000)" \
+    "s=s.replace('func invisible(r rune) bool {','func invisible(r rune) bool {'+chr(10)+'	if r >= 0x2000 {'+chr(10)+'		return false'+chr(10)+'	}',1)"
+mutate_go internal/confirm/confirm.go "birleşik işaretler kaçışlanmıyor" \
+    "s=s.replace('unicode.Cn, unicode.M, ','unicode.Cn, ',1)"
+mutate_go internal/confirm/confirm.go "boş görünen Hangul dolgusu kaçışlanmıyor" \
+    "s=s.replace('0x3164: true, ','',1)"
+mutate_go internal/confirm/confirm.go "değerdeki … kaçışlanmıyor (sahte kesme)" \
+    "s=s.replace(', ellipsis: true}','}',1)"
+
+echo "== Güven sınırı: hata metni (Go) =="
+mutate_go internal/redact/redact.go "gerçek sebep (data) atılıyor, yalnız 'call failed' kalıyor" \
+    "s=s.replace('raw = message + \": \" + data','raw = message',1)"
+mutate_go internal/redact/redact.go "URL kimlik bilgisi silinmiyor" \
+    "s=s.replace('text = urlUserinfo.ReplaceAllString(text,','text = noop(text,',1); s=s+chr(10)+'func noop(s, _ string) string { return s }'+chr(10)"
+mutate_go internal/redact/redact.go "x-access-token silinmiyor" \
+    "s=s.replace('text = xAccessToken.ReplaceAllString(text,','text = noop(text,',1); s=s+chr(10)+'func noop(s, _ string) string { return s }'+chr(10)"
+mutate_go internal/redact/redact.go "github_pat_ jetonu silinmiyor" \
+    "s=s.replace('text = githubPAT.ReplaceAllString(text,','text = noop(text,',1); s=s+chr(10)+'func noop(s, _ string) string { return s }'+chr(10)"
+mutate_go internal/redact/redact.go "ghp_/gho_/ghu_/ghs_/ghr_ jetonu silinmiyor" \
+    "s=s.replace('return githubToken.ReplaceAllString(text, redacted)','return text',1)"
+mutate_go internal/redact/redact.go "biçim (bidi) karakterleri geçiyor" \
+    "s=s.replace(chr(92)+'p{Cc}'+chr(92)+'p{Cf}]',chr(92)+'p{Cc}]',1)"
+mutate_go internal/redact/redact.go "uzunluk sınırı yok" \
+    "s=s.replace('if len(runes) <= MaxErrorChars {','if len(runes) <= MaxErrorChars*1000 {',1)"
+mutate_go internal/redact/redact.go "redaksiyon karakter temizliğinden ÖNCE (bölünmüş jeton kaçar)" \
+    "s=s.replace('return limit(Secrets(stripUnsafe(raw)))','return limit(stripUnsafe(Secrets(raw)))',1)"
+mutate_go internal/bridge/bridge.go "yöntemler ham dağıtıcı hatasını geçiriyor" \
+    "s=s.replace('errors.New(redact.Text(failure.Message, failure.Data))','errors.New(redact.Text(failure.Message, \"\") + \": \" + failure.Data)',1)"
+mutate_go internal/bridge/servers.go "sunucu listesi ham dağıtıcı hatasını geçiriyor" \
+    "s=s.replace('errors.New(redact.Text(failure.Message, failure.Data))','errors.New(redact.Text(failure.Message, \"\") + \": \" + failure.Data)',1)"
+mutate_go internal/bridge/servers.go "bilinen sebep sabit koda çevrilmiyor" \
+    "s=s.replace('if reasons[failure.Data] {','if false && reasons[failure.Data] {',1)"
+
+echo "== İzinler ve görünüm (Go) =="
+mutate_go internal/headers/headers.go "kamera izni açık" \
+    "s=s.replace('\"camera\", \"microphone\",','\"microphone\",',1)"
+mutate_go internal/headers/headers.go "yazı tipi listesi her kökene açık" \
+    "s=s.replace('\"local-fonts=(self)\"','\"local-fonts=*\"',1)"
+mutate_go internal/appearance/look.go "Windows 10'a cam veriliyor" \
+    "s=s.replace('windowsBuild >= win11Build','windowsBuild > 0',1)"
+mutate_go internal/appearance/look.go "malzemesiz sistemde pencere saydam açılıyor" \
+    "s=s.replace('if material == None {','if material == \"x\" {',1)"
+mutate_go internal/appearance/look.go "açık temada cam kapanıyor (cam yalnız koyuda)" \
+    "s=s.replace('if material == None {','if material == None || theme == \"light\" {',1)"
+mutate_go internal/appearance/look.go "açık tema yerel koyuda kalıyor" \
+    "s=s.replace('Background: RGBA{}, Scheme: theme}','Background: RGBA{}, Scheme: \"dark\"}',1)"
+mutate_go internal/appearance/look.go "tema değişince camın tonu yeniden verilmiyor" \
+    "s=s.replace('next.Material == Accent && next.Scheme != prev.Scheme','false',1)"
+mutate_go internal/appearance/look.go "yazı tipi kaydı camı yeniden kuruyor (titreme)" \
+    "s=s.replace('next.Material == Accent && next.Scheme != prev.Scheme','next.Material == Accent',1)"
+mutate_go internal/appearance/look.go "zemin rengi her kayıtta yeniden veriliyor" \
+    "s=s.replace('Background: prev.Background != next.Background,','Background: true,',1)"
+mutate_go internal/appearance/look.go "koyu tonun saydamlığı sıfır (simsiyah)" \
+    "s=s.replace('return 0x30181816','return 0x00181816',1)"
+mutate_go internal/appearance/look.go "açık temada koyu ton (cam film)" \
+    "s=s.replace('return 0xa0f7f4f4','return 0x30181816',1)"
+mutate_go internal/appearance/look.go "ton temaya bakmıyor" \
+    "s=s.replace('if scheme == \"dark\" {','if true {',1)"
+mutate_go internal/win/policy.go "cam kapatılınca efekt kalıyor" \
+    "s=s.replace('state := int32(accentDisabled)','state := int32(accentEnableAcrylicBlurBehind)',1)"
+mutate_go internal/win/policy.go "düz bulanıklık (Electron'da arka siyah)" \
+    "s=s.replace('accentEnableAcrylicBlurBehind = 4','accentEnableAcrylicBlurBehind = 3',1)"
+mutate_go internal/win/policy.go "ton bayrağı yok (renk yok sayılır)" \
+    "s=s.replace('Flags: accentFlagGradientColor','Flags: 0',1)"
+mutate_go internal/appearance/appearance.go "eski sürümün yazı tipi taşınıyor" \
+    "s=s.replace('!isNumber || version != Version','!isNumber && version != Version',1)"
+mutate_go internal/appearance/appearance.go "yazı tipi kalınlığı sınırsız" \
+    "s=s.replace('return int(math.Min(900, math.Max(100, r)))','return int(r)',1)"
+mutate_go internal/appearance/appearance.go "bilinmeyen tema dosyadan geçiyor" \
+    "s=s.replace('[]string{\"dark\", \"light\"}','[]string{\"dark\", \"light\", \"glass\", \"mica\", \"__proto__\"}',1)"
+mutate_go internal/appearance/appearance.go "varsayılan tema koyu" \
+    "s=s.replace('Theme:    \"light\",','Theme:    \"dark\",',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

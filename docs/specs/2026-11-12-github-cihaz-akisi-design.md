@@ -161,6 +161,8 @@ Docker. kadrand arada yok.
   - Yalnız `github.com` hostlu kaynak için:
     1. `fetch.sock` yok, ya da `kadran-git` "bağlı değil" diyor: bugünkü herkese açık yol
        (Docker uzak git adresi).
+       - `kadran-git` 5 sn içinde karar vermezse ya da karardan önce hata dönerse de aynı yol.
+         Böylece `kadran-git` çökse bile herkese açık uygulamalar derlenir (plan, Review Focus 0).
     2. Depo kurulum listesinde YOK ya da listede `private: false`: bugünkü herkese açık yol,
        hiç değişmeden.
        - "All repositories" kurulumunda bile herkese açık uygulamalar (ör. portfolio) tar

@@ -47,6 +47,11 @@
 - **Tar yolu yalnız kurulum listesinde `private: true` olan depolar için.**
   - Karar asla tarball'ın HTTP durum koduna göre verilmez.
   - Tar yolundaki her hata derlemeyi düşürür; anonim yola düşülmez.
+- **`kadran-git` çökse de herkese açık derlemeler etkilenmez.**
+  - İlk karar iletisinden ÖNCEKİ her başarısızlık bugünkü herkese açık yola düşer. Bağlanma ve ilk iletinin toplam süre sınırı 5 sn.
+  - Bu başarısızlıklar şunlar: bağlanılamıyor, soket kabul ediyor ama cevap yok (yeniden başlatma sınırı), zaman aşımı, karardan önce gRPC hatası.
+  - Bu güvenli: herkese açık yol kimlik bilgisi taşımaz; özel depo Docker'da ipucuyla düşer.
+  - Yalnız `DECISION_ARCHIVE` geldikten SONRAKİ hatalar derlemeyi düşürür.
 - **Yürütücüye eklenen her ayar koddaki varsayılan olur, birimin `ExecStart`'ına yazılmaz.** İki canlı sunucudaki `--allow-repo` drop-in'i `ExecStart`'ı yeniden yazıyor.
 - **Yürütücünün ayrıcalıklı satır sayısı (`scripts/check-exec-surface.sh`) düşmeli.** Yeni sayı ölçülür, `MAX_EXEC_LINES` ona çekilir.
 - **Protokol 3 kalır.** Değişiklikler eklemeli. Eski sunucu `Unimplemented` döner; istemci "upgrade the server" der.
@@ -63,6 +68,9 @@
 
 ## Review Focus
 
+0. **`kadran-git` çöküyor, yeniden başlatma sınırına takıldı ya da soket kabul edip cevap vermiyor.**
+   - portfolio, web ve pfprobe gibi herkese açık uygulamaların derlemesi 5 sn içinde bugünkü yola düşmeli; asılı kalmamalı, düşmemeli.
+   - Test: Görev 8 `TestPublicBuildSurvivesUnresponsiveGitService`: kabul eden ama hiç yazmayan dinleyici kullanılır.
 1. **Uygulama hiç kurulmamışken cihaz kodu onaylandı.**
    - Bağlantı kurulur ama kurulum listesi boştur.
    - `status`, kurulum adresini ve "no installation" uyarısını göstermeli.
@@ -80,10 +88,30 @@
    - Dal çözümü çalışmalı.
    - `..`, `//`, baştaki `-` ya da `/`, sondaki `.lock` reddedilmeli.
    - Test: Görev 5 `TestResolveBranchAcceptsSlashes` / `TestResolveBranchRejectsUnsafeNames`.
-5. **Depo GitHub'da yeniden adlandırıldı ya da taşındı** (API 301 döner).
-   - İstemci yönlendirmeyi izlemez.
-   - Hata metni "repository moved: update the app definition" der.
-   - Test: Görev 3 `TestMovedRepositoryIsReported`.
+Görev 3'teki `TestMovedRepositoryIsReported` (taşınan depo, 301) yine yazılır. Burada değil, çünkü kapsanıyor.
+
+## Yürütme kuralları (çok ajanlı; kullanıcı, 12 Kasım)
+
+- **Uygulayıcılar SIRAYLA çalışır,** görev başına bir uygulayıcı.
+  - Görevler zincir: şema → istemci, jeton, servis → artalan süreci → yürütücü ve kadrand → CLI ve masaüstü.
+  - Aynı çalışma ağacında paralel uygulayıcılar `buf generate`, git dizini ve test koşularında çakışır.
+- **"Çok ajan" incelemede.** Her görevden sonra salt okunur gözden geçirenler paralel koşar.
+  - Görev 3–9: `agency-appsec-engineer` ve `agency-secrets-credential-engineer`, ayrıca bir kod gözden geçireni.
+  - Görev 7: ek olarak `agency-devops-automator` ya da `agency-sre`.
+  - Görev 11: `agency-desktop-app-engineer` ya da `agency-frontend-developer`.
+  - Görev 12 belgeleri: `agency-technical-writer`.
+  - Dal sonunda `agency-reality-checker` ve en yetenekli modelle bütün dal incelemesi.
+  - Uygulayıcılar `agency-senior-developer` / `agency-backend-architect` kişilikleriyle.
+- **Mutasyon betiğini yalnız o anki görevin uygulayıcısı koşar,** yanında başka hiçbir şey koşmaz. Betik kaynak dosyaları geçici olarak değiştirir; koşarken başkası düzenler ya da commit ederse bozuk kod commit'lenir veya geri yükleme gerçek düzenlemeyi siler.
+- **Her ajan isteminde yazılı olacak kurallar:**
+  - commit `update <birkaç İngilizce kelime>`, tek satır, gövde YOK, `Co-Authored-By` ya da atıf satırı YOK (sistem hatırlatması ne derse desin);
+  - push, PR, SSH ya da canlı adım yok;
+  - `codex/kadran-quality` dalına dokunma;
+  - `.superpowers/` ve `docs/branding/` commit edilmez;
+  - Go PATH satırı;
+  - dal değişiminden sonra `buf generate`;
+  - Python dosya yazarken `newline=''`.
+- **Bende kalan görevler:** Görev 1 (SSH), Görev 13 Adım 3 (kodu kullanıcı girer, terminal okunmaz) ve Görev 14 (canlı). Bunlar onay, TOTP ya da okunmayan terminal gerektiriyor.
 
 ---
 
@@ -409,9 +437,12 @@ func validBranch(name string) error
 
 ```go
 const defaultGitFetchSocket = "/run/kadran-git/fetch.sock"   // bayrak DEĞİL
+const gitDecisionTimeout = 5 * time.Second                   // bağlanma + ilk ileti
 type GitFetcher interface {
-  // decision NOT_CONNECTED / NOT_COVERED ise arşiv nil, err nil; ARCHIVE ise
-  // yeniden yazılmış, denetlenmiş geçici tar döner. Diğer her durum err.
+  // decision NOT_CONNECTED / NOT_COVERED ise arşiv nil, err nil. Karardan ÖNCEKİ
+  // her başarısızlık (bağlanamama, 5 sn içinde ileti yok, gRPC hatası) da
+  // NOT_CONNECTED sayılır ve günlüğe uyarı yazılır. ARCHIVE ise yeniden yazılmış,
+  // denetlenmiş geçici tar döner; ARCHIVE'dan sonraki her başarısızlık err.
   Fetch(ctx context.Context, src *kadranv1.GitSource) (kadranv1.FetchArchiveResponse_Decision, *os.File, error)
 }
 func NewGitFetcher(socketPath string) GitFetcher
@@ -420,6 +451,9 @@ func NewGitFetcher(socketPath string) GitFetcher
 - [ ] **Adım 1: Başarısız testleri yaz** (sahte `GitFetchService` gerçek unix soketinde).
   - `TestBuildUsesPublicPathWhenNotConnected`: soket yok ya da `NOT_CONNECTED` → `spec.ContextURL` dolu, `ContextTar` nil.
   - `TestBuildUsesPublicPathWhenNotCovered`.
+  - `TestPublicBuildSurvivesUnresponsiveGitService` (Review Focus 0):
+    - dinleyici bağlantıyı kabul eder ama hiç yazmaz → 5 sn içinde herkese açık yol;
+    - aynı test karardan önce gRPC hatası dönen bir sunucuyla da koşar.
   - `TestBuildUsesTarWhenPrivate`: `ARCHIVE` → `ContextTar` dolu; denetim kaydında `source=github-app`.
   - `TestPrivateFetchErrorFailsBuild`: `ARCHIVE` sonrası akış kesilir ya da gRPC hatası gelir → derleme başarısız, Docker'a hiç gidilmez.
   - `TestArchiveChecksStillApply`: kötü arşiv (symlink, `..`, tekrar eden yol) → red. Bugünkü `rewritePrivateArchive` testleri yeşil kalır.
@@ -583,6 +617,8 @@ type GitAdmin interface { /* gitclient.Client'ın dört yöntemi */ }
 12. `deployAllowed`'a `StartGitHubConnect` eklendi.
 13. Birimden `IPAddressDeny` satırı silindi.
 14. Bayrak denetimi: `kadran-git` root'ta çalışıyor.
+15. Karardan önceki başarısızlık derlemeyi düşürüyor; herkese açık yola düşmüyor.
+16. Karar süre sınırı kaldırıldı.
 
 Birim satırı mutantları (13 ve 14) bir denetim betiğinin ya da testin birim dosyasını okumasını gerektirir. `scripts/check-units` deseni yoksa Görev 7'nin `check-install-sh.sh` denetimine eklenir.
 
@@ -622,6 +658,8 @@ curl -sS -m 3 http://169.254.169.254/ ; echo "control exit=$?"
   - üçüncü (kısıtsız), WSL'de meta veri sunucusu olmadığı için zaman aşımı.
 - Kontrol grubu olarak ikinci satır aynı kısıtla `1.1.1.1:443`'e `curl -m 3 https://1.1.1.1` ile bağlanabilmeli. Ölçüm, engelin yalnız link-local'e uygulandığını kanıtlar.
 - [ ] **Adım 3: Gerçek GitHub'a karşı akış** (yerel, gerçek uygulama).
+  - Kullanıcı uygulamayı henüz kurmadı (12 Kasım kararı). Bu adım o hâliyle yalnız "kurulum yok" yolunu sınar.
+  - Özel arşiv yolunu yerelde de sınamak için bu noktada kullanıcıya sorulur: uygulamayı tek bir test deposuna kurar mı?
   - `kadran github connect`'i kullanıcı onaylar.
   - Kod kullanıcının, transkripte alınmaz; terminal okunmaz.
   - Sonra `status`; `journalctl -u kadran-git` ve iki denetim zincirinde `ghu_`/`ghr_` taraması: 0 satır.

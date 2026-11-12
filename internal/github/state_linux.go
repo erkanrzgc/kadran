@@ -23,10 +23,12 @@ var (
 // checkStateDirs yoldaki her üst dizini doğrular: symlink değil, grup ya da
 // başkaları tarafından yazılamaz, sahibi root ya da süreç kullanıcısı. Sticky
 // bitli root dizinler (/tmp) başkasının girdiyi değiştirmesine izin vermediği
-// için kabul edilir.
+// için kabul edilir; ama yalnız dolaylı üst dizinler için: dosyayı doğrudan
+// içeren dizin sticky olsa bile yazılamaz olmalıdır.
 func checkStateDirs(path string) error {
 	euid := uint32(os.Geteuid())
-	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+	parent := filepath.Dir(path)
+	for dir := parent; ; dir = filepath.Dir(dir) {
 		fi, err := os.Lstat(dir)
 		if err != nil {
 			if errors.Is(err, os.ErrNotExist) {
@@ -41,7 +43,7 @@ func checkStateDirs(path string) error {
 		if !ok || (st.Uid != 0 && st.Uid != euid) {
 			return errStateDir
 		}
-		if fi.Mode().Perm()&0o022 != 0 && !(fi.Mode()&os.ModeSticky != 0 && st.Uid == 0) {
+		if fi.Mode().Perm()&0o022 != 0 && !(dir != parent && fi.Mode()&os.ModeSticky != 0 && st.Uid == 0) {
 			return errStateDir
 		}
 		if dir == filepath.Dir(dir) {

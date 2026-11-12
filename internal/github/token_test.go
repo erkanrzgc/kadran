@@ -51,7 +51,7 @@ func jsonHandler(body string, hits *atomic.Int32) http.HandlerFunc {
 
 func TestRefreshPersistsBeforeUse(t *testing.T) {
 	var hits atomic.Int32
-	tk, _ := newTestTokens(t, expiringState(), jsonHandler(refreshOK, &hits))
+	tk, path := newTestTokens(t, expiringState(), jsonHandler(refreshOK, &hits))
 	old := saveStateFn
 	saveStateFn = func(string, state) error { return errors.New("disk full") }
 	t.Cleanup(func() { saveStateFn = old })
@@ -68,6 +68,9 @@ func TestRefreshPersistsBeforeUse(t *testing.T) {
 	}
 	if hits.Load() != 1 {
 		t.Fatalf("refresh requests = %d, want 1", hits.Load())
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) || !tk.ReconnectRequired() {
+		t.Fatalf("dead state file must be removed (stat err %v) and reconnect required", err)
 	}
 }
 
@@ -132,7 +135,6 @@ func TestDeadRefreshTokenRequiresReconnect(t *testing.T) {
 		t.Run(code, func(t *testing.T) {
 			var hits atomic.Int32
 			tk, path := newTestTokens(t, expiringState(), jsonHandler(`{"error":"`+code+`","error_description":"secret detail"}`, &hits))
-			before, _ := os.ReadFile(path)
 			_, err := tk.Token(context.Background())
 			if !errors.Is(err, ErrReconnect) {
 				t.Fatalf("err = %v, want ErrReconnect", err)
@@ -143,21 +145,26 @@ func TestDeadRefreshTokenRequiresReconnect(t *testing.T) {
 			if tk.ok {
 				t.Fatal("in-memory state must be dropped")
 			}
-			after, _ := os.ReadFile(path)
-			if string(before) != string(after) {
-				t.Fatal("state file must not be touched")
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("dead state file must be removed: %v", err)
+			}
+			if !tk.ReconnectRequired() {
+				t.Fatal("ReconnectRequired must be true")
 			}
 		})
 	}
 }
 
-func TestExpiredRefreshTokenNeedsNoNetwork(t *testing.T) {
+func TestExpiredRefreshRemovesState(t *testing.T) {
 	var hits atomic.Int32
 	st := expiringState()
 	st.RefreshExpiresAt = tokenTestNow.Add(-time.Second)
-	tk, _ := newTestTokens(t, st, jsonHandler(refreshOK, &hits))
+	tk, path := newTestTokens(t, st, jsonHandler(refreshOK, &hits))
 	if _, err := tk.Token(context.Background()); !errors.Is(err, ErrReconnect) {
 		t.Fatalf("err = %v, want ErrReconnect", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("state file must be removed: %v", err)
 	}
 	if hits.Load() != 0 {
 		t.Fatal("no request expected for an expired refresh token")
@@ -172,9 +179,14 @@ func TestTransientRefreshFailureKeepsState(t *testing.T) {
 		"notokens":  func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(`{}`)) },
 	} {
 		t.Run(name, func(t *testing.T) {
-			tk, _ := newTestTokens(t, expiringState(), h)
+			st := expiringState()
+			st.AccessExpiresAt = tokenTestNow.Add(-time.Second) // geçerli jeton yok: hata dönmeli
+			tk, path := newTestTokens(t, st, h)
 			_, err := tk.Token(context.Background())
-			if err == nil || errors.Is(err, ErrReconnect) {
+			if _, statErr := os.Stat(path); statErr != nil {
+				t.Fatalf("transient failure must keep the file: %v", statErr)
+			}
+			if err == nil || errors.Is(err, ErrReconnect) || tk.ReconnectRequired() {
 				t.Fatalf("err = %v, want a transient error", err)
 			}
 			if !tk.ok || tk.st.RefreshToken != "ghr_old" {
@@ -233,7 +245,7 @@ func TestClientIDMismatchMeansNotConnected(t *testing.T) {
 	if _, err := tk.Token(context.Background()); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("Token err = %v", err)
 	}
-	if _, err := tk.ForceRefresh(context.Background()); !errors.Is(err, ErrNotConnected) {
+	if _, err := tk.ForceRefresh(context.Background(), "ghu_old"); !errors.Is(err, ErrNotConnected) {
 		t.Fatalf("ForceRefresh err = %v", err)
 	}
 	if hits.Load() != 0 {
@@ -251,7 +263,7 @@ func TestNoStateMeansNotConnected(t *testing.T) {
 func TestForceRefreshRefreshesFreshToken(t *testing.T) {
 	var hits atomic.Int32
 	tk, _ := newTestTokens(t, sampleState(), jsonHandler(refreshOK, &hits))
-	got, err := tk.ForceRefresh(context.Background())
+	got, err := tk.ForceRefresh(context.Background(), "ghu_old")
 	if err != nil || got != "ghu_new" || hits.Load() != 1 {
 		t.Fatalf("ForceRefresh = %q, %v, hits %d", got, err, hits.Load())
 	}

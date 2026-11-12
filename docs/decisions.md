@@ -12750,9 +12750,9 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 - **Sürükleme:** kullanıcı başlık çubuğundan sürükledi ("tamam yaptım").
 - **Sunucu listesi boştu.** `%APPDATA%\kadran\servers.json` hiç yoktu. 6 Kasım'daki aktarım `profiles.json` bulamamış, yalnız `servers-imported` işaretini yazmış. 8 Kasım'da iki sunucu CLI ile eklendi (`kadran server add`).
 
-**Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`. PR #34 → `6ce585a`, main'de (11 Kasım, squash); CI 18/18 yeşil. v0.12.0'a giriyor; masaüstü yine sürüm dosyalarında yok, kaynaktan derleniyor.
+**Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`. PR #34 → `6ce585a`, main'de (11 Kasım, squash); CI 18/18 yeşil. v0.12.0'da yayımlandı (12 Kasım; etiket `51508df`, tam CI 18/18 yeşil, iki temiz kopyada `SHA256SUMS` aynı); masaüstü yine sürüm dosyalarında yok, kaynaktan derleniyor.
 
-**Açık düzeltmesi (11 Kasım, #34'te):** ilk CI koşusunda govulncheck kırmızıydı; sebep bu PR değil, o hafta yayımlanan açıklardı (main de gece kırmızı verdi). Go stdlib `net/http` GO-2026-6859 (go1.26.10'da; düzeltme 1.26.11) ve `golang.org/x/net` v0.60.0'da GO-2026-6860 ile GO-2026-6866 (düzeltme v0.62.0). Üç modül (kök, `desktop`, `build/caddy`) ve CI Go 1.26.11'e, x/net v0.62.0'a çıktı (`e07867c`); yerelde üç modülde govulncheck temiz. `kadran-caddy` de değişti; sunuculara v0.12.0'a yükseltilince gider.
+**Açık düzeltmesi (11 Kasım, #34'te):** ilk CI koşusunda govulncheck kırmızıydı; sebep bu PR değil, o hafta yayımlanan açıklardı (main de gece kırmızı verdi). Go stdlib `net/http` GO-2026-6859 (go1.26.10'da; düzeltme 1.26.11) ve `golang.org/x/net` v0.60.0'da GO-2026-6860 ile GO-2026-6866 (düzeltme v0.62.0). Üç modül (kök, `desktop`, `build/caddy`) ve CI Go 1.26.11'e, x/net v0.62.0'a çıktı (`e07867c`); yerelde üç modülde govulncheck temiz. `kadran-caddy` de değişti; v0.12.0'da yayımlandı, sunuculara yükseltilince gider (canlı adım, ayrı onay).
 
 ## K-166 — Canlı kaynak kullanımı (2026-11-08)
 
@@ -12774,7 +12774,7 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 - **Ne gösteriliyor:** CPU % (bekleme ve "çalınan" pay ayrı; bulut sunucusunda paylaşılan çekirdek), yük (1/5/15), RAM ve swap, disk alanı ve inode, disk okuma/yazma hızı, ağ giriş/çıkış hızı, baskı (PSI, son 10 sn), görev sayısı (iş parçacığı dahil; Docker'ın PIDS sütunu da böyle sayar), açık kalma süresi. Uygulama başına: CPU (hostun yüzdesi), RAM, ağ giriş/çıkış, disk okuma/yazma, görev sayısı, çalışan konteyner sayısı.
 - **Nerede:** filo kartında CPU, RAM ve disk ölçerleri (5 sn); sunucunun durum sayfasında canlı panel ve uygulama tablosu (2 sn). Pencere gizliyken ya da başka ekrandayken yoklama yok. Filo kartı uygulamaları istemez (`include_apps=false`), yürütücüye gitmez.
 
-**Durum:** plan `docs/plans/2026-11-08-canli-kaynak.md`. PR #35 → `ccb3dfc`, main'de (12 Kasım, squash; #34 birleşince tabanı `main`'e çekildi); CI 18/18 yeşil. v0.12.0'a giriyor; sunucu tarafı (kadrand, kadran-exec, `kadrand.service`) sunucular yükseltilince canlıya gider (canlı adım, ayrı onay).
+**Durum:** plan `docs/plans/2026-11-08-canli-kaynak.md`. PR #35 → `ccb3dfc`, main'de (12 Kasım, squash; #34 birleşince tabanı `main`'e çekildi); CI 18/18 yeşil. v0.12.0'da yayımlandı (12 Kasım); sunucu tarafı (kadrand, kadran-exec, `kadrand.service`) sunucular yükseltilince canlıya gider (canlı adım, ayrı onay).
 
 **Uygulama (11 Kasım):**
 - Arayüz: kartta üç ölçer (yalnız bağlı sunucuda; disk ölçeri varken alt yazıda disk yüzdesi yazılmaz); durum sayfasında özetin üstünde canlı bölüm (dört karo + ayrıntılar) ve uygulama tablosu. Eski bellek karosu kalktı: üretimde hep 0'dı, artık panel gösteriyor. Grafik sabit 60 örneklik pencerede sağdan dolar; ipucu kutusu sağ yarıda sola açılır (yoksa karonun dışına taşıyordu).

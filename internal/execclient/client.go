@@ -103,6 +103,16 @@ func (c *Client) HostInfo(ctx context.Context) (*kadranv1.HostInfo, error) {
 	return resp.GetHost(), nil
 }
 
+// ContainerStats, çalışan Kadran konteynerlerinin kümülatif sayaçları
+// (K-166). Replikalar etiket üçlüsüyle adlandırılmış; kimlik yok.
+func (c *Client) ContainerStats(ctx context.Context) ([]*kadranv1.ContainerUsage, error) {
+	resp, err := c.rpc.ContainerStats(ctx, &kadranv1.ContainerStatsRequest{})
+	if err != nil {
+		return nil, fmt.Errorf("could not get container stats: %w", err)
+	}
+	return resp.GetContainers(), nil
+}
+
 // JournalPage, executor denetim günlüğünün bir sayfasıdır.
 type JournalPage struct {
 	Records   []audit.Record

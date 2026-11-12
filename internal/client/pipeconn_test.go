@@ -188,6 +188,10 @@ func (s *stubService) Rollback(context.Context, *kadranv1.RollbackRequest) (*kad
 	return nil, status.Error(codes.Unimplemented, "saplama geri alma yapmaz")
 }
 
+func (s *stubService) GetResourceUsage(context.Context, *kadranv1.GetResourceUsageRequest) (*kadranv1.GetResourceUsageResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "saplama kaynak ölçmez")
+}
+
 func (s *stubService) VerifyAuditChain(context.Context, *kadranv1.VerifyAuditChainRequest) (*kadranv1.VerifyAuditChainResponse, error) {
 	return &kadranv1.VerifyAuditChainResponse{
 		DaemonStatus:   kadranv1.ChainStatus_CHAIN_STATUS_VALID,

@@ -1,0 +1,57 @@
+{
+  "apps": [
+    {
+      "app_id": "hello",
+      "containers": 1,
+      "cpu_usage_ns": "5400000000000",
+      "disk_read_bytes": "12000000",
+      "disk_write_bytes": "0",
+      "memory_bytes": "88000000",
+      "memory_limit_bytes": "0",
+      "net_rx_bytes": "920000000",
+      "net_tx_bytes": "4100000000",
+      "tasks": 9
+    },
+    {
+      "app_id": "worker",
+      "containers": 2,
+      "cpu_usage_ns": "910000000000",
+      "disk_read_bytes": "0",
+      "disk_write_bytes": "640000000",
+      "memory_bytes": "214000000",
+      "memory_limit_bytes": "536870912",
+      "net_rx_bytes": "31000000",
+      "net_tx_bytes": "2000000",
+      "tasks": 24
+    }
+  ],
+  "apps_measured": true,
+  "host": {
+    "cpu_count": 2,
+    "cpu_idle_ticks": "70100000",
+    "cpu_iowait_ticks": "410000",
+    "cpu_pressure": 0.5,
+    "cpu_steal_ticks": "52000",
+    "cpu_total_ticks": "74304000",
+    "disk_available_bytes": "22000000000",
+    "disk_read_bytes": "9120000000",
+    "disk_total_bytes": "40000000000",
+    "disk_write_bytes": "31400000000",
+    "inodes_free": "2480112",
+    "inodes_total": "2621440",
+    "io_pressure": 1.25,
+    "load1": 0.42,
+    "load15": 0.25,
+    "load5": 0.31,
+    "memory_available_bytes": "1720000000",
+    "memory_pressure": 0,
+    "memory_total_bytes": "3970000000",
+    "net_rx_bytes": "48200000000",
+    "net_tx_bytes": "12700000000",
+    "swap_free_bytes": "0",
+    "swap_total_bytes": "0",
+    "tasks": 187,
+    "uptime_seconds": "371520"
+  },
+  "sampled_at_unix_ms": "1791633600000"
+}

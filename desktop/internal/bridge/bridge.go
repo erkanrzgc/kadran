@@ -112,6 +112,17 @@ func (b *Bridge) Status(target string) (any, error) {
 	return b.dispatch("status", map[string]any{"target": t})
 }
 
+// ResourceUsage, hostun (ve includeApps ise uygulamaların) kümülatif
+// kaynak sayaçları (K-166). Okuma: kapı ve onay yok. Hızı arayüz iki
+// yanıtın farkından hesaplıyor (lib/resources.ts).
+func (b *Bridge) ResourceUsage(target string, includeApps bool) (any, error) {
+	t, err := guard.Target(target)
+	if err != nil {
+		return nil, err
+	}
+	return b.dispatch("resources", map[string]any{"target": t, "include_apps": includeApps})
+}
+
 // AuditList, denetim kayıtlarını sayfalı okur.
 func (b *Bridge) AuditList(target string, afterSeq, limit json.RawMessage) (any, error) {
 	t, err := guard.Target(target)

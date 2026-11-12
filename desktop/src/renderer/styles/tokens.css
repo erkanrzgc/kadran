@@ -71,6 +71,9 @@
   --pill-shadow: inset 0 0 0 1px rgb(255 255 255 / 18%);
   --kart-bg: rgb(255 255 255 / 6%);
   --kart-shadow: none;
+  /* Grafik serileri (K-166): doğrulayıcıdan geçti, #141414 zeminde. */
+  --series-1: #3987e5;
+  --series-2: #d95926;
 
   --ok: oklch(72.27% 0.192 149.58);
   --warn: oklch(88.13% 0.1507 91.7);
@@ -112,6 +115,9 @@
   --pill-shadow: inset 0 0 0 1px rgb(0 0 0 / 9%), 0 1px 3px rgb(0 0 0 / 10%);
   --kart-bg: rgb(0 0 0 / 6%);
   --kart-shadow: none;
+  /* Grafik serileri (K-166): doğrulayıcıdan geçti, #ffffff zeminde. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
   --shadow-menu: 0 4px 12px rgb(0 0 0 / 12%), 0 2px 4px rgb(0 0 0 / 8%);
 
   --ok: oklch(48% 0.135 149.58);

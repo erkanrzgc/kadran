@@ -233,6 +233,16 @@ async function fleetJourney(win: Page): Promise<void> {
   const providers = await evaluate<string[]>(win, `[...document.querySelectorAll('[data-testid="server-groups"] > div')].map((s) => s.dataset.provider)`);
   expect(providers[0] === "hetzner" && providers[1] === "hetzner" && providers.at(-1) === "", `provider order: ${providers.join(",")}`);
   expect((await text(win, '[data-testid="card-fake@test"]')).includes("2 applications"), "card does not show the real application count");
+  // Canlı ölçerler (K-166): bağlı kartta üçü, değerler sahte sayaçların farkından
+  // (CPU %35, bellek %57, disk %45); disk yüzdesi alt yazıda ikinci kez yok.
+  const meter = (name: string) => q(`[data-testid="card-fake@test"] [data-meter="${name}"] .meter-value`);
+  await waitFor(win, `${meter("cpu")}?.textContent === "35%"`, "card CPU meter after the second reading");
+  expect((await text(win, '[data-testid="card-fake@test"] [data-meter="memory"] .meter-value')) === "57%", "card memory meter");
+  expect((await text(win, '[data-testid="card-fake@test"] [data-meter="disk"] .meter-value')) === "45%", "card disk meter");
+  expect(!(await text(win, '[data-testid="card-fake@test"] .kart-acik')).includes("disk"), "disk percent repeated under the meters");
+  // Eski sunucu (yöntem yok): ölçer yok, bildirim de yok.
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="card-fake@noalarms"] [data-testid="meters"]')})`)), "old server shows meters");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="toast"]')})`)), "meter polling raised a toast");
   await pillOnActive(win, ".rail");
   await noHorizontalOverflow(win, "servers");
   await screenshot(win, "servers-1280x820");
@@ -435,7 +445,12 @@ async function managementJourney(win: Page): Promise<void> {
   await waitFor(win, `${q('[data-testid="verification-time"]')}?.textContent.includes("out of date")`, "stale verification marker");
   expect((await text(win, '[data-testid="health"]')) === "Attention required", "failed verification retained healthy status");
   expect(!(await evaluate<boolean>(win, `Boolean(document.querySelector('.chains .badge.is-ok'))`)), "failed verification retained current green chain");
+  // Executor'ı erişilebilir sunucu: uygulamalar en çok CPU kullanan üstte (ikinci okumadan sonra).
+  const appOrder = `[...document.querySelectorAll('[data-testid="app-usage-row"]')].map((r) => r.dataset.app + "=" + r.querySelector('[data-testid="app-cpu"]').textContent).join(",")`;
+  await waitFor(win, `${appOrder} === "worker=15%,hello=7.5%"`, "application usage order at 760x520");
   await noHorizontalOverflow(win, "status at 760x520");
+  await evaluate(win, `${q('[data-testid="resources"]')}.scrollIntoView({block:'start'})`);
+  await screenshot(win, "resources-760x520");
   await click(win, '[data-testid="nav-audit"]');
   await waitFor(win, q('[data-testid="audit-detail-1284"]'), "minimum audit");
   await click(win, '[data-testid="audit-detail-1284"]');
@@ -445,6 +460,40 @@ async function managementJourney(win: Page): Promise<void> {
   await noHorizontalOverflow(win, "settings at 760x520");
   await screenshot(win, "settings-760x520");
   await win.resize(1280, 820);
+}
+
+/**
+ * Sunucu sayfasının canlı kaynak bölümü (K-166): özetin üstünde; ikinci
+ * okumadan sonra hızlar "—" değil; executor'a ulaşılamıyorsa uygulamalar
+ * "ölçülemedi" (tablonun sırası 760×520'de, executor'ı erişilebilir sunucuda);
+ * grafiğin ipucu kutusu sağ kenarda karonun dışına taşmaz.
+ */
+async function resourceJourney(win: Page): Promise<void> {
+  await waitFor(win, `${q('[data-testid="resources"]')}?.dataset.state === "live"`, "live resource panel");
+  const above = await evaluate<boolean>(win, `Boolean(${q('[data-testid="resources"]')}.compareDocumentPosition(${q('[data-testid="server-summary"]')}) & Node.DOCUMENT_POSITION_FOLLOWING)`);
+  expect(above, "resource panel is not above the server summary");
+  await waitFor(win, `${q('[data-testid="res-cpu"] .tile-value')}?.textContent === "35%"`, "host CPU after the second reading");
+  expect((await text(win, '[data-testid="res-cpu"] .res-sub')) === "wait 1.5% · steal 0.5%", "CPU wait and steal");
+  expect((await text(win, '[data-testid="res-network"] .tile-value')) === "in 87.9 KiB/s", "network in rate");
+  expect((await text(win, '[data-testid="res-memory"] .res-sub')) === "no swap", "swap line");
+  expect((await text(win, '[data-testid="resource-details"]')).includes("0.42 · 0.31 · 0.25 on 2 cores"), "load row");
+  // fake@test'in executor'ı erişilemez: uygulamalar "ölçülemedi", "uygulama yok" DEĞİL (K-166).
+  const appsNote = q('[data-testid="app-usage-placeholder"]');
+  await waitFor(win, `${appsNote}?.textContent.includes("could not be measured")`, "unmeasured applications are not 'no applications'");
+  expect(!(await text(win, '[data-testid="app-usage-placeholder"]')).includes("No running"), "unmeasured applications read as none");
+  // Üçüncü okumada iki ardışık hız var: CPU çizgisi çizilir ve grafiğin sağında durur.
+  // Tek nokta ("M…") hiçbir şey çizmez: en az bir doğru parçası ("L") şart.
+  await waitFor(win, `${q('[data-testid="res-cpu"] .chart-line')}?.getAttribute("d")?.includes("L")`, "CPU line drawn");
+  const line = await evaluate<{ end: number; width: number }>(win, `(() => { const s = ${q('[data-testid="res-cpu"] .chart-line')}.getBBox(); return { end: s.x + s.width, width: s.width }; })()`);
+  expect(line.width > 0 && line.end > 239, `CPU line does not grow from the right edge: ${JSON.stringify(line)}`);
+  // İpucu kutusu: imleç grafiğin sağ ucundayken karonun içinde kalmalı.
+  const chart = q('[data-testid="res-disk"] .chart');
+  await evaluate(win, `(() => { const el = ${chart}; const b = el.getBoundingClientRect(); el.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: b.right - 1, clientY: b.top + 10 })); })()`);
+  await waitFor(win, q('[data-testid="res-disk"] .chart-tip'), "chart tooltip");
+  const spill = await evaluate<number>(win, `${q('[data-testid="res-disk"] .chart-tip')}.getBoundingClientRect().right - ${q('[data-testid="res-disk"]')}.getBoundingClientRect().right`);
+  expect(spill <= 1, `chart tooltip spills ${spill}px past its tile`);
+  await evaluate(win, `${chart}.dispatchEvent(new PointerEvent("pointerleave", { bubbles: false }))`);
+  await screenshot(win, "resources-1280x820");
 }
 
 async function rowSeqs(win: Page, tableId: string): Promise<string[]> {
@@ -470,6 +519,7 @@ export async function journey(win: Page): Promise<void> {
   await fleetJourney(win);
   await openServer(win, "fake@test");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Attention required"`, "health pill");
+  await resourceJourney(win);
   await waitFor(win, `${q('[data-testid="chain-executor"] .badge')}?.textContent === "UNVERIFIABLE"`, "executor chain");
 
   const daemonBadge = await evaluate<string>(win, `${q('[data-testid="chain-daemon"] .badge')}.className`);
@@ -505,6 +555,13 @@ export async function journey(win: Page): Promise<void> {
     "audit load error for a malformed latest_seq",
   );
 
+  // Eski sunucu kaynak yöntemini tanımıyor: hata değil, "yükseltin" (K-166).
+  await openServer(win, "fake@noalarms");
+  await click(win, '[data-testid="nav-status"]');
+  await waitFor(win, `${q('[data-testid="resources-unsupported"]')}?.textContent.includes("Upgrade")`, "old server asks for an upgrade");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-usage"]')})`)), "old server shows an application usage table");
+  expect(!(await evaluate<boolean>(win, `[...document.querySelectorAll('[data-testid="toast"]')].some((el) => el.textContent.includes("Unimplemented"))`)), "old server raised a toast");
+
   // Bağlantı koptuktan sonra yenileme: ekran bayat işaretlenmeli.
   await openServer(win, "fake@flaky");
   await waitFor(win, q('[data-testid="screen-status"]'), "status screen for fake@flaky");
@@ -522,6 +579,9 @@ export async function journey(win: Page): Promise<void> {
   await themeJourney(win);
   await click(win, '[data-testid="lang-tr"]');
   await waitFor(win, `${q('[data-testid="nav-settings"]')}?.textContent === "Ayarlar"`, "Turkish UI");
+  // Türkçede yüzde işareti sayının önünde (K-166).
+  await click(win, '[data-testid="rail-servers"]');
+  await waitFor(win, `${q('[data-testid="card-fake@test"] [data-meter="cpu"] .meter-value')}?.textContent === "%35"`, "Turkish percent on the card meter");
 
   // İnceleme odağı 5: Türkçe arayüzde İngilizce sunucu hatası tam ve düz metin.
   // Önceki hata bildirimleri ekranda kalmış olabilir; TÜM bildirimler aranır.

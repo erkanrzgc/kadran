@@ -1,19 +1,23 @@
+import type { FleetMeter } from "../hooks/useFleetResources.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { diskUsedPercent, isBrokenInstall, orderByProvider, updateAvailable, type FleetCard } from "../lib/fleet.ts";
 import { versionLabel } from "../lib/format.ts";
 import { providerView } from "../lib/providers.ts";
 import { LineIcon } from "./LineIcon.tsx";
+import { ResourceMeters } from "./ResourceMeters.tsx";
 
 interface Props {
   cards: readonly FleetCard[];
   clientVersion: string | null;
+  /** Canlı ölçerler (K-166); ölçülemeyen sunucu listede yok. */
+  meters: ReadonlyMap<string, FleetMeter>;
   onOpen: (target: string) => void;
   onNewApp: (target: string) => void;
   onEdit: (target: string) => void;
 }
 
 /** Sunucu kartları: aynı sağlayıcı yan yana, her kartın üstünde sağlayıcısı. */
-export function ServerCards({ cards, clientVersion, onOpen, onNewApp, onEdit }: Props) {
+export function ServerCards({ cards, clientVersion, meters, onOpen, onNewApp, onEdit }: Props) {
   const t = useT();
   return (
     <div className="izgara" data-testid="server-groups">
@@ -26,7 +30,7 @@ export function ServerCards({ cards, clientVersion, onOpen, onNewApp, onEdit }: 
               {/* Marka adı Türkçe büyük harfe çevrilmesin (HOSTİNGER). */}
               <span lang="en">{provider.name || t("fleet.no_provider")}</span>
             </div>
-            <Card card={card} clientVersion={clientVersion} onOpen={onOpen} onNewApp={onNewApp} onEdit={onEdit} />
+            <Card card={card} clientVersion={clientVersion} meter={card.state === "ready" ? meters.get(card.profile.target) : undefined} onOpen={onOpen} onNewApp={onNewApp} onEdit={onEdit} />
           </div>
         );
       })}
@@ -34,20 +38,30 @@ export function ServerCards({ cards, clientVersion, onOpen, onNewApp, onEdit }: 
   );
 }
 
-function subtitle(card: FleetCard, t: ReturnType<typeof useT>): string {
+function subtitle(card: FleetCard, meter: FleetMeter | undefined, t: ReturnType<typeof useT>): string {
   if (card.state === "loading") return t("fleet.loading");
   if (card.state === "totp") return t("fleet.totp_required");
   if (card.state === "unreachable") return t("fleet.unreachable");
   if (isBrokenInstall(card.status)) return t("value.broken_install", { user: "root" });
   const parts = [card.status?.host?.os];
-  const disk = diskUsedPercent(card.status?.host ?? null);
+  // Disk ölçeri varsa yüzde alt yazıda ikinci kez yazılmaz.
+  const disk = meter && meter.disk !== null ? null : diskUsedPercent(card.status?.host ?? null);
   if (disk !== null) parts.push(t("fleet.disk", { percent: disk }));
   if (card.alarmCount === null) parts.push(t("fleet.alarms_unknown"));
   else if (card.alarmCount > 0) parts.push(t("fleet.alarm_count", { count: card.alarmCount }));
   return parts.filter(Boolean).join(" · ");
 }
 
-function Card({ card, clientVersion, onOpen, onNewApp, onEdit }: { card: FleetCard; clientVersion: string | null; onOpen: (target: string) => void; onNewApp: (target: string) => void; onEdit: (target: string) => void }) {
+interface CardProps {
+  card: FleetCard;
+  clientVersion: string | null;
+  meter: FleetMeter | undefined;
+  onOpen: (target: string) => void;
+  onNewApp: (target: string) => void;
+  onEdit: (target: string) => void;
+}
+
+function Card({ card, clientVersion, meter, onOpen, onNewApp, onEdit }: CardProps) {
   const t = useT();
   const { target, name } = card.profile;
   const version = card.status?.daemon_version ?? "";
@@ -56,12 +70,13 @@ function Card({ card, clientVersion, onOpen, onNewApp, onEdit }: { card: FleetCa
     <article className="kart" data-testid={`card-${target}`} data-state={card.state} data-tone={card.tone}>
       <button type="button" className="kart-main" title={card.failure ?? target} onClick={() => onOpen(target)} data-testid={`server-${target}`}>
         <span className="kart-ad"><span>{name}</span><span className={`dot is-${card.tone}`} aria-hidden="true" /></span>
-        <span className="kart-acik">{subtitle(card, t)}</span>
+        <span className="kart-acik">{subtitle(card, meter, t)}</span>
       </button>
       <span className="eylem">
         <button type="button" className="icon-btn" title={t("fleet.new_app")} aria-label={t("fleet.new_app")} disabled={card.state !== "ready"} onClick={() => onNewApp(target)} data-testid={`card-new-${target}`}><LineIcon name="plus" size={13} /></button>
         <button type="button" className="icon-btn" title={t("fleet.edit")} aria-label={t("fleet.edit")} onClick={() => onEdit(target)} data-testid={`card-edit-${target}`}><LineIcon name="settings" size={13} /></button>
       </span>
+      {meter ? <ResourceMeters meter={meter} /> : null}
       <div className="kart-alt">
         {card.state === "totp" ? (
           <span className="mono">{t("fleet.totp_hint")}</span>

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -38,6 +39,9 @@ type fakeDocker struct {
 	// networkSubnets, `GET /networks/<ad>`'ın bildireceği IPAM alt ağları.
 	// nil ise gerçek bir varsayılan: 172.18.0.0/16.
 	networkSubnets []string
+	// stats, `GET /containers/<kimlik>/stats`'ın gövdesi. Kimlik yoksa
+	// 404 (konteyner listeden sonra silinmiş gibi).
+	stats map[string]string
 }
 
 type recorded struct {
@@ -88,6 +92,17 @@ func newFakeDocker(t *testing.T) *fakeDocker {
 			_ = json.NewEncoder(w).Encode(map[string]string{
 				"Version": "29.1.3", "ApiVersion": "1.48", "MinAPIVersion": "1.44",
 			})
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/stats") {
+			id := path.Base(path.Dir(r.URL.Path))
+			body, ok := f.stats[id]
+			if !ok {
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(`{"message":"No such container"}`))
+				return
+			}
+			_, _ = w.Write([]byte(body))
 			return
 		}
 		if strings.HasSuffix(r.URL.Path, "/containers/json") {

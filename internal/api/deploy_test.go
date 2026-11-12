@@ -63,6 +63,18 @@ type fakeExec struct {
 	stopErr    error
 	rmErr      error
 	listErr    error
+
+	// ── Kaynak kullanımı (K-166) ────────────────────────────────────
+	stats      []*kadranv1.ContainerUsage
+	statsErr   error
+	statsCalls int
+	// hostInfo nil değilse Ping de başarılı olur (GetSystemInfo yolu).
+	hostInfo *kadranv1.HostInfo
+}
+
+func (f *fakeExec) ContainerStats(context.Context) ([]*kadranv1.ContainerUsage, error) {
+	f.statsCalls++
+	return f.stats, f.statsErr
 }
 
 func (f *fakeExec) ListReplicas(_ context.Context, appID string) ([]execclient.Replica, error) {
@@ -124,10 +136,16 @@ func (f *fakeExec) RemoveRelease(_ context.Context, appID, releaseID string) (ui
 }
 
 func (f *fakeExec) Ping(context.Context) (execclient.PingResult, error) {
+	if f.hostInfo != nil {
+		return execclient.PingResult{Version: "test"}, nil
+	}
 	return execclient.PingResult{}, errors.New("fakeExec: Ping beklenmiyordu")
 }
 
 func (f *fakeExec) HostInfo(context.Context) (*kadranv1.HostInfo, error) {
+	if f.hostInfo != nil {
+		return f.hostInfo, nil
+	}
 	return nil, errors.New("fakeExec: HostInfo beklenmiyordu")
 }
 

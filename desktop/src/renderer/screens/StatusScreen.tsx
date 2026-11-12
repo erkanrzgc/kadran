@@ -4,6 +4,7 @@ import { AuditTable } from "../components/AuditTable.tsx";
 import { ChainCard } from "../components/ChainCard.tsx";
 import { KeyValues } from "../components/KeyValues.tsx";
 import type { Profile } from "../bridge.ts";
+import { ResourcePanel } from "../components/ResourcePanel.tsx";
 import { Sparkline } from "../components/Sparkline.tsx";
 import { Tile } from "../components/Tile.tsx";
 import { useAudit } from "../hooks/useAudit.ts";
@@ -12,7 +13,7 @@ import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
 import { auditPlaceholderKey } from "../lib/audit-view.ts";
 import { chainView, worstTone } from "../lib/chain.ts";
 import { diskUsedPercent } from "../lib/fleet.ts";
-import { formatTime, humanBytes, humanDuration, memoryText } from "../lib/format.ts";
+import { formatTime, humanBytes, humanDuration } from "../lib/format.ts";
 import { providerView } from "../lib/providers.ts";
 import { statusMetaKeys } from "../lib/health.ts";
 
@@ -23,7 +24,7 @@ const PREVIEW_SIZE = 10;
 export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: ServerApi; profile: Profile | null; onEdit: (target: string) => void; onSeeAll: () => void }) {
   const t = useT();
   const language = useLanguage();
-  const { target, status, verify, rtt, memorySamples, rttSamples, stale, verifiedAt, verifyStale } = server.state;
+  const { target, status, verify, rtt, rttSamples, stale, verifiedAt, verifyStale } = server.state;
   const [live, setLive] = useState(false);
   const audit = useAudit(target, PREVIEW_SIZE);
   const { refresh } = server;
@@ -103,6 +104,8 @@ export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: Se
         </div>
       </header>
 
+      <ResourcePanel target={target} />
+
       <section className="panel">
         <div className="panel-head">
           <h2 className="section-title">{t("status.summary")}</h2>
@@ -161,9 +164,6 @@ export function StatusScreen({ server, profile, onEdit, onSeeAll }: { server: Se
         <div className="well">
           <div className="tiles">
             <Tile label={t("tile.uptime")} value={humanDuration(status.daemon_uptime_seconds)} />
-            <Tile label={t("tile.memory")} value={memoryText(host)}>
-              <Sparkline samples={memorySamples} label={t("tile.memory")} />
-            </Tile>
             <Tile label={t("tile.rtt")} value={rtt === null ? "—" : t("topbar.rtt", { ms: rtt })}>
               <Sparkline samples={rttSamples} label={t("tile.rtt")} />
             </Tile>

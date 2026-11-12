@@ -12751,3 +12751,31 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 - **Sunucu listesi boştu.** `%APPDATA%\kadran\servers.json` hiç yoktu. 6 Kasım'daki aktarım `profiles.json` bulamamış, yalnız `servers-imported` işaretini yazmış. 8 Kasım'da iki sunucu CLI ile eklendi (`kadran server add`).
 
 **Durum:** plan `docs/plans/2026-11-07-wails-tasima.md`, dal `wails`.
+
+## K-166 — Canlı kaynak kullanımı (2026-11-08)
+
+**İstek (kullanıcı, 8 Kasım):** "ne ne kadar kaynak kullanıyor, bunun detayını görüp diğer soruların cevaplarını bulabilirim", "canlı gösterim olsun", "kaç tane process var, bir de ağ falan da olsa iyi olmaz mı", "iki sunucuyu da yükseltiriz sıkıntı yok", "evet satır bütçesini büyüt". Sorular atlandı ("direkt başla"); aşağıdaki ayrıntılar benim kararım, aksi yazılmadıkça.
+
+**Ölçülen başlangıç (8 Kasım, iki sunucu, salt okunur):**
+- Bellek hiç ölçülmüyordu. `kadran-exec.service`'te `ProcSubset=pid` var; `/proc/meminfo` görünmüyor, `readMemInfo` 0 dönüyor, CLI satırı 0 diye gizliyor. Yürütücünün ad alanında `head /proc/meminfo` "cannot open" dedi.
+- İki sunucuda cgroup v2, Docker'ın sürücüsü systemd, kapsamlar `system.slice/docker-<id>.scope`. Kökte `cpu.stat`, `memory.stat`, `io.stat` ve üç baskı dosyası var; `/proc/pressure` var. Kum havuzu dışındaki `kadran` kullanıcısı `/proc/stat`'ı ve cgroup dosyalarını okuyabiliyor.
+- Okuma çağrıları denetim zincirine yazılmıyor (`LoggingInterceptor`, yalnız hata ayıklama günlüğü). Sık yoklama zinciri büyütmez.
+- Yürütücü yüzeyi 2920 / 2925 satır.
+
+**Karar:**
+- **Host sayaçlarını kadrand okur, yürütücü değil.** kadrand yetkisiz; `kadrand.service`'ten yalnız `ProcSubset=pid` kalkar, `ProtectProc=invisible` kalır (başka kullanıcıların süreçleri yine görünmez). kadrand böylece herhangi bir yerel kullanıcının okuyabildiğini okur: `/proc/stat`, `meminfo`, `loadavg`, `net/dev`, `diskstats`, `pressure/*`, `uptime`; disk alanı ve inode `statfs` ile durum dizininden. Yürütücüdeki bellek okuma kodu kalkar (ayrıcalıklı yüzey küçülür); `GetSystemInfo`'nun bellek alanlarını kadrand doldurur, `kadran status` da RAM'i gösterir.
+- **Uygulama başına sayaçları yürütücü okur.** kadrand konteyner kimliğini tasarım gereği bilmiyor (`exec.proto`, yasak alan `container_id`) ve bu kural esnetilmiyor. Yürütücü Kadran'ın etiketlediği çalışan konteynerler için Docker'ın tek seferlik istatistiğini okur (`GET /containers/{id}/stats?stream=false&one-shot=true`) ve yalnız sayıları `ContainerRef` ile döner. Docker kaynağı ağı da veriyor (kullanıcı istedi); cgroup dosyaları vermiyordu.
+- **Bütçe büyür (kullanıcı kararı, 8 Kasım).** Ölçüm önce yapılacak, sınır ölçülen değere çekilecek ve `check-exec-surface.sh`'ye gerekçesiyle yazılacak. Küçültme seçeneği: cgroup dosyalarını kadrand okusun — konteyner kimliğini kadrand'ye vermeyi gerektiriyor, reddedildi; uygulama başına `CgroupParent` dilimi — systemd `-` ile iç içe geçiriyor (`my` uygulaması `my-api`'yi de sayardı) ve `cgroup_parent` yasak alan, reddedildi.
+- **Sunucu durumsuz.** Yanıt kümülatif sayaçlar ve ölçüm anı (Unix ms). Hızları (CPU %, ağ/s, disk/s) istemci iki yoklama arasındaki farktan hesaplar; birden fazla istemci birbirini bozmaz. Sayaç geri giderse (konteyner yeniden başladı, dağıtım, host yeniden başladı) o aralığın hızı "bilinmiyor" olur, sıçrama gösterilmez.
+- **Ölçülemeyen değer 0 değildir.** Host alanları `optional`: okunamayan dosya alanı boş bırakır, arayüz "—" gösterir. Eski sunucuda RPC yok (`Unimplemented`): masaüstü "sunucuyu yükseltin" der.
+- **Yeni RPC yalnız yöneticiye açık** (izin listesi varsayılan ret, K-131); masaüstü yönetici anahtarıyla bağlanıyor. Dağıtım anahtarı okuyamaz.
+- **Ne gösteriliyor:** CPU % (bekleme ve "çalınan" pay ayrı; bulut sunucusunda paylaşılan çekirdek), yük (1/5/15), RAM ve swap, disk alanı ve inode, disk okuma/yazma hızı, ağ giriş/çıkış hızı, baskı (PSI, son 10 sn), görev sayısı (iş parçacığı dahil; Docker'ın PIDS sütunu da böyle sayar), açık kalma süresi. Uygulama başına: CPU (hostun yüzdesi), RAM, ağ giriş/çıkış, disk okuma/yazma, görev sayısı, çalışan konteyner sayısı.
+- **Nerede:** filo kartında CPU, RAM ve disk ölçerleri (5 sn); sunucunun durum sayfasında canlı panel ve uygulama tablosu (2 sn). Pencere gizliyken ya da başka ekrandayken yoklama yok. Filo kartı uygulamaları istemez (`include_apps=false`), yürütücüye gitmez.
+
+**Durum:** plan `docs/plans/2026-11-08-canli-kaynak.md`, dal `resources` (`wails` üstünde; #34 birleşince `main`'e yeniden hedeflenecek).
+
+**Uygulama (11 Kasım):**
+- Arayüz: kartta üç ölçer (yalnız bağlı sunucuda; disk ölçeri varken alt yazıda disk yüzdesi yazılmaz); durum sayfasında özetin üstünde canlı bölüm (dört karo + ayrıntılar) ve uygulama tablosu. Eski bellek karosu kalktı: üretimde hep 0'dı, artık panel gösteriyor. Grafik sabit 60 örneklik pencerede sağdan dolar; ipucu kutusu sağ yarıda sola açılır (yoksa karonun dışına taşıyordu).
+- Sahte sunucunun kaynak yanıtı elle yazılmadı: `resources.json` gerçek `protoToJSON` çıktısı (`cmd/kadran/sidecar_fixtures_test.go`); 64 bit alanlar metin, ölçülen sıfır `"0"` yazılıyor. Sahte sayaçlar her çağrıda artar, ölçüm anı 2 sn ilerler: hızlar gerçek aralıktan bağımsız (CPU %35, uygulamalar %15 ve %7,5).
+- Duman testi yeni denetimler: kart ölçerleri (35/57/45), Türkçede "%35", panel özetin üstünde, tablo sırası, CPU çizgisi sağ kenarda biter, ipucu karodan taşmaz, eski sunucu "Upgrade" der ve bildirim çıkarmaz, 760×520'de taşma yok. Executor'a ulaşılamayan sunucuda uygulamalar "ölçülemedi" der, "uygulama yok" demez (sahte sunucu gerçek kadrand gibi `apps_measured: false` döner); iki dal elle yer değiştirilince duman testi bu denetimde düştü.
+- Mutasyon: masaüstüne 19 (`mutate-desktop.sh`), sunucuya 32 (yeni `mutate-resources.sh`), hepsi yakalandı. İlk koşuda bir mutant sağ kaldı: `MemAvailable`'ı olmayan meminfo "ölçüldü" sayılıyordu (durum sayfası belleği dolu gösterirdi); testi eklendi. CPU fikstüründe guest sütunu 0'dı, guest'i toplama katan hata görünmezdi; 40 yapıldı. Konteyner yeniden başlayınca (replika sayısı aynı) uygulama CPU'sunun eksi çıkmadığını sınayan test yoktu; eklendi.

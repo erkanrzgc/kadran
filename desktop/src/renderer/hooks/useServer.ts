@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { bridge } from "../bridge.ts";
 import { errorText } from "../lib/errors.ts";
-import { memoryUsedGiB } from "../lib/format.ts";
 import { pushSample } from "../lib/samples.ts";
 import { createSingleFlight } from "../lib/single-flight.ts";
 import type { StatusPayload, VerifyPayload } from "../lib/types.ts";
@@ -24,7 +23,6 @@ export interface ServerState {
   verifyStale: boolean;
   /** Son status çağrısının gidiş-dönüş süresi (ms): IPC + sidecar başlatma + ssh + daemon, köprü çağrısının tamamı. */
   rtt: number | null;
-  memorySamples: readonly number[];
   rttSamples: readonly number[];
   verifying: boolean;
   /** Son durum yenilemesi başarısız: ekrandaki değerler eski, "Healthy" gösterilmemeli. */
@@ -38,7 +36,6 @@ const EMPTY: ServerState = {
   verifiedAt: null,
   verifyStale: false,
   rtt: null,
-  memorySamples: [],
   rttSamples: [],
   verifying: false,
   stale: false,
@@ -70,7 +67,6 @@ export function useServer() {
           status,
           rtt,
           stale: false,
-          memorySamples: pushSample(s.memorySamples, memoryUsedGiB(status.host)),
           rttSamples: pushSample(s.rttSamples, rtt),
         }));
         return true;

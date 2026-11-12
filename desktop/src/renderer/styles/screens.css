@@ -30,7 +30,7 @@
 .live:focus-within { color: var(--fg); }
 
 /* Metrik şeridi */
-.tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .tile { padding: 0 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .tile:first-child { padding-left: 0; }
 .tile + .tile { border-left: 1px solid var(--line-soft); }
@@ -137,8 +137,8 @@
 
 @media (max-width: 1050px) {
   .izgara { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
-  .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: 12px; }
-  .tile:nth-child(4) { border-left: 0; padding-left: 0; }
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 12px; }
+  .tile:nth-child(odd) { border-left: 0; padding-left: 0; }
   .set-row { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .set-ctl { flex-wrap: wrap; }
   .font-row, .set-ctl .seg { max-width: 100%; }

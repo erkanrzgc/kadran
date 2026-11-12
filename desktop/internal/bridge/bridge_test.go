@@ -19,7 +19,7 @@ import (
 var Whitelist = []string{
 	"AddServer", "AlarmsList", "AppCreate", "AppDelete", "AppDeploy", "AppGet", "AppLogs", "AppRollback", "AppUpdate", "AppsList",
 	"AuditList", "AuditVerify", "BackupCreate", "BackupsList", "CopyText", "ListServers", "LoadAppearance", "RemoveServer",
-	"SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
+	"ResourceUsage", "SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
 }
 
 // goCall, bridge.ts'teki bir Go yöntemi çağrısı: go.Status(…).

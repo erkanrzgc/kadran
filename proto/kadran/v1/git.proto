@@ -13,7 +13,7 @@ option go_package = "github.com/erkanrzgc/kadran/internal/pb/kadran/v1;kadranv1"
 // adresi taşımaz. Bunlar yalnız kadran-git içinde yaşar; kadrand ve
 // istemciler yalnız kullanıcıya gösterilecek bilgiyi görür. Hiçbir mesajda
 // serbest metin hata alanı yoktur (bkz. GitHubFailure). Bu kural
-// scripts/check-git-surface.sh ile denetlenir.
+// internal/protocheck/gitsurface_test.go ile denetlenir.
 service GitAdminService {
   // StartDeviceFlow, GitHub cihaz akışını başlatır. Çağıran: kadrand
   // (StartGitHubConnect). Döner: kullanıcı kodu (8 hane) ve doğrulama

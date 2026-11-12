@@ -12820,7 +12820,7 @@ ile koşup kayboldu; `rclone.conf`'tan yalnız `[bölüm]` ve `type` satırları
   - Günlükte üç başarılı koşu var: 3 Ekim 08:01 ve 13:19, 4 Ekim 00:21 UTC. Hedef yerel olduğu için
     ağ yolu hiç yürünmedi.
 - **"Son koşu zamanı boş", "hiç koşmadı" demek değil.** `ExecMainExitTimestamp` açılışta
-  sıfırlanıyor; GCP 7 Kasım 12:09'da yeniden başlatıldı. Günlük 20 Eylül'den beri duruyor.
+  sıfırlanıyor; GCP 7 Kasım 12:09 UTC'de yeniden başlatıldı. Günlük 20 Eylül'den beri duruyor.
 - **Hetzner:** zamanlayıcı açık, hedef R2 (`type = s3`, `provider = Cloudflare`). Son altı gece
   `uploaded=50 skipped=4 failed=0`.
 - **rclone iki sunucuda da saf Go değil.**
@@ -12828,15 +12828,18 @@ ile koşup kayboldu; `rclone.conf`'tan yalnız `[bölüm]` ve `type` satırları
     `ldd` → `libc.so.6`.
   - Go'nun seçimi `GODEBUG=netdns=2` ile okundu (yazdırır, seçimi değiştirmez).
   - GCP'de nsswitch `files myhostname resolve [!UNAVAIL=return] dns`, seçim
-    `hostLookupOrder = cgo`. Go `resolve` kaynağını tanımadığı için glibc'ye bırakıyor. glibc
-    resolved'a AF_UNIX'ten soruyor, 169.254.169.254'e resolved kendi sürecinden gidiyor; birimin IP
-    süzgeci buna dokunmuyor.
+    `hostLookupOrder = cgo`. Go `resolve` kaynağını tanımadığı için glibc'ye bırakıyor. Beklenen
+    yol (ayrıca gözlenmedi): glibc resolved'a AF_UNIX'ten soruyor, 169.254.169.254'e resolved kendi
+    sürecinden gidiyor; birimin IP süzgeci buna dokunmuyor.
   - Hetzner'de nsswitch `files dns`, seçim `files,dns`: Go'nun kendi çözücüsü 127.0.0.53'e soruyor.
     K-107'deki hata metninin Go'nunki olması bu yüzden; ikilinin saf Go olduğunu göstermiyordu.
 
 Komut: `rclone lsf --http-url https://downloads.rclone.org/ :http:`, `RCLONE_CONFIG=/dev/null`.
-Geçici birim `User=kadran` ve birimin kum havuzuyla (`ProtectSystem=strict`,
-`RestrictAddressFamilies`, `SystemCallFilter`…) koştu. Süzgeç birimin kendi
+Geçici birim birimin kum havuzunun bir alt kümesiyle koştu: `User=kadran`, `ProtectSystem=strict`,
+`ProtectHome`, `PrivateTmp`, `PrivateDevices`, `NoNewPrivileges`, `MemoryDenyWriteExecute`,
+`SystemCallFilter=@system-service`, `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`. Kalanlar
+(`ProtectProc`, `RestrictNamespaces`, `ProtectHostname`, boş yetki kümesi…) verilmedi; onlarla
+ölçülmedi. Süzgeç birimin kendi
 `systemctl show -p IPAddressDeny -p IPAddressAllow` değeri (`systemd-run` sembolik adları
 ayrıştırmıyor, K-167). Bağ: `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf`.
 
@@ -12865,8 +12868,11 @@ kendisiyle ölçülmedi.
 **Sonuç:**
 - **Bugünkü kurulumla GCP etkilenmiyor (B).** Dağıtımın rclone'u cgo'lu; GCP'nin nsswitch'i onu
   resolved'a yönlendiriyor.
-- **Risk gizli (D).** Saf Go bir rclone (rclone.org'un statik ikilisi) GCP'de her koşuda DNS'te
-  düşer. Düşüş sessiz olmaz: birim `failed` kalır, `OnFailure` bildirimi curl ile gider.
+- **Risk gizli (D).** Go'nun kendi çözücüsünü kullanan bir rclone GCP'de her koşuda DNS'te düşer.
+  rclone'un yayın betiği (`bin/cross-compile.go`) `-cgo` verilmezse `CGO_ENABLED=0` kuruyor;
+  Makefile'ın yayın hedefleri `-cgo` geçirmiyor. Bu kaynaktan okundu; rclone.org'un Linux ikilisi
+  indirilip ölçülmedi. Düşüş sessiz olmaz: birim `failed` kalır; bildirim kuruluysa `OnFailure`
+  haber verir (GCP'de bildirimin kurulu olup olmadığına bakılmadı).
   - README rclone'un nereden kurulacağını söylemiyor.
   - Debian'ın 1.60'ı R2'de `no_head` istiyor (K-106). Yeni sürüm için rclone.org'a gitmek akla
     yatkın.

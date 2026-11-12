@@ -12804,3 +12804,84 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 - **Ölçüm gerçek sunucuda:** TOTP girişinden sonra `kadran status` iki sunucuda da bellek satırını gösteriyor (Hetzner 3,1 / 3,7 GiB, GCP 510 / 965 MiB boş / toplam). `kadran sidecar` üzerinden iki `resources` çağrısı (uygulamalarla): iki sunucuda da hostun 24 isteğe bağlı alanının hepsi dolu, `apps_measured` doğru; uygulamalar konteyner sayısı, bellek, sınır ve görev sayısıyla geldi (Hetzner 3, GCP 2 uygulama). Masaüstü panelinin gerçek sunucuda gözle denetimi yapılmadı.
 
 **Bulgu:** GCP'de 9 Kasım 09:26'dan beri `/var/run/reboot-required` var (`linux-image-6.12.116`; çalışan 6.12.115). Dokunulmadı; yeniden başlatma ayrı karar.
+
+## K-168 — Uzak yedek GCP'de DNS'e takılır mı: bugünkü rclone ile hayır (2026-11-12)
+
+**İstek (kullanıcı, 12 Kasım):** K-167'nin yan bulgusunu denetle (`github-device-flow` dalındaki
+"Ölçüm"): GCP'de `kadran-offsite` yapılandırılmış mı, rclone saf Go mu. Etkileniyorsa
+`kadran-git` için ölçülen stub bağını öner, bağlı ve bağsız kontrol gruplu ölç.
+
+**Ölçüm (12 Kasım, kullanıcı onayıyla, iki sunucuda salt okunur):** geçici birimler `--collect`
+ile koşup kayboldu; `rclone.conf`'tan yalnız `[bölüm]` ve `type` satırları okundu.
+- **GCP'de uzak yedek gerçek bir hedefe kurulu değil.**
+  - Zamanlayıcı `disabled`.
+  - `OFFSITE_REMOTE=kadran-offsite:/srv/olcum-uzak`, `rclone.conf`'ta `type = local`, drop-in
+    `olcum.conf` (`ReadWritePaths=/srv/olcum-uzak`). Hepsi 3 Ekim provasının artığı.
+  - Günlükte üç başarılı koşu var: 3 Ekim 08:01 ve 13:19, 4 Ekim 00:21 UTC. Hedef yerel olduğu için
+    ağ yolu hiç yürünmedi.
+- **"Son koşu zamanı boş", "hiç koşmadı" demek değil.** `ExecMainExitTimestamp` açılışta
+  sıfırlanıyor; GCP 7 Kasım 12:09'da yeniden başlatıldı. Günlük 20 Eylül'den beri duruyor.
+- **Hetzner:** zamanlayıcı açık, hedef R2 (`type = s3`, `provider = Cloudflare`). Son altı gece
+  `uploaded=50 skipped=4 failed=0`.
+- **rclone iki sunucuda da saf Go değil.**
+  - Dağıtımın paketi (`dpkg -S` → `rclone`): `v1.60.1-DEV`, `go/linking: dynamic`, `go/tags: none`;
+    `ldd` → `libc.so.6`.
+  - Go'nun seçimi `GODEBUG=netdns=2` ile okundu (yazdırır, seçimi değiştirmez).
+  - GCP'de nsswitch `files myhostname resolve [!UNAVAIL=return] dns`, seçim
+    `hostLookupOrder = cgo`. Go `resolve` kaynağını tanımadığı için glibc'ye bırakıyor. glibc
+    resolved'a AF_UNIX'ten soruyor, 169.254.169.254'e resolved kendi sürecinden gidiyor; birimin IP
+    süzgeci buna dokunmuyor.
+  - Hetzner'de nsswitch `files dns`, seçim `files,dns`: Go'nun kendi çözücüsü 127.0.0.53'e soruyor.
+    K-107'deki hata metninin Go'nunki olması bu yüzden; ikilinin saf Go olduğunu göstermiyordu.
+
+Komut: `rclone lsf --http-url https://downloads.rclone.org/ :http:`, `RCLONE_CONFIG=/dev/null`.
+Geçici birim `User=kadran` ve birimin kum havuzuyla (`ProtectSystem=strict`,
+`RestrictAddressFamilies`, `SystemCallFilter`…) koştu. Süzgeç birimin kendi
+`systemctl show -p IPAddressDeny -p IPAddressAllow` değeri (`systemd-run` sembolik adları
+ayrıştırmıyor, K-167). Bağ: `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf`.
+
+| vaka | GCP | Hetzner |
+|---|---|---|
+| A kısıtsız (kontrol) | çıkış 0, 181 kayıt, cgo | 0, 181, files,dns |
+| B bugünkü süzgeç | 0, 181, cgo | 0, 181, files,dns |
+| C süzgeç + bağ | 0, 181, cgo | 0, 181, files,dns |
+| D süzgeç, Go çözücüsü zorla (`netdns=go`) | **5, 0** | 0, 181 |
+| E süzgeç + bağ, Go çözücüsü zorla | 0, 181 | 0, 181 |
+
+D'nin GCP hatası:
+`lookup downloads.rclone.org on 169.254.169.254:53: write udp 10.128.0.2:…->169.254.169.254:53: write: operation not permitted`.
+
+Yan etki, sayısal IP ile (DNS yok, bash `/dev/tcp`, 5 sn), iki sunucuda:
+
+| hedef | kısıtsız | süzgeç + bağ |
+|---|---|---|
+| 169.254.169.254:80 | 0 (açık) | 124 (zaman aşımı) |
+| 127.0.0.1:22 | 0 (açık) | 124 (zaman aşımı) |
+
+Bağ süzgeçten hiçbir şey açmıyor. curl iki sunucuda c-ares'siz (`curl -V`), glibc'nin çözücüsünü
+kullanıyor. Bu yüzden `kadran-notify` GCP'de de resolved üzerinden çözer; bu bir çıkarım, notify'ın
+kendisiyle ölçülmedi.
+
+**Sonuç:**
+- **Bugünkü kurulumla GCP etkilenmiyor (B).** Dağıtımın rclone'u cgo'lu; GCP'nin nsswitch'i onu
+  resolved'a yönlendiriyor.
+- **Risk gizli (D).** Saf Go bir rclone (rclone.org'un statik ikilisi) GCP'de her koşuda DNS'te
+  düşer. Düşüş sessiz olmaz: birim `failed` kalır, `OnFailure` bildirimi curl ile gider.
+  - README rclone'un nereden kurulacağını söylemiyor.
+  - Debian'ın 1.60'ı R2'de `no_head` istiyor (K-106). Yeni sürüm için rclone.org'a gitmek akla
+    yatkın.
+- **Düzeltme ölçüldü (E).** Hetzner'de bir şey bozmuyor (C, E) ve süzgeci genişletmiyor.
+
+**Karar: birim değişmedi; karar kullanıcıda.**
+- Bugün etkilenen bir yol yok.
+- Başında `-` olmayan bağ, systemd-resolved'ı olmayan bir sunucuda birimi başlatmaz. Bugün çalışan
+  bir kurulumu bozabilir (ör. resolved'sız Debian, `resolv.conf`'ta link-local olmayan bir çözücü);
+  bu ölçülmedi.
+- Öneri: bağ, `kadran-git`'in genel ön koşulu (K-167: kurulum resolved yoksa durur) main'e girince
+  `kadran-offsite.service`'e de eklensin. O zaman ayrı ön koşul gerekmez.
+- Daha önce istenirse: bağ, `secimli_dosyalari_kur offsite` yolunda resolved denetimi (seçimli
+  birim için tüm kurulumu durdurmadan), README satırı, `TestOffsiteUploaderCanResolveNamesButNotReachLocalhost`
+  uzantısı ve `mutate-units.sh` mutasyonu.
+
+**Artık:** GCP'deki 3 Ekim prova artıkları (`olcum.conf` drop-in'i, `/srv/olcum-uzak`, yerel
+`rclone.conf`) duruyor; dokunulmadı.

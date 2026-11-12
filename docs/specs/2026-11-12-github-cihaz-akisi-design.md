@@ -247,7 +247,8 @@ Docker. kadrand arada yok.
 ### kadrand ve protokol
 
 - Yeni çağrılar:
-  - `ConnectGitHub` (sunucudan akış: önce kod, sonra sonuç);
+  - `StartGitHubConnect` (kodu döner). Planda akış yerine tekli çağrıya çevrildi: masaüstü köprüsü
+    akış taşımıyor. İstemci sonucu `GetGitHubStatus`'u 3 sn arayla yoklayarak görür;
   - `GetGitHubStatus`;
   - `DisconnectGitHub`;
   - `ResolveGitHubBranch`.

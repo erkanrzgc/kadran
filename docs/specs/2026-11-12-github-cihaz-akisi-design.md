@@ -104,8 +104,16 @@ onu oradan alır.
   grubunda ve `kadran` grubunda DEĞİL.
 - Durum `/var/lib/kadran-git` (0700), jeton dosyası 0600.
 - Ağ yalnız dışarı: `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`,
-  `IPAddressDeny=localhost link-local multicast`, `IPAddressAllow=127.0.0.53`. Bu desen
-  `kadran-notify` ve `kadran-offsite`'ta iki sunucuda da ölçüldü (K-107: DNS istisnası).
+  `IPAddressDeny=localhost link-local multicast`, `IPAddressAllow=127.0.0.53`.
+  - Bu desen `kadran-notify` ve `kadran-offsite` birimlerinden alındı (K-107: DNS istisnası).
+  - Bu oturumda iki sunucuda da ölçülmedi; bu bir VARSAYIM.
+  - Rehber, GCP'nin çözücü olarak `169.254.169.254`'ü kullanabileceğini söylüyor. O durumda
+    link-local engeli DNS'i de keser.
+  - Planın ilk görevi iki sunucuda salt okunur ölçmek:
+    - `resolv.conf`;
+    - `systemd-resolved` çalışıyor mu;
+    - notify ve offsite gerçekten dışarı çıkıyor mu.
+  - Birimin ağ satırları bu ölçüme göre yazılır.
 - Bağlandığı adresler koddaki sabitler: `github.com`, `api.github.com`, `codeload.github.com`.
   İstekten adres alınmaz. Tek yönlendirme bugünkü kuralla kabul edilir: yalnız beklenen
   `codeload.github.com` depo/commit yolu, ve kalıcı jeton ikinci isteğe taşınmaz.
@@ -133,14 +141,30 @@ Docker. kadrand arada yok.
   - mutlak yol, `..`, symlink, hardlink, aygıt ve tekrar eden yol yok.
 - `kadran-git`'in gönderdiği veri güvenilmez sayılır, denetim yürütücüde kalır. Ayrıcalıklı
   kod azalmalı; yeni sayı ölçülüp `check-exec-surface.sh`'ye yazılır, sınır aşağı çekilir.
-- Karar sırası, yalnız `github.com` hostlu kaynak için:
-  1. `fetch.sock` yok, ya da `kadran-git` "bağlı değil" diyor: bugünkü herkese açık yol
-     (Docker uzak git adresi).
-  2. "Depo kapsamda değil" (GitHub 404): herkese açık yol. Depo gerçekten özelse Docker'ın
-     hatasına ipucu eklenir: "GitHub bağlantısı bu depoyu görmüyor; uygulamayı depoya kur".
-  3. Başka her hata (401, 403, hız sınırı, taşıma, zaman aşımı, bozuk arşiv): derleme
-     başarısız. Anonim yola düşülmez.
-  4. Başarı: tar bağlamından derleme (bugünkü `ContextTar` yolu).
+- Karar, tarball isteğinin durum koduna göre VERİLMEZ. Kapsam dışındaki bir depoda `ghu_`
+  jetonunun 404 mü 403 mü aldığı ölçülmedi; 403 alıyorsa bağlantı herkese açık bütün
+  derlemeleri kırardı. Karar kurulumun depo listesine göre verilir:
+  - Bağlanma adımı listeyi zaten okuyor; listede depo başına `private` alanı var.
+  - Yalnız `github.com` hostlu kaynak için:
+    1. `fetch.sock` yok, ya da `kadran-git` "bağlı değil" diyor: bugünkü herkese açık yol
+       (Docker uzak git adresi).
+    2. Depo kurulum listesinde YOK ya da listede `private: false`: bugünkü herkese açık yol,
+       hiç değişmeden.
+       - "All repositories" kurulumunda bile herkese açık uygulamalar (ör. portfolio) tar
+         yoluna geçmez. `.git`, alt modül ve LFS farkları onlara dokunmaz.
+       - Derleme başarısız olursa ve `kadran-git` bağlıysa Docker'ın hatasına ipucu eklenir:
+         "özelse, Kadran uygulamasını bu depoya kur".
+    3. Listede `private: true`: `kadran-git` tar yolu. Buradaki her hata derlemeyi
+       başarısız yapar; anonim yola düşülmez (401, 403, 404, hız sınırı, taşıma, zaman aşımı,
+       bozuk arşiv).
+    4. Başarı: tar bağlamından derleme (bugünkü `ContextTar` yolu).
+  - Liste `kadran-git`'te önbellekte durur. Listede olmayan bir depo sorulduğunda yenilenir,
+    ama en çok dakikada bir; GitHub'ın hız sınırı korunur. Yeni kurulan özel depo böylece
+    yeniden bağlanmadan görülür.
+- Yürütücüye eklenen her ayar (ör. `fetch.sock` yolu) birim dosyasının `ExecStart`'ına
+  YAZILMAZ, koddaki varsayılan olur. İki canlı sunucuda `ExecStart`'ı yeniden yazan
+  `--allow-repo` drop-in'i var; birime yazılan yeni bayrak orada sessizce düşerdi. Kasa
+  anahtarı yolu için aynı not `cmd/kadran-exec/main.go`'da duruyor.
 - Denetim kaydında kaynak yolu yazılır: `source=github-app` ya da `source=public`.
 
 ### İzin listesi (benim kararım)
@@ -155,6 +179,9 @@ Docker. kadrand arada yok.
   "Only select repositories" önerir.
 - `parsePrivateGit`'in "allowlist boşsa reddet" kuralı jeton dosyasıyla birlikte kalkar. Yeni
   modelde liste GitHub tarafında.
+- **Bu, bugünkü kapalı bir kuralı gevşetiyor:** kimlik bilgisi varken root'un yazdığı liste artık
+  şart değil, ve "All repositories" yalnız uyarı alıyor. Kullanıcının açık onayını ister
+  (bekliyor).
 
 ### Bağlanma akışı
 
@@ -214,6 +241,11 @@ Docker. kadrand arada yok.
 - Dördü de yalnız yöneticiye açık (K-131 izin listesi, dağıtım anahtarı reddedilir), TOTP
   oturumu ister.
 - Bağlanma ve kesme kadrand denetim zincirine yazılır: hesap adı ve kurulum seçimi; jeton yok.
+  - İstemci kod girilmeden koparsa akış `kadran-git`'te tamamlanır, kadrand bunu akışta
+    görmez.
+  - Bu yüzden `kadran-git` durumu bir bağlanma zamanı taşır. kadrand yeni bir bağlanma
+    zamanını ilk gördüğü anda kaydı yazar; bu akışta ya da sonraki durum çağrısında olabilir.
+  - Son yazılan zamanı kendi veritabanında tutar, aynı bağlantıyı iki kez yazmaz.
 - Değişiklik eklemeli, protokol 3 kalır. Eski sunucuda çağrı `Unimplemented` döner; istemci
   "sunucuyu yükseltin" der.
 - kadrand birimi `/run/kadran-git/admin.sock`'a ulaşabilmeli. Yürütücü birimi
@@ -278,9 +310,12 @@ Docker. kadrand arada yok.
 - Soket yetkileri (Linux testi): `admin.sock`'a root ve başka kullanıcı giremiyor; `fetch.sock`'a
   `kadran` giremiyor.
 - Yürütücü, sahte `kadran-git` ile:
-  - bağlı değil ve kapsam dışı → herkese açık yol;
-  - diğer hatalar → başarısız, anonim yola düşmüyor;
+  - bağlı değil, listede yok ve `private: false` → herkese açık yol;
+  - `private: true` iken her hata → başarısız, anonim yola düşmüyor;
   - arşiv denetimleri aynen.
+- `kadran-git` liste önbelleği:
+  - listede olmayan depo dakikada en çok bir yenileme tetikliyor;
+  - yeni eklenen özel depo yenilemeden sonra görülüyor.
 - kadrand:
   - dağıtım anahtarı dört çağrıda reddediliyor;
   - bağlanma ve kesme denetim zincirinde, jetonsuz;
@@ -297,10 +332,12 @@ Docker. kadrand arada yok.
 
 1. Önce Hetzner. Sırayla:
    - yükseltme;
-   - herkese açık bir depoyu tar yolundan derleme;
+   - herkese açık uygulamaların (portfolio, web, pfprobe) yeniden dağıtımı, bugünkü yoldan
+     ve değişmeden;
    - `kadran github connect`, kodu kullanıcı girer;
-   - kullanıcının seçtiği özel depoyu dal adıyla dağıtma.
-2. Sonra GCP. DNS çözücüsü önce ölçülür (`resolv.conf`; rehberdeki uyarı).
+   - küçük bir özel depoyu dal adıyla dağıtma. Depoyu kullanıcı seçer. Yeni bir depo
+     oluşturmak gerekirse bu onun hesabında bir iştir, önce sorulur.
+2. Sonra GCP. DNS ölçümü planın ilk görevinde yapılmış olur.
 3. Ölçülecekler:
    - jetonun hiçbir günlükte olmadığı (`journalctl` ve iki denetim zinciri taranır);
    - yeniden başlatma sonrası bağlantının sürdüğü;

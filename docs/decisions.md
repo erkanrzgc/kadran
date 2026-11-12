@@ -12830,7 +12830,10 @@ GitHub'ın cihaz akışı.
   istasyonuna hiç girmez; yürütücü internete çıkmaz, ağ ve jeton kodu yürütücüden çıkar
   (K-124'ün C seçeneği).
 - Özel depoların izin listesi github.com'daki kurulum seçimi. `--allow-repo` verilmişse yine
-  uygulanır. "All repositories" reddedilmez, uyarılır.
+  uygulanır. "All repositories" reddedilmez, uyarılır. Bu, bugünkü kapalı kuralı (kimlik bilgisi
+  varken root'un yazdığı liste şart) gevşetir; kullanıcının açık onayını ister.
+- Tar yoluna yalnız kurulum listesinde `private: true` olan depolar girer. Karar tarball'ın
+  durum koduna göre verilmez. Herkese açık uygulamalar bugünkü yolda kalır.
 - Jeton dosyası yolu (`--git-credentials`) kalkar; yükseltme yürütücüyü başlayamaz bırakmaz.
 - Özel depoda dal adı sunucuda çözülür (`ResolveGitHubBranch`); CI yine `-commit` verir.
 - Protokol 3 kalır; dört yeni çağrı yalnız yöneticiye açık.

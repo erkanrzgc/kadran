@@ -209,13 +209,13 @@ service GitAdminService {
 service GitFetchService {
   rpc FetchArchive(FetchArchiveRequest) returns (stream FetchArchiveResponse);   // owner, repo, commit_sha
 }
-message GitHubDeviceCode { string user_code = 1; string verification_uri = 2; string install_url = 3; google.protobuf.Timestamp expires_at = 4; }
+message GitHubUserCodePrompt { string user_code = 1; string verification_uri = 2; string install_url = 3; google.protobuf.Timestamp expires_at = 4; }
 message GitHubRepository { string full_name = 1; bool private = 2; }
 message GitHubInstallation { string account = 1; bool all_repositories = 2; repeated GitHubRepository repositories = 3; bool truncated = 4; }
 message GitHubConnection {
   enum State { STATE_UNSPECIFIED = 0; STATE_NOT_CONNECTED = 1; STATE_PENDING = 2; STATE_CONNECTED = 3; STATE_FAILED = 4; }
-  State state = 1; string login = 2; GitHubDeviceCode pending = 3; repeated GitHubInstallation installations = 4;
-  google.protobuf.Timestamp connected_at = 5; string error = 6; bool reconnect_required = 7; string install_url = 8;
+  State state = 1; string login = 2; GitHubUserCodePrompt pending = 3; repeated GitHubInstallation installations = 4;
+  google.protobuf.Timestamp connected_at = 5; GitHubFailure failure = 6; bool reconnect_required = 7; string install_url = 8;
 }
 message FetchArchiveResponse {
   enum Decision { DECISION_UNSPECIFIED = 0; DECISION_ARCHIVE = 1; DECISION_NOT_CONNECTED = 2; DECISION_NOT_COVERED = 3; }
@@ -224,7 +224,7 @@ message FetchArchiveResponse {
 ```
 
 `api.proto`'ya eklenenler (`KadranService`):
-- `StartGitHubConnect` → `GitHubDeviceCode`;
+- `StartGitHubConnect` → `GitHubUserCodePrompt`;
 - `GetGitHubStatus` → `GitHubConnection`;
 - `DisconnectGitHub`;
 - `ResolveGitHubBranch(app_id, branch)` → `commit_sha`.
@@ -328,7 +328,7 @@ type Config struct{ ClientID, AppSlug, StateFile string; Now func() time.Time; H
 type Decision int  // DecisionArchive, DecisionNotConnected, DecisionNotCovered
 type Service struct{ /* tokens, akış, kapsam önbelleği */ }
 func New(cfg Config) (*Service, error)
-func (s *Service) StartDeviceFlow(ctx context.Context) (*kadranv1.GitHubDeviceCode, error)
+func (s *Service) StartDeviceFlow(ctx context.Context) (*kadranv1.GitHubUserCodePrompt, error)
 func (s *Service) Status(ctx context.Context) (*kadranv1.GitHubConnection, error)
 func (s *Service) Disconnect(ctx context.Context) error
 func (s *Service) ResolveBranch(ctx context.Context, owner, repo, branch string) (string, error)
@@ -340,7 +340,7 @@ func validBranch(name string) error
   - **Akış:**
     - `TestDeviceFlowPendingThenSuccess`;
     - `TestSlowDownAddsFiveSeconds`: aralık 5 → 10 sn;
-    - `TestAccessDeniedFails`, `TestExpiredTokenFails`, `TestDeviceFlowDisabledFails`: durum `STATE_FAILED`, `error` İngilizce ve jetonsuz;
+    - `TestAccessDeniedFails`, `TestExpiredTokenFails`, `TestDeviceFlowDisabledFails`: durum `STATE_FAILED`, `failure` doğru `GitHubFailure` değeri (serbest metin alanı yok, Ruling 4);
     - `TestNewStartCancelsOldFlow`;
     - `TestDeviceCodeRequestHasNoSecret`.
   - **Bağlanma sonrası:**
@@ -499,7 +499,7 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error
 const settingGitHubConnectedAt = "github.connected_at"   // internal/api içinde
 // gitclient (kadrand → admin.sock)
 func Dial(socketPath string) (*Client, error)
-func (c *Client) StartDeviceFlow(ctx) (*kadranv1.GitHubDeviceCode, error)
+func (c *Client) StartDeviceFlow(ctx) (*kadranv1.GitHubUserCodePrompt, error)
 func (c *Client) Status(ctx) (*kadranv1.GitHubConnection, error)
 func (c *Client) Disconnect(ctx) error
 func (c *Client) ResolveBranch(ctx, owner, repo, branch string) (string, error)

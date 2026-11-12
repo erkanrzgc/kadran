@@ -48,6 +48,9 @@ func TestTarballFollowsOnlyCodeloadRedirect(t *testing.T) {
 	if seen[0].URL.String() != "https://api.github.com/repos/octocat/Hello-World/tarball/"+testSHA || seen[0].Header.Get("Authorization") != "Bearer ghu_SECRET" {
 		t.Fatalf("wrong first request: %s", seen[0].URL)
 	}
+	if seen[1].URL.Host != "codeload.github.com" {
+		t.Fatalf("second request host %s", seen[1].URL.Host)
+	}
 	if seen[1].Header.Get("Authorization") != "" {
 		t.Fatal("token forwarded to codeload")
 	}
@@ -111,5 +114,23 @@ func TestRedirectRules(t *testing.T) {
 		if !validArchiveRedirect(location, "octocat", "Hello-World", testSHA) {
 			t.Errorf("valid redirect rejected: %s", location)
 		}
+	}
+}
+
+func TestTarballRejectsBadRefs(t *testing.T) {
+	calls := 0
+	rt := roundTrip(func(*http.Request) (*http.Response, error) { calls++; return respond(200, nil, nil), nil })
+	c := newClient(defaultEndpoints(), &http.Client{Transport: rt})
+	for _, tc := range []struct{ owner, repo, sha string }{
+		{"../../user", "r", testSHA}, {"o", "x?y=1", testSHA}, {"o", "a#b", testSHA}, {"o", "..", testSHA}, {"o", ".", testSHA},
+		{"o/r", "r", testSHA}, {"o", "r", testSHA[:39]}, {"o", "r", strings.ToUpper(testSHA)}, {"o", "r", ""},
+	} {
+		_, err := c.tarball(context.Background(), tc.owner, tc.repo, tc.sha, "t")
+		if err == nil || strings.Contains(err.Error(), "user") || strings.Contains(err.Error(), "?") {
+			t.Errorf("%+v accepted or echoed: %v", tc, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("%d requests sent", calls)
 	}
 }

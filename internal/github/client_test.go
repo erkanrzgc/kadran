@@ -41,7 +41,7 @@ func TestPostFormRejectsOversizedForm(t *testing.T) {
 	calls := 0
 	c := serverClient(t, func(http.ResponseWriter, *http.Request) { calls++ })
 	form := url.Values{"x": {strings.Repeat("a", 64<<10)}}
-	if err := c.postForm(context.Background(), c.ep.login+"/p", form, nil); err == nil || calls != 0 {
+	if err := c.postForm(context.Background(), "/p", form, nil); err == nil || calls != 0 {
 		t.Fatalf("oversized form sent: err=%v calls=%d", err, calls)
 	}
 }
@@ -54,7 +54,7 @@ func TestPostFormSendsAcceptAndDecodes(t *testing.T) {
 		_, _ = w.Write([]byte(`{"k":"v"}`))
 	})
 	var out struct{ K string }
-	if err := c.postForm(context.Background(), c.ep.login+"/p", url.Values{"a": {"b"}}, &out); err != nil || out.K != "v" {
+	if err := c.postForm(context.Background(), "/p", url.Values{"a": {"b"}}, &out); err != nil || out.K != "v" {
 		t.Fatalf("postForm: %v %+v", err, out)
 	}
 }
@@ -71,9 +71,12 @@ func TestErrorTextNeverContainsToken(t *testing.T) {
 }
 
 func TestTransportErrorTextHasNoURL(t *testing.T) {
-	c := newClient(endpoints{api: "http://127.0.0.1:1"}, nil)
+	rt := roundTrip(func(r *http.Request) (*http.Response, error) {
+		return nil, errors.New("dial " + r.URL.String() + " failed")
+	})
+	c := newClient(defaultEndpoints(), &http.Client{Transport: rt})
 	err := c.getJSON(context.Background(), "/secret?token=abc", "ghu_SECRET", nil)
-	if err == nil || strings.Contains(err.Error(), "127.0.0.1") || strings.Contains(err.Error(), "abc") {
+	if err == nil || strings.Contains(err.Error(), "api.github.com") || strings.Contains(err.Error(), "abc") {
 		t.Fatalf("transport error leaks URL: %v", err)
 	}
 }
@@ -100,11 +103,58 @@ func TestRateLimitedIsDistinct(t *testing.T) {
 }
 
 func TestStatusCodesMapToSentinels(t *testing.T) {
-	for code, want := range map[int]error{401: ErrUnauthorized, 403: ErrUnauthorized, 404: ErrNotFound, 429: ErrRateLimited} {
-		c := serverClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(code) })
-		if err := c.getJSON(context.Background(), "/x", "", nil); !errors.Is(err, want) {
-			t.Errorf("HTTP %d: want %v, got %v", code, want, err)
+	for _, tc := range []struct {
+		code   int
+		header string
+		want   error
+	}{
+		{401, "", ErrUnauthorized}, {403, "", ErrForbidden}, {404, "", ErrNotFound},
+		{403, "Retry-After", ErrRateLimited}, {429, "", ErrRateLimited}, {429, "Retry-After", ErrRateLimited},
+	} {
+		c := serverClient(t, func(w http.ResponseWriter, _ *http.Request) {
+			if tc.header != "" {
+				w.Header().Set(tc.header, "30")
+			}
+			w.WriteHeader(tc.code)
+		})
+		if err := c.getJSON(context.Background(), "/x", "", nil); !errors.Is(err, tc.want) {
+			t.Errorf("HTTP %d %s: want %v, got %v", tc.code, tc.header, tc.want, err)
 		}
+	}
+}
+
+func TestForbiddenIsNotUnauthorized(t *testing.T) {
+	c := serverClient(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(403) })
+	if err := c.getJSON(context.Background(), "/x", "", nil); errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("bare 403 must not be ErrUnauthorized: %v", err)
+	}
+}
+
+func TestPathCannotEscapeHost(t *testing.T) {
+	calls := 0
+	c := serverClient(t, func(http.ResponseWriter, *http.Request) { calls++ })
+	for _, path := range []string{"@evil.com/x", ".evil.com/x", "//evil.com/x", "x", ""} {
+		if err := c.getJSON(context.Background(), path, "", nil); err == nil || strings.Contains(err.Error(), "evil") {
+			t.Errorf("getJSON %q: err=%v", path, err)
+		}
+		if err := c.postForm(context.Background(), path, url.Values{"a": {"b"}}, nil); err == nil || strings.Contains(err.Error(), "evil") {
+			t.Errorf("postForm %q: err=%v", path, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("%d requests sent", calls)
+	}
+}
+
+func TestPathAllowsQuery(t *testing.T) {
+	c := serverClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("per_page") != "100" {
+			t.Errorf("query lost: %s", r.URL)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	})
+	if err := c.getJSON(context.Background(), "/user/installations?per_page=100", "", nil); err != nil {
+		t.Fatal(err)
 	}
 }
 

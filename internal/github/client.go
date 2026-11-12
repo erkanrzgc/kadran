@@ -28,11 +28,13 @@ const (
 // sorgu metni asla girmez: imzalı codeload adresleri `?token=` taşır.
 var (
 	ErrUnauthorized = errors.New("github: unauthorized")
+	ErrForbidden    = errors.New("github: access forbidden: the app lacks a permission or the repository is not installed")
 	ErrNotFound     = errors.New("github: not found")
 	ErrMoved        = errors.New("github: repository moved: update the app definition")
 	ErrRateLimited  = errors.New("github: rate limited")
 
 	errTransport = errors.New("github: transport failed")
+	errBadPath   = errors.New("github: invalid request path")
 	errResponse  = errors.New("github: invalid response")
 	errTooLarge  = errors.New("github: response too large")
 )
@@ -87,10 +89,10 @@ func statusError(resp *http.Response) error {
 	case code == http.StatusUnauthorized:
 		return ErrUnauthorized
 	case code == http.StatusTooManyRequests,
-		code == http.StatusForbidden && resp.Header.Get("X-RateLimit-Remaining") == "0":
+		code == http.StatusForbidden && (resp.Header.Get("X-RateLimit-Remaining") == "0" || resp.Header.Get("Retry-After") != ""):
 		return ErrRateLimited
 	case code == http.StatusForbidden:
-		return fmt.Errorf("%w: access forbidden", ErrUnauthorized)
+		return ErrForbidden
 	case code == http.StatusNotFound:
 		return ErrNotFound
 	case code == http.StatusMovedPermanently, code == http.StatusTemporaryRedirect, code == http.StatusPermanentRedirect:
@@ -117,13 +119,34 @@ func decodeJSON(body io.Reader, out any) error {
 	return nil
 }
 
-// postForm form gövdesini (≤ 64 KiB) gönderir, JSON yanıtı out'a çözer.
-func (c *client) postForm(ctx context.Context, rawURL string, form url.Values, out any) error {
+// endpointURL sabit uç noktaya yol ekler; sonuç başka bir hosta çıkıyorsa
+// reddeder. Hata metnine yol girmez.
+func endpointURL(base, path string) (string, error) {
+	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return "", errBadPath
+	}
+	b, err := url.Parse(base)
+	if err != nil {
+		return "", errBadPath
+	}
+	u, err := url.Parse(base + path)
+	if err != nil || u.Scheme != b.Scheme || u.Host != b.Host || u.User != nil {
+		return "", errBadPath
+	}
+	return u.String(), nil
+}
+
+// postForm login uç noktasına form gövdesini (≤ 64 KiB) gönderir, JSON yanıtı outa çözer.
+func (c *client) postForm(ctx context.Context, path string, form url.Values, out any) error {
 	body := form.Encode()
 	if len(body) > maxFormBody {
 		return errTooLarge
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, strings.NewReader(body))
+	full, err := endpointURL(c.ep.login, path)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, full, strings.NewReader(body))
 	if err != nil {
 		return errTransport
 	}
@@ -134,7 +157,11 @@ func (c *client) postForm(ctx context.Context, rawURL string, form url.Values, o
 
 // getJSON api host'una GET atar; yanıt ≤ 1 MiB olmalı. token boşsa başlık eklenmez.
 func (c *client) getJSON(ctx context.Context, path, token string, out any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.ep.api+path, nil)
+	full, err := endpointURL(c.ep.api, path)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
 	if err != nil {
 		return errTransport
 	}

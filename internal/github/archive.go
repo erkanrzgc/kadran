@@ -7,14 +7,41 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 )
+
+var (
+	ownerPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,39}$`)
+	repoPattern  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
+	shaPattern   = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+	errBadRepoRef = errors.New("github: invalid repository reference")
+	errBadSHA     = errors.New("github: invalid commit sha")
+)
+
+// validRepoRef owner ve repo adının yola güvenle girebileceğini doğrular.
+func validRepoRef(owner, repo string) error {
+	if !ownerPattern.MatchString(owner) || !repoPattern.MatchString(repo) || repo == "." || repo == ".." {
+		return errBadRepoRef
+	}
+	return nil
+}
+
+// validSHA tam (40 hane, küçük harf) commit özetini doğrular.
+func validSHA(sha string) bool { return shaPattern.MatchString(sha) }
 
 var errArchiveRedirect = errors.New("github: archive redirect rejected")
 
 // tarball, deponun bir commit'inin tar.gz arşivini açar. Kalıcı jeton yalnız
 // api host'una gider; codeload'a yalnız kısa ömürlü imzalı adres ile gidilir.
 func (c *client) tarball(ctx context.Context, owner, repo, sha, token string) (io.ReadCloser, error) {
+	if err := validRepoRef(owner, repo); err != nil {
+		return nil, err
+	}
+	if !validSHA(sha) {
+		return nil, errBadSHA
+	}
 	path := "/repos/" + owner + "/" + repo + "/tarball/" + sha
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.ep.api+path, nil)
 	if err != nil {

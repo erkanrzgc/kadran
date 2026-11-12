@@ -219,7 +219,7 @@ service KadranService {
 
   // StartGitHubConnect, GitHub cihaz akışını başlatır. Yalnız yönetici
   // çağırır. Döner: kullanıcıya gösterilecek kod ve adres; jeton ve
-  // device_code ASLA dönmez (kadran-git içinde kalır).
+  // OAuth cihaz kodu ASLA dönmez (kadran-git içinde kalır).
   rpc StartGitHubConnect(StartGitHubConnectRequest) returns (StartGitHubConnectResponse);
 
   // GetGitHubStatus, GitHub bağlantı durumunu ve kurulumları döner.
@@ -237,7 +237,7 @@ service KadranService {
 message StartGitHubConnectRequest {}
 
 message StartGitHubConnectResponse {
-  GitHubDeviceCode device_code = 1;
+  GitHubUserCodePrompt prompt = 1;
 }
 
 message GetGitHubStatusRequest {}

@@ -1,0 +1,140 @@
+syntax = "proto3";
+
+package kadran.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/erkanrzgc/kadran/internal/pb/kadran/v1;kadranv1";
+
+// GitAdminService, kadrand ile kadran-git arasındaki YÖNETİM sözleşmesidir
+// (GitHub cihaz akışı, K-167).
+//
+// Hiçbir yanıt jeton (ghu_/ghr_), cihaz kodu (device_code) ya da imzalı
+// indirme adresi taşımaz. Bunlar yalnız kadran-git içinde yaşar; kadrand
+// ve istemciler yalnız kullanıcıya gösterilecek bilgiyi görür.
+service GitAdminService {
+  // StartDeviceFlow, GitHub cihaz akışını başlatır. Çağıran: kadrand
+  // (StartGitHubConnect). Döner: kullanıcı kodu (8 hane) ve doğrulama
+  // adresi; bunlar kullanıcıya gösterilmek içindir. device_code yanıtta
+  // YOKTUR, kadran-git içinde kalır.
+  rpc StartDeviceFlow(StartDeviceFlowRequest) returns (StartDeviceFlowResponse);
+
+  // GetGitStatus, bağlantı durumunu döner. Çağıran: kadrand
+  // (GetGitHubStatus). Jeton yoktur; yalnız durum, kullanıcı adı ve
+  // kurulumların depo listesi döner.
+  rpc GetGitStatus(GetGitStatusRequest) returns (GetGitStatusResponse);
+
+  // DisconnectGit, bağlantıyı koparır ve diskteki jeton çiftini siler.
+  // Çağıran: kadrand (DisconnectGitHub).
+  rpc DisconnectGit(DisconnectGitRequest) returns (DisconnectGitResponse);
+
+  // ResolveBranch, dalı commit karmasına çevirir. Çağıran: kadrand
+  // (ResolveGitHubBranch). Döner: commit_sha; jeton asla dönmez.
+  rpc ResolveBranch(ResolveBranchRequest) returns (ResolveBranchResponse);
+}
+
+// GitFetchService, yürütücünün kaynak arşivi aldığı sözleşmedir.
+// Yürütücü jeton görmez; kadran-git arşivi kendisi indirip parça parça
+// akıtır.
+service GitFetchService {
+  // FetchArchive, belirli bir commit'in arşivini akıtır. İlk ileti HER
+  // ZAMAN bir karardır; yalnız DECISION_ARCHIVE ise ardından chunk'lar
+  // gelir. Karardan ÖNCEKİ her hata herkese açık yola düşer; karardan
+  // SONRAKİ hata derlemeyi düşürür.
+  rpc FetchArchive(FetchArchiveRequest) returns (stream FetchArchiveResponse);
+}
+
+// GitHubDeviceCode, kullanıcıya gösterilecek cihaz akışı bilgisidir.
+// Cihaz kodu (device_code) BİLEREK yoktur.
+message GitHubDeviceCode {
+  // user_code, kullanıcının github.com'da gireceği 8 haneli koddur.
+  string user_code = 1;
+  string verification_uri = 2;
+  // install_url, uygulamanın kurulum adresidir.
+  string install_url = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// GitHubRepository, kurulumun kapsadığı bir depodur.
+message GitHubRepository {
+  string full_name = 1;
+  // private, tar yolunun yalnız özel depolar için kullanılmasını sağlar.
+  bool private = 2;
+}
+
+// GitHubInstallation, uygulamanın bir hesaptaki kurulumudur.
+message GitHubInstallation {
+  string account = 1;
+  bool all_repositories = 2;
+  repeated GitHubRepository repositories = 3;
+  // truncated, depo listesinin sınırda kesildiğini söyler.
+  bool truncated = 4;
+}
+
+// GitHubConnection, GitHub bağlantısının durumudur. Jeton içermez.
+message GitHubConnection {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_NOT_CONNECTED = 1;
+    STATE_PENDING = 2;
+    STATE_CONNECTED = 3;
+    STATE_FAILED = 4;
+  }
+  State state = 1;
+  string login = 2;
+  // pending, STATE_PENDING iken kullanıcıya gösterilecek koddur.
+  GitHubDeviceCode pending = 3;
+  repeated GitHubInstallation installations = 4;
+  google.protobuf.Timestamp connected_at = 5;
+  // error, STATE_FAILED için kullanıcıya gösterilebilir İngilizce metindir.
+  string error = 6;
+  // reconnect_required, yenileme jetonu geçersizse true olur.
+  bool reconnect_required = 7;
+  string install_url = 8;
+}
+
+message StartDeviceFlowRequest {}
+
+message StartDeviceFlowResponse {
+  GitHubDeviceCode device_code = 1;
+}
+
+message GetGitStatusRequest {}
+
+message GetGitStatusResponse {
+  GitHubConnection connection = 1;
+}
+
+message DisconnectGitRequest {}
+
+message DisconnectGitResponse {}
+
+message ResolveBranchRequest {
+  string owner = 1;
+  string repo = 2;
+  string branch = 3;
+}
+
+message ResolveBranchResponse {
+  string commit_sha = 1;
+}
+
+message FetchArchiveRequest {
+  string owner = 1;
+  string repo = 2;
+  string commit_sha = 3;
+}
+
+message FetchArchiveResponse {
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_ARCHIVE = 1;
+    DECISION_NOT_CONNECTED = 2;
+    DECISION_NOT_COVERED = 3;
+  }
+  // İlk ileti karardır; ARCHIVE ise ardından parçalar gelir.
+  oneof kind {
+    Decision decision = 1;
+    bytes chunk = 2;
+  }
+}

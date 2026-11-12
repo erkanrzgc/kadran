@@ -3,16 +3,60 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.12.0 — 2026-11-12
+
+Live resource usage for each server and each application (K-166), a new desktop shell (K-165) and
+security fixes in Go and `golang.org/x/net`. The protocol is unchanged (3): the new call is an
+addition, so this client still works with a v0.11.0 server, and a v0.11.0 client still works with a
+v0.12.0 server. The live view needs the new server, though: every server binary is rebuilt with
+Go 1.26.11, `kadrand` and `kadran-exec` gain the new call, `kadran-caddy` carries the `x/net` fix and
+the `kadrand.service` unit changed, so upgrade your servers. The desktop app is still not among the
+release files: build it from source in `desktop/` (see the [desktop guide](docs/guides/desktop.md)).
 
 ### Security
 
 - All three Go modules and CI require Go 1.26.11, which fixes
   [GO-2026-6859](https://pkg.go.dev/vuln/GO-2026-6859) in `net/http`. Kadran reaches it through the
-  HTTP health probe, the git branch resolver and the gRPC pipe. Building from source needs Go 1.26.11.
+  HTTP health probe, the git branch resolver and the gRPC pipe. Building from source needs Go 1.26.11
+  (recorded under K-165).
 - `golang.org/x/net` is v0.62.0 in all three modules, which fixes
   [GO-2026-6860](https://pkg.go.dev/vuln/GO-2026-6860) and
-  [GO-2026-6866](https://pkg.go.dev/vuln/GO-2026-6866) in its HTML parser and renderer.
+  [GO-2026-6866](https://pkg.go.dev/vuln/GO-2026-6866) in its HTML parser and renderer (recorded under
+  K-165).
+
+### Added
+
+- Live resource usage (K-166). The server reports host counters (CPU with I/O wait and steal, load,
+  memory and swap, disk space and inodes, disk and network throughput, pressure, tasks, uptime) and,
+  for each application, CPU, memory, network, disk, tasks and running containers. The server keeps
+  no history: it returns cumulative counters with the time they were read, and the client turns two
+  readings into rates. A counter that goes backwards (a restarted container, a deploy, a rebooted
+  host) gives "unknown" for that interval instead of a spike, and a value the server could not read
+  is shown as "—", not as 0.
+- The new call is open to the admin key only; the deploy key cannot read it. kadrand reads the host
+  files; the executor reads the per-container numbers from Docker and returns only numbers per
+  application, never container IDs.
+- Desktop: CPU, memory and disk meters on each connected server card (every 5 s), and a live panel
+  with charts and an application table on the server's status page (every 2 s). Nothing is polled
+  while the window is hidden. Against a v0.11.0 server the panel asks you to upgrade.
+
+### Changed
+
+- `kadrand.service` no longer sets `ProcSubset=pid`, so kadrand can read `/proc/stat`, `meminfo`,
+  `loadavg`, `net/dev`, `diskstats`, `pressure/*` and `uptime`: files any local user can read.
+  `ProtectProc=invisible` stays, so other users' processes remain hidden, and the executor keeps
+  `ProcSubset=pid` (K-166).
+- Desktop: the shell moved from Electron to Wails v2 (K-165). The screens and the look are the same.
+  The app is one file, `desktop/dist/Kadran.exe`, and runs on Windows only for now. The trust
+  boundary (input checks, the local confirmation box, error clean-up) is now in Go; the confirmation
+  box keeps named buttons with Cancel as the default. The one-time import of the old Electron profile
+  list is gone; an old `profiles.json` is left where it is.
+
+### Fixed
+
+- `kadran status` shows the Memory line. The executor's sandbox could not read `/proc/meminfo`, so
+  memory was always 0 and the line was hidden; kadrand now reads it (K-166). This needs the upgraded
+  server.
 
 ## v0.11.0 — 2026-11-06
 

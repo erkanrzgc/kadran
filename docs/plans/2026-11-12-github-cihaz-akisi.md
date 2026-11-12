@@ -153,7 +153,18 @@ Görev 3'teki `TestMovedRepositoryIsReported` (taşınan depo, 301) yine yazıl�
 
 ---
 
-### Görev 1: İki sunucuda DNS ölçümü (salt okunur, canlı)
+### Görev 1: İki sunucuda DNS ölçümü (salt okunur, canlı) — BİTTİ 12 Kasım
+
+**Sonuç (K-167 "Ölçüm"):**
+- `systemd-run` sembolik aralıkları (`localhost`, `link-local`) ayrıştırmıyor; ölçüm sayısal aralıklarla tekrarlandı. Birim dosyası sembolik adları kabul eder.
+- Hetzner `resolv.conf` 127.0.0.53'ü gösteriyor; GCP doğrudan `169.254.169.254`'ü.
+- Kısıtlı birimde Go'nun yolu (`getent -s dns`) GCP'de çözemiyor (çıkış 2). Kısıtlı birime `stub-resolv.conf` bağlanınca iki sunucuda da çözüyor.
+- İki sunucuda kısıtlı birimden:
+  - HTTPS `api.github.com` 200;
+  - meta veri kapalı (kısıtsız kontrol 200);
+  - 1.1.1.1 açık;
+  - 127.0.0.1 kapalı.
+- Görev 7'nin birimine `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf` eklendi.
 
 **Files:**
 - Modify: `docs/decisions.md` (K-167'ye "Ölçüm" satırı).
@@ -406,11 +417,17 @@ func validBranch(name string) error
   - `kadran-proxy.service`'teki `Protect*`, `Restrict*`, `SystemCallFilter` satırları;
   - `MemoryDenyWriteExecute=yes`;
   - `InaccessiblePaths=-/run/kadran-exec -/run/docker.sock -/var/lib/kadran -/var/lib/kadran-exec -/var/lib/kadran-caddy`;
-  - ağ satırları Görev 1'in sonucuna göre (spec varsayılanı `IPAddressDeny=localhost link-local multicast`, `IPAddressAllow=127.0.0.53`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`).
+  - ağ satırları (Görev 1'de ölçüldü):
+    - `IPAddressDeny=localhost link-local multicast`;
+    - `IPAddressAllow=127.0.0.53`;
+    - `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`;
+    - `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf`. Başında `-` YOK: dosya yoksa birim açıkça başlamasın.
+    - `After=systemd-resolved.service`.
 
 - [ ] **Adım 1: Başarısız denetimleri ekle.**
   - `scripts/check-install-sh.sh`:
     - `kadran-git` kullanıcısının `docker`, `kadran`, `kadran-client`, `kadran-proxy` gruplarında olmadığını denetleyen bir `die` satırı var;
+    - kurulum, `systemd-resolved` etkin değilse ya da `/run/systemd/resolve/stub-resolv.conf` 127.0.0.53'ü göstermiyorsa "kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)" der ve durur;
     - kurulum ikilileri değiştirmeden ÖNCE `/etc/systemd/system/kadran-exec.service.d/*.conf`'ta `--git-credentials` arar ve bulursa "remove --git-credentials from the kadran-exec drop-in; private repositories now use `kadran github connect`" der.
   - `scripts/check-install-order.sh`: `kadran-git-*.socket` kadrand yeniden başlamadan önce etkin.
 - [ ] **Adım 2:** Koş: `bash scripts/check-install-sh.sh; bash scripts/check-install-order.sh`. Beklenen: FAIL.

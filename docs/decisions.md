@@ -12844,3 +12844,26 @@ Uygulama kaydedildi (12 Kasım, kullanıcı onayıyla, Chrome'da onun oturumuyla
 `Iv23lizBm3zlCdYH3NQ5`, kısa ad `kadran-deploy`. Yalnız Contents ve Metadata okuma, webhook
 kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anahtar ve istemci sırrı
 üretilmedi.
+
+**Ölçüm (12 Kasım, plan Görev 1, kullanıcı onayıyla, iki sunucuda salt okunur):**
+- İlk tur geçersizdi. `systemd-run -p IPAddressDeny=localhost ...` "Failed to parse IP address
+  prefix: localhost" verdi; kısıtlı denemeler ağ yüzünden değil bu yüzden düşüyordu. Sembolik adları
+  birim dosyası kabul ediyor, `systemd-run` etmiyor. İkinci tur sayısal aralıklarla
+  (`127.0.0.0/8 ::1/128 169.254.0.0/16 fe80::/10 224.0.0.0/4 ff00::/8`, izin `127.0.0.53/32`) ve her
+  denemenin kısıtsız kontrolüyle yapıldı.
+- Hetzner: `resolv.conf` → stub (127.0.0.53), `nsswitch` `files dns`.
+- GCP: `resolv.conf` → `/run/systemd/resolve/resolv.conf`, `nameserver 169.254.169.254`.
+  `nsswitch` `files myhostname resolve [!UNAVAIL=return] dns`. glibc programları `resolve` üzerinden
+  çözer. Sunucu ikilileri `CGO_ENABLED=0` (Go'nun saf çözücüsü, `resolv.conf`'u okur) olduğu için
+  kısıtlı birimde `getent -s dns` GCP'de çıkış 2 verdi, Hetzner'de çözdü.
+- Kısıtlı birime `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf` verilince
+  iki sunucuda da çözüyor.
+- Kısıtlı birimden, iki sunucuda:
+  - HTTPS `api.github.com/zen` 200;
+  - `169.254.169.254` zaman aşımı (kısıtsız kontrol 200);
+  - `https://1.1.1.1` 301 (dış dünya açık);
+  - `127.0.0.1:2019` zaman aşımı.
+- **Karar:** `kadran-git.service` stub'ı bağlar. Kurulum `systemd-resolved` yoksa açık mesajla durur.
+- **Yan bulgu:** `kadran-offsite` aynı link-local engelini taşıyor ve rclone (Go) kullanıyor. GCP'de
+  uzak yedek yapılandırılırsa DNS'e takılabilir. GCP'de son koşu zamanı boş; ayrı iş olarak
+  denetlenecek.

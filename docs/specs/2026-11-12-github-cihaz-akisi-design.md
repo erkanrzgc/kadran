@@ -119,7 +119,13 @@ onu oradan alır.
 - Ağ yalnız dışarı: `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`,
   `IPAddressDeny=localhost link-local multicast`, `IPAddressAllow=127.0.0.53`.
   - Bu desen `kadran-notify` ve `kadran-offsite` birimlerinden alındı (K-107: DNS istisnası).
-  - Bu oturumda iki sunucuda da ölçülmedi; bu bir VARSAYIM.
+  - **Ölçüldü (12 Kasım, plan Görev 1):** GCP'de `resolv.conf` doğrudan `169.254.169.254`'ü
+    gösteriyor. Go'nun saf çözücüsü (`CGO_ENABLED=0`) bu kısıtla DNS çözemiyor. Birim kendi
+    `resolv.conf`'unu görür:
+    `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf` (iki sunucuda
+    ölçüldü, çalışıyor). Kurulum betiği bu dosya yoksa ve sistem çözücüsü kapalı aralıktaysa açık
+    bir mesajla durur.
+  - Aşağıdaki maddeler ölçümden önceki planı anlatıyor.
   - Rehber, GCP'nin çözücü olarak `169.254.169.254`'ü kullanabileceğini söylüyor. O durumda
     link-local engeli DNS'i de keser.
   - Planın ilk görevi iki sunucuda salt okunur ölçmek:

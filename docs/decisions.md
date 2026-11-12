@@ -12804,3 +12804,35 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 - **Ölçüm gerçek sunucuda:** TOTP girişinden sonra `kadran status` iki sunucuda da bellek satırını gösteriyor (Hetzner 3,1 / 3,7 GiB, GCP 510 / 965 MiB boş / toplam). `kadran sidecar` üzerinden iki `resources` çağrısı (uygulamalarla): iki sunucuda da hostun 24 isteğe bağlı alanının hepsi dolu, `apps_measured` doğru; uygulamalar konteyner sayısı, bellek, sınır ve görev sayısıyla geldi (Hetzner 3, GCP 2 uygulama). Masaüstü panelinin gerçek sunucuda gözle denetimi yapılmadı.
 
 **Bulgu:** GCP'de 9 Kasım 09:26'dan beri `/var/run/reboot-required` var (`linux-image-6.12.116`; çalışan 6.12.115). Dokunulmadı; yeniden başlatma ayrı karar.
+
+## K-167 — GitHub bağlantısı: cihaz akışıyla özel depolar (2026-11-12)
+
+**İstek (kullanıcı, 12 Kasım):** "cihaz akışıyla devam edelim", sorulara "direkt başla".
+Önceki konuşmada (8 Kasım) önerilen yol: Kadran'a GitHub girişi yok, depolara erişim için
+GitHub'ın cihaz akışı.
+
+**Ölçülen başlangıç:**
+- Özel depo desteği K-146'dan beri var, ama üç elle adım istiyor (token, root dosyası, ağı açan
+  drop-in) ve canlıda hiç kullanılmadı (`docs/guides/private-git.md` sonu).
+- Yürütücü ayrıcalıklı kodu 2982 / 2990 satır; birim `AF_UNIX`.
+- kadrand `IPAddressDeny=any`; GitHub'a çıkamaz.
+- GitHub belgesi: GitHub App cihaz akışı ve cihaz akışı jetonunun yenilenmesi istemci sırrı
+  istemez. Erişim jetonu 8 saat, yenileme jetonu 6 ay, yenileme tek kullanımlık. Kullanıcı
+  jetonu yalnız uygulamanın izni, kullanıcının erişimi ve kurulumun depolarının kesişimine
+  erişir. OAuth App'in `repo` kapsamının salt okunur sürümü yok.
+
+**Karar:** tasarım `docs/specs/2026-11-12-github-cihaz-akisi-design.md`. Özet:
+- GitHub App, yalnız Contents okuma. Uygulamayı kullanıcının hesabında uygulama içi tarayıcıdan
+  ben oluşturuyorum, kaydetmeden önce onayıyla **(kullanıcı)**.
+- Jetonlar 8 saatlik, sunucu yeniler **(kullanıcı)**.
+- Akış, jeton deposu, yenileme ve arşiv indirme ayrı, yetkisiz `kadran-git` biriminde. İki soket:
+  `admin.sock` yalnız kadrand'ye, `fetch.sock` yalnız yürütücüye açık. Jeton kadrand'ye ve iş
+  istasyonuna hiç girmez; yürütücü internete çıkmaz, ağ ve jeton kodu yürütücüden çıkar
+  (K-124'ün C seçeneği).
+- Özel depoların izin listesi github.com'daki kurulum seçimi. `--allow-repo` verilmişse yine
+  uygulanır. "All repositories" reddedilmez, uyarılır.
+- Jeton dosyası yolu (`--git-credentials`) kalkar; yükseltme yürütücüyü başlayamaz bırakmaz.
+- Özel depoda dal adı sunucuda çözülür (`ResolveGitHubBranch`); CI yine `-commit` verir.
+- Protokol 3 kalır; dört yeni çağrı yalnız yöneticiye açık.
+
+**Durum:** tasarım yazıldı, kullanıcı onayı bekliyor. Dal `github-device-flow`.

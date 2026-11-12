@@ -12831,11 +12831,16 @@ GitHub'ın cihaz akışı.
   (K-124'ün C seçeneği).
 - Özel depoların izin listesi github.com'daki kurulum seçimi. `--allow-repo` verilmişse yine
   uygulanır. "All repositories" reddedilmez, uyarılır. Bu, bugünkü kapalı kuralı (kimlik bilgisi
-  varken root'un yazdığı liste şart) gevşetir; kullanıcının açık onayını ister.
+  varken root'un yazdığı liste şart) gevşetir; kullanıcı açıkça onayladı (12 Kasım).
 - Tar yoluna yalnız kurulum listesinde `private: true` olan depolar girer. Karar tarball'ın
   durum koduna göre verilmez. Herkese açık uygulamalar bugünkü yolda kalır.
 - Jeton dosyası yolu (`--git-credentials`) kalkar; yükseltme yürütücüyü başlayamaz bırakmaz.
 - Özel depoda dal adı sunucuda çözülür (`ResolveGitHubBranch`); CI yine `-commit` verir.
 - Protokol 3 kalır; dört yeni çağrı yalnız yöneticiye açık.
 
-**Durum:** tasarım yazıldı, kullanıcı onayı bekliyor. Dal `github-device-flow`.
+**Durum:** tasarım kullanıcı onaylı (12 Kasım, "evet onaylıyorum"). Dal `github-device-flow`.
+Uygulama kaydedildi (12 Kasım, kullanıcı onayıyla, Chrome'da onun oturumuyla): "Kadran" adı
+@kadran hesabına ayrılmış çıktı, ad **Kadran Deploy**; App ID `5733313`, Client ID
+`Iv23lizBm3zlCdYH3NQ5`, kısa ad `kadran-deploy`. Yalnız Contents ve Metadata okuma, webhook
+kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anahtar ve istemci sırrı
+üretilmedi.

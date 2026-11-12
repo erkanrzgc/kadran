@@ -67,6 +67,19 @@ Contents: okuma; Metadata: okuma zorunlu), kullanıcının erişimi ve uygulaman
   - İzin: yalnız Contents okuma (Metadata okuma zorunlu).
   - "Any account": açık kaynak ürün, başkaları da kurabilmeli.
 - Özel anahtar ve istemci sırrı üretilmez.
+- **Kayıt (12 Kasım):**
+  - "Kadran" adı @kadran hesabına ayrılmış çıktı; kullanıcı onayıyla **Kadran Deploy**.
+  - Sahibi @erkanrzgc, App ID `5733313`, Client ID `Iv23lizBm3zlCdYH3NQ5`, kısa ad
+    `kadran-deploy`.
+  - Kurulum adresi `https://github.com/apps/kadran-deploy/installations/new`.
+  - "Optional features" sayfasında 8 saatlik jeton etkin.
+  - Ayar sayfası "kurmak için özel anahtar üret" diyor, ama kurulum sayfası anahtarsız
+    açılıyor. Gerçek kurulum canlı adımda denenir. Anahtar gerekirse üretilir, kurulumdan
+    sonra silinir ve yerelde saklanmaz.
+- **Güven notu:** Uygulamanın özel anahtarını tutan biri, uygulamanın kurulduğu her hesabın
+  seçili depolarını okuyabilir. Bu her herkese açık GitHub App'te böyledir. Bu yüzden anahtar
+  tutulmaz. Uygulama sahibine güvenmek istemeyen kendi uygulamasını kaydeder ve
+  `--client-id` ile `--app-slug` verir. Rehber bunu söylemeli.
 - Client ID ve uygulamanın kısa adı (slug) gizli değildir. `kadran-git`'te sabit varsayılan
   olarak durur; kendi uygulamasını kullanmak isteyen `--client-id` ve `--app-slug` verir.
 
@@ -180,8 +193,8 @@ Docker. kadrand arada yok.
 - `parsePrivateGit`'in "allowlist boşsa reddet" kuralı jeton dosyasıyla birlikte kalkar. Yeni
   modelde liste GitHub tarafında.
 - **Bu, bugünkü kapalı bir kuralı gevşetiyor:** kimlik bilgisi varken root'un yazdığı liste artık
-  şart değil, ve "All repositories" yalnız uyarı alıyor. Kullanıcının açık onayını ister
-  (bekliyor).
+  şart değil, ve "All repositories" yalnız uyarı alıyor. Kullanıcı açıkça onayladı (12 Kasım:
+  "evet onaylıyorum").
 
 ### Bağlanma akışı
 

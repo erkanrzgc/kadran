@@ -18,47 +18,49 @@ export LC_ALL=C
 
 VARSAYILAN=60
 
-# Saniye. ubuntu-latest, run 42360594478 (PR #32, 7 Kasım), bütün betikler
-# beş parçada. İlk tablo (run 42258002478, tek iş) masaüstünü 454 sanıyordu,
-# 618 çıktı; o parça 907 sn ile en uzunuydu (K-164).
+# Saniye. ubuntu-latest, run 43205047420 (v0.12.0 öncesi tam koşu, 12 Kasım),
+# bütün betikler beş parçada; süre, günlükte betiğin `▶` satırından bir
+# sonrakine. Önceki tablo run 42360594478'dendi (7 Kasım); ilki (run
+# 42258002478, tek iş) masaüstünü 454 sanıyordu, 618 çıkmıştı (K-164).
 SURELER='
-scripts/mutate-alarm.sh 63
-scripts/mutate-anchor.sh 41
-scripts/mutate-appdelete.sh 11
-scripts/mutate-appshow.sh 52
-scripts/mutate-authz.sh 79
-scripts/mutate-backup.sh 9
-scripts/mutate-bootstrapssh.sh 607
-scripts/mutate-caps.sh 6
-scripts/mutate-client.sh 94
-scripts/mutate-desktop.sh 618
-scripts/mutate-domaincheck.sh 438
-scripts/mutate-env.sh 36
-scripts/mutate-get-kadran.sh 6
-scripts/mutate-goc.sh 66
-scripts/mutate-heal.sh 11
-scripts/mutate-install.sh 19
+scripts/mutate-alarm.sh 70
+scripts/mutate-anchor.sh 38
+scripts/mutate-appdelete.sh 13
+scripts/mutate-appshow.sh 44
+scripts/mutate-authz.sh 87
+scripts/mutate-backup.sh 8
+scripts/mutate-bootstrapssh.sh 629
+scripts/mutate-caps.sh 7
+scripts/mutate-client.sh 95
+scripts/mutate-desktop.sh 483
+scripts/mutate-domaincheck.sh 392
+scripts/mutate-env.sh 40
+scripts/mutate-get-kadran.sh 5
+scripts/mutate-goc.sh 63
+scripts/mutate-heal.sh 15
+scripts/mutate-install.sh 21
 scripts/mutate-kasa.sh 46
-scripts/mutate-keys.sh 50
-scripts/mutate-logrot.sh 12
-scripts/mutate-mutation-select.sh 71
-scripts/mutate-mutation-shard.sh 7
-scripts/mutate-netpool.sh 7
-scripts/mutate-notifycontract.sh 4
+scripts/mutate-keys.sh 58
+scripts/mutate-logrot.sh 15
+scripts/mutate-mutation-select.sh 83
+scripts/mutate-mutation-shard.sh 8
+scripts/mutate-netpool.sh 6
+scripts/mutate-notifycontract.sh 6
 scripts/mutate-proxyadmin.sh 8
-scripts/mutate-proxyguard.sh 20
-scripts/mutate-proxywatch.sh 331
-scripts/mutate-prune.sh 27
-scripts/mutate-redirects.sh 91
-scripts/mutate-release.sh 111
-scripts/mutate-restore.sh 26
+scripts/mutate-proxyguard.sh 25
+scripts/mutate-proxywatch.sh 310
+scripts/mutate-prune.sh 33
+scripts/mutate-redirects.sh 67
+scripts/mutate-release.sh 81
+scripts/mutate-resources.sh 47
+scripts/mutate-restore.sh 19
 scripts/mutate-scaledown.sh 21
-scripts/mutate-servers.sh 130
-scripts/mutate-supervisor.sh 17
-scripts/mutate-totp.sh 322
-scripts/mutate-units.sh 33
-scripts/mutate-volumes.sh 53
-scripts/mutate-watchdog.sh 238
+scripts/mutate-servers.sh 121
+scripts/mutate-supervisor.sh 16
+scripts/mutate-totp.sh 278
+scripts/mutate-units.sh 26
+scripts/mutate-volumes.sh 50
+scripts/mutate-watchdog.sh 237
 '
 
 # Her betik için "süre ad" satırı.

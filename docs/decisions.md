@@ -12569,7 +12569,7 @@ Açık ve koyu Akriliğin parlak ve koyu masaüstünde yazı karşıtlığı: ku
 
 **Durum:** PR #32 → `b9e6e00`, main'de (7 Kasım). İlk CI koşusunda bir parça runner kapanmasıyla düştü
 (aşağıda, "CI'da ilk koşu"); düzeltildi, ikinci koşu 18/18 yeşil. Tam koşu 15 dk 53 sn (önce 1 sa 12–17 dk).
-Süre tablosu ikinci koşunun ölçümüyle yenilendi.
+Süre tablosu ikinci koşunun ölçümüyle yenilendi; 12 Kasım'da üçüncü ölçümle yeniden (aşağıda).
 
 ### Neden
 
@@ -12674,14 +12674,30 @@ kaynak, dakika ücretsiz. Süre tablosu elle güncelleniyor; eskirse denge bozul
 - Tablo bu koşunun ölçümüyle yenilendi (37 betik, `mutate-mutation-shard.sh` dahil). Toplam 3781 sn.
   LPT en ağır parça: 4 parça 947 sn, 5 parça 757 sn (~12,6 dk), 6 parça 632 sn. Beş korundu.
 
+### CI'da üçüncü ölçüm (run 43205047420, 12 Kasım)
+
+v0.12.0 öncesi tam koşu (elle tetiklendi, bütün betikler). Süreler günlükten: betiğin `▶` satırından
+bir sonrakine, son betikte adımın son satırına.
+
+- 18/18 yeşil. Koşu 10:58:31 → 11:12:47, **14 dk 16 sn** (7 Kasım'da 15 dk 53 sn).
+- Parça süreleri (iş, kurulum dahil): 1/5 11:18, 2/5 14:02, 3/5 11:13, 4/5 12:55, 5/5 12:49. Betiklerde
+  641 / 805 / 643 / 743 / 739 sn. Eski tablonun bölüşü bu sürelerle hesaplanınca aynı beş sayı çıkıyor:
+  ölçümle tutarlı.
+- En uzun parça 2/5: `mutate-bootstrapssh.sh` 629 sn ve yanına beş küçük betik (805 sn). Tablo o
+  parçayı 767 sanıyordu (bootstrapssh 607).
+- 38 betik ölçüldü; yeni `mutate-resources.sh` (K-166) 47 sn, tabloda yoktu (60 sayılıyordu).
+- Değişenler (≥ 15 sn): masaüstü 618 → 483, domaincheck 438 → 392, totp 322 → 278, proxywatch 331 → 310,
+  release 111 → 81, redirects 91 → 67, bootstrapssh 607 → 629. Masaüstü betiği K-165'te Wails'e göre
+  yeniden yazıldı, K-166'da 19 mutant eklendi; kısalmanın sebebi ayrıca ölçülmedi.
+- Tablo bu koşunun ölçümüyle yenilendi. Toplam 3571 sn. LPT en ağır parça: 4 parça 894 sn, 5 parça
+  715 sn, 6 parça 629 sn (bootstrapssh tek başına). Beş korundu: altıncı koşucu ~1,5 dk kazandırır.
+
 ### Açık
 
-- Yeni tablonun getirdiği süre (beklenen: betiklerde ~757 sn + ~1 dk kurulum) bir sonraki tam koşuda
+- Yeni tablonun getirdiği süre (beklenen: betiklerde ~715 sn + ~1 dk kurulum) bir sonraki tam koşuda
   görülecek.
-- Altı parça en ağır parçayı ~2 dk daha kısaltır (masaüstü tek başına 618). Bir koşucu daha demek;
-  denenmedi.
-- Masaüstü 454 → 618 sn (+%36) farkının sebebi ölçülmedi. İlk ölçüm (PR #31) K-163 birleşmeden önceydi;
-  K-163 masaüstü mutantlarını artırdı. Paralel koşu da etkili olabilir.
+- Alt sınır artık `mutate-bootstrapssh.sh` (629 sn): parça eklemek onun altına inemez; kısaltmak için
+  betiğin kendisi bölünmeli. Denenmedi.
 
 ## K-165 — Masaüstü Wails'e taşınıyor (2026-11-07)
 

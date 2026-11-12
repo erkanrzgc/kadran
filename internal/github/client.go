@@ -169,6 +169,36 @@ func (c *client) getJSON(ctx context.Context, path, token string, out any) error
 	return c.doJSON(req, out)
 }
 
+// getRaw api host'una verilen Accept ile GET atar; gövde en çok limit bayt olabilir.
+func (c *client) getRaw(ctx context.Context, path, token, accept string, limit int64) ([]byte, error) {
+	full, err := endpointURL(c.ep.api, path)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return nil, errTransport
+	}
+	setAPIHeaders(req, token)
+	req.Header.Set("Accept", accept)
+	resp, err := c.send(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if err := statusError(resp); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	if err != nil {
+		return nil, errTransport
+	}
+	if int64(len(data)) > limit {
+		return nil, errTooLarge
+	}
+	return data, nil
+}
+
 func setAPIHeaders(req *http.Request, token string) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")

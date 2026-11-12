@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,7 +40,18 @@ type tokens struct {
 	st       state
 	ok       bool
 	// reconnect: ErrReconnect yüzünden bağlantı düştü; yeni bağlantı kaydedilene kadar true.
-	reconnect bool
+	// Atomik: Status yenileme sürerken mu'yu beklemez.
+	reconnect atomic.Bool
+	// ident bağlı kullanıcının kilitsiz okunabilen özetidir; st ile aynı kritik bölümlerde güncellenir.
+	ident atomic.Pointer[identity]
+	// lastWarn geçici yenileme uyarısının son zamanıdır (unix ns); dakikada en çok bir uyarı.
+	lastWarn atomic.Int64
+}
+
+// identity bağlı kullanıcının gizli olmayan özetidir.
+type identity struct {
+	login       string
+	connectedAt time.Time
 }
 
 type refreshResponse struct {
@@ -71,7 +83,66 @@ func newTokens(path, clientID string, c *client, now func() time.Time) (*tokens,
 		return t, nil
 	}
 	t.st, t.ok = st, ok
+	t.syncIdentityLocked()
 	return t, nil
+}
+
+// syncIdentityLocked ident'i st/ok ile uyumlu tutar (mu tutulurken ya da kurulumda çağrılır).
+func (t *tokens) syncIdentityLocked() {
+	if !t.connectedLocked() {
+		t.ident.Store(nil)
+		return
+	}
+	t.ident.Store(&identity{login: t.st.Login, connectedAt: t.st.ConnectedAt})
+}
+
+// Identity bağlı değilse nil döner; kilit almaz.
+func (t *tokens) Identity() *identity { return t.ident.Load() }
+
+// install yeni bağlantıyı diske yazar ve etkinleştirir; yazma hatasında mevcut durum korunur.
+func (t *tokens) install(s state) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if err := saveStateFn(t.path, s); err != nil {
+		return err
+	}
+	t.st, t.ok = s, true
+	t.reconnect.Store(false)
+	t.syncIdentityLocked()
+	return nil
+}
+
+// reset bağlantıyı bellekten ve diskten siler (Disconnect). Bellek her durumda temizlenir.
+func (t *tokens) reset() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.st, t.ok = state{}, false
+	t.reconnect.Store(false)
+	t.ident.Store(nil)
+	return removeState(t.path)
+}
+
+// Rejected, sunucunun ikinci kez reddettiği jetonu (tok) bildirir: jeton hâlâ güncel ise
+// bağlantı düşer ve ErrReconnect döner; bu arada başka biri yenilediyse ErrUnauthorized.
+func (t *tokens) Rejected(tok string) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.connectedLocked() {
+		return ErrNotConnected
+	}
+	if t.st.AccessToken != tok {
+		return ErrUnauthorized
+	}
+	return t.dropForReconnect()
+}
+
+// warnTransient geçici yenileme hatasını sabit metinle, dakikada en çok bir kez yazar.
+func (t *tokens) warnTransient() {
+	now := t.clock().UnixNano()
+	last := t.lastWarn.Load()
+	if now-last >= int64(time.Minute) && t.lastWarn.CompareAndSwap(last, now) {
+		slog.Warn("github token refresh failing, serving current token")
+	}
 }
 
 // connectedLocked bağlı olup olmadığını söyler (mu tutulurken çağrılır).
@@ -81,18 +152,15 @@ func (t *tokens) connectedLocked() bool {
 
 // ReconnectRequired, ErrReconnect yüzünden bağlantı düştüyse true döner;
 // yeni bağlantı kaydedilene kadar true kalır.
-func (t *tokens) ReconnectRequired() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.reconnect
-}
+func (t *tokens) ReconnectRequired() bool { return t.reconnect.Load() }
 
 // dropForReconnect ölü kimlik bilgilerini bellekten ve diskten kaldırır
 // (diskteki silme en iyi gayretle) ve ErrReconnect döner. Günlük metni sabittir.
 func (t *tokens) dropForReconnect() error {
 	t.st = state{}
 	t.ok = false
-	t.reconnect = true
+	t.reconnect.Store(true)
+	t.ident.Store(nil)
 	if t.path != "" {
 		if err := removeState(t.path); err != nil {
 			slog.Warn("github state file could not be removed")
@@ -119,6 +187,7 @@ func (t *tokens) Token(ctx context.Context) (string, error) {
 			if errors.Is(err, ErrReconnect) || !now.Before(exp) {
 				return "", err
 			}
+			t.warnTransient()
 		}
 	}
 	return t.st.AccessToken, nil
@@ -161,7 +230,7 @@ func (t *tokens) refreshLocked(ctx context.Context) error {
 		return t.dropForReconnect()
 	}
 	t.st = next
-	t.reconnect = false
+	t.reconnect.Store(false)
 	return nil
 }
 

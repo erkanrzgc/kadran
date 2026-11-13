@@ -10,8 +10,8 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +19,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -34,7 +33,6 @@ import (
 
 const (
 	testDecisionTimeout = 200 * time.Millisecond
-	publicHint          = "if it is private, install the Kadran Deploy app on it"
 )
 
 // socketBase, testler TMP değişkenini değiştirmeden ÖNCEKİ kısa temp dizinidir.
@@ -109,8 +107,15 @@ func startSilentListener(t *testing.T) string {
 	return sock
 }
 
-func fastFetcher(sock string) GitFetcher {
-	return &gitFetcher{socket: sock, decisionTimeout: testDecisionTimeout}
+// okFetcher başarı yolu testleri içindir: yavaş bir CI el sıkışması sonucu
+// NOT_CONNECTED'a çevirmesin diye cömert süre.
+func okFetcher(sock string) GitFetcher {
+	return &gitFetcher{socket: sock, decisionTimeout: 5 * time.Second, chunkIdle: time.Minute}
+}
+
+// shortFetcher yalnız zaman aşımı testlerinde kullanılır.
+func shortFetcher(sock string) *gitFetcher {
+	return &gitFetcher{socket: sock, decisionTimeout: testDecisionTimeout, chunkIdle: time.Minute}
 }
 
 func decide(d kadranv1.FetchArchiveResponse_Decision) *kadranv1.FetchArchiveResponse {
@@ -120,12 +125,6 @@ func decide(d kadranv1.FetchArchiveResponse_Decision) *kadranv1.FetchArchiveResp
 func chunk(b []byte) *kadranv1.FetchArchiveResponse {
 	return &kadranv1.FetchArchiveResponse{Kind: &kadranv1.FetchArchiveResponse_Chunk{Chunk: b}}
 }
-
-const (
-	dArchive      = kadranv1.FetchArchiveResponse_DECISION_ARCHIVE
-	dNotConnected = kadranv1.FetchArchiveResponse_DECISION_NOT_CONNECTED
-	dNotCovered   = kadranv1.FetchArchiveResponse_DECISION_NOT_COVERED
-)
 
 // sendArchive, ARCHIVE kararını ve ardından gövdeyi 7 baytlık parçalarla yollar.
 func sendArchive(s kadranv1.GitFetchService_FetchArchiveServer, body []byte) error {
@@ -204,29 +203,6 @@ func startDockerMock(t *testing.T, srv *Server) *dockerMock {
 	return m
 }
 
-func lastRecord(t *testing.T, srv *Server) audit.Record {
-	t.Helper()
-	recs, err := srv.journal.Read(0, 100)
-	if err != nil || len(recs) == 0 {
-		t.Fatalf("no audit records: %v", err)
-	}
-	return recs[len(recs)-1]
-}
-
-func paramOf(t *testing.T, raw, key string) string {
-	t.Helper()
-	m := map[string]string{}
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
-		t.Fatalf("params not JSON: %v", err)
-	}
-	return m[key]
-}
-
-func contextSource(t *testing.T, srv *Server) string {
-	t.Helper()
-	return paramOf(t, lastRecord(t, srv).ParamsJSON, "context_source")
-}
-
 func archiveWithContent(t *testing.T) []byte {
 	t.Helper()
 	var out bytes.Buffer
@@ -281,7 +257,7 @@ func TestBuildUsesPublicPathWhenNotConnected(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			srv := newTestServer(t)
 			m := startDockerMock(t, srv)
-			srv.gitFetch = fastFetcher(sock(t))
+			srv.gitFetch = okFetcher(sock(t))
 			if err := srv.ImageBuild(validBuildRequest(), newBuildStream()); err != nil {
 				t.Fatal(err)
 			}
@@ -299,7 +275,7 @@ func TestBuildUsesPublicPathWhenNotConnected(t *testing.T) {
 func TestBuildUsesPublicPathWhenNotCovered(t *testing.T) {
 	srv := newTestServer(t)
 	m := startDockerMock(t, srv)
-	srv.gitFetch = fastFetcher(startFakeGit(t, decisionHandler(dNotCovered)))
+	srv.gitFetch = okFetcher(startFakeGit(t, decisionHandler(dNotCovered)))
 	if err := srv.ImageBuild(validBuildRequest(), newBuildStream()); err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +293,7 @@ func TestPublicBuildSurvivesUnresponsiveGitService(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			srv := newTestServer(t)
 			m := startDockerMock(t, srv)
-			srv.gitFetch = fastFetcher(sock(t))
+			srv.gitFetch = shortFetcher(sock(t))
 			start := time.Now()
 			if err := srv.ImageBuild(validBuildRequest(), newBuildStream()); err != nil {
 				t.Fatal(err)
@@ -336,7 +312,7 @@ func TestBuildUsesTarWhenPrivate(t *testing.T) {
 	dir := tempContexts(t)
 	srv := newTestServer(t)
 	m := startDockerMock(t, srv)
-	srv.gitFetch = fastFetcher(startFakeGit(t, archiveHandler(archiveWithContent(t))))
+	srv.gitFetch = okFetcher(startFakeGit(t, archiveHandler(archiveWithContent(t))))
 	stream := newBuildStream()
 	if err := srv.ImageBuild(validBuildRequest(), stream); err != nil {
 		t.Fatal(err)
@@ -360,6 +336,9 @@ func TestBuildUsesTarWhenPrivate(t *testing.T) {
 	}
 	if names["Dockerfile"] != "FROM scratch\n" || names["src/app.txt"] != "hello" || len(names) != 2 {
 		t.Fatalf("rewritten entries wrong: %v", names)
+	}
+	if n := len(stream.sent); n < 1 || stream.sent[n-1].GetImageId() != "sha256:fixture" {
+		t.Fatal("private build did not produce positive image evidence")
 	}
 	rec := lastRecord(t, srv)
 	if paramOf(t, rec.ParamsJSON, "context_source") != "github-app" ||
@@ -387,7 +366,7 @@ func TestPrivateFetchErrorFailsBuild(t *testing.T) {
 			dir := tempContexts(t)
 			srv := newTestServer(t)
 			m := startDockerMock(t, srv)
-			srv.gitFetch = fastFetcher(startFakeGit(t, h))
+			srv.gitFetch = okFetcher(startFakeGit(t, h))
 			err := srv.ImageBuild(validBuildRequest(), newBuildStream())
 			if err == nil || strings.Contains(err.Error(), "ghu_leak") || strings.Contains(err.Error(), "secret") {
 				t.Fatalf("expected a sanitized failure, got %v", err)
@@ -396,8 +375,9 @@ func TestPrivateFetchErrorFailsBuild(t *testing.T) {
 				t.Fatal("docker was called after a private fetch failure")
 			}
 			noLeftoverContext(t, dir)
-			if rec := lastRecord(t, srv); rec.Outcome != audit.OutcomeFailure {
-				t.Fatalf("failure not audited: %+v", rec)
+			rec := lastRecord(t, srv)
+			if rec.Outcome != audit.OutcomeFailure || paramOf(t, rec.ParamsJSON, "context_source") != "github-app" {
+				t.Fatalf("failure not audited with the github-app source: %+v", rec)
 			}
 		})
 	}
@@ -416,7 +396,7 @@ func TestFetchStatusTextsAreFixed(t *testing.T) {
 			_ = s.Send(decide(dArchive))
 			return status.Error(code, "ghu_leak")
 		}
-		d, f, err := fastFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+		d, f, err := okFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
 		if d != dArchive || f != nil || err == nil || err.Error() != text {
 			t.Fatalf("%v: decision=%v file=%v err=%v", code, d, f, err)
 		}
@@ -426,7 +406,7 @@ func TestFetchStatusTextsAreFixed(t *testing.T) {
 func TestFetchTruncatedArchiveFailsBuild(t *testing.T) {
 	good := archiveWithContent(t)
 	dir := tempContexts(t)
-	d, f, err := fastFetcher(startFakeGit(t, archiveHandler(good[:len(good)-9]))).Fetch(context.Background(), validGitSource())
+	d, f, err := okFetcher(startFakeGit(t, archiveHandler(good[:len(good)-9]))).Fetch(context.Background(), validGitSource())
 	if d != dArchive || f != nil || err == nil {
 		t.Fatalf("truncated archive accepted: %v %v %v", d, f, err)
 	}
@@ -441,7 +421,7 @@ func TestFetchSecondDecisionFailsBuild(t *testing.T) {
 		return s.Send(decide(dNotConnected))
 	}
 	dir := tempContexts(t)
-	d, f, err := fastFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+	d, f, err := okFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
 	if d != dArchive || f != nil || err == nil {
 		t.Fatalf("second decision accepted: %v %v %v", d, f, err)
 	}
@@ -454,7 +434,7 @@ func TestFetchMessageWithoutChunkFailsBuild(t *testing.T) {
 		return s.Send(&kadranv1.FetchArchiveResponse{})
 	}
 	dir := tempContexts(t)
-	d, f, err := fastFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+	d, f, err := okFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
 	if d != dArchive || f != nil || err == nil {
 		t.Fatalf("empty message accepted: %v %v %v", d, f, err)
 	}
@@ -472,7 +452,7 @@ func TestFetchChunkFirstIsPreDecision(t *testing.T) {
 			h := func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
 				return s.Send(first)
 			}
-			d, f, err := fastFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+			d, f, err := okFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
 			if d != dNotConnected || f != nil || err != nil {
 				t.Fatalf("pre-decision protocol error not NOT_CONNECTED: %v %v %v", d, f, err)
 			}
@@ -491,7 +471,7 @@ func TestFetchNotCoveredDoesNotReadOn(t *testing.T) {
 		}
 		return nil
 	}
-	d, f, err := fastFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+	d, f, err := okFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
 	if d != dNotCovered || f != nil || err != nil {
 		t.Fatalf("got %v %v %v", d, f, err)
 	}
@@ -511,7 +491,7 @@ func TestArchiveChecksStillApply(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := tempContexts(t)
-			d, f, err := fastFetcher(startFakeGit(t, archiveHandler(body))).Fetch(context.Background(), validGitSource())
+			d, f, err := okFetcher(startFakeGit(t, archiveHandler(body))).Fetch(context.Background(), validGitSource())
 			if d != dArchive || f != nil || err == nil {
 				t.Fatalf("bad archive accepted: %v %v %v", d, f, err)
 			}
@@ -529,67 +509,96 @@ func TestFetchHonorsBuildContextCancel(t *testing.T) {
 	dir := tempContexts(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	time.AfterFunc(3*testDecisionTimeout, cancel)
-	d, f, err := fastFetcher(startFakeGit(t, h)).Fetch(ctx, validGitSource())
+	d, f, err := okFetcher(startFakeGit(t, h)).Fetch(ctx, validGitSource())
 	if d != dArchive || f != nil || err == nil {
 		t.Fatalf("got %v %v %v", d, f, err)
 	}
 	noLeftoverContext(t, dir)
 }
 
-func TestPublicFailureGetsHintWhenConnected(t *testing.T) {
-	for _, tc := range []struct {
-		name string
-		d    kadranv1.FetchArchiveResponse_Decision
-		hint bool
-	}{
-		{"not covered", dNotCovered, true},
-		{"not connected", dNotConnected, false},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			srv := newTestServer(t) // ulaşılamaz Docker: derleme başarısız olur
-			srv.gitFetch = fastFetcher(startFakeGit(t, decisionHandler(tc.d)))
-			err := srv.ImageBuild(validBuildRequest(), newBuildStream())
-			if err == nil {
-				t.Fatal("expected build failure")
+// TestArchiveDownloadMayOutlastDecisionWindow, 5 sn'lik pencerenin ARCHIVE
+// kararıyla BİTTİĞİNİ kanıtlar: karar penceresi 200 ms, indirme 600 ms+ sürer.
+// Zamanlayıcı durdurulmazsa (mutant: `!timer.Stop()` yerine yalnız bayrak
+// bakmak) akış 200. ms'de iptal edilir ve bu test düşer.
+func TestArchiveDownloadMayOutlastDecisionWindow(t *testing.T) {
+	good := archiveWithContent(t)
+	h := func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
+		if err := s.Send(decide(dArchive)); err != nil {
+			return err
+		}
+		time.Sleep(3 * testDecisionTimeout)
+		for len(good) > 0 {
+			n := min(16, len(good))
+			if err := s.Send(chunk(good[:n])); err != nil {
+				return err
 			}
-			if got := strings.Contains(err.Error(), publicHint); got != tc.hint {
-				t.Fatalf("hint present=%v want %v: %v", got, tc.hint, err)
+			good = good[n:]
+		}
+		return nil
+	}
+	dir := tempContexts(t)
+	d, f, err := shortFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+	if d != dArchive || f == nil || err != nil {
+		t.Fatalf("slow archive failed: %v %v %v", d, f, err)
+	}
+	defer closePrivateContext(f)
+	tr := tar.NewReader(f)
+	hdr, err := tr.Next()
+	if err != nil || hdr.Name != "Dockerfile" {
+		t.Fatalf("rewritten content wrong: %v %v", hdr, err)
+	}
+	if body, _ := io.ReadAll(tr); string(body) != "FROM scratch\n" {
+		t.Fatalf("body wrong: %q", body)
+	}
+	_ = dir
+}
+
+func TestArchiveStallFailsBuild(t *testing.T) {
+	good := archiveWithContent(t)
+	h := func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
+		_ = s.Send(decide(dArchive))
+		_ = s.Send(chunk(good[:10]))
+		<-s.Context().Done() // sessizlik
+		return nil
+	}
+	dir := tempContexts(t)
+	g := okFetcher(startFakeGit(t, h)).(*gitFetcher)
+	g.chunkIdle = testDecisionTimeout
+	start := time.Now()
+	d, f, err := g.Fetch(context.Background(), validGitSource())
+	if d != dArchive || f != nil || err == nil || err.Error() != "private archive download stalled" {
+		t.Fatalf("stall not reported: %v %v %v", d, f, err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("stall took %v", time.Since(start))
+	}
+	noLeftoverContext(t, dir)
+}
+
+func TestPreDecisionLogCategories(t *testing.T) {
+	cases := map[string]struct {
+		sock   func(*testing.T) string
+		reason string
+	}{
+		"timeout": {startSilentListener, "reason=timeout"},
+		"status":  {func(t *testing.T) string { return startFakeGit(t, statusHandler(codes.Internal)) }, "reason=status"},
+		"protocol": {func(t *testing.T) string {
+			return startFakeGit(t, func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
+				return s.Send(chunk([]byte("x")))
+			})
+		}, "reason=protocol"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			g := shortFetcher(tc.sock(t))
+			g.log = slog.New(slog.NewTextHandler(&buf, nil))
+			if d, f, err := g.Fetch(context.Background(), validGitSource()); d != dNotConnected || f != nil || err != nil {
+				t.Fatalf("got %v %v %v", d, f, err)
+			}
+			if !strings.Contains(buf.String(), tc.reason) || strings.Contains(buf.String(), "secret") || strings.Contains(buf.String(), "ghu_") {
+				t.Fatalf("log category wrong or leaking: %s", buf.String())
 			}
 		})
-	}
-}
-
-type countingFetcher struct{ calls atomic.Int32 }
-
-func (c *countingFetcher) Fetch(context.Context, *kadranv1.GitSource) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
-	c.calls.Add(1)
-	return dNotConnected, nil, nil
-}
-
-func TestAllowRepoStillIntersects(t *testing.T) {
-	srv := newTestServer(t)
-	cf := &countingFetcher{}
-	srv.gitFetch = cf
-	srv.allowedRepos = []string{"someone/else"}
-	err := srv.ImageBuild(validBuildRequest(), newBuildStream())
-	if status.Code(err) != codes.InvalidArgument || cf.calls.Load() != 0 {
-		t.Fatalf("allowlist bypassed: %v, fetch calls=%d", err, cf.calls.Load())
-	}
-}
-
-func TestFetchOnlyAskedForDefaultHost(t *testing.T) {
-	srv := newTestServer(t)
-	cf := &countingFetcher{}
-	srv.gitFetch = cf
-	srv.allowedGitHosts = []string{DefaultGitHost, "git.example.com"}
-	req := validBuildRequest()
-	req.Source.Host = "git.example.com"
-	_ = srv.ImageBuild(req, newBuildStream())
-	if cf.calls.Load() != 0 {
-		t.Fatal("decision asked for a non-GitHub host")
-	}
-	_ = srv.ImageBuild(validBuildRequest(), newBuildStream())
-	if cf.calls.Load() != 1 {
-		t.Fatal("decision not asked for github.com")
 	}
 }

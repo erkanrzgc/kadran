@@ -390,24 +390,10 @@ func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerS
 		BuildArgs:  req.GetBuildArgs(),
 	}
 	var imageID string
-	decision, archive, opErr := s.fetchPrivateContext(stream.Context(), req.GetSource())
+	archive, notCovered, opErr := s.buildContext(stream.Context(), req.GetSource(), &spec, params)
 	defer closePrivateContext(archive)
-	params["context_source"] = "public"
-	if archive != nil {
-		spec.ContextURL, spec.ContextTar = "", archive
-	}
-	if decision == kadranv1.FetchArchiveResponse_DECISION_ARCHIVE {
-		params["context_source"] = "github-app"
-	}
 	if opErr == nil {
-		imageID, opErr = s.docker.ImageBuild(stream.Context(), spec, func(data []byte, isStderr bool) error {
-			// ⚠ Derleme ÇIKTISI istemciye akar ama denetime GİRMEZ: kullanıcının
-			// deposundan gelir ve zincir ekle-sadece'dir.
-			return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
-		})
-		if opErr != nil && decision == kadranv1.FetchArchiveResponse_DECISION_NOT_COVERED {
-			opErr = fmt.Errorf("%w (if it is private, install the Kadran Deploy app on it)", opErr)
-		}
+		imageID, opErr = s.dockerBuild(stream, spec, notCovered)
 	}
 
 	// image_id kaydın YANLIŞLANABİLİR olmasını sağlayan alandır: hangi
@@ -430,14 +416,38 @@ func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerS
 	return nil
 }
 
-// fetchPrivateContext, yalnız github.com için kadran-git'e karar sorar.
-// Karardan önceki başarısızlıklar GitFetcher içinde NOT_CONNECTED olur;
-// ARCHIVE'dan sonraki hata derlemeyi düşürür (Docker'a hiç gidilmez).
-func (s *Server) fetchPrivateContext(ctx context.Context, src *kadranv1.GitSource) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
-	if s.gitFetch == nil || src.GetHost() != DefaultGitHost {
-		return kadranv1.FetchArchiveResponse_DECISION_UNSPECIFIED, nil, nil
+// dockerBuild, derlemeyi koşturur ve çıktıyı istemciye akıtır. notCovered iken
+// başarısızlığa özel depo kurulum ipucu eklenir.
+func (s *Server) dockerBuild(stream grpc.ServerStreamingServer[kadranv1.ImageBuildResponse], spec dockerdrv.BuildSpec, notCovered bool) (string, error) {
+	id, err := s.docker.ImageBuild(stream.Context(), spec, func(data []byte, isStderr bool) error {
+		// ⚠ Derleme ÇIKTISI istemciye akar ama denetime GİRMEZ: kullanıcının
+		// deposundan gelir ve zincir ekle-sadece'dir.
+		return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
+	})
+	if err != nil && notCovered {
+		err = fmt.Errorf("%w (if it is private, install the Kadran Deploy app on it)", err)
 	}
-	return s.gitFetch.Fetch(ctx, src)
+	return id, err
+}
+
+// buildContext, yalnız github.com için kadran-git'e karar sorar ve derleme
+// bağlamını (uzak URL ya da yerel tar) seçer; denetim parametresi
+// context_source'u yazar. Karardan önceki başarısızlıklar GitFetcher içinde
+// NOT_CONNECTED olur; ARCHIVE'dan sonraki hata derlemeyi düşürür (Docker'a
+// hiç gidilmez). notCovered, derleme başarısız olursa kurulum ipucu içindir.
+func (s *Server) buildContext(ctx context.Context, src *kadranv1.GitSource, spec *dockerdrv.BuildSpec, params map[string]string) (archive *os.File, notCovered bool, err error) {
+	params["context_source"] = "public"
+	if s.gitFetch == nil || src.GetHost() != DefaultGitHost {
+		return nil, false, nil
+	}
+	decision, archive, err := s.gitFetch.Fetch(ctx, src)
+	if decision == kadranv1.FetchArchiveResponse_DECISION_ARCHIVE {
+		params["context_source"] = "github-app"
+	}
+	if archive != nil {
+		spec.ContextURL, spec.ContextTar = "", archive
+	}
+	return archive, decision == kadranv1.FetchArchiveResponse_DECISION_NOT_COVERED, err
 }
 
 // buildAuditParams, derleme isteğinin denetime yazılacak parametreleridir.

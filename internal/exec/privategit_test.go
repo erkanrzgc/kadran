@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"fmt"
 	"io"
 	"testing"
 )
@@ -59,7 +60,7 @@ func TestPrivateArchiveBoundsAndCorruption(t *testing.T) {
 
 func TestPrivateArchiveRejectsUnsafeTarEntries(t *testing.T) {
 	for _, entry := range []*tar.Header{
-		{Name: "root/../outside", Typeflag: tar.TypeReg}, {Name: "/root/outside", Typeflag: tar.TypeReg}, {Name: "root/C:outside", Typeflag: tar.TypeReg},
+		{Name: "root/../outside", Typeflag: tar.TypeReg}, {Name: "/root/outside", Typeflag: tar.TypeReg}, {Name: "root/C:\\outside", Typeflag: tar.TypeReg},
 		{Name: "root/link", Typeflag: tar.TypeSymlink, Linkname: "../../etc/passwd"}, {Name: "root/link", Typeflag: tar.TypeLink, Linkname: "../../etc/passwd"}, {Name: "root/device", Typeflag: tar.TypeChar},
 	} {
 		t.Run(entry.Name, func(t *testing.T) {
@@ -67,5 +68,118 @@ func TestPrivateArchiveRejectsUnsafeTarEntries(t *testing.T) {
 				t.Fatal("unsafe archive accepted")
 			}
 		})
+	}
+}
+
+func TestRewriteRejectsCumulativeExpandedSize(t *testing.T) {
+	var entries []*tar.Header
+	entries = append(entries, &tar.Header{Name: "r/", Typeflag: tar.TypeDir, Mode: 0o755})
+	for i := 0; i < 10; i++ {
+		entries = append(entries, &tar.Header{Name: fmt.Sprintf("r/f%d", i), Typeflag: tar.TypeReg, Mode: 0o644, Size: 100})
+	}
+	// Her kayıt sınırın altında (100 < 600) ama toplam (1000) üstünde.
+	limits := archiveLimits{1 << 20, 600, 100}
+	err := rewritePrivateArchive(context.Background(), bytes.NewReader(gitArchive(t, entries...)), io.Discard, limits)
+	if err == nil {
+		t.Fatal("cumulative expansion accepted")
+	}
+}
+
+// paxRecord, "<uzunluk> anahtar=değer\n" biçiminde bir PAX kaydıdır.
+func paxRecord(k, v string) string {
+	body := " " + k + "=" + v + "\n"
+	n := len(body) + 1
+	for len(fmt.Sprint(n))+len(body) != n {
+		n = len(fmt.Sprint(n)) + len(body)
+	}
+	return fmt.Sprint(n) + body
+}
+
+// xHeaderBlock, 'x' (PAX genişletilmiş başlık) kaydını ham bayt olarak kurar.
+// tar.Writer GNU.sparse.* kayıtlarını yazmıyor; bu yüzden sıradan bir başlık
+// yazılır, tür baytı 'x' yapılır ve toplam yeniden hesaplanır.
+func xHeaderBlock(t *testing.T, records string) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	tw := tar.NewWriter(&b)
+	if err := tw.WriteHeader(&tar.Header{Name: "PaxHeader/x", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(records)), Format: tar.FormatUSTAR}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(records)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	raw := b.Bytes()
+	raw[156] = tar.TypeXHeader
+	for i := 148; i < 156; i++ {
+		raw[i] = ' '
+	}
+	sum := 0
+	for _, c := range raw[:512] {
+		sum += int(c)
+	}
+	copy(raw[148:156], fmt.Sprintf("%06o\x00 ", sum))
+	return raw
+}
+
+// sparseArchive, her adı PAX 1.0 seyrek kaydı olarak yazar: gövde yalnız boş bir
+// harita taşır, okuyucu ise h.Size'ı realsize olarak bildirir ve o kadar sıfır
+// üretir.
+func sparseArchive(t *testing.T, names []string, realSize int) []byte {
+	t.Helper()
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	if err := tw.WriteHeader(&tar.Header{Name: "r/", Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range names {
+		if err := tw.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		recs := paxRecord("GNU.sparse.major", "1") + paxRecord("GNU.sparse.minor", "0") +
+			paxRecord("GNU.sparse.name", n) + paxRecord("GNU.sparse.realsize", fmt.Sprint(realSize))
+		raw.Write(xHeaderBlock(t, recs))
+		tw = tar.NewWriter(&raw)
+		if err := tw.WriteHeader(&tar.Header{Name: n, Typeflag: tar.TypeReg, Mode: 0o644, Size: 512, Format: tar.FormatUSTAR}); err != nil {
+			t.Fatal(err)
+		}
+		block := make([]byte, 512)
+		copy(block, "0\n")
+		if _, err := tw.Write(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	raw.Write(make([]byte, 1024))
+	var out bytes.Buffer
+	gz := gzip.NewWriter(&out)
+	_, _ = gz.Write(raw.Bytes())
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func TestRewriteRejectsSparseExpansion(t *testing.T) {
+	// Üç seyrek kayıt, her biri 600000 bayta açılır (tek tek 1 MiB sınırının
+	// altında); toplam 1,8 MB sınırı aşar. Girdi birkaç KB'tır.
+	archive := sparseArchive(t, []string{"r/a", "r/b", "r/c"}, 600000)
+	limits := archiveLimits{1 << 20, 1 << 20, 100}
+	var out bytes.Buffer
+	err := rewritePrivateArchive(context.Background(), bytes.NewReader(archive), &out, limits)
+	if err == nil {
+		t.Fatal("sparse expansion accepted")
+	}
+	if int64(out.Len()) > limits.expanded+int64(limits.entries)*tarOverheadPerEntry {
+		t.Fatalf("wrote %d bytes past the cap", out.Len())
+	}
+	// Karşı kontrol: tek kayıt sınırın altında, kabul edilmeli (fikstür geçerli).
+	one := sparseArchive(t, []string{"r/a"}, 600000)
+	if err := rewritePrivateArchive(context.Background(), bytes.NewReader(one), io.Discard, limits); err != nil {
+		t.Fatalf("single sparse entry under the limit rejected: %v", err)
 	}
 }

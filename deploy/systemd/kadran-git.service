@@ -28,6 +28,9 @@ Group=kadran-git
 ExecStart=/usr/local/lib/kadran/kadran-git
 Restart=on-failure
 RestartSec=2s
+# ⚠ ASLA RuntimeDirectory= EKLEME: /run/kadran-git kök sahipli kalmalı
+# (systemd soketler için oluşturur). Dizin kadran-git kullanıcısının olursa
+# kök yürütücünün bağlandığı fetch.sock'u o değiştirebilirdi.
 StateDirectory=kadran-git
 StateDirectoryMode=0700
 UMask=0077

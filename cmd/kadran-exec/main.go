@@ -42,9 +42,7 @@ const (
 	// (--allow-repo) yeni bir bayrağı düşürürdü.
 	defaultVaultKey    = "/var/lib/kadran-exec/vault.key"
 	defaultAllowedUser = "kadran"
-	// defaultGitFetchSocket, kadran-git soketi; bayrak DEĞİL (drop-in düşürmesin).
-	defaultGitFetchSocket = "/run/kadran-git/fetch.sock"
-	defaultOwnerGroup     = "kadran"
+	defaultOwnerGroup  = "kadran"
 )
 
 func main() {
@@ -67,8 +65,9 @@ func run() error {
 		gitHosts     = flag.String("allow-git-host", kadranexec.DefaultGitHost,
 			"git hosts allowed for ImageBuild (comma-separated)")
 		gitRepos = flag.String("allow-repo", "",
-			"owner/repo pairs allowed to be built (comma-separated; "+
-				"empty = no limit). MUST be set if the host has git credentials")
+			"owner/repo pairs allowed to be built (comma-separated; empty = no extra "+
+				"limit). When given, it intersects every build; private repositories "+
+				"are otherwise allowed by the GitHub app installation")
 	)
 	flag.Parse()
 
@@ -127,7 +126,7 @@ func run() error {
 	}()
 
 	service, err := kadranexec.NewServer(kadranexec.ServerOptions{
-		GitFetch:        kadranexec.NewGitFetcher(defaultGitFetchSocket),
+		GitFetch:        kadranexec.NewGitFetcher(kadranexec.DefaultGitFetchSocket),
 		Journal:         journal,
 		DockerSocket:    *dockerSocket,
 		AllowedGitHosts: splitHosts(*gitHosts),

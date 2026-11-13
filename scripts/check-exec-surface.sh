@@ -154,13 +154,15 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # gerekiyor (container_id yasak alan), reddedildi. (2) Uygulama başına
 # CgroupParent dilimi — systemd '-' ile iç içe geçiriyor (my uygulaması
 # my-api'yi de sayardı) ve cgroup_parent yasak alan, reddedildi.
-# ── 2990 → 2938: ağ ve jeton kodu kadran-git'e taşındı (K-167) ──
-# Ölçüm: 2982 → 2938 (-44). Yürütücü artık GitHub'a bağlanmıyor, jeton
+# ── 2990 → 2981: ağ ve jeton kodu kadran-git'e taşındı (K-167) ──
+# Ölçüm: 2982 → 2981 (-1). Yürütücü artık GitHub'a bağlanmıyor, jeton
 # okumuyor: PrivateGit, kimlik dosyası okuma denetimi, yönlendirme doğrulama
-# ve HTTP istemcisi silindi. Yerine yalnız kadran-git unix soketine gRPC
-# istemcisi (gitfetch.go) ve arşiv yeniden yazımı kaldı. Sınır ölçülen
-# sayıya çekildi.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2938}"
+# ve HTTP istemcisi silindi (-44 ilk ölçüm). İnceleme turu geri ekledi:
+# kadran-git ele geçirilirse seyrek (sparse) tar kayıtlarıyla kök diskini
+# doldurabilir; toplam açılmış boyut ve çıktı yazma sınırı, ARCHIVE
+# sonrası parçalar arası boşta kalma süresi ve günlük kategorisi için
+# enjekte edilebilir günlükçü eklendi. Sınır ölçülen sayıya çekildi.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2981}"
 
 fail=0
 note_failure() {

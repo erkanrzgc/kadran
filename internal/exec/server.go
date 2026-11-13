@@ -40,9 +40,9 @@ type Server struct {
 
 	// allowedRepos, derlenmesine izin verilen "owner/repo" çiftleridir.
 	//
-	// Boş = kısıt yok. Bu, hostta git kimlik bilgisi YOKKEN doğru
-	// davranış; kimlik bilgisi varken tehlikeli olurdu ve o birleşimi
-	// kurulum betiği engelliyor (repoallow.go).
+	// Boş = ek kısıt yok. Doluysa HER derlemeye kesişim olarak uygulanır.
+	// Özel depolara erişimi GitHub uygulamasının kurulumu belirler (K-167);
+	// yürütücüde jeton yoktur, bu liste yalnız ek bir daraltmadır.
 	allowedRepos []string
 
 	// vault, ortam değişkeni değerlerini açan kasa anahtarı (K-123).

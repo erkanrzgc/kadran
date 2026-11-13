@@ -19,6 +19,25 @@ type archiveLimits struct {
 // defaultArchiveLimits, kadran-git'ten gelen arşivin üst sınırlarıdır.
 var defaultArchiveLimits = archiveLimits{128 << 20, 512 << 20, 100000}
 
+// tarOverheadPerEntry, çıktıdaki başlık + dolgu payıdır (512 + 512 + pax payı).
+const tarOverheadPerEntry = 2048
+
+// capWriter, toplam yazılan bayt sınırı aşılınca hata verir.
+type capWriter struct {
+	w io.Writer
+	n int64
+}
+
+var errArchiveTooLarge = errors.New("private Git archive expands beyond the size limit")
+
+func (c *capWriter) Write(p []byte) (int, error) {
+	if int64(len(p)) > c.n {
+		return 0, errArchiveTooLarge
+	}
+	c.n -= int64(len(p))
+	return c.w.Write(p)
+}
+
 func rewritePrivateArchive(ctx context.Context, r io.Reader, w io.Writer, limits archiveLimits) error {
 	compressed := &io.LimitedReader{R: r, N: limits.compressed + 1}
 	gz, err := gzip.NewReader(compressed)
@@ -27,8 +46,12 @@ func rewritePrivateArchive(ctx context.Context, r io.Reader, w io.Writer, limits
 	}
 	defer gz.Close()
 	expanded := &io.LimitedReader{R: gz, N: limits.expanded + 1}
-	tr, tw := tar.NewReader(expanded), tar.NewWriter(w)
-	root, seen, count := "", map[string]bool{}, 0
+	// Seyrek (sparse) kayıtlar küçük girdiden h.Size kadar sıfır üretir:
+	// LimitedReader yalnız girdiyi sayar. Bu yüzden iki ek sınır var: tüm
+	// h.Size'ların toplamı ve çıktının toplam bayt sayısı (S-I1).
+	capped := &capWriter{w: w, n: limits.expanded + int64(limits.entries)*tarOverheadPerEntry}
+	tr, tw := tar.NewReader(expanded), tar.NewWriter(capped)
+	root, seen, count, total := "", map[string]bool{}, 0, int64(0)
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -55,6 +78,9 @@ func rewritePrivateArchive(ctx context.Context, r io.Reader, w io.Writer, limits
 		first, relative, _ := strings.Cut(name, "/")
 		if count > limits.entries || path.IsAbs(name) || path.Clean(name) != name || strings.ContainsAny(name, "\\:") || first == "." || first == ".." || (h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeDir) || h.Size < 0 || h.Size > limits.expanded {
 			return errors.New("unsafe or oversized private Git archive entry")
+		}
+		if total += h.Size; total > limits.expanded {
+			return errArchiveTooLarge
 		}
 		if root == "" {
 			root = first

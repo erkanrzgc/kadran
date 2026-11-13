@@ -18,12 +18,20 @@ import (
 )
 
 const (
-	// defaultGitFetchSocket kod sabitidir, bayrak DEĞİL: birimin ExecStart'ına
-	// yazılırsa --allow-repo drop-in'i onu düşürürdü.
-	defaultGitFetchSocket = "/run/kadran-git/fetch.sock"
-	// gitDecisionTimeout, bağlanma + ilk ileti için toplam süredir.
+	// DefaultGitFetchSocket kod sabitidir, bayrak DEĞİL: birimin ExecStart'ına
+	// yazılırsa --allow-repo drop-in'i onu düşürürdü. DefaultDockerSocket gibi
+	// tek tanım burada.
+	DefaultGitFetchSocket = "/run/kadran-git/fetch.sock"
+	// gitDecisionTimeout, bağlanma + ilk ileti için toplam süredir. Yalnız
+	// KARARDAN öncesini sınırlar; ARCHIVE gelince durdurulur.
 	gitDecisionTimeout = 5 * time.Second
+	// gitChunkIdleTimeout, ARCHIVE'dan sonra iki parça arasındaki en uzun
+	// sessizliktir; her parçada sıfırlanır. Toplam indirme süresi sınırlı değil.
+	gitChunkIdleTimeout = 60 * time.Second
 )
+
+// errStalled, ARCHIVE'dan sonra akışın durduğunu söyler.
+var errStalled = errors.New("private archive download stalled")
 
 // GitFetcher, ayrıcalıksız kadran-git'ten özel depo arşivi ister.
 //
@@ -37,62 +45,76 @@ type GitFetcher interface {
 type gitFetcher struct {
 	socket          string
 	decisionTimeout time.Duration
+	chunkIdle       time.Duration
+	log             *slog.Logger // nil ise slog.Default()
 }
 
 // NewGitFetcher, soket yoluna bağlanan bir GitFetcher döner.
 func NewGitFetcher(socketPath string) GitFetcher {
-	return &gitFetcher{socket: socketPath, decisionTimeout: gitDecisionTimeout}
+	return &gitFetcher{socket: socketPath, decisionTimeout: gitDecisionTimeout, chunkIdle: gitChunkIdleTimeout}
 }
 
 // preDecision, karardan önceki başarısızlığı günlüğe yazıp NOT_CONNECTED döner.
 // Sunucunun durum metni ASLA günlüğe girmez; yalnız sabit kategori.
-func preDecision(reason string) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
-	slog.Warn("git fetch service unavailable, using public build path", "reason", reason)
+func (g *gitFetcher) preDecision(reason string) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
+	l := g.log
+	if l == nil {
+		l = slog.Default()
+	}
+	l.Warn("git fetch service unavailable, using public build path", "reason", reason)
 	return kadranv1.FetchArchiveResponse_DECISION_NOT_CONNECTED, nil, nil
 }
 
 func (g *gitFetcher) Fetch(ctx context.Context, src *kadranv1.GitSource) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
 	conn, err := grpc.NewClient("unix:"+g.socket, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
-		return preDecision("dial")
+		return g.preDecision("dial")
 	}
 	defer conn.Close()
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var fired atomic.Bool
-	timer := time.AfterFunc(g.decisionTimeout, func() { fired.Store(true); cancel() })
+	timer := time.AfterFunc(g.decisionTimeout, cancel)
 	defer timer.Stop()
 
 	stream, err := kadranv1.NewGitFetchServiceClient(conn).FetchArchive(sctx, &kadranv1.FetchArchiveRequest{
 		Owner: src.GetOwner(), Repo: src.GetRepo(), CommitSha: src.GetCommitSha(),
 	})
+	var first *kadranv1.FetchArchiveResponse
+	if err == nil {
+		first, err = stream.Recv()
+	}
+	// Stop()==false: süre doldu (iptal zaten tetiklendi). Karar bu noktada
+	// verilmiş olsa bile akış iptal edilmiştir; herkese açık yola düşmek güvenli.
+	if !timer.Stop() {
+		return g.preDecision("timeout")
+	}
 	if err != nil {
-		return preDecision("dial")
+		if stream == nil {
+			return g.preDecision("dial")
+		}
+		return g.preDecision("status")
 	}
-	first, err := stream.Recv()
-	if !timer.Stop() || fired.Load() {
-		return preDecision("timeout")
-	}
-	if err != nil {
-		return preDecision("status")
-	}
+	return g.decide(ctx, first, stream, cancel)
+}
+
+func (g *gitFetcher) decide(ctx context.Context, first *kadranv1.FetchArchiveResponse, stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse], cancel context.CancelFunc) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
 	dec, ok := first.GetKind().(*kadranv1.FetchArchiveResponse_Decision_)
 	if !ok {
-		return preDecision("protocol")
+		return g.preDecision("protocol")
 	}
 	switch dec.Decision {
 	case kadranv1.FetchArchiveResponse_DECISION_NOT_CONNECTED, kadranv1.FetchArchiveResponse_DECISION_NOT_COVERED:
-		return dec.Decision, nil, nil // defer cancel akışı keser; devamı okunmaz
+		return dec.Decision, nil, nil // çağıranın defer cancel'ı akışı keser; devamı okunmaz
 	case kadranv1.FetchArchiveResponse_DECISION_ARCHIVE:
-		f, err := receiveArchive(ctx, stream)
+		f, err := receiveArchive(ctx, stream, cancel, g.chunkIdle)
 		return kadranv1.FetchArchiveResponse_DECISION_ARCHIVE, f, err
 	}
-	return preDecision("protocol")
+	return g.preDecision("protocol")
 }
 
 // receiveArchive, ARCHIVE'dan sonraki parçaları yeniden yazıcıya akıtır.
 // Her başarısızlıkta geçici dosya kapatılıp silinir.
-func receiveArchive(ctx context.Context, stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse]) (*os.File, error) {
+func receiveArchive(ctx context.Context, stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse], cancel context.CancelFunc, idle time.Duration) (*os.File, error) {
 	f, err := os.CreateTemp("", "kadran-context-*.tar")
 	if err != nil {
 		return nil, errors.New("could not create private build context")
@@ -104,7 +126,7 @@ func receiveArchive(ctx context.Context, stream grpc.ServerStreamingClient[kadra
 		_ = pr.CloseWithError(errors.New("rewrite finished")) // yazıcıyı serbest bırak
 		done <- rerr
 	}()
-	streamErr := pumpChunks(stream, pw)
+	streamErr := pumpChunks(stream, pw, cancel, idle)
 	rewriteErr := <-done // dosya kapanmadan önce yeniden yazıcının bitmesi şart
 	if streamErr == nil {
 		streamErr = rewriteErr
@@ -122,9 +144,13 @@ func receiveArchive(ctx context.Context, stream grpc.ServerStreamingClient[kadra
 }
 
 // pumpChunks yalnız chunk kabul eder. EOF yazıcıyı kapatır; başka her şey
-// yazıcıya hata verir (yarım arşiv yeniden yazımda da yakalanır).
-func pumpChunks(stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse], pw *io.PipeWriter) error {
+// yazıcıya hata verir (yarım arşiv yeniden yazımda da yakalanır). Parçalar
+// arası sessizlik idle'ı aşarsa akış iptal edilir.
+func pumpChunks(stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse], pw *io.PipeWriter, cancel context.CancelFunc, idle time.Duration) error {
 	bad := errors.New("private archive download failed")
+	var stalled atomic.Bool
+	timer := time.AfterFunc(idle, func() { stalled.Store(true); cancel() })
+	defer timer.Stop()
 	for {
 		m, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
@@ -132,6 +158,10 @@ func pumpChunks(stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse]
 			return nil
 		}
 		if err != nil {
+			if stalled.Load() {
+				_ = pw.CloseWithError(errStalled)
+				return errStalled
+			}
 			_ = pw.CloseWithError(bad)
 			return statusText(err)
 		}
@@ -140,6 +170,7 @@ func pumpChunks(stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse]
 			_ = pw.CloseWithError(bad)
 			return bad
 		}
+		timer.Reset(idle)
 		if _, werr := pw.Write(c.Chunk); werr != nil {
 			return nil // yeniden yazıcı erken bitti; hatasını çağıran okur
 		}

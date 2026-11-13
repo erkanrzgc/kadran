@@ -24,8 +24,11 @@ import (
 	"strconv"
 	"sync"
 	"syscall"
+	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 
 	"github.com/erkanrzgc/kadran/internal/github"
 	"github.com/erkanrzgc/kadran/internal/grpcserve"
@@ -40,6 +43,8 @@ const (
 	defaultAdminUser = "kadran"
 	// maxRecvBytes: istekler küçüktür (sahip, depo, dal).
 	maxRecvBytes = 64 << 10
+	// maxStreams baglanti basina eszamanli akis sinirdir.
+	maxStreams = 16
 )
 
 func main() {
@@ -72,6 +77,9 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := checkAdminUID(adminUID, os.Geteuid()); err != nil {
+		return err
+	}
 	listeners, err := activated(os.Getenv, os.Getpid())
 	if err != nil {
 		return fmt.Errorf("socket activation: %w", err)
@@ -92,7 +100,38 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	return serveBoth(admin, listeners[socketAdmin], fetch, listeners[socketFetch])
+	sig, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return serveBoth(sig, admin, listeners[socketAdmin], fetch, listeners[socketFetch])
+}
+
+// checkAdminUID admin soketine izin verilen kimligi dogrular (saf islev).
+// root olamaz (fetch soketi zaten root'a aittir) ve kadran-git'in kendisi de
+// olamaz: aksi halde iki soketin ayrimi anlamsizlasir.
+func checkAdminUID(adminUID uint32, selfUID int) error {
+	if adminUID == 0 {
+		return errors.New("admin user must not be root")
+	}
+	if selfUID >= 0 && uint32(selfUID) == adminUID {
+		return errors.New("admin user must differ from the kadran-git user")
+	}
+	return nil
+}
+
+// serverOptions iki sunucunun ortak sinirlaridir: takili istemciler baglantiyi
+// sonsuza dek tutamaz.
+func serverOptions(creds credentials.TransportCredentials) []grpc.ServerOption {
+	return []grpc.ServerOption{
+		grpc.Creds(creds),
+		grpc.MaxRecvMsgSize(maxRecvBytes),
+		grpc.MaxConcurrentStreams(maxStreams),
+		grpc.KeepaliveParams(keepalive.ServerParameters{
+			Time:                  time.Minute,
+			Timeout:               20 * time.Second,
+			MaxConnectionAge:      15 * time.Minute,
+			MaxConnectionAgeGrace: time.Minute,
+		}),
+	}
 }
 
 // newAdminServer yalnız `kadran` kullanıcısını kabul eden sunucuyu kurar.
@@ -101,7 +140,7 @@ func newAdminServer(svc gitService, adminUID uint32) (*grpc.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not set up caller verification: %w", err)
 	}
-	s := grpc.NewServer(grpc.Creds(creds), grpc.MaxRecvMsgSize(maxRecvBytes))
+	s := grpc.NewServer(serverOptions(creds)...)
 	kadranv1.RegisterGitAdminServiceServer(s, &adminServer{svc: svc})
 	return s, nil
 }
@@ -112,17 +151,15 @@ func newFetchServer(svc gitService) (*grpc.Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not set up caller verification: %w", err)
 	}
-	s := grpc.NewServer(grpc.Creds(creds), grpc.MaxRecvMsgSize(maxRecvBytes))
+	s := grpc.NewServer(serverOptions(creds)...)
 	kadranv1.RegisterGitFetchServiceServer(s, &fetchServer{svc: svc})
 	return s, nil
 }
 
 // serveBoth iki sunucuyu tek sinyal bağlamında çalıştırır; biri dönerse
 // ötekini de durdurur ve ikisinin bitmesini bekler.
-func serveBoth(admin *grpc.Server, adminLn net.Listener, fetch *grpc.Server, fetchLn net.Listener) error {
-	sig, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	ctx, cancel := context.WithCancel(sig)
+func serveBoth(parent context.Context, admin *grpc.Server, adminLn net.Listener, fetch *grpc.Server, fetchLn net.Listener) error {
+	ctx, cancel := context.WithCancel(parent)
 	defer cancel()
 
 	errs := make([]error, 2)
@@ -138,6 +175,9 @@ func serveBoth(admin *grpc.Server, adminLn net.Listener, fetch *grpc.Server, fet
 			errs[i] = grpcserve.RunContext(ctx, s.srv, s.ln)
 		}()
 	}
+	// Serve henuz kosmasa da READY gondermek guvenlidir: soketler systemd'ye
+	// aittir ve zaten dinlemektedir; gelen baglantilar backlog'da bekler ve
+	// Serve baslayinca kabul edilir.
 	slog.Info("kadran-git ready", "version", version.Version)
 	if err := sdnotify.Ready(); err != nil && !errors.Is(err, sdnotify.ErrNoSocket) {
 		slog.Warn("could not notify systemd")

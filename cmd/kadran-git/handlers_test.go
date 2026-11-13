@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/erkanrzgc/kadran/internal/github"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
@@ -25,7 +27,8 @@ type fakeSvc struct {
 	decideErr   error
 	tarball     io.ReadCloser
 	tarballErr  error
-	decideCalls int
+	decideCalls atomic.Int32
+	statusCalls atomic.Int32
 	tarCalls    int
 	branchSHA   string
 	branchErr   error
@@ -40,6 +43,7 @@ func (f *fakeSvc) StartDeviceFlow(context.Context) (*kadranv1.GitHubUserCodeProm
 	return f.prompt, f.startErr
 }
 func (f *fakeSvc) Status(context.Context) (*kadranv1.GitHubConnection, error) {
+	f.statusCalls.Add(1)
 	return f.statusConn, nil
 }
 func (f *fakeSvc) Disconnect(context.Context) error { return f.discErr }
@@ -48,7 +52,7 @@ func (f *fakeSvc) ResolveBranch(context.Context, string, string, string) (string
 	return f.branchSHA, f.branchErr
 }
 func (f *fakeSvc) Decide(context.Context, string, string) (github.Decision, error) {
-	f.decideCalls++
+	f.decideCalls.Add(1)
 	return f.decision, f.decideErr
 }
 func (f *fakeSvc) Tarball(context.Context, string, string, string) (io.ReadCloser, error) {
@@ -82,13 +86,20 @@ func (e *errReader) Read(p []byte) (int, error) {
 // fakeStream grpc.ServerStreamingServer arayüzünü karşılar ve iletileri toplar.
 type fakeStream struct {
 	grpc.ServerStream
-	ctx  context.Context
-	sent []*kadranv1.FetchArchiveResponse
+	ctx    context.Context
+	sent   []*kadranv1.FetchArchiveResponse
+	calls  int
+	failOn int // >0: bu siradaki Send hata doner
 }
 
 func (s *fakeStream) Context() context.Context { return s.ctx }
 func (s *fakeStream) Send(m *kadranv1.FetchArchiveResponse) error {
-	s.sent = append(s.sent, m)
+	s.calls++
+	if s.failOn > 0 && s.calls == s.failOn {
+		return errors.New("send failed https://x?sig=SECRET")
+	}
+	// Gercek Send serilestirir; arabellek yeniden kullanildigi icin kopya tut.
+	s.sent = append(s.sent, proto.Clone(m).(*kadranv1.FetchArchiveResponse))
 	return nil
 }
 
@@ -129,7 +140,10 @@ func TestFetchSendsDecisionFirst(t *testing.T) {
 }
 
 func TestFetchStreamsArchiveInChunks(t *testing.T) {
-	payload := bytes.Repeat([]byte("x"), 3*chunkSize+123)
+	payload := make([]byte, 3*chunkSize+123)
+	for i := range payload {
+		payload[i] = byte(i % 251)
+	}
 	f := &fakeSvc{decision: github.DecisionArchive, tarball: &closeTracker{Reader: bytes.NewReader(payload)}}
 
 	st, err := fetch(t, f, goodReq())
@@ -196,8 +210,8 @@ func TestFetchRejectsInvalidRefsWithoutDecision(t *testing.T) {
 			if status.Code(err) != codes.InvalidArgument {
 				t.Fatalf("code = %v, want InvalidArgument", status.Code(err))
 			}
-			if len(st.sent) != 0 || f.decideCalls != 0 || f.tarCalls != 0 {
-				t.Fatalf("sent=%d decide=%d tarball=%d, want all zero", len(st.sent), f.decideCalls, f.tarCalls)
+			if len(st.sent) != 0 || f.decideCalls.Load() != 0 || f.tarCalls != 0 {
+				t.Fatalf("sent=%d decide=%d tarball=%d, want all zero", len(st.sent), f.decideCalls.Load(), f.tarCalls)
 			}
 		})
 	}
@@ -336,5 +350,36 @@ func TestAdminPassesThroughPromptAndStatus(t *testing.T) {
 	}
 	if _, err := a.DisconnectGit(ctx, &kadranv1.DisconnectGitRequest{}); err != nil {
 		t.Fatalf("DisconnectGit: %v", err)
+	}
+}
+
+func TestFetchSendFailureOnFirstChunkIsStatusAndClosesBody(t *testing.T) {
+	body := &closeTracker{Reader: strings.NewReader("tar")}
+	f := &fakeSvc{decision: github.DecisionArchive, tarball: body}
+	st := &fakeStream{ctx: context.Background(), failOn: 2}
+
+	err := (&fetchServer{svc: f}).FetchArchive(goodReq(), st)
+
+	if status.Code(err) != codes.Unavailable || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("err = %v, want clean Unavailable", err)
+	}
+	if !body.closed {
+		t.Error("body not closed after send failure")
+	}
+	if len(st.sent) != 1 {
+		t.Fatalf("sent %d messages, want only the decision", len(st.sent))
+	}
+}
+
+func TestFetchUnknownDecisionIsPreDecisionError(t *testing.T) {
+	f := &fakeSvc{decision: github.Decision(99)}
+
+	st, err := fetch(t, f, goodReq())
+
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("code = %v, want Unavailable", status.Code(err))
+	}
+	if len(st.sent) != 0 || f.tarCalls != 0 {
+		t.Fatalf("sent=%d tarball=%d, want zero", len(st.sent), f.tarCalls)
 	}
 }

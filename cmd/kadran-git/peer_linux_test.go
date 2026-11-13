@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
@@ -66,8 +68,13 @@ func TestPeerAdminRejectsOtherUID(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := callStatus(t, serve(t, s)); err == nil {
-		t.Fatal("admin socket accepted a caller outside the allow list")
+	err = callStatus(t, serve(t, s))
+
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("err = %v, want a handshake (Unavailable) error", err)
+	}
+	if f.statusCalls.Load() != 0 {
+		t.Fatal("handler ran for a rejected caller")
 	}
 }
 
@@ -93,10 +100,12 @@ func TestPeerFetchRejectsNonRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := callFetch(t, serve(t, s)); err == nil {
-		t.Fatal("fetch socket accepted a non-root caller")
+	err = callFetch(t, serve(t, s))
+
+	if status.Code(err) != codes.Unavailable {
+		t.Fatalf("err = %v, want a handshake (Unavailable) error", err)
 	}
-	if f.decideCalls != 0 {
+	if f.decideCalls.Load() != 0 {
 		t.Fatal("handler ran for a rejected caller")
 	}
 }

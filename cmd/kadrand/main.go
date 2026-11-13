@@ -24,6 +24,7 @@ import (
 	"github.com/erkanrzgc/kadran/internal/audit"
 	"github.com/erkanrzgc/kadran/internal/deploy"
 	"github.com/erkanrzgc/kadran/internal/execclient"
+	"github.com/erkanrzgc/kadran/internal/gitclient"
 	"github.com/erkanrzgc/kadran/internal/grpcserve"
 	"github.com/erkanrzgc/kadran/internal/health"
 	"github.com/erkanrzgc/kadran/internal/liveness"
@@ -40,8 +41,11 @@ const (
 	defaultSocket      = "/run/kadran/api.sock"
 	defaultExecSocket  = "/run/kadran-exec/exec.sock"
 	defaultCaddySocket = "/run/kadran-proxy/proxy.sock"
-	defaultDB          = "/var/lib/kadran/kadran.db"
-	defaultClientGroup = "kadran-client"
+	// defaultGitAdminSocket, kadran-git yönetim soketi (K-167). Bayrak yok:
+	// birim dosyasına yazılmaz. Soket yoksa kadrand yine başlar.
+	defaultGitAdminSocket = "/run/kadran-git/admin.sock"
+	defaultDB             = "/var/lib/kadran/kadran.db"
+	defaultClientGroup    = "kadran-client"
 	// defaultVaultRecipient, kasanın AÇIK anahtarı (K-123). root 0644:
 	// daemon okur, yazamaz. Yol bayrak varsayılanı, birim dosyasında yazılı
 	// değil: ExecStart'ı yeniden yazan bir drop-in yeni bayrağı düşürürdü.
@@ -152,6 +156,14 @@ func run() error {
 		}
 	}()
 
+	// kadran-git bağlantısı tembeldir: hizmet yoksa kadrand yine başlar ve
+	// GitHub çağrıları "not running" döner.
+	git, err := gitclient.Dial(defaultGitAdminSocket)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = git.Close() }()
+
 	// Executor'a ulaşılamaması başlangıçta ÖLÜMCÜL DEĞİLDİR.
 	//
 	// Reddedip çıkmak systemd ile bir yeniden başlatma döngüsü yaratır ve
@@ -216,7 +228,7 @@ func run() error {
 	// kullanımı alarm üretir (K-155).
 	service, err := api.NewServer(api.ServerOptions{
 		Store: db, Executor: exec, Rollout: rollout, Reconciler: reconciler,
-		Coordinator: coordinator, Alarms: alarms,
+		Coordinator: coordinator, Alarms: alarms, Git: git,
 	})
 	if err != nil {
 		return err

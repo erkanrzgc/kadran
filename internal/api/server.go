@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/user"
 	"reflect"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -42,6 +43,10 @@ type Server struct {
 	coordinator *deploy.Coordinator
 	alarms      Alarms
 	host        HostMetrics
+	// git, kadran-git yonetim istemcisi; nil olabilir (hizmet yok).
+	git GitAdmin
+	// githubMu, github.connected karsilastir-denetle-sakla adimini siralar.
+	githubMu sync.Mutex
 	// now, TOTP adımlarının ve jeton sürelerinin saati; testler sabitler.
 	now       func() time.Time
 	startedAt time.Time
@@ -128,6 +133,10 @@ type ServerOptions struct {
 
 	// İsteğe bağlı: hostun sayaçları. Nil ise hostmetrics.Default().
 	Host HostMetrics
+
+	// İsteğe bağlı: kadran-git yönetim istemcisi (K-167). Nil ise GitHub
+	// çağrıları FailedPrecondition döner; kadrand yine başlar.
+	Git GitAdmin
 }
 
 // Rollout, derlenmiş bir sürümü ayağa kaldırıp trafiği ona çevirir.
@@ -194,6 +203,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		reconciler:  opts.Reconciler,
 		coordinator: opts.Coordinator,
 		alarms:      opts.Alarms,
+		git:         opts.Git,
 		now:         time.Now,
 		startedAt:   time.Now(),
 		runAsUser:   runAs,

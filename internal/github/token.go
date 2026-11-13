@@ -226,7 +226,7 @@ func (t *tokens) refreshLocked(ctx context.Context) error {
 	next.AccessToken, next.RefreshToken = out.AccessToken, out.RefreshToken
 	next.AccessExpiresAt, next.RefreshExpiresAt = expiry(now, out.ExpiresIn), expiry(now, out.RefreshExpiresIn)
 	if err := saveStateFn(t.path, next); err != nil {
-		slog.Error("github: could not persist refreshed token", "err", err)
+		slog.Error("github could not persist refreshed token")
 		return t.dropForReconnect()
 	}
 	t.st = next

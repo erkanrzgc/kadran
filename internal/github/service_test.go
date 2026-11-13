@@ -72,6 +72,7 @@ func TestCloseIsIdempotentAndStopsStart(t *testing.T) {
 
 func TestStatusConnectedFromStateFile(t *testing.T) {
 	e := newEnv(t, connectedGH(), true, nil)
+	e.waitCoverage(t)
 	c := e.status(t)
 	if c.State != kadranv1.GitHubConnection_STATE_CONNECTED || c.Login != "octo" || c.ReconnectRequired ||
 		len(c.Installations) != 1 || !c.ConnectedAt.AsTime().Equal(tokenTestNow) {
@@ -82,13 +83,16 @@ func TestStatusConnectedFromStateFile(t *testing.T) {
 func TestStatusRefreshesStaleCoverageOnlyAfterAMinute(t *testing.T) {
 	gh := connectedGH()
 	e := newEnv(t, gh, true, nil)
+	e.waitCoverage(t)
 	e.status(t)
 	e.status(t)
+	e.waitCoverage(t)
 	if n := gh.count("GET /user/installations?"); n != 1 {
-		t.Fatalf("requests = %d, want 1", n)
+		t.Fatalf("requests = %d, want 1 (the warm-up only)", n)
 	}
 	e.clock.Advance(61e9)
 	e.status(t)
+	e.waitCoverage(t)
 	if n := gh.count("GET /user/installations?"); n != 2 {
 		t.Fatalf("requests = %d, want 2", n)
 	}
@@ -105,8 +109,7 @@ func TestNewValidatesConfig(t *testing.T) {
 	for name, mut := range map[string]func(*Config){
 		"empty state":    func(c *Config) { c.StateFile = "" },
 		"relative state": func(c *Config) { c.StateFile = "state.json" },
-		"empty client":   func(c *Config) { c.ClientID = "" },
-		"empty slug":     func(c *Config) { c.AppSlug = "" },
+		"bad client id":  func(c *Config) { c.ClientID = "a b" },
 		"upper slug":     func(c *Config) { c.AppSlug = "Kadran" },
 		"slash slug":     func(c *Config) { c.AppSlug = "a/b" },
 		"long slug":      func(c *Config) { c.AppSlug = strings.Repeat("a", 101) },
@@ -117,6 +120,17 @@ func TestNewValidatesConfig(t *testing.T) {
 			s.Close()
 			t.Errorf("%s: New accepted the config", name)
 		}
+	}
+}
+
+func TestNewAppliesDefaultsForEmptyIdentity(t *testing.T) {
+	s, err := New(Config{StateFile: filepath.Join(t.TempDir(), "state.json")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if s.clientID != DefaultClientID || s.appSlug != DefaultAppSlug {
+		t.Fatalf("identity = %q, %q", s.clientID, s.appSlug)
 	}
 }
 

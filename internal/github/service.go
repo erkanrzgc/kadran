@@ -23,7 +23,8 @@ const (
 )
 
 var (
-	appSlugPattern = regexp.MustCompile(`^[a-z0-9-]{1,100}$`)
+	appSlugPattern  = regexp.MustCompile(`^[a-z0-9-]{1,100}$`)
+	clientIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 	errBadConfig = errors.New("github: invalid configuration")
 	errClosed    = errors.New("github: service closed")
@@ -66,14 +67,25 @@ type Service struct {
 	fmu sync.Mutex
 	fs  flowStatus
 
-	covMu sync.Mutex
-	cov   coverage
+	// Kapsam önbelleği ve arka plan yenilemesi (hepsi covMu ile korunur).
+	covMu    sync.Mutex
+	cov      coverage
+	gen      uint64      // Disconnect ve yeni bağlantıyla artar; bayat yenileme sonucu atılır
+	refresh  *refreshRun // sürmekte olan tek uçuşlu yenileme
+	bgClosed bool        // Close sonrası yeni yenileme başlamaz
+	bg       sync.WaitGroup
 }
 
 // New Service kurar. Yalnız bozuk ayar hata döner; durum dosyası kullanılamazsa
 // Service yine kurulur (Status FAILED/INTERNAL, Decide NotConnected).
 func New(cfg Config) (*Service, error) {
-	if cfg.StateFile == "" || !filepath.IsAbs(cfg.StateFile) || cfg.ClientID == "" || !appSlugPattern.MatchString(cfg.AppSlug) {
+	if cfg.ClientID == "" {
+		cfg.ClientID = DefaultClientID
+	}
+	if cfg.AppSlug == "" {
+		cfg.AppSlug = DefaultAppSlug
+	}
+	if cfg.StateFile == "" || !filepath.IsAbs(cfg.StateFile) || !clientIDPattern.MatchString(cfg.ClientID) || !appSlugPattern.MatchString(cfg.AppSlug) {
 		return nil, errBadConfig
 	}
 	if cfg.Now == nil {
@@ -96,6 +108,11 @@ func New(cfg Config) (*Service, error) {
 		s.fs = flowStatus{failed: true, failure: kadranv1.GitHubFailure_GIT_HUB_FAILURE_INTERNAL}
 	}
 	s.tk = tk
+	if tk.Identity() != nil { // yeniden başlatmadan sonra önbelleği ısıt
+		s.covMu.Lock()
+		s.startRefreshLocked()
+		s.covMu.Unlock()
+	}
 	return s, nil
 }
 
@@ -117,7 +134,7 @@ func (s *Service) installURL() string {
 
 // Status bağlantı durumunu döner; jeton içermez. Kapsam önbelleği bir dakikadan
 // eskiyse yenilenir. reconnect_required atomik okunur: yenileme sürerken beklemez.
-func (s *Service) Status(ctx context.Context) (*kadranv1.GitHubConnection, error) {
+func (s *Service) Status(_ context.Context) (*kadranv1.GitHubConnection, error) {
 	conn := &kadranv1.GitHubConnection{
 		State:             kadranv1.GitHubConnection_STATE_NOT_CONNECTED,
 		InstallUrl:        s.installURL(),
@@ -125,9 +142,11 @@ func (s *Service) Status(ctx context.Context) (*kadranv1.GitHubConnection, error
 	}
 	if id := s.tk.Identity(); id != nil {
 		conn.State = kadranv1.GitHubConnection_STATE_CONNECTED
-		conn.Login = id.login
+		if ownerPattern.MatchString(id.login) { // durum dosyasından gelen ad yeniden doğrulanır
+			conn.Login = id.login
+		}
 		conn.ConnectedAt = timestamppb.New(id.connectedAt)
-		conn.Installations = s.refreshStaleForStatus(ctx)
+		conn.Installations = s.cachedInstallations()
 	}
 	s.fmu.Lock()
 	fs := s.fs
@@ -150,7 +169,7 @@ func (s *Service) Disconnect(ctx context.Context) error {
 	defer s.lifeMu.Unlock()
 	s.stopFlowLocked()
 	err := s.tk.reset()
-	s.clearCoverage()
+	s.invalidateCoverage(false) // sürmekte olan yenilemeyi iptal eder, bekler, sonucunu atar
 	s.setStatus(flowStatus{})
 	return err
 }
@@ -162,6 +181,10 @@ func (s *Service) Close() {
 	defer s.lifeMu.Unlock()
 	s.closed = true
 	s.stopFlowLocked()
+	s.covMu.Lock()
+	s.bgClosed = true
+	s.covMu.Unlock()
+	s.bg.Wait() // baseCtx iptal edildi: yenilemeler kısa sürede çıkar
 }
 
 // withToken call'u geçerli jetonla çağırır. 401 gelirse jeton bir kez zorla yenilenir
@@ -208,6 +231,9 @@ func (s *Service) Tarball(ctx context.Context, owner, repo, sha string) (io.Read
 		return err
 	})
 	if err != nil {
+		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrForbidden) {
+			s.markStaleIfListed(owner, repo) // kurulum listesi eskimiş olabilir
+		}
 		return nil, err
 	}
 	return rc, nil

@@ -190,13 +190,65 @@ func (e *svcEnv) waitFlow(t *testing.T) {
 	e.s.lifeMu.Lock()
 	fr := e.s.flow
 	e.s.lifeMu.Unlock()
-	if fr == nil {
+	if fr != nil {
+		select {
+		case <-fr.done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("device flow goroutine did not finish")
+		}
+	}
+	e.waitCoverage(t)
+}
+
+// waitCoverage sürmekte olan arka plan kapsam yenilemesinin bitmesini bekler.
+func (e *svcEnv) waitCoverage(t *testing.T) {
+	t.Helper()
+	e.s.covMu.Lock()
+	rr := e.s.refresh
+	e.s.covMu.Unlock()
+	if rr == nil {
 		return
 	}
 	select {
-	case <-fr.done:
+	case <-rr.done:
 	case <-time.After(10 * time.Second):
-		t.Fatal("device flow goroutine did not finish")
+		t.Fatal("coverage refresh did not finish")
+	}
+}
+
+// gate sahte sunucuda bir isteği, açılana dek bekletir (testte ağ sırasını belirlemek için).
+type gate struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func newGate() *gate { return &gate{entered: make(chan struct{}, 16), release: make(chan struct{})} }
+
+func (g *gate) open() { g.once.Do(func() { close(g.release) }) }
+
+// wrap h'yi sarar: istek gelince entered'a haber verir, release'e kadar bekler.
+func (g *gate) wrap(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case g.entered <- struct{}{}:
+		default:
+		}
+		select {
+		case <-g.release:
+		case <-r.Context().Done():
+			return
+		}
+		h(w, r)
+	}
+}
+
+func (g *gate) waitEntered(t *testing.T) {
+	t.Helper()
+	select {
+	case <-g.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("request never reached the gated endpoint")
 	}
 }
 

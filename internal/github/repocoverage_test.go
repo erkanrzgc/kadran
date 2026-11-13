@@ -204,9 +204,11 @@ func TestArchiveNotConnected(t *testing.T) {
 func TestDecideRejectsBadRefBeforeAnyRequest(t *testing.T) {
 	gh := connectedGH()
 	e := newEnv(t, gh, true, nil)
+	e.waitCoverage(t)
+	before := len(gh.requests())
 	d, err := e.s.Decide(context.Background(), "octo", "../x")
-	if err == nil || d == DecisionArchive || len(gh.requests()) != 0 {
-		t.Fatalf("Decide = %v, %v, %d requests", d, err, len(gh.requests()))
+	if err == nil || d == DecisionArchive || len(gh.requests()) != before {
+		t.Fatalf("Decide = %v, %v, %d new requests", d, err, len(gh.requests())-before)
 	}
 }
 
@@ -278,10 +280,12 @@ func TestSecondUnauthorizedRequiresReconnect(t *testing.T) {
 func TestTarballRejectsBadSHAWithoutRequest(t *testing.T) {
 	gh := connectedGH()
 	e := newEnv(t, gh, true, nil)
+	e.waitCoverage(t)
+	before := len(gh.requests())
 	if _, err := e.s.Tarball(context.Background(), "octo", "priv", "abc"); err == nil {
 		t.Fatal("bad sha accepted")
 	}
-	if len(gh.requests()) != 0 {
+	if len(gh.requests()) != before {
 		t.Fatal("request sent for an invalid sha")
 	}
 }

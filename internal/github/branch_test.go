@@ -43,6 +43,8 @@ func TestResolveBranchEscapesSegments(t *testing.T) {
 func TestResolveBranchRejectsUnsafeNames(t *testing.T) {
 	gh := connectedGH()
 	e := newEnv(t, gh, true, nil)
+	e.waitCoverage(t)
+	before := len(gh.requests())
 	bad := []string{"", "..", "a..b", "a//b", "-x", "/x", "x/", "x.lock", "a/x.lock", ".hidden", "a/.b", "x.", "@", "a@{b",
 		strings.Repeat("a", 256), "a b", "a:b", "a~b", "a^b", "a?b", "a*b", "a[b", `a\b`, "a\x00b", "a\tb", "a\x7fb", "a\xffb"}
 	for _, name := range bad {
@@ -53,7 +55,7 @@ func TestResolveBranchRejectsUnsafeNames(t *testing.T) {
 			t.Errorf("ResolveBranch(%q) accepted", name)
 		}
 	}
-	if n := len(gh.requests()); n != 0 {
+	if n := len(gh.requests()) - before; n != 0 {
 		t.Fatalf("%d requests for rejected names", n)
 	}
 	for _, ok := range []string{"main", "feature/x", "release-1.2", "a/b/c", "v1.0.0", strings.Repeat("a", 255), "ünï"} {

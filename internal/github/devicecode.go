@@ -136,9 +136,12 @@ func (s *Service) requestCode(ctx context.Context) (codeResponse, kadranv1.GitHu
 
 func validCodeResponse(dc codeResponse) bool {
 	u, err := url.Parse(dc.VerificationURI)
-	return dc.DeviceCode != "" && len(dc.DeviceCode) <= 256 && dc.ExpiresIn > 0 &&
-		userCodePattern.MatchString(dc.UserCode) &&
-		err == nil && u.Scheme == "https" && u.Host != "" && u.User == nil && len(dc.VerificationURI) <= 200
+	if dc.DeviceCode == "" || len(dc.DeviceCode) > 256 || dc.ExpiresIn <= 0 || !userCodePattern.MatchString(dc.UserCode) {
+		return false
+	}
+	// Kullanıcıya gösterilecek adres github.com'a sabitlenir: sahte bir adres kimlik avına yol açardı.
+	return err == nil && len(dc.VerificationURI) <= 200 && u.Scheme == "https" && u.Host == "github.com" &&
+		u.User == nil && u.RawQuery == "" && u.Fragment == "" && !u.ForceQuery
 }
 
 // failureFor taşıma ve durum hatalarını GitHubFailure'a çevirir.
@@ -258,7 +261,10 @@ func (s *Service) complete(ctx context.Context, tok refreshResponse) {
 		s.finishFailed(ctx, failureFor(err))
 		return
 	}
-	if u.Login == "" || len(u.Login) > 100 {
+	if ctx.Err() != nil {
+		return
+	}
+	if !ownerPattern.MatchString(u.Login) {
 		s.finishFailed(ctx, kadranv1.GitHubFailure_GIT_HUB_FAILURE_INTERNAL)
 		return
 	}
@@ -274,11 +280,6 @@ func (s *Service) complete(ctx context.Context, tok refreshResponse) {
 		s.finishFailed(ctx, kadranv1.GitHubFailure_GIT_HUB_FAILURE_INTERNAL)
 		return
 	}
-	s.clearCoverage()
-	s.covMu.Lock()
-	if err := s.refreshCoverageLocked(ctx); err != nil && ctx.Err() == nil {
-		slog.Warn("github coverage could not be fetched after connecting")
-	}
-	s.covMu.Unlock()
+	s.invalidateCoverage(true) // yeni kuşak + tek uçuşlu arka plan ısıtması
 	s.setStatus(flowStatus{})
 }

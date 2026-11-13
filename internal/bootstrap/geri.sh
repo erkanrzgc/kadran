@@ -46,6 +46,7 @@ say "$n images tagged under panely/, kadran/ tags removed"
 # Her şey durur; ters vekil dahil (KESİNTİ burada başlar).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \
          kadran-proxy.service kadran-proxy.socket \
+         kadran-git-admin.socket kadran-git-fetch.socket kadran-git.service \
          kadran-notify.timer kadran-offsite.timer kadran-volume-backup.timer \
          kadran-notify.service kadran-offsite.service kadran-volume-backup.service \
          var-lib-kadran-volumes.mount; do
@@ -95,6 +96,7 @@ fi
 # eski drop-in onları sessizce geri alırdı (güvenlik incelemesi, K-136).
 for b in kadrand.service kadran-exec.service kadran-caddy.service kadran-caddy-admin.socket \
          kadran-proxy.service kadran-proxy.socket \
+         kadran-git-admin.socket kadran-git-fetch.socket kadran-git.service \
          var-lib-kadran-volumes.mount kadran-notify.service kadran-notify.timer \
          kadran-notify-failure@.service kadran-offsite.service kadran-offsite.timer \
          kadran-volume-backup.service kadran-volume-backup.timer; do
@@ -114,7 +116,9 @@ if [ -d "$GOC_DIR/eski-birimler" ]; then
 fi
 goc_tasi "$GOC_DIR/eski-lib" /usr/local/lib/panely
 systemctl daemon-reload
-rm -rf /run/kadran /run/kadran-exec /run/kadran-caddy /run/kadran-proxy
+# kadran-git: /var/lib/kadran-git ve kullanıcı SİLİNMEZ; durum kalır ki yeniden
+# yükseltmede GitHub bağlantısı korunsun. Yalnız çalışma zamanı dizini gider.
+rm -rf /run/kadran /run/kadran-exec /run/kadran-caddy /run/kadran-proxy /run/kadran-git
 
 # Göç kaydı kenara alınır: aynı sunucuda yeniden göç, eski gözlemlerle
 # (beklenen replikalar, zamanlayıcılar) değil taze başlamalı.

@@ -17,7 +17,7 @@ dene() {
 
 FN="$(mktemp)"
 trap 'rm -f "$FN"' EXIT
-FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur)
+FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur git_onkosul_resolved git_onkosul_eski_kimlik git_kullanicisi)
 for f in "${FONKS[@]}"; do
     sed -n "/^$f() {/,/^}/p" internal/bootstrap/install.sh >> "$FN"
 done
@@ -307,6 +307,68 @@ dene "kırık bağ var sayılıyor, hedefine YAZILMIYOR" \
 # Kontrol grubu: yalnız `-e` bakan bir denetim kırık bağı "yok" sayar ve
 # bağın hedefine yazardı; `-L` bu yüzden var.
 dene "KONTROL: kırık bağ -e ile görünmez, -L ile görünür"     "[ ! -e '$H/bag/daemon.json' ] && [ -L '$H/bag/daemon.json' ]"
+
+echo
+echo "== kadran-git: ön koşullar ve kullanıcı (K-167) =="
+# Fonksiyonlar GERÇEKTEN koşuyor (set -euo pipefail altında). Kök dizin
+# KOK önekiyle sahtelenir; üretimde KOK boş. Beklenen hata iletisi birebir
+# aranıyor: ileti değişirse ya da kontrol düşerse kırmızı.
+G="$(mktemp -d)"
+trap 'rm -f "$FN"; rm -rf "$D" "$G"' EXIT
+hata_bekle() {
+    local ad="$1" ileti="$2" cikti rc=0
+    shift 2
+    cikti="$(bash -c "set -euo pipefail; source '$FN'; $*" 2>&1)" || rc=$?
+    if [ "$rc" -ne 0 ] && grep -qF -- "$ileti" <<<"$cikti"; then echo "  ✓ $ad"; else echo "  ✗ $ad (çıkış $rc: $cikti)"; fail=1; fi
+}
+gecer() {
+    local ad="$1" cikti rc=0
+    shift 1
+    cikti="$(bash -c "set -euo pipefail; source '$FN'; $*" 2>&1)" || rc=$?
+    if [ "$rc" -eq 0 ]; then echo "  ✓ $ad"; else echo "  ✗ $ad (çıkış $rc: $cikti)"; fail=1; fi
+}
+RESOLVED_ILETI='kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)'
+mkdir -p "$G/iyi/run/systemd/resolve" "$G/gcp/run/systemd/resolve" "$G/bos"
+printf 'nameserver 127.0.0.53\noptions edns0 trust-ad\n' > "$G/iyi/run/systemd/resolve/stub-resolv.conf"
+printf 'nameserver 169.254.169.254\n' > "$G/gcp/run/systemd/resolve/stub-resolv.conf"
+AKTIF="systemctl() { return 0; }"
+PASIF="systemctl() { return 3; }"
+gecer "resolved etkin + saplama 127.0.0.53 → geçer" \
+    "$AKTIF; KOK='$G/iyi'; git_onkosul_resolved"
+hata_bekle "resolved etkin değil → durur" "$RESOLVED_ILETI" \
+    "$PASIF; KOK='$G/iyi'; git_onkosul_resolved"
+hata_bekle "saplama başka adresi gösteriyor → durur" "$RESOLVED_ILETI" \
+    "$AKTIF; KOK='$G/gcp'; git_onkosul_resolved"
+hata_bekle "saplama dosyası yok → durur (set -e altında sessiz değil)" "$RESOLVED_ILETI" \
+    "$AKTIF; KOK='$G/bos'; git_onkosul_resolved"
+
+KIMLIK_ILETI='remove --git-credentials from the kadran-exec drop-in; private repositories now use'
+mkdir -p "$G/dropinsiz" "$G/temiz/etc/systemd/system/kadran-exec.service.d" "$G/kirli/etc/systemd/system/kadran-exec.service.d"
+printf '[Service]\nExecStart=\nExecStart=/usr/local/lib/kadran/kadran-exec --allow-repo a/b\n' > "$G/temiz/etc/systemd/system/kadran-exec.service.d/10.conf"
+printf '[Service]\nExecStart=\nExecStart=/usr/local/lib/kadran/kadran-exec --git-credentials /etc/kadran/git.token\n' > "$G/kirli/etc/systemd/system/kadran-exec.service.d/20-git.conf"
+gecer "drop-in dizini yokken (glob eşleşmez) DURMAZ" \
+    "KOK='$G/dropinsiz'; git_onkosul_eski_kimlik"
+gecer "drop-in var, bayrak yok → geçer" \
+    "KOK='$G/temiz'; git_onkosul_eski_kimlik"
+hata_bekle "drop-in'te --git-credentials → durur" "$KIMLIK_ILETI" \
+    "KOK='$G/kirli'; git_onkosul_eski_kimlik"
+hata_bekle "ileti kadran github connect yolunu söylüyor" 'kadran github connect' \
+    "KOK='$G/kirli'; git_onkosul_eski_kimlik"
+
+# kadran-git kullanıcısı: sahte id/useradd; çağrılar günlüğe yazılıyor.
+KUL_SAHTE='getent() { return 1; }; groupadd() { :; }; NOLOGIN=/usr/sbin/nologin
+useradd() { echo "useradd $*" >> "$GUNLUK"; }
+id() { case "$*" in "-u kadran-git") return 1;; "-nG kadran-git") echo "kadran-git $GRUP_GIT";; "-nG kadran") echo "kadran $GRUP_KADRAN";; esac; }'
+GUNLUK_G="$G/kul-gunluk"
+for g in docker kadran kadran-client kadran-proxy; do
+    hata_bekle "kadran-git $g grubundaysa durur" "kadran-git must not belong to $g" \
+        "GUNLUK='$GUNLUK_G'; GRUP_GIT='$g'; GRUP_KADRAN=''; $KUL_SAHTE; git_kullanicisi"
+done
+hata_bekle "kadran, kadran-git grubundaysa durur" "kadran must not belong to the kadran-git group" \
+    "GUNLUK='$GUNLUK_G'; GRUP_GIT=''; GRUP_KADRAN='kadran-git'; $KUL_SAHTE; git_kullanicisi"
+: > "$GUNLUK_G"
+gecer "temiz üyelikte geçer ve kullanıcı sistem hesabı olarak açılır" \
+    "GUNLUK='$GUNLUK_G'; GRUP_GIT=''; GRUP_KADRAN=''; $KUL_SAHTE; git_kullanicisi; grep -q -- '--system --gid kadran-git --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin --comment Kadran GitHub access broker kadran-git' '$GUNLUK_G'"
 
 echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }

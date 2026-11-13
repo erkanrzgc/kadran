@@ -1,0 +1,61 @@
+# Kadran GitHub aracısı: cihaz akışı jetonunu tutan TEK süreç (K-167).
+#
+# Neden iki soket: admin.sock (grup kadran, 0660) kadrand'ın yönetim
+# çağrıları için; fetch.sock (root 0600) yalnız root yürütücünün özel depo
+# arşivi istemesi için. Süreç hangi sokete gelindiğini dosya tanıtıcısının
+# adından (FileDescriptorName=) bilir; iki yetki düzeyi birbirine karışmaz.
+#
+# Neden ExecStart'ta bayrak yok: iki canlı sunucudaki drop-in'ler ExecStart'ı
+# yeniden yazıyor; ayarlar koddaki varsayılan olarak kalır.
+#
+# Neden kod çözücü bağlanıyor: GCP'de /etc/resolv.conf 169.254.169.254'u
+# gösteriyor ve link-local reddi altında Go'nun saf çözücüsü ona erişemiyor
+# (K-167 ölçümü). Bu yüzden systemd-resolved'ın 127.0.0.53 saplaması
+# /etc/resolv.conf üzerine salt okunur bağlanır ve yalnız o adrese izin
+# verilir. BindReadOnlyPaths'te başta `-` YOK: dosya yoksa birim sessizce
+# bozuk çözücüyle değil, açıkça başlamayarak düşsün.
+[Unit]
+Description=Kadran GitHub access broker
+Documentation=https://github.com/erkanrzgc/kadran
+Requires=kadran-git-admin.socket kadran-git-fetch.socket
+After=kadran-git-admin.socket kadran-git-fetch.socket systemd-resolved.service
+Wants=systemd-resolved.service
+
+[Service]
+Type=notify
+User=kadran-git
+Group=kadran-git
+ExecStart=/usr/local/lib/kadran/kadran-git
+Restart=on-failure
+RestartSec=2s
+StateDirectory=kadran-git
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
+InaccessiblePaths=-/run/kadran-exec -/run/docker.sock -/var/lib/kadran -/var/lib/kadran-exec -/var/lib/kadran-caddy
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=localhost link-local multicast
+IPAddressAllow=127.0.0.53
+BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf

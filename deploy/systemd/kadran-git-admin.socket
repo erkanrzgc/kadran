@@ -1,0 +1,14 @@
+[Unit]
+Description=Kadran GitHub broker admin socket (kadrand)
+
+[Socket]
+ListenStream=/run/kadran-git/admin.sock
+SocketUser=kadran-git
+SocketGroup=kadran
+SocketMode=0660
+FileDescriptorName=admin
+RemoveOnStop=yes
+Service=kadran-git.service
+
+[Install]
+WantedBy=sockets.target

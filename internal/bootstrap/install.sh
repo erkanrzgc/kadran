@@ -70,6 +70,82 @@ vekil_parmak_izi() {
         md5sum | cut -d' ' -f1
 }
 
+# ── GitHub aracısı (kadran-git, K-167) ───────────────────────────────
+#
+# Cihaz akışı jetonunu tutan yetkisiz, soketle etkinleşen süreç. İki soketi
+# var: admin.sock (kadrand, grup kadran) ve fetch.sock (root yürütücü).
+# KOK yalnız betik denetimleri için kök önekidir (scripts/check-install-sh.sh);
+# üretimde BOŞ.
+
+# git_onkosul_resolved — kadran-git adres çözümünü systemd-resolved'ın
+# 127.0.0.53 saplamasından yapıyor (birim /etc/resolv.conf'a bağlar; neden
+# deploy/systemd/kadran-git.service'in başında). Yoksa birim başlamaz; bunu
+# hiçbir şeye dokunmadan, kurulumun başında söylemek için.
+git_onkosul_resolved() {
+    systemctl is-active --quiet systemd-resolved.service \
+        || die "kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)"
+    grep -qE '^nameserver[[:space:]]+127\.0\.0\.53([[:space:]]|$)' \
+        "${KOK:-}/run/systemd/resolve/stub-resolv.conf" 2>/dev/null \
+        || die "kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)"
+}
+
+# git_onkosul_eski_kimlik — eski `--git-credentials` yolu kalktı (özel depolar
+# artık kadran-git'ten). Drop-in'te kalırsa yürütücü bilinmeyen bayrakla
+# açılmaz; bunu ikililer değişmeden önce durdur. Glob eşleşmezse (drop-in
+# yok) `set -e` altında sessizce geçilir.
+git_onkosul_eski_kimlik() {
+    local dropin
+    for dropin in "${KOK:-}"/etc/systemd/system/kadran-exec.service.d/*.conf; do
+        [ -e "$dropin" ] || continue
+        if grep -q -- '--git-credentials' "$dropin"; then
+            die "remove --git-credentials from the kadran-exec drop-in; private repositories now use \`kadran github connect\`"
+        fi
+    done
+}
+
+# git_kullanicisi — kadran-git hesabını kurar ve ayrıcalık değişmezlerini
+# doğrular: hesap ne Docker'a, ne yönetici/istemci/vekil gruplarına girebilir
+# ve kadran onun grubuna girmemeli (jetona yalnız soketle erişilir).
+git_kullanicisi() {
+    local forbidden_group
+    getent group kadran-git >/dev/null || groupadd --system kadran-git
+    if ! id -u kadran-git >/dev/null 2>&1; then
+        useradd --system --gid kadran-git --home-dir /nonexistent \
+            --no-create-home --shell "$NOLOGIN" --comment "Kadran GitHub access broker" kadran-git
+    fi
+    for forbidden_group in docker kadran kadran-client kadran-proxy; do
+        if id -nG kadran-git | tr ' ' '\n' | grep -qx "$forbidden_group"; then
+            die "kadran-git must not belong to $forbidden_group"
+        fi
+    done
+    if id -nG kadran | tr ' ' '\n' | grep -qx kadran-git; then
+        die "kadran must not belong to the kadran-git group"
+    fi
+}
+
+git_birimleri() {
+    install -m 0644 -o root -g root "$STAGE/kadran-git.service" \
+        /etc/systemd/system/kadran-git.service
+    install -m 0644 -o root -g root "$STAGE/kadran-git-admin.socket" \
+        /etc/systemd/system/kadran-git-admin.socket
+    install -m 0644 -o root -g root "$STAGE/kadran-git-fetch.socket" \
+        /etc/systemd/system/kadran-git-fetch.socket
+    systemctl daemon-reload
+}
+
+# git_araci_kur — kullanıcı, birimler, soketler. kadrand yeniden başlamadan
+# ÖNCE çağrılır (kadrand.service Wants=kadran-git-admin.socket). Servis
+# BAŞLATILMAZ: ilk bağlantıda soketle etkinleşir. Yükseltmede çalışan eski
+# ikili try-restart ile yenisine geçer (çalışmıyorsa dokunmaz).
+git_araci_kur() {
+    step "GitHub broker (kadran-git)"
+    git_kullanicisi
+    git_birimleri
+    systemctl enable kadran-git-admin.socket kadran-git-fetch.socket
+    systemctl restart kadran-git-admin.socket kadran-git-fetch.socket
+    systemctl try-restart kadran-git.service
+}
+
 # istemci_olarak <kullanıcı> <grup> <komut|fonksiyon> [argüman…] — komutu
 # o kullanıcının kimliğiyle koşturur (K-139).
 #
@@ -247,6 +323,11 @@ docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
 # nologin yolu dağıtıma göre değişiyor.
 NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"
 
+# kadran-git ön koşulları: HİÇBİR şey değişmeden önce (başarısızsa sunucuya
+# dokunulmamış kalır).
+git_onkosul_resolved
+git_onkosul_eski_kimlik
+
 say "system OK ($(uname -m), $( (. /etc/os-release && echo "$PRETTY_NAME") 2>/dev/null || echo unknown ))"
 
 # ── Docker adres havuzu (K-070, K-150) ───────────────────────────────
@@ -355,7 +436,7 @@ step "Binaries"
 
 install -d -m 0755 -o root -g root "$LIB_DIR"
 
-for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-proxy kadran-vault; do
+for binary in kadrand kadran-exec kadran-connect kadran-caddy kadran-proxy kadran-vault kadran-git; do
     [ -f "$STAGE/$binary" ] || die "$binary is missing from the staging directory"
 done
 
@@ -369,6 +450,8 @@ ikili_kur "$STAGE/kadran-connect" "$LIB_DIR/kadran-connect"
 # anlamsız kılardı.
 ikili_kur "$STAGE/kadran-caddy"   "$LIB_DIR/kadran-caddy"
 ikili_kur "$STAGE/kadran-proxy"   "$LIB_DIR/kadran-proxy"
+# GitHub aracısı: yetkisiz kullanıcı çalıştırır, yazma yetkisi yalnız root.
+ikili_kur "$STAGE/kadran-git"     "$LIB_DIR/kadran-git"
 # Kasa anahtarını üretir (K-123). Yalnız kurulumda, root olarak koşuyor.
 ikili_kur "$STAGE/kadran-vault"   "$LIB_DIR/kadran-vault"
 # Kasanın geri dönüşü (v0.4.x'e inmeden önce elle çalıştırılır).
@@ -811,6 +894,10 @@ if [ "$GOC" -eq 1 ]; then
     vekil_araci_onhazirla
 fi
 
+# kadrand Wants=kadran-git-admin.socket: soketler kadrand yeniden başlamadan
+# ÖNCE açık olmalı.
+git_araci_kur
+
 systemctl enable kadran-exec.service kadrand.service
 
 # Yeniden kurulum aynı zamanda YÜKSELTME yolu. `enable --now` ÇALIŞAN
@@ -955,7 +1042,8 @@ fi
 # etkinleştirilmemişti ve yalnızca REBOOT testinde ortaya çıktı. "Şu an
 # çalışıyor" bir kabul ölçütü değil; ölçüt "yeniden başlatmadan sonra da
 # çalışır".
-for unit in kadran-caddy-admin.socket kadran-caddy.service kadran-proxy.socket kadran-proxy.service; do
+for unit in kadran-caddy-admin.socket kadran-caddy.service kadran-proxy.socket kadran-proxy.service \
+        kadran-git-admin.socket kadran-git-fetch.socket; do
     state="$(systemctl is-enabled "$unit" 2>/dev/null || echo missing)"
     if [ "$state" = "enabled" ]; then
         check_ok "$unit enabled (survives a reboot)"
@@ -978,6 +1066,13 @@ calisan_ikili_dogrula() {
 calisan_ikili_dogrula kadrand
 calisan_ikili_dogrula kadran-exec
 calisan_ikili_dogrula kadran-proxy
+# kadran-git soketle etkinleşir: ilk bağlantıya kadar çalışmıyor olması
+# normal ve doğrulamak için BAŞLATILMAZ. Çalışıyorsa imajı sınanır.
+if systemctl is-active --quiet kadran-git.service; then
+    calisan_ikili_dogrula kadran-git
+else
+    check_ok "kadran-git is socket-activated and not running yet"
+fi
 
 # 7. Çalışan İMAJ, kurduğumuz binary olmalı (K-049).
 #

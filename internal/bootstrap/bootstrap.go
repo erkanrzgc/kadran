@@ -44,7 +44,7 @@ var installScript embed.FS
 // scripts/build-release.sh onu da aynı `bin/linux-<arch>/` dizinine
 // üretiyor, yani burada özel bir muamele gerekmiyor.
 var serverBinaries = []string{
-	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy", "kadran-proxy", "kadran-vault",
+	"kadrand", "kadran-exec", "kadran-connect", "kadran-caddy", "kadran-proxy", "kadran-vault", "kadran-git",
 }
 
 // unitFiles, depodan kopyalanan systemd varlıkları.
@@ -56,6 +56,9 @@ var unitFiles = map[string]string{
 	"kadran-proxy.service":       "deploy/systemd/kadran-proxy.service",
 	"kadran-proxy.socket":        "deploy/systemd/kadran-proxy.socket",
 	"kadran-proxy-tmpfiles.conf": "deploy/systemd/kadran-proxy-tmpfiles.conf",
+	"kadran-git.service":         "deploy/systemd/kadran-git.service",
+	"kadran-git-admin.socket":    "deploy/systemd/kadran-git-admin.socket",
+	"kadran-git-fetch.socket":    "deploy/systemd/kadran-git-fetch.socket",
 	"kadrand.service":            "deploy/systemd/kadrand.service",
 	"kadran-exec.service":        "deploy/systemd/kadran-exec.service",
 

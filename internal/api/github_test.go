@@ -328,6 +328,37 @@ func TestStatusRejectsForeignInstallURL(t *testing.T) {
 	}
 }
 
+func TestStatusRejectsBadPendingInstallURL(t *testing.T) {
+	for _, u := range []string{"https://evil.example/apps/x", "https://github.com/apps/x\u009b31m", "https://github.com/apps/x\u202e"} {
+		c := &kadranv1.GitHubConnection{
+			State: kadranv1.GitHubConnection_STATE_PENDING,
+			Pending: &kadranv1.GitHubUserCodePrompt{
+				UserCode: fakeUserCode, VerificationUri: "https://github.com/login/device", InstallUrl: u,
+			},
+		}
+		srv, actions := gitServer(t, &fakeGit{conn: c})
+		_, err := srv.GetGitHubStatus(context.Background(), &kadranv1.GetGitHubStatusRequest{})
+		if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "kadran-git returned unexpected data") {
+			t.Errorf("%q: err = %v", u, err)
+		}
+		if len(actions()) != 0 {
+			t.Errorf("%q: denetim yazildi", u)
+		}
+	}
+	// Kontrol grubu: gecerli pending.install_url kabul edilir.
+	ok := &kadranv1.GitHubConnection{
+		State: kadranv1.GitHubConnection_STATE_PENDING,
+		Pending: &kadranv1.GitHubUserCodePrompt{
+			UserCode: fakeUserCode, VerificationUri: "https://github.com/login/device",
+			InstallUrl: "https://github.com/apps/kadran-deploy/installations/new",
+		},
+	}
+	srv, _ := gitServer(t, &fakeGit{conn: ok})
+	if _, err := srv.GetGitHubStatus(context.Background(), &kadranv1.GetGitHubStatusRequest{}); err != nil {
+		t.Errorf("gecerli pending reddedildi: %v", err)
+	}
+}
+
 func TestResolveBranchUsesStoredRepo(t *testing.T) {
 	f := &fakeGit{sha: fakeSHA}
 	srv, _ := gitServer(t, f)

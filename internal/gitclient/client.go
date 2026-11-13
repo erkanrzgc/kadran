@@ -36,12 +36,12 @@ type Client struct {
 	rpc  kadranv1.GitAdminServiceClient
 }
 
-// Dial, yonetim soketine baglanir.
+// Dial, yonetim soketine baglanir. Baglanti tembeldir: soket yoksa bile
+// kadrand baslar, ilk cagri FailedPrecondition doner.
 //
 // Soketin erisimi soketin grubuyla degil, kadran-git in uid tabanli
 // peercred politikasiyla (yalniz kadran uid i) zorlanir. Kurulumdaki
-// "kadran, kadran-git grubunda degil" denetimi bunu destekler. Baglanti tembeldir: soket yoksa bile
-// kadrand baslar, ilk cagri FailedPrecondition doner.
+// "kadran, kadran-git grubunda degil" denetimi bunu destekler.
 func Dial(socketPath string) (*Client, error) {
 	conn, err := grpc.NewClient("unix:"+socketPath,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),

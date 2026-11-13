@@ -91,8 +91,7 @@ func validConnection(c *kadranv1.GitHubConnection) bool {
 	if u := c.GetInstallUrl(); u != "" && !validGitHubURL(u, githubInstallPref) {
 		return false
 	}
-	if p := c.GetPending(); p != nil &&
-		(!cleanText(p.GetUserCode(), maxShownLen) || !validGitHubURL(p.GetVerificationUri(), githubVerifyPref)) {
+	if p := c.GetPending(); p != nil && !validPending(p) {
 		return false
 	}
 	for _, in := range c.GetInstallations() {
@@ -101,6 +100,16 @@ func validConnection(c *kadranv1.GitHubConnection) bool {
 		}
 	}
 	return true
+}
+
+// validPending, bekleyen istemin her alanini denetler; install_url bos
+// olabilir ama doluysa ayni onek ve metin kurallarina uymali.
+func validPending(p *kadranv1.GitHubUserCodePrompt) bool {
+	if !cleanText(p.GetUserCode(), maxShownLen) || !validGitHubURL(p.GetVerificationUri(), githubVerifyPref) {
+		return false
+	}
+	u := p.GetInstallUrl()
+	return u == "" || validGitHubURL(u, githubInstallPref)
 }
 
 func validInstallation(in *kadranv1.GitHubInstallation) bool {

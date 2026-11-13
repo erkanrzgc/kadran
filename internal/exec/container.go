@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -350,8 +351,8 @@ func (s *Server) ContainerLogs(req *kadranv1.ContainerLogsRequest, stream grpc.S
 //
 // Executor bugün de `RestrictAddressFamilies=AF_UNIX` taşıyor ve öyle
 // kalmalı. kadrand yalnız 172.16.0.0/12'ye sağlık yoklaması yapar.
-// Executor varsayılan AF_UNIX kalır; K-146 özel Git opt-in yapılandırması
-// ağ ailesini açar ve yalnız sabit GitHub archive URL'lerini kullanır.
+// Özel depo arşivini ağa çıkan kadran-git indirir; executor yalnız onun
+// unix soketinden bayt alır (K-167).
 //
 // Sürücü diliminin devraldığı yükümlülükler:
 //
@@ -389,14 +390,14 @@ func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerS
 		BuildArgs:  req.GetBuildArgs(),
 	}
 	var imageID string
-	var opErr error
-	if s.privateGit != nil && s.privateGit.hasCredential(req.GetSource()) {
-		var archive *os.File
-		archive, opErr = s.privateGit.Context(stream.Context(), req.GetSource())
-		if opErr == nil {
-			defer closePrivateContext(archive)
-			spec.ContextURL, spec.ContextTar = "", archive
-		}
+	decision, archive, opErr := s.fetchPrivateContext(stream.Context(), req.GetSource())
+	defer closePrivateContext(archive)
+	params["context_source"] = "public"
+	if archive != nil {
+		spec.ContextURL, spec.ContextTar = "", archive
+	}
+	if decision == kadranv1.FetchArchiveResponse_DECISION_ARCHIVE {
+		params["context_source"] = "github-app"
 	}
 	if opErr == nil {
 		imageID, opErr = s.docker.ImageBuild(stream.Context(), spec, func(data []byte, isStderr bool) error {
@@ -404,6 +405,9 @@ func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerS
 			// deposundan gelir ve zincir ekle-sadece'dir.
 			return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
 		})
+		if opErr != nil && decision == kadranv1.FetchArchiveResponse_DECISION_NOT_COVERED {
+			opErr = fmt.Errorf("%w (if it is private, install the Kadran Deploy app on it)", opErr)
+		}
 	}
 
 	// image_id kaydın YANLIŞLANABİLİR olmasını sağlayan alandır: hangi
@@ -424,6 +428,16 @@ func (s *Server) ImageBuild(req *kadranv1.ImageBuildRequest, stream grpc.ServerS
 		return internalError(err)
 	}
 	return nil
+}
+
+// fetchPrivateContext, yalnız github.com için kadran-git'e karar sorar.
+// Karardan önceki başarısızlıklar GitFetcher içinde NOT_CONNECTED olur;
+// ARCHIVE'dan sonraki hata derlemeyi düşürür (Docker'a hiç gidilmez).
+func (s *Server) fetchPrivateContext(ctx context.Context, src *kadranv1.GitSource) (kadranv1.FetchArchiveResponse_Decision, *os.File, error) {
+	if s.gitFetch == nil || src.GetHost() != DefaultGitHost {
+		return kadranv1.FetchArchiveResponse_DECISION_UNSPECIFIED, nil, nil
+	}
+	return s.gitFetch.Fetch(ctx, src)
 }
 
 // buildAuditParams, derleme isteğinin denetime yazılacak parametreleridir.

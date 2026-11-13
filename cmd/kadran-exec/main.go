@@ -8,8 +8,8 @@
 //
 // Ayrıcalık kaçınılmazdır: Docker soketine erişim pratikte root yetkisidir.
 // Modelin özü bu ayrıcalığı, şema doğrulamalı ve denetlenebilir küçük bir
-// yüzeye hapsetmektir. Ayrıcalıklı kod 2900 satırla sınırlıdır; artışın
-// kapsamı docs/decisions.md K-146'da ölçülerek kaydedilir.
+// yüzeye hapsetmektir. Ayrıcalıklı kod scripts/check-exec-surface.sh'taki
+// sınırla bağlıdır; her artış orada ölçülerek gerekçelendirilir.
 package main
 
 import (
@@ -42,7 +42,9 @@ const (
 	// (--allow-repo) yeni bir bayrağı düşürürdü.
 	defaultVaultKey    = "/var/lib/kadran-exec/vault.key"
 	defaultAllowedUser = "kadran"
-	defaultOwnerGroup  = "kadran"
+	// defaultGitFetchSocket, kadran-git soketi; bayrak DEĞİL (drop-in düşürmesin).
+	defaultGitFetchSocket = "/run/kadran-git/fetch.sock"
+	defaultOwnerGroup     = "kadran"
 )
 
 func main() {
@@ -54,16 +56,15 @@ func main() {
 
 func run() error {
 	var (
-		socketPath     = flag.String("socket", defaultSocket, "unix socket to listen on")
-		journalPath    = flag.String("journal", defaultJournal, "audit log file")
-		dockerSocket   = flag.String("docker-socket", kadranexec.DefaultDockerSocket, "Docker Engine API socket")
-		allowUser      = flag.String("allow-user", defaultAllowedUser, "the only user allowed to connect")
-		ownerGroup     = flag.String("owner-group", defaultOwnerGroup, "group of the socket and the log file")
-		showVersion    = flag.Bool("version", false, "print the version and exit")
-		vaultKey       = flag.String("vault-key", defaultVaultKey, "vault key (K-123)")
-		gitCredentials = flag.String("git-credentials", "", "root-owned 0600 private GitHub credential file (requires allow-repo and opt-in network access)")
-		debug          = flag.Bool("debug", false, "verbose logging (also enabled by KADRAN_DEBUG=1)")
-		gitHosts       = flag.String("allow-git-host", kadranexec.DefaultGitHost,
+		socketPath   = flag.String("socket", defaultSocket, "unix socket to listen on")
+		journalPath  = flag.String("journal", defaultJournal, "audit log file")
+		dockerSocket = flag.String("docker-socket", kadranexec.DefaultDockerSocket, "Docker Engine API socket")
+		allowUser    = flag.String("allow-user", defaultAllowedUser, "the only user allowed to connect")
+		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "group of the socket and the log file")
+		showVersion  = flag.Bool("version", false, "print the version and exit")
+		vaultKey     = flag.String("vault-key", defaultVaultKey, "vault key (K-123)")
+		debug        = flag.Bool("debug", false, "verbose logging (also enabled by KADRAN_DEBUG=1)")
+		gitHosts     = flag.String("allow-git-host", kadranexec.DefaultGitHost,
 			"git hosts allowed for ImageBuild (comma-separated)")
 		gitRepos = flag.String("allow-repo", "",
 			"owner/repo pairs allowed to be built (comma-separated; "+
@@ -87,11 +88,6 @@ func run() error {
 		return fmt.Errorf(
 			"executor must run as root, found effective uid %d — check the systemd unit file", euid)
 	}
-	privateGit, err := kadranexec.LoadPrivateGitCredentials(*gitCredentials, splitHosts(*gitRepos))
-	if err != nil {
-		return err
-	}
-
 	vault, err := kadranexec.LoadVaultIdentity(*vaultKey)
 	if err != nil {
 		return err
@@ -131,7 +127,7 @@ func run() error {
 	}()
 
 	service, err := kadranexec.NewServer(kadranexec.ServerOptions{
-		PrivateGit:      privateGit,
+		GitFetch:        kadranexec.NewGitFetcher(defaultGitFetchSocket),
 		Journal:         journal,
 		DockerSocket:    *dockerSocket,
 		AllowedGitHosts: splitHosts(*gitHosts),

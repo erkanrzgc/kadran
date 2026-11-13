@@ -22,7 +22,7 @@ import (
 // sayede exec.proto'ya yeni bir ayrıcalıklı RPC eklendiğinde bu dosya
 // DERLENMEZ ve uygulanması unutulamaz. Ayrıntı: docs/decisions.md K-002.
 type Server struct {
-	privateGit   *PrivateGit
+	gitFetch     GitFetcher
 	journal      *Journal
 	dockerSocket string
 
@@ -51,8 +51,8 @@ type Server struct {
 
 // ServerOptions, executor sunucusunu yapılandırır.
 type ServerOptions struct {
-	// PrivateGit is optional, root-configured GitHub archive credentials.
-	PrivateGit *PrivateGit
+	// GitFetch, kadran-git'ten özel depo arşivi ister. nil ise herkese açık yol.
+	GitFetch GitFetcher
 	// Journal, executor'ın kendi hash-zincirli denetim günlüğü. Zorunlu.
 	Journal *Journal
 
@@ -91,9 +91,6 @@ func NewServer(opts ServerOptions) (*Server, error) {
 	if opts.Vault == nil {
 		return nil, errors.New("exec: a vault key is required")
 	}
-	if opts.PrivateGit != nil && len(opts.AllowedRepos) == 0 {
-		return nil, errors.New("exec: private Git requires an explicit repository allowlist")
-	}
 	if opts.DockerSocket == "" {
 		opts.DockerSocket = DefaultDockerSocket
 	}
@@ -107,7 +104,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		opts.VolumeRoot = DefaultVolumeRoot
 	}
 	return &Server{
-		privateGit:      opts.PrivateGit,
+		gitFetch:        opts.GitFetch,
 		journal:         opts.Journal,
 		dockerSocket:    opts.DockerSocket,
 		allowedGitHosts: opts.AllowedGitHosts,

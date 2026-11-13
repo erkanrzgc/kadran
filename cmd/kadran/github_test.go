@@ -34,6 +34,8 @@ type pollStep struct {
 type fakeGitHubRPC struct {
 	kadranv1.KadranServiceClient
 	startErr      error
+	noPrompt      bool
+	onStart       func()
 	startCalls    int
 	steps         []pollStep
 	polls         int
@@ -45,6 +47,12 @@ type fakeGitHubRPC struct {
 
 func (f *fakeGitHubRPC) StartGitHubConnect(context.Context, *kadranv1.StartGitHubConnectRequest, ...grpc.CallOption) (*kadranv1.StartGitHubConnectResponse, error) {
 	f.startCalls++
+	if f.onStart != nil {
+		f.onStart()
+	}
+	if f.noPrompt {
+		return &kadranv1.StartGitHubConnectResponse{}, nil
+	}
 	if f.startErr != nil {
 		return nil, f.startErr
 	}

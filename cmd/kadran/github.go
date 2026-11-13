@@ -74,10 +74,16 @@ func (c *cli) githubConnect(ctx context.Context, rpc kadranv1.KadranServiceClien
 	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)
 	resp, err := rpc.StartGitHubConnect(callCtx, &kadranv1.StartGitHubConnectRequest{})
 	cancel()
+	if ctx.Err() != nil {
+		return c.githubInterrupted()
+	}
 	if err != nil {
 		return c.githubFail("could not start the GitHub connection", err)
 	}
 	p := resp.GetPrompt()
+	if p == nil {
+		return c.githubStop("the server returned no sign-in code")
+	}
 	fmt.Fprintln(c.stdout, "1. Install the Kadran Deploy app on the repositories Kadran may build:")
 	fmt.Fprintf(c.stdout, "   %s\n", p.GetInstallUrl())
 	fmt.Fprintf(c.stdout, "2. Open %s and enter the code:\n", p.GetVerificationUri())
@@ -91,7 +97,6 @@ func (c *cli) githubConnect(ctx context.Context, rpc kadranv1.KadranServiceClien
 func (c *cli) pollGitHub(ctx context.Context, rpc kadranv1.KadranServiceClient, expires time.Time, installURL string) int {
 	var (
 		failures    int
-		sawPending  bool
 		giveUpAfter = expires.Add(githubExpirySlack)
 	)
 	for {
@@ -109,7 +114,7 @@ func (c *cli) pollGitHub(ctx context.Context, rpc kadranv1.KadranServiceClient, 
 			}
 		default:
 			failures = 0
-			if code, done := c.githubVerdict(conn, &sawPending, installURL); done {
+			if code, done := c.githubVerdict(conn, installURL); done {
 				return code
 			}
 		}
@@ -120,22 +125,29 @@ func (c *cli) pollGitHub(ctx context.Context, rpc kadranv1.KadranServiceClient, 
 }
 
 // githubVerdict, bir yoklama cevabının akışı bitirip bitirmediğine karar verir.
-func (c *cli) githubVerdict(conn *kadranv1.GitHubConnection, sawPending *bool, installURL string) (int, bool) {
+//
+// kadran-git bekleyen akışı Start dönmeden ÖNCE kaydeder; Start'tan sonra
+// PENDING dışındaki her durum (NOT_CONNECTED, UNSPECIFIED, bilinmeyen)
+// akışın sunucuda kalmadığı demektir.
+func (c *cli) githubVerdict(conn *kadranv1.GitHubConnection, installURL string) (int, bool) {
 	switch conn.GetState() {
 	case kadranv1.GitHubConnection_STATE_CONNECTED:
 		fmt.Fprintf(c.stdout, "Connected as %s.\n", conn.GetLogin())
-		c.printInstallations(conn, installURL)
+		if len(conn.GetInstallations()) == 0 {
+			fmt.Fprintln(c.stdout, msgGitHubNoInst)
+			if installURL != "" {
+				fmt.Fprintf(c.stdout, "   %s\n", installURL)
+			}
+		}
+		c.printInstallations(conn)
 		return exitOK, true
 	case kadranv1.GitHubConnection_STATE_FAILED:
 		return c.githubStop(githubFailureText(conn.GetFailure())), true
 	case kadranv1.GitHubConnection_STATE_PENDING:
-		*sawPending = true
-	case kadranv1.GitHubConnection_STATE_NOT_CONNECTED:
-		if *sawPending {
-			return c.githubStop(msgGitHubEnded), true
-		}
+		return 0, false
+	default:
+		return c.githubStop(msgGitHubEnded), true
 	}
-	return 0, false
 }
 
 func (c *cli) githubStatusCall(ctx context.Context, rpc kadranv1.KadranServiceClient) (*kadranv1.GitHubConnection, error) {
@@ -152,8 +164,15 @@ func (c *cli) githubStatus(ctx context.Context, rpc kadranv1.KadranServiceClient
 	}
 	switch conn.GetState() {
 	case kadranv1.GitHubConnection_STATE_CONNECTED:
-		fmt.Fprintf(c.stdout, "connected as %s (since %s)\n", conn.GetLogin(), localTime(conn.GetConnectedAt().AsTime()))
-		c.printInstallations(conn, conn.GetInstallUrl())
+		since := "unknown"
+		if t := conn.GetConnectedAt(); t != nil {
+			since = localTime(t.AsTime())
+		}
+		fmt.Fprintf(c.stdout, "connected as %s (since %s)\n", conn.GetLogin(), since)
+		if len(conn.GetInstallations()) == 0 {
+			fmt.Fprintln(c.stdout, "No installation yet: install the app with the link below.")
+		}
+		c.printInstallations(conn)
 		if conn.GetReconnectRequired() {
 			fmt.Fprintln(c.stdout, "reconnect required: run kadran github connect")
 		}
@@ -185,15 +204,7 @@ func (c *cli) githubDisconnect(ctx context.Context, rpc kadranv1.KadranServiceCl
 }
 
 // printInstallations, kurulum başına erişim satırını ve ALL uyarısını basar.
-// Kurulum yoksa kurulum adresini söyler.
-func (c *cli) printInstallations(conn *kadranv1.GitHubConnection, installURL string) {
-	if len(conn.GetInstallations()) == 0 {
-		fmt.Fprintln(c.stdout, msgGitHubNoInst)
-		if installURL != "" {
-			fmt.Fprintf(c.stdout, "   %s\n", installURL)
-		}
-		return
-	}
+func (c *cli) printInstallations(conn *kadranv1.GitHubConnection) {
 	for _, in := range conn.GetInstallations() {
 		if in.GetAllRepositories() {
 			fmt.Fprintf(c.stdout, "  %s: ALL repositories — consider Only select repositories\n", in.GetAccount())

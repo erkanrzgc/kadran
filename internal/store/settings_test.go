@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestSettingRoundTrip(t *testing.T) {
@@ -20,6 +21,13 @@ func TestSettingRoundTrip(t *testing.T) {
 	}
 	if err := s.SetSetting(ctx, "k", "iki"); err != nil {
 		t.Fatal(err)
+	}
+	var updated int64
+	if err := s.db.QueryRowContext(ctx, `SELECT updated_at FROM settings WHERE key = ?`, "k").Scan(&updated); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Now().Unix() - updated; d < 0 || d > 60 {
+		t.Fatalf("updated_at = %d, simdiye yakin bekleniyordu", updated)
 	}
 	if v, _, _ := s.Setting(ctx, "k"); v != "iki" {
 		t.Fatalf("üzerine yazma sonrası = %q", v)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
@@ -35,11 +36,23 @@ type Client struct {
 	rpc  kadranv1.GitAdminServiceClient
 }
 
-// Dial, yonetim soketine baglanir. Baglanti tembeldir: soket yoksa bile
+// Dial, yonetim soketine baglanir.
+//
+// Soketin erisimi soketin grubuyla degil, kadran-git in uid tabanli
+// peercred politikasiyla (yalniz kadran uid i) zorlanir. Kurulumdaki
+// "kadran, kadran-git grubunda degil" denetimi bunu destekler. Baglanti tembeldir: soket yoksa bile
 // kadrand baslar, ilk cagri FailedPrecondition doner.
 func Dial(socketPath string) (*Client, error) {
 	conn, err := grpc.NewClient("unix:"+socketPath,
-		grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		// Varsayilan geri cekilme 120 sn ye cikar: kadran-git kalktiktan sonra
+		// iki dakika "calismiyor" denirdi. Kisa tavan hizli toparlar.
+		grpc.WithConnectParams(grpc.ConnectParams{
+			Backoff: backoff.Config{
+				BaseDelay: 500 * time.Millisecond, Multiplier: 1.6, Jitter: 0.2, MaxDelay: 5 * time.Second,
+			},
+			MinConnectTimeout: 5 * time.Second,
+		}))
 	if err != nil {
 		return nil, fmt.Errorf("could not set up the kadran-git client: %w", err)
 	}

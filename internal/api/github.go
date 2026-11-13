@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -26,8 +28,12 @@ import (
 const settingGitHubConnectedAt = "github.connected_at"
 
 const (
-	msgGitNotRunning  = "the kadran-git service is not running"
-	msgGitBadAddress  = "kadran-git returned an unexpected address"
+	msgGitNotRunning = "the kadran-git service is not running"
+	msgGitBadData    = "kadran-git returned unexpected data"
+	msgGitRecord     = "could not record the GitHub connection"
+	// maxShownLen, istemcide gosterilen metinlerin ust siniri.
+	maxShownLen       = 256
+	maxURLLen         = 512
 	githubVerifyPref  = "https://github.com/"
 	githubInstallPref = "https://github.com/apps/"
 )
@@ -49,34 +55,62 @@ func (s *Server) gitAdmin() (GitAdmin, error) {
 	return s.git, nil
 }
 
-// validGitHubURL, adresin beklenen oneke uydugunu ve bosluk/kontrol
-// karakteri tasimadigini dogrular.
-func validGitHubURL(u, prefix string) bool {
-	if !strings.HasPrefix(u, prefix) {
+// cleanText, istemcide gosterilecek metnin uzunluk sinirina uydugunu ve
+// kontrol (C0, C1, DEL) ya da bicim/bidi (Cf) karakteri tasimadigini soyler.
+func cleanText(s string, limit int) bool {
+	if len(s) > limit {
 		return false
 	}
-	for _, r := range u {
-		if r <= ' ' || r == 0x7f {
+	for _, r := range s {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return false
 		}
 	}
 	return true
 }
 
+// validGitHubURL, adresin beklenen oneke uydugunu ve bosluk, kontrol ya da
+// bicim karakteri tasimadigini dogrular.
+func validGitHubURL(u, prefix string) bool {
+	if !strings.HasPrefix(u, prefix) || !cleanText(u, maxURLLen) {
+		return false
+	}
+	return !strings.ContainsAny(u, " \u00a0\u2028\u2029")
+}
+
 func validPrompt(p *kadranv1.GitHubUserCodePrompt) bool {
-	return p != nil && validGitHubURL(p.GetVerificationUri(), githubVerifyPref) &&
+	return p != nil && p.GetUserCode() != "" && cleanText(p.GetUserCode(), maxShownLen) &&
+		validGitHubURL(p.GetVerificationUri(), githubVerifyPref) &&
 		validGitHubURL(p.GetInstallUrl(), githubInstallPref)
 }
 
 func validConnection(c *kadranv1.GitHubConnection) bool {
-	if c == nil {
+	if c == nil || !cleanText(c.GetLogin(), maxShownLen) {
 		return false
 	}
 	if u := c.GetInstallUrl(); u != "" && !validGitHubURL(u, githubInstallPref) {
 		return false
 	}
-	if p := c.GetPending(); p != nil && !validGitHubURL(p.GetVerificationUri(), githubVerifyPref) {
+	if p := c.GetPending(); p != nil &&
+		(!cleanText(p.GetUserCode(), maxShownLen) || !validGitHubURL(p.GetVerificationUri(), githubVerifyPref)) {
 		return false
+	}
+	for _, in := range c.GetInstallations() {
+		if !validInstallation(in) {
+			return false
+		}
+	}
+	return true
+}
+
+func validInstallation(in *kadranv1.GitHubInstallation) bool {
+	if in == nil || !cleanText(in.GetAccount(), maxShownLen) {
+		return false
+	}
+	for _, r := range in.GetRepositories() {
+		if r == nil || !cleanText(r.GetFullName(), maxShownLen) {
+			return false
+		}
 	}
 	return true
 }
@@ -92,7 +126,7 @@ func (s *Server) StartGitHubConnect(ctx context.Context, _ *kadranv1.StartGitHub
 		return nil, err
 	}
 	if !validPrompt(prompt) {
-		return nil, status.Error(codes.Internal, msgGitBadAddress)
+		return nil, status.Error(codes.Internal, msgGitBadData)
 	}
 	// Parametre YOK: kod ve adres denetim kaydina girmez.
 	if err := s.recordAction(ctx, "github.connect.start", "github", nil, audit.OutcomeSuccess, ""); err != nil {
@@ -113,7 +147,7 @@ func (s *Server) GetGitHubStatus(ctx context.Context, _ *kadranv1.GetGitHubStatu
 		return nil, err
 	}
 	if !validConnection(conn) {
-		return nil, status.Error(codes.Internal, msgGitBadAddress)
+		return nil, status.Error(codes.Internal, msgGitBadData)
 	}
 	if err := s.auditFirstSight(ctx, conn); err != nil {
 		return nil, err
@@ -138,7 +172,8 @@ func (s *Server) auditFirstSight(ctx context.Context, conn *kadranv1.GitHubConne
 	ctx = context.WithoutCancel(ctx)
 	prev, ok, err := s.store.Setting(ctx, settingGitHubConnectedAt)
 	if err != nil {
-		return status.Errorf(codes.Internal, "could not read the GitHub setting: %v", err)
+		slog.Error("GitHub setting could not be read", "error", err)
+		return status.Error(codes.Internal, msgGitRecord)
 	}
 	if ok && prev == stamp {
 		return nil
@@ -151,7 +186,8 @@ func (s *Server) auditFirstSight(ctx context.Context, conn *kadranv1.GitHubConne
 		return err
 	}
 	if err := s.store.SetSetting(ctx, settingGitHubConnectedAt, stamp); err != nil {
-		return status.Errorf(codes.Internal, "could not store the GitHub setting: %v", err)
+		slog.Error("GitHub setting could not be stored", "error", err)
+		return status.Error(codes.Internal, msgGitRecord)
 	}
 	return nil
 }

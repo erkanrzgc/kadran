@@ -117,24 +117,76 @@ func TestDeployRoleCannotUseGitHubCalls(t *testing.T) {
 }
 
 func TestGitHubCallsRequireTOTPSession(t *testing.T) {
-	srv, db := newTestServer(t)
+	d := totpKur(t)
+	d.etkinlestir()
+	c := d.istemci(yonetici)
 	ctx := context.Background()
-	now := time.Unix(1_800_000_000, 0)
-	if err := db.BeginTOTPEnrollment(ctx, []byte("01234567890123456789"), now); err != nil {
-		t.Fatal(err)
+	calls := map[string]func(context.Context) error{
+		"StartGitHubConnect": func(x context.Context) error {
+			_, err := c.StartGitHubConnect(x, &kadranv1.StartGitHubConnectRequest{})
+			return err
+		},
+		"GetGitHubStatus": func(x context.Context) error {
+			_, err := c.GetGitHubStatus(x, &kadranv1.GetGitHubStatusRequest{})
+			return err
+		},
+		"DisconnectGitHub": func(x context.Context) error {
+			_, err := c.DisconnectGitHub(x, &kadranv1.DisconnectGitHubRequest{})
+			return err
+		},
+		"ResolveGitHubBranch": func(x context.Context) error {
+			_, err := c.ResolveGitHubBranch(x, &kadranv1.ResolveGitHubBranchRequest{AppId: "a", Branch: "main"})
+			return err
+		},
 	}
-	if _, err := db.ConfirmTOTP(ctx, 1, make([]byte, 32), uniqueHashes(), now); err != nil {
-		t.Fatal(err)
+	for name, call := range calls {
+		// Jetonsuz: oturum kapisi reddeder.
+		err := call(ctx)
+		if status.Code(err) != codes.Unauthenticated || !strings.Contains(err.Error(), "TOTP is on for this server") {
+			t.Errorf("%s jetonsuz: %v", name, err)
+		}
+		// Kontrol grubu: gecerli jetonla kapi gecilir (kadran-git yok, o yuzden
+		// FailedPrecondition; Unauthenticated DEGIL).
+		err = call(oturumla(d.jeton))
+		if status.Code(err) != codes.FailedPrecondition {
+			t.Errorf("%s jetonlu: %v", name, err)
+		}
 	}
-	id := connproto.Identity{Origin: "ssh", Fingerprint: "SHA256:admin", Role: connproto.RoleAdmin}
-	for _, m := range []string{
-		kadranv1.KadranService_StartGitHubConnect_FullMethodName,
-		kadranv1.KadranService_GetGitHubStatus_FullMethodName,
-		kadranv1.KadranService_DisconnectGitHub_FullMethodName,
-		kadranv1.KadranService_ResolveGitHubBranch_FullMethodName,
-	} {
-		if err := srv.CheckSession(ctx, id, m); err == nil {
-			t.Errorf("%s oturum jetonsuz gecti", m)
+}
+
+func TestGitHubDataWithControlOrBidiIsRejected(t *testing.T) {
+	// Bidi override (U+202E) login icinde.
+	c := connectedAt(time.Unix(1_800_000_000, 0))
+	c.Login = "erkan\u202egpj"
+	srv, actions := gitServer(t, &fakeGit{conn: c})
+	if _, err := srv.GetGitHubStatus(context.Background(), &kadranv1.GetGitHubStatusRequest{}); status.Code(err) != codes.Internal ||
+		!strings.Contains(err.Error(), "unexpected data") {
+		t.Fatalf("bidi login kabul edildi: %v", err)
+	}
+	if len(actions()) != 0 {
+		t.Error("bidi login icin denetim yazildi")
+	}
+
+	// C1 CSI (U+009B) dogrulama adresinde.
+	p := goodPrompt()
+	p.VerificationUri = "https://github.com/login/\u009b31mdevice"
+	srv2, actions2 := gitServer(t, &fakeGit{prompt: p})
+	if _, err := srv2.StartGitHubConnect(context.Background(), &kadranv1.StartGitHubConnectRequest{}); status.Code(err) != codes.Internal {
+		t.Fatalf("C1 adres kabul edildi: %v", err)
+	}
+	if len(actions2()) != 0 {
+		t.Error("C1 adres icin denetim yazildi")
+	}
+
+	// Uzunluk siniri ve depo adi.
+	c2 := connectedAt(time.Unix(1_800_000_000, 0))
+	c2.Installations[0].Account = strings.Repeat("a", 257)
+	c3 := connectedAt(time.Unix(1_800_000_000, 0))
+	c3.Installations[1].Repositories[0].FullName = "a/b\u200b"
+	for _, bad := range []*kadranv1.GitHubConnection{c2, c3} {
+		srv3, _ := gitServer(t, &fakeGit{conn: bad})
+		if _, err := srv3.GetGitHubStatus(context.Background(), &kadranv1.GetGitHubStatusRequest{}); status.Code(err) != codes.Internal {
+			t.Errorf("gecersiz kurulum verisi kabul edildi: %v", err)
 		}
 	}
 }
@@ -240,7 +292,7 @@ func TestStartRejectsForeignVerificationURI(t *testing.T) {
 		p.VerificationUri = uri
 		srv, actions := gitServer(t, &fakeGit{prompt: p})
 		_, err := srv.StartGitHubConnect(context.Background(), &kadranv1.StartGitHubConnectRequest{})
-		if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "unexpected address") {
+		if status.Code(err) != codes.Internal || !strings.Contains(err.Error(), "unexpected data") {
 			t.Errorf("%q: err = %v", uri, err)
 		}
 		if len(actions()) != 0 {

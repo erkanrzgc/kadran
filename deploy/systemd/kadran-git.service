@@ -38,6 +38,8 @@ ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
+# TemporaryFileSystem=/run KASTEN yok: Type=notify NOTIFY_SOCKET'i
+# /run/systemd altında bekler; /run'ı boşaltmak hazır bildirimini keserdi.
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
@@ -56,6 +58,11 @@ SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
 InaccessiblePaths=-/run/kadran-exec -/run/docker.sock -/var/lib/kadran -/var/lib/kadran-exec -/var/lib/kadran-caddy
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-IPAddressDeny=localhost link-local multicast
+# Özel ve paylaşımlı aralıklar da reddedilir: Docker köprü ağları ve GCE'nin
+# IPv6 metadata adresi (fd20:ce::254) bu aralıklarda. GitHub'ın adresleri
+# herkese açık. İstemcide vekil desteği yok (Proxy nil), yani meşru hiçbir
+# şey özel bir adrese gitmez. Çözümleme yine çalışır: 127.0.0.53 saplamasına
+# izin var ve systemd-resolved üst sunucuyu birimin DIŞINDAN sorgular.
+IPAddressDeny=localhost link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7
 IPAddressAllow=127.0.0.53
 BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf

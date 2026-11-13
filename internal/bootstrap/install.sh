@@ -23,6 +23,9 @@ LIB_DIR=/usr/local/lib/kadran
 STATE_DIR=/var/lib/kadran
 CLIENT_HOME=/var/lib/kadran-client
 SSHD_DROPIN=/etc/ssh/sshd_config.d/60-kadran.conf
+# Yalnız betik denetimleri için kök öneki (git_onkosul_*); ortamdan gelen bir
+# değer ön koşulları başka bir köke yönlendiremesin diye burada boşaltılır.
+KOK=""
 
 say()  { printf '  %s\n' "$*"; }
 step() { printf '\n==> %s\n' "$*"; }
@@ -114,13 +117,15 @@ git_kullanicisi() {
             --no-create-home --shell "$NOLOGIN" --comment "Kadran GitHub access broker" kadran-git
     fi
     for forbidden_group in docker kadran kadran-client kadran-proxy; do
-        if id -nG kadran-git | tr ' ' '\n' | grep -qx "$forbidden_group"; then
-            die "kadran-git must not belong to $forbidden_group"
-        fi
+        case " $(id -nG kadran-git) " in
+            *" $forbidden_group "*) die "kadran-git must not belong to $forbidden_group" ;;
+        esac
     done
-    if id -nG kadran | tr ' ' '\n' | grep -qx kadran-git; then
-        die "kadran must not belong to the kadran-git group"
-    fi
+    # case, boru hattı değil: `grep -q` erken çıkınca `id` SIGPIPE alır ve
+    # pipefail altında sonuç yanlış okunurdu.
+    case " $(id -nG kadran) " in
+        *" kadran-git "*) die "kadran must not belong to the kadran-git group" ;;
+    esac
 }
 
 git_birimleri() {

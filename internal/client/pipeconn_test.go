@@ -200,6 +200,24 @@ func (s *stubService) VerifyAuditChain(context.Context, *kadranv1.VerifyAuditCha
 	}, nil
 }
 
+// GitHub çağrıları bu testlerin konusu değil; saplama yalnız arayüzü
+// tamamlar (K-167 ile KadranService'e eklendiler).
+func (s *stubService) StartGitHubConnect(context.Context, *kadranv1.StartGitHubConnectRequest) (*kadranv1.StartGitHubConnectResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "saplama GitHub'a bağlanmaz")
+}
+
+func (s *stubService) GetGitHubStatus(context.Context, *kadranv1.GetGitHubStatusRequest) (*kadranv1.GetGitHubStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "saplama GitHub durumunu bilmez")
+}
+
+func (s *stubService) DisconnectGitHub(context.Context, *kadranv1.DisconnectGitHubRequest) (*kadranv1.DisconnectGitHubResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "saplama GitHub bağlantısını kesmez")
+}
+
+func (s *stubService) ResolveGitHubBranch(context.Context, *kadranv1.ResolveGitHubBranchRequest) (*kadranv1.ResolveGitHubBranchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "saplama dal çözmez")
+}
+
 // connectedPipes, birbirine bağlı iki pipeConn üretir.
 //
 // io.Pipe kasıtlı olarak kullanılıyor: net.Pipe süre sınırlarını

@@ -12805,7 +12805,7 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 
 **Bulgu:** GCP'de 9 Kasım 09:26'dan beri `/var/run/reboot-required` var (`linux-image-6.12.116`; çalışan 6.12.115). Dokunulmadı; yeniden başlatma ayrı karar.
 
-## K-168 — Uzak yedek GCP'de DNS'e takılır mı: bugünkü rclone ile hayır (2026-11-12)
+## K-168 — Uzak yedek GCP'de DNS'e takılır mı: bugünkü rclone ile hayır; stub bağı eklendi (2026-11-12)
 
 **İstek (kullanıcı, 12 Kasım):** K-167'nin yan bulgusunu denetle (`github-device-flow` dalındaki
 "Ölçüm"): GCP'de `kadran-offsite` yapılandırılmış mı, rclone saf Go mu. Etkileniyorsa
@@ -12878,16 +12878,54 @@ kendisiyle ölçülmedi.
     yatkın.
 - **Düzeltme ölçüldü (E).** Hetzner'de bir şey bozmuyor (C, E) ve süzgeci genişletmiyor.
 
-**Karar: birim değişmedi; karar kullanıcıda.**
-- Bugün etkilenen bir yol yok.
-- Başında `-` olmayan bağ, systemd-resolved'ı olmayan bir sunucuda birimi başlatmaz. Bugün çalışan
-  bir kurulumu bozabilir (ör. resolved'sız Debian, `resolv.conf`'ta link-local olmayan bir çözücü);
-  bu ölçülmedi.
-- Öneri: bağ, `kadran-git`'in genel ön koşulu (K-167: kurulum resolved yoksa durur) main'e girince
-  `kadran-offsite.service`'e de eklensin. O zaman ayrı ön koşul gerekmez.
-- Daha önce istenirse: bağ, `secimli_dosyalari_kur offsite` yolunda resolved denetimi (seçimli
-  birim için tüm kurulumu durdurmadan), README satırı, `TestOffsiteUploaderCanResolveNamesButNotReachLocalhost`
-  uzantısı ve `mutate-units.sh` mutasyonu.
+**İlk öneri:** bugün etkilenen yol olmadığı için bağ, `kadran-git`'in genel ön koşulu (K-167)
+main'e girince eklenecekti.
+
+**Karar (kullanıcı, 12 Kasım: "apply"): bağ şimdi ekleniyor.**
+- **Birim:** `BindReadOnlyPaths=-/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf` ve
+  `After=systemd-resolved.service` (zamanlayıcı `Persistent=true`; kaçırılan koşu açılışta hemen
+  başlar). `Wants=` yok. Birimin DNS yorumu düzeltildi: "rclone Go'nun kendi çözücüsünü kullanıyor"
+  yalnız nsswitch `files dns` olan sunucuda doğru.
+- **`-` öneki, K-167'deki `kadran-git` biçiminden farklı.** Depoda kural var
+  (`TestUnitsDoNotHardRequireForeignPaths`): Kadran'ın yaratmadığı bir yol `-` ile isteğe bağlı
+  olmalı. Uzak yedek seçimli bir birim ve resolved'sız bir sunucuda bugün çalışıyor olabilir.
+  WSL'de (systemd 255) geçici birimle ölçüldü:
+
+  | bağ | çıkış | birimin gördüğü |
+  |---|---|---|
+  | `-/yok/stub-resolv.conf:/etc/resolv.conf` | 0 | host'un çözücüsü (bağ atlandı) |
+  | `/yok/stub-resolv.conf:/etc/resolv.conf` (öneksiz) | 226 (NAMESPACE) | birim başlamadı |
+  | `-/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf` | 0 | `nameserver 127.0.0.53` |
+
+  İki sunucuda kaynak var; davranış yukarıdaki C ve E vakalarıyla aynı.
+- **Kurulum ön koşulu** (`offsite_cozucu_kotu`, `install.sh`'ın ön koşul bölümünde, hiçbir şey
+  değişmeden önce): uzak yedek kuruluysa (`kadran-offsite.timer` ya da göç öncesi
+  `panely-offsite.timer` var ve maskeli değil) ve resolved çalışıp stub 127.0.0.53 demiyorsa, birim
+  host'un `resolv.conf`'unu görür. Orada loopback ya da link-local bir çözücü varsa (127.0.0.53
+  dışında) kurulum durur ve iki çıkış söyler: resolved'ı aç ya da zamanlayıcıyı maskele.
+  - Bu, her rclone ile zaten bozuk olan durum (beklenen, ölçülmedi): resolved yokken nss-resolve
+    UNAVAIL döner ve glibc de `resolv.conf`'taki adrese gider.
+  - Olağan bir çözücüyle çalışan resolved'sız kurulum durdurulmaz.
+  - Seçimli birimler kurulumun sonunda güncellendiği için denetim oraya konmadı; orada durmak yarım
+    kurulum bırakırdı.
+  - 12 Kasım'da okunan değerlere göre iki sunucuda da denetim geçer: resolved active, stub
+    127.0.0.53, uzak yedek zamanlayıcısı ikisinde de kurulu.
+- **README:** kurulum bölümüne DNS notu.
+
+**Sınama:**
+- `TestOffsiteUploaderSeesTheStubResolver`: bağın tam satırı ve `After=`.
+- `check-install-sh.sh`: 14 vaka; GCP ve Hetzner'in okunan dosyalarıyla, maskeli zamanlayıcı
+  kontrol grubuyla. Ayrıca çağrının ön koşul bölümünde ve `die` ile durduğu denetleniyor.
+- Mutasyon:
+  - `mutate-units.sh` 4/4 yakalandı: bağ yok, öneksiz, GCP'nin `resolv.conf`'u, `After=` yok.
+  - `mutate-install.sh` 9/9 yakalandı (WSL, root'suz). İlk koşuda var olan bir mutantın arama
+    metni benim satırımla iki kez eşleşti (`-eq 1 ] || return 1`). Satır `= 1` yapıldı; tek
+    eşleşme kuralı (K-127) bunu yakaladı.
+- `systemd-analyze verify` (WSL): yeni birimde yönerge hatası yok, yalnız betik WSL'de yok.
+  Kontrol: bağ yolu göreli yapılınca "path is not absolute, ignoring".
+
+**Durum:** dal `claude/adoring-boyd-e169d3`; push yok. Canlıya sunucu yükseltmesiyle gider
+(`secimli_guncelle` kurulu uzak yedek birimini yeniler); ayrı onay.
 
 **Artık:** GCP'deki 3 Ekim prova artıkları (`olcum.conf` drop-in'i, `/srv/olcum-uzak`, yerel
 `rclone.conf`) duruyor; dokunulmadı.

@@ -112,6 +112,44 @@ func TestOffsiteUploaderCanResolveNamesButNotReachLocalhost(t *testing.T) {
 	}
 }
 
+// TestOffsiteUploaderSeesTheStubResolver, yükleyicinin ad çözmek için
+// süzgecinin İZİN VERDİĞİ çözücüye sorduğunu doğrular (K-168).
+//
+// GCP'de /etc/resolv.conf 169.254.169.254'ü gösteriyor ve birimin
+// `link-local` engeli onu kapatıyor. Go'nun kendi çözücüsünü kullanan bir
+// rclone orada her koşuda DNS'te düşer. Ölçüldü: `GODEBUG=netdns=go` ile
+// çıkış 5, "write: operation not permitted"; bağla 181 kayıt. Dağıtımın
+// cgo'lu rclone'u bugün düşmüyor, çünkü nsswitch'in `resolve` kaynağı onu
+// resolved'a götürüyor. rclone.org'un ikilisi o yolu kullanmaz.
+//
+// Bağın kaynağı stub (127.0.0.53, süzgeç izin veriyor). Komşusu
+// /run/systemd/resolve/resolv.conf DEĞİL: GCP'de o dosya tam da engellenen
+// 169.254.169.254'ü taşıyor. `-` şart: kaynak Kadran'ın değil; öneksiz bağ
+// resolved'sız sunucuda birimi hiç başlatmazdı (226/NAMESPACE). Çözücü o
+// sunucuda süzgece takılıyorsa kurulum en başta durur (offsite_cozucu_kotu).
+func TestOffsiteUploaderSeesTheStubResolver(t *testing.T) {
+	const bag = "BindReadOnlyPaths=-/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf"
+	yonergeler := strings.Split(unitOku(t, "kadran-offsite.service"), "\n")
+	if !slices.Contains(yonergeler, bag) {
+		t.Errorf("kadran-offsite.service %q taşımıyor — GCP'de resolv.conf "+
+			"169.254.169.254'ü gösteriyor, süzgeç onu kapatıyor ve Go'nun "+
+			"çözücüsünü kullanan bir rclone hiçbir adı çözemez", bag)
+	}
+
+	// Zamanlayıcı Persistent=true: kaçırılan koşu açılışta hemen başlar,
+	// resolved stub'ı yazmadan önce de olabilir.
+	var after []string
+	for _, satir := range yonergeler {
+		if deger, ok := strings.CutPrefix(satir, "After="); ok {
+			after = append(after, strings.Fields(deger)...)
+		}
+	}
+	if !slices.Contains(after, "systemd-resolved.service") {
+		t.Errorf("After= systemd-resolved.service'i içermiyor (%q) — açılışta "+
+			"yükleyici stub'dan önce koşabilir", after)
+	}
+}
+
 // TestOffsiteUploaderCannotWriteToDisk, yükleyicinin yerel yedekleri
 // BOZAMAYACAĞINI doğrular.
 //

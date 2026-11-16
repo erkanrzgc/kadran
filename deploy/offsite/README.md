@@ -29,6 +29,14 @@ party.
 
 ## Setup
 
+**DNS.** The uploader may reach the internet but not loopback or link-local addresses; the only
+exception is systemd-resolved's stub resolver at 127.0.0.53. The unit binds
+`/run/systemd/resolve/stub-resolv.conf` over its `/etc/resolv.conf`, so with systemd-resolved
+running it resolves through 127.0.0.53, whatever rclone build you install. Without
+systemd-resolved it sees the host's `/etc/resolv.conf`. If that names a loopback or link-local
+resolver (GCP's default is 169.254.169.254), no name resolves and nothing is uploaded. In that
+case `kadran bootstrap` stops with a message (K-168).
+
 ### 1. Generate the key pair on YOUR OWN machine
 
 The private key **never goes to the server.**

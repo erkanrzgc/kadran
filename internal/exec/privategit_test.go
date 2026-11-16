@@ -183,3 +183,17 @@ func TestRewriteRejectsSparseExpansion(t *testing.T) {
 		t.Fatalf("single sparse entry under the limit rejected: %v", err)
 	}
 }
+
+// Toplam h.Size sınırı, capWriter payından (entries*2048) AYRI korunur:
+// iki 600000'lik kayıt 1,2 MB üretir; bu expanded (1 MiB) sınırını aşar ama
+// capWriter'ın 1 MiB + 200 KiB payının İÇİNDE kalır. Yalnız capWriter kalırsa
+// arşiv kabul edilirdi.
+func TestRewriteRejectsSparseTotalBelowWriterCap(t *testing.T) {
+	archive := sparseArchive(t, []string{"r/a", "r/b"}, 600000)
+	limits := archiveLimits{1 << 20, 1 << 20, 100}
+	var out bytes.Buffer
+	err := rewritePrivateArchive(context.Background(), bytes.NewReader(archive), &out, limits)
+	if err != errArchiveTooLarge {
+		t.Fatalf("err = %v, want errArchiveTooLarge", err)
+	}
+}

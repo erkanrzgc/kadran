@@ -36,6 +36,7 @@ scripts/mutate-desktop.sh 483
 scripts/mutate-domaincheck.sh 392
 scripts/mutate-env.sh 40
 scripts/mutate-get-kadran.sh 5
+scripts/mutate-github.sh 145
 scripts/mutate-goc.sh 63
 scripts/mutate-heal.sh 15
 scripts/mutate-install.sh 21

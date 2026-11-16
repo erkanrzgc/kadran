@@ -134,9 +134,19 @@ func serverOptions(creds credentials.TransportCredentials) []grpc.ServerOption {
 	}
 }
 
+// adminPolicy admin soketine yalnız `kadran` kullanıcısını alır; root DEĞİL.
+func adminPolicy(adminUID uint32) peercred.Policy {
+	return peercred.Policy{AllowUIDs: []uint32{adminUID}}
+}
+
+// fetchPolicy fetch soketine yalnız root'u (yürütücü) alır.
+func fetchPolicy() peercred.Policy {
+	return peercred.Policy{AllowUIDs: []uint32{0}}
+}
+
 // newAdminServer yalnız `kadran` kullanıcısını kabul eden sunucuyu kurar.
 func newAdminServer(svc gitService, adminUID uint32) (*grpc.Server, error) {
-	creds, err := peercred.TransportCredentials(peercred.Policy{AllowUIDs: []uint32{adminUID}})
+	creds, err := peercred.TransportCredentials(adminPolicy(adminUID))
 	if err != nil {
 		return nil, fmt.Errorf("could not set up caller verification: %w", err)
 	}
@@ -147,7 +157,7 @@ func newAdminServer(svc gitService, adminUID uint32) (*grpc.Server, error) {
 
 // newFetchServer yalnız root'u (yürütücü) kabul eden sunucuyu kurar.
 func newFetchServer(svc gitService) (*grpc.Server, error) {
-	creds, err := peercred.TransportCredentials(peercred.Policy{AllowUIDs: []uint32{0}})
+	creds, err := peercred.TransportCredentials(fetchPolicy())
 	if err != nil {
 		return nil, fmt.Errorf("could not set up caller verification: %w", err)
 	}

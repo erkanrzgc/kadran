@@ -29,6 +29,9 @@ func TestDecisionTimeoutDefaultIsFiveSeconds(t *testing.T) {
 	if !ok || g.decisionTimeout != 5*time.Second || gitDecisionTimeout != 5*time.Second {
 		t.Fatalf("decision timeout is not 5s: %+v", g)
 	}
+	if g.chunkIdle != gitChunkIdleTimeout || gitChunkIdleTimeout != 60*time.Second {
+		t.Fatalf("chunk idle default is not 60s: %+v", g)
+	}
 	if DefaultGitFetchSocket != "/run/kadran-git/fetch.sock" {
 		t.Fatal("wrong default socket")
 	}
@@ -150,5 +153,28 @@ func TestContextSourceOnBothPaths(t *testing.T) {
 	}
 	if _, err := os.Stat(tmp.Name()); err == nil {
 		t.Fatal("archive file not removed after the build")
+	}
+}
+
+// Karardan ÖNCEKİ protokol ihlali (ilk ileti karar değil) NOT_CONNECTED'dır:
+// hata dönmez, herkese açık yola düşülür. Soket gerektirmez, Windows'ta da koşar.
+func TestPreDecisionProtocolViolationFallsBackToPublic(t *testing.T) {
+	g := &gitFetcher{decisionTimeout: time.Second, chunkIdle: time.Second}
+	first := &kadranv1.FetchArchiveResponse{Kind: &kadranv1.FetchArchiveResponse_Chunk{Chunk: []byte("x")}}
+	d, f, err := g.decide(context.Background(), first, nil, func() {})
+	if d != dNotConnected || f != nil || err != nil {
+		t.Fatalf("pre-decision failure must be NOT_CONNECTED without error: %v %v %v", d, f, err)
+	}
+}
+
+// ARCHIVE'dan sonraki hata derlemeyi düşürür; herkese açık yola düşülmez.
+// Docker ulaşılamaz olduğundan, düşen bir hata ancak kadran-git'in sabit
+// metniyle ayırt edilir (public yola düşülseydi Docker hatası gelirdi).
+func TestPrivateArchiveErrorFailsBuildWithItsOwnText(t *testing.T) {
+	srv := newTestServer(t)
+	srv.gitFetch = &stubFetcher{decision: dArchive, err: errors.New("private archive download failed")}
+	err := srv.ImageBuild(validBuildRequest(), newBuildStream())
+	if err == nil || !strings.Contains(err.Error(), "private archive download failed") {
+		t.Fatalf("private fetch error not surfaced: %v", err)
 	}
 }

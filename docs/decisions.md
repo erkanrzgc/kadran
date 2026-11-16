@@ -12891,6 +12891,9 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
 - **`systemd-analyze security --offline` (Ubuntu 24.04, WSL):** `kadran-git` **1.3** (OK); `kadran-proxy` 0.8; `verify` temiz.
 - **Yükseltme ön koşulları** (`install.sh`, ikilileri değiştirmeden önce): `systemd-resolved` ve 127.0.0.53 saplaması; `kadran-exec` drop-in'inde `--git-credentials` yok. İkisi de `check-install-sh.sh` ile sınanır.
 - **Canlı açık işler (Görev 14, her adım ayrı onay):**
+  - yükseltmeden ÖNCE iki sunucuda `systemd-resolved` çalışıyor mu ve `/run/systemd/resolve/stub-resolv.conf` içinde `nameserver 127.0.0.53` var mı, doğrula;
+  - `kadran-exec` drop-in'inde kalmış `--git-credentials` varsa kaldır;
+  - uygulamayı "Only select repositories" ile kur ("All repositories" değil);
   - Hetzner: yükseltme, herkese açık uygulamaların değişmeden yeniden dağıtımı, `kadran github connect` (kodu kullanıcı girer), küçük özel depoyu dal adıyla dağıtma; sonra GCP;
   - ölçülecek: jetonun hiçbir günlükte ve iki denetim zincirinde olmadığı, yeniden başlatmadan sonra bağlantının sürdüğü, 8 saat sonra yenilemenin çalıştığı;
   - ölçülmedi: kapsam dışı bir depoda `ghu_` jetonunun 403 mü 404 mü aldığı (karar bu yüzden ona bağlı değil); App sayfası "özel anahtar üret" dese de kurulum sayfasının anahtarsız açılması gerçek kurulumda doğrulanacak;

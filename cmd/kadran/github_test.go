@@ -175,6 +175,17 @@ func TestGitHubConnectTruncatedListGetsPlus(t *testing.T) {
 	}
 }
 
+func TestGitHubConnectSingularRepository(t *testing.T) {
+	rpc := &fakeGitHubRPC{steps: []pollStep{{conn: ghConnected(selectedInst("org", 1, false))}}}
+	c, out, _, _ := ghCLI(rpc)
+	if code := c.run(t.Context(), []string{"github", "connect"}); code != exitOK {
+		t.Fatalf("cikis %d", code)
+	}
+	if !strings.Contains(out.String(), "org: 1 repository (selected)") {
+		t.Errorf("tekil yok:\n%s", out)
+	}
+}
+
 func TestConnectPrintsInstallLineWhenNoInstallation(t *testing.T) {
 	rpc := &fakeGitHubRPC{steps: []pollStep{{conn: ghConnected()}}}
 	c, out, _, _ := ghCLI(rpc)

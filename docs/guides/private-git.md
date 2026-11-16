@@ -151,7 +151,7 @@ Private builds do not run `git clone`. Kadran builds from the archive of the exa
   Kadran does not run a separate LFS fetch.
 - Source trees that need symlinks are not supported.
 - The archive is at most 128 MiB compressed, 512 MiB unpacked and 100,000 entries. The download
-  is limited to two minutes.
+  is limited by `kadran-git`'s own two-minute timeout per request to GitHub. On the executor side, `kadran-git` has 5 seconds to decide whether a repository is private, and the archive stream may pause for at most 60 seconds between chunks.
 - The token is not passed to your Dockerfile. Downloading other private packages during a build
   does not use it.
 
@@ -234,8 +234,9 @@ ExecStart=/usr/local/lib/kadran/kadran-git --client-id YOUR_CLIENT_ID --app-slug
 sudo systemctl restart kadran-git
 ```
 
-The installer does not write a drop-in for `kadran-git`, so yours stays across upgrades. After you change the client ID, the old connection
-no longer counts (it belongs to another App). Run `kadran github connect` again.
+The installer does not write a drop-in for `kadran-git`, so yours stays across upgrades.
+After you change the client ID, the old connection no longer counts (it belongs to another
+App). Run `kadran github connect` again.
 
 ## Upgrading
 
@@ -250,8 +251,19 @@ before it replaces any binary, and stops with a message if one fails:
   kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)
   ```
 
-  Install and enable `systemd-resolved` (on Debian: `sudo apt install systemd-resolved`, then
-  `sudo systemctl enable --now systemd-resolved`), then run the upgrade again.
+  Installing it changes how the host resolves DNS. A host that already runs its own resolver
+  can lose DNS. Keep a copy first: `sudo cp /etc/resolv.conf /root/resolv.conf.bak`. Then
+  install and enable it (on Debian: `sudo apt install systemd-resolved`, then
+  `sudo systemctl enable --now systemd-resolved`) and check:
+
+  ```bash
+  resolvectl status
+  getent hosts api.github.com
+  grep nameserver /run/systemd/resolve/stub-resolv.conf   # must show: nameserver 127.0.0.53
+  ```
+
+  The last file is the one the installer's pre-check reads. Run the upgrade again when all
+  three work.
 
 - **The `kadran-exec` drop-in must not set `--git-credentials`.** If it does, the upgrade stops:
 
@@ -279,7 +291,8 @@ before it replaces any binary, and stops with a message if one fails:
 | `the GitHub app client id was rejected` | `--client-id` does not match a GitHub App |
 | `kadran-git could not reach GitHub` | The server cannot reach `github.com`. Check its DNS and network |
 | `GitHub rate limit reached, retry later` | Wait, then try again |
-| `No installation yet: install the app, then run kadran github status.` | You connected but installed the app on no repository. Open the install link |
+| ``No installation yet: install the app, then run `kadran github status`.`` | Printed by `connect`: you connected but installed the app on no repository. Open the install link under it |
+| `No installation yet: install the app with the link below.` | Printed by `status`: same cause. The install link is on the last line of the output |
 | `ALL repositories — consider Only select repositories` | See [the warning](#the-all-repositories-warning) |
 
 ### A private build fails

@@ -214,7 +214,12 @@ func (c *cli) printInstallations(conn *kadranv1.GitHubConnection) {
 		if in.GetTruncated() {
 			plus = "+"
 		}
-		fmt.Fprintf(c.stdout, "  %s: %d%s repositories (selected)\n", in.GetAccount(), len(in.GetRepositories()), plus)
+		n := len(in.GetRepositories())
+		noun := "repositories"
+		if n == 1 && plus == "" {
+			noun = "repository"
+		}
+		fmt.Fprintf(c.stdout, "  %s: %d%s %s (selected)\n", in.GetAccount(), n, plus, noun)
 	}
 }
 

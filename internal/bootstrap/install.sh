@@ -306,6 +306,38 @@ docker_havuzu_sabitle() {
     echo yazildi
 }
 
+# offsite_cozucu_kotu <stub> <resolv.conf> <resolved durumu> <zamanlayıcı>...
+#
+# Uzak yedek kuruluysa (zamanlayıcı dosyası var, maskeli değil) ve birimin
+# göreceği çözücü kendi IP süzgecine takılıyorsa o çözücünün adresini basar
+# ve 0 döner. Sorun yoksa 1 döner (K-168).
+#
+# kadran-offsite.service stub'ı `-` ile /etc/resolv.conf'un yerine bağlıyor.
+# resolved çalışıyor ve stub 127.0.0.53 diyorsa birim onu görür; süzgeç
+# 127.0.0.53'e izin veriyor. Değilse bağ atlanır ve birim host'un
+# resolv.conf'unu görür. Oradaki loopback ya da link-local bir çözücü
+# (GCP'de 169.254.169.254) süzgece takılır: hiçbir ad çözülmez, yedek
+# yüklenmez. Bugün çalışan bir kurulum (resolved'sız, olağan çözücü)
+# durdurulmaz.
+offsite_cozucu_kotu() {
+    local stub="$1" resolv="$2" durum="$3" z kurulu=0 ns
+    shift 3
+    for z in "$@"; do
+        [ -e "$z" ] || [ -L "$z" ] || continue
+        [ "$(readlink "$z")" = /dev/null ] && continue
+        kurulu=1
+    done
+    [ "$kurulu" = 1 ] || return 1
+    if [ "$durum" = active ] &&
+        awk '$1 == "nameserver" && $2 == "127.0.0.53" { f = 1 } END { exit !f }' "$stub" 2>/dev/null; then
+        return 1
+    fi
+    ns="$(awk '$1 == "nameserver" && $2 != "127.0.0.53" &&
+               $2 ~ /^(127\.|169\.254\.|::1$|[fF][eE]80:)/ { print $2; exit }' "$resolv" 2>/dev/null || true)"
+    [ -n "$ns" ] || return 1
+    printf '%s\n' "$ns"
+}
+
 # ── Ön koşullar ──────────────────────────────────────────────────────
 
 step "Prerequisites"
@@ -324,6 +356,19 @@ command -v docker >/dev/null \
     || die "Docker Engine not found — install it first (Ubuntu: apt-get install -y docker.io)"
 docker version --format '{{.Server.Version}}' >/dev/null 2>&1 \
     || die "Docker is installed but its daemon does not answer — systemctl status docker"
+
+# Uzak yedek kuruluysa DNS'i kendi süzgecine takılmamalı (K-168). Burada,
+# hiçbir şey değişmeden önce: seçimli birimler kurulumun sonunda
+# güncelleniyor, orada durmak yarım bir kurulum bırakırdı.
+if offsite_ns="$(offsite_cozucu_kotu /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf \
+        "$(systemctl is-active systemd-resolved 2>/dev/null || true)" \
+        /etc/systemd/system/kadran-offsite.timer /etc/systemd/system/panely-offsite.timer)"; then
+    die "kadran-offsite needs systemd-resolved (stub resolver at 127.0.0.53). Without it the
+uploader sees nameserver $offsite_ns in /etc/resolv.conf, its IP filter blocks that address,
+and no backup is uploaded (K-168).
+To fix: enable systemd-resolved so that /run/systemd/resolve/stub-resolv.conf points at
+127.0.0.53, or turn the uploader off: systemctl mask kadran-offsite.timer"
+fi
 
 # nologin yolu dağıtıma göre değişiyor.
 NOLOGIN="$(command -v nologin || echo /usr/sbin/nologin)"

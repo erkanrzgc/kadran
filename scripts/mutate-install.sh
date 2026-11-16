@@ -227,6 +227,35 @@ mutate_in "$INST" "ağ başına /24 yazılıyor (aracının /16 varsayımı)" \
 mutate_in "$INST" "havuz 192.168'e sabitleniyor" \
     "s=s.replace('\"base\": \"172.16.0.0/12\", \"size\": 16}'+chr(39),'\"base\": \"192.168.0.0/16\", \"size\": 16}'+chr(39),1)"
 
+echo "== Uzak yedek çözücüsü (K-168) =="
+
+mutate_in "$INST" "ön koşul hiç çağrılmıyor" \
+    "s=s.replace('if offsite_ns=\"\$(offsite_cozucu_kotu','if false && offsite_ns=\"\$(offsite_cozucu_kotu',1)"
+
+mutate_in "$INST" "sorun kurulumu durdurmuyor, yalnız yazılıyor" \
+    "s=s.replace('    die \"kadran-offsite needs systemd-resolved','    say \"kadran-offsite needs systemd-resolved',1)"
+
+mutate_in "$INST" "resolved'ın durumu okunmuyor, 'active' sayılıyor" \
+    "s=s.replace('\"\$(systemctl is-active systemd-resolved 2>/dev/null || true)\"','active',1)"
+
+mutate_in "$INST" "eski adlı zamanlayıcıya bakılmıyor (göç)" \
+    "s=s.replace(' /etc/systemd/system/panely-offsite.timer)\"; then',')\"; then',1)"
+
+mutate_in "$INST" "maskeli zamanlayıcı kurulu sayılıyor" \
+    "s=s.replace('        [ \"\$(readlink \"\$z\")\" = /dev/null ] && continue\n','',1)"
+
+mutate_in "$INST" "resolved kapalıyken de stub'a güveniliyor" \
+    "s=s.replace('    if [ \"\$durum\" = active ] &&\n        awk','    if awk',1)"
+
+mutate_in "$INST" "stub denetimi her çözücüyü kabul ediyor" \
+    "s=s.replace('\$2 == \"127.0.0.53\" { f = 1 }','{ f = 1 }',1)"
+
+mutate_in "$INST" "link-local çözücü (GCP) görülmüyor" \
+    "s=s.replace(r'169\.254\.|','',1)"
+
+mutate_in "$INST" "resolv.conf'taki 127.0.0.53 de kötü sayılıyor" \
+    "s=s.replace('\$2 != \"127.0.0.53\" &&','',1)"
+
 echo
 if [[ "$fail" -ne 0 ]]; then
     echo "En az bir mutasyon yakalanmadı — denetimler iddia ettikleri şeyi korumuyor."

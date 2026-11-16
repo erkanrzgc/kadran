@@ -17,7 +17,7 @@ dene() {
 
 FN="$(mktemp)"
 trap 'rm -f "$FN"' EXIT
-FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur git_onkosul_resolved git_onkosul_eski_kimlik git_kullanicisi)
+FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur offsite_cozucu_kotu git_onkosul_resolved git_onkosul_eski_kimlik git_kullanicisi)
 for f in "${FONKS[@]}"; do
     sed -n "/^$f() {/,/^}/p" internal/bootstrap/install.sh >> "$FN"
 done
@@ -314,7 +314,7 @@ echo "== kadran-git: ön koşullar ve kullanıcı (K-167) =="
 # KOK önekiyle sahtelenir; üretimde KOK boş. Beklenen hata iletisi birebir
 # aranıyor: ileti değişirse ya da kontrol düşerse kırmızı.
 G="$(mktemp -d)"
-trap 'rm -f "$FN"; rm -rf "$D" "$G"' EXIT
+trap 'rm -f "$FN"; rm -rf "$D" "$H" "$G"' EXIT
 hata_bekle() {
     local ad="$1" ileti="$2" cikti rc=0
     shift 2
@@ -369,6 +369,66 @@ hata_bekle "kadran, kadran-git grubundaysa durur" "kadran must not belong to the
 : > "$GUNLUK_G"
 gecer "temiz üyelikte geçer ve kullanıcı sistem hesabı olarak açılır" \
     "GUNLUK='$GUNLUK_G'; GRUP_GIT=''; GRUP_KADRAN=''; $KUL_SAHTE; git_kullanicisi; grep -q -- '--system --gid kadran-git --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin --comment Kadran GitHub access broker kadran-git' '$GUNLUK_G'"
+
+echo
+echo "== offsite_cozucu_kotu: uzak yedeğin DNS'i süzgecine takılmamalı (K-168) =="
+# Dosyalar GCP ve Hetzner'de okunan hâlleriyle (12 Kasım).
+R="$(mktemp -d)"
+trap 'rm -f "$FN"; rm -rf "$D" "$H" "$G" "$R"' EXIT
+printf 'nameserver 127.0.0.53\noptions edns0 trust-ad\nsearch .\n' > "$R/stub"
+printf 'nameserver 169.254.169.254\nsearch c.ornek.internal google.internal\n' > "$R/stub-eski"
+printf 'nameserver 169.254.169.254\nsearch c.ornek.internal google.internal\n' > "$R/gcp"
+printf 'nameserver 127.0.0.1\n' > "$R/yerel"
+printf 'nameserver fe80::1%%eth0\n' > "$R/fe80"
+printf 'nameserver 185.12.64.1\nnameserver 2a01:4ff:ff00::add:1\n' > "$R/olagan"
+printf 'nameserver 127.0.0.53\n' > "$R/stub-gosteren"
+: > "$R/zaman"
+ln -s /dev/null "$R/maske"
+dene "uzak yedek kurulu değil → sorun yok" \
+    "$(ys "if offsite_cozucu_kotu '$R/yok' '$R/gcp' inactive '$R/yok-zaman'; then exit 1; fi")"
+dene "zamanlayıcı maskeli → sorun yok" \
+    "$(ys "if offsite_cozucu_kotu '$R/yok' '$R/gcp' inactive '$R/maske'; then exit 1; fi")"
+dene "GCP, resolved çalışıyor, stub 127.0.0.53 → sorun yok (bağ stub'ı gösterir)" \
+    "$(ys "if offsite_cozucu_kotu '$R/stub' '$R/gcp' active '$R/zaman'; then exit 1; fi")"
+dene "GCP, resolved yok → durur ve 169.254.169.254'ü basar" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/yok' '$R/gcp' inactive '$R/zaman')\"; [ \"\$ns\" = 169.254.169.254 ]")"
+dene "resolved kapalı, eski stub dosyası duruyor → yine durur" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/stub' '$R/gcp' inactive '$R/zaman')\"; [ \"\$ns\" = 169.254.169.254 ]")"
+dene "resolved çalışıyor ama stub dosyası yok → durur" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/yok' '$R/gcp' active '$R/zaman')\"; [ \"\$ns\" = 169.254.169.254 ]")"
+dene "stub 127.0.0.53'ü göstermiyor → durur" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/stub-eski' '$R/gcp' active '$R/zaman')\"; [ \"\$ns\" = 169.254.169.254 ]")"
+dene "yerel çözücü 127.0.0.1 → durur" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/yok' '$R/yerel' inactive '$R/zaman')\"; [ \"\$ns\" = 127.0.0.1 ]")"
+dene "IPv6 link-local çözücü → durur" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/yok' '$R/fe80' inactive '$R/zaman')\"; [ \"\$ns\" = 'fe80::1%eth0' ]")"
+dene "resolved'sız, olağan çözücü → sorun yok (bugün çalışan kurulum durmaz)" \
+    "$(ys "if offsite_cozucu_kotu '$R/yok' '$R/olagan' inactive '$R/zaman'; then exit 1; fi")"
+dene "resolv.conf 127.0.0.53 → sorun yok (süzgeç izin veriyor)" \
+    "$(ys "if offsite_cozucu_kotu '$R/yok' '$R/stub-gosteren' inactive '$R/zaman'; then exit 1; fi")"
+dene "eski adlı zamanlayıcı da sayılır (göç)" \
+    "$(ys "ns=\"\$(offsite_cozucu_kotu '$R/yok' '$R/gcp' inactive '$R/yok-zaman' '$R/zaman')\"; [ \"\$ns\" = 169.254.169.254 ]")"
+dene "dosyalar yokken kurulum DURMAZ (set -e)" \
+    "$(ys "if offsite_cozucu_kotu '$R/yok' '$R/yok-resolv' inactive '$R/zaman'; then exit 1; fi; true")"
+# Kontrol grubu: maske denetimi bağı izleyen bir sınamadan geçmeli; -e
+# /dev/null'a giden bağı "var" sayar.
+dene "KONTROL: maskeli zamanlayıcı -e ile var görünür" "[ -e '$R/maske' ] && [ -L '$R/maske' ]"
+
+# Çağrı yeri: ön koşullarda, kurulum hiçbir şeyi değiştirmeden önce. Uzak
+# yedek seçimli birimlerle en sonda güncelleniyor; orada durmak yarım
+# kurulum bırakırdı.
+sed -n '/^step "Prerequisites"$/,/^step "Docker address pool"$/p' internal/bootstrap/install.sh > "$R/on"
+[ -s "$R/on" ] || { echo "ön koşul bölümü install.sh'tan çıkarılamadı — ölçüm geçersiz" >&2; exit 1; }
+on_kosulda() {
+    if grep -qF -- "$2" "$R/on"; then echo "  ✓ $1"; else echo "  ✗ $1"; fail=1; fi
+}
+on_kosulda "ön koşullarda çağrılıyor" \
+    'if offsite_ns="$(offsite_cozucu_kotu /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf'
+on_kosulda "resolved'ın durumu systemctl'den" \
+    '"$(systemctl is-active systemd-resolved 2>/dev/null || true)"'
+on_kosulda "kurulu zamanlayıcıya bakıyor" '/etc/systemd/system/kadran-offsite.timer'
+on_kosulda "eski adlı zamanlayıcıya da bakıyor (göç)" '/etc/systemd/system/panely-offsite.timer'
+on_kosulda "sonuç kurulumu durduruyor" '    die "kadran-offsite needs systemd-resolved'
 
 echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }

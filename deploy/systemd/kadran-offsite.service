@@ -11,7 +11,10 @@
 # Ayrı birim, ayrı politika: burası ağ görüyor, kadrand görmüyor.
 Description=Kadran uzak yedek yükleyicisi
 Documentation=file:/usr/local/lib/kadran/offsite/README.md
-After=network-online.target
+# systemd-resolved: aşağıdaki stub bağı (K-168). Zamanlayıcı Persistent=true,
+# kaçırılan koşu açılışta hemen başlıyor. Wants= YOK: resolved'sız sunucuda
+# bağ atlanır, birim yine başlar.
+After=network-online.target systemd-resolved.service
 Wants=network-online.target
 
 # Başarısız olursa Telegram'a bildir (K-108). K-098'den beri açık olan
@@ -76,8 +79,9 @@ IPAddressDeny=localhost link-local multicast
 # ── Tek istisna: DNS çözücüsü (K-107) ────────────────────────────────
 #
 # `localhost` engeli systemd-resolved'ın taslak çözücüsünü (127.0.0.53)
-# de kapatıyor. rclone Go'nun kendi çözücüsünü kullanıyor ve
-# /etc/resolv.conf'taki 127.0.0.53'e UDP ile soruyor; engel altında:
+# de kapatıyor. Hetzner'de (nsswitch `files dns`) rclone Go'nun kendi
+# çözücüsünü kullanıyor ve /etc/resolv.conf'taki 127.0.0.53'e UDP ile
+# soruyor; engel altında:
 #
 #   lookup ….r2.cloudflarestorage.com on 127.0.0.53:53:
 #   write udp 127.0.0.1:…->127.0.0.53:53: write: operation not permitted
@@ -89,6 +93,31 @@ IPAddressDeny=localhost link-local multicast
 # listeleniyor, ama 127.0.0.1:22 hâlâ kapalı (kısıtsız süreçten açık:
 # kontrol grubu). IPAddressAllow, IPAddressDeny'den önce gelir.
 IPAddressAllow=127.0.0.53
+
+# ── Birim stub'ı görsün, host'un resolv.conf'unu değil (K-168) ───────
+#
+# GCP'de /etc/resolv.conf stub'ı DEĞİL, /run/systemd/resolve/resolv.conf'u
+# gösteriyor: `nameserver 169.254.169.254`. `link-local` engeli o adresi
+# kapatıyor. Go'nun kendi çözücüsünü kullanan bir rclone orada hiçbir adı
+# çözemez. Geçici birimle ölçüldü (12 Kasım, kısıtsız kontrol 181 kayıt):
+#
+#   GODEBUG=netdns=go          → çıkış 5, "lookup … on 169.254.169.254:53:
+#                                 … write: operation not permitted"
+#   aynısı + bu bağ            → çıkış 0, 181 kayıt
+#
+# Dağıtımın rclone'u (cgo'lu) bugün düşmüyor: GCP'nin nsswitch'indeki
+# `resolve` kaynağı onu glibc üzerinden resolved'a götürüyor. rclone'un yayın
+# betiği `-cgo` verilmezse `CGO_ENABLED=0` kuruyor (kaynaktan okundu); o
+# ikili bu yolu kullanmaz.
+#
+# Kaynak stub, komşusu resolv.conf DEĞİL: GCP'de o dosya tam da engellenen
+# adresi taşıyor. Bağ süzgeci genişletmiyor (aynı ölçüm: 169.254.169.254:80
+# ve 127.0.0.1:22 bağla da kapalı).
+#
+# `-`: kaynak Kadran'ın değil. resolved'sız sunucuda bağ atlanır ve birim
+# bugünkü gibi host'un resolv.conf'unu görür. Oradaki çözücü süzgece
+# takılıyorsa kurulum en başta durur (install.sh, offsite_cozucu_kotu).
+BindReadOnlyPaths=-/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # Düz metin yedek PrivateTmp içinde üretiliyor ve süreç bitince yok

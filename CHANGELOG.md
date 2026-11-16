@@ -3,6 +3,52 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+Private GitHub repositories connect with a device flow (K-167). Upgrade the server for it; the
+protocol stays 3 and the four new calls are additions, so an older server answers "upgrade the
+server" and nothing else changes. The new `kadran-git` service is added by `kadran bootstrap`.
+
+### Added
+
+- `kadran github connect | status | disconnect`, and a GitHub section in the desktop app's server
+  security area. You install the "Kadran Deploy" GitHub App on selected repositories, enter a code
+  at `github.com/login/device`, and the server keeps the token. The token is renewed on the server
+  (8 hour access token, one-use renewal written to disk before it is used). `kadrand`, your
+  workstation and the root executor never see it.
+- Private repositories deploy by branch name. The server resolves the branch to a commit; CI keeps
+  passing `-commit`.
+- `kadran-git`, a new unprivileged service with two sockets: `admin.sock` for `kadrand` only and
+  `fetch.sock` for the root executor only. It is the only part that reaches GitHub.
+- Self-hosters can register their own GitHub App and run `kadran-git` with `--client-id` and
+  `--app-slug` (see the [guide](docs/guides/private-git.md#register-your-own-github-app)).
+- `connect` and `status` warn when the app is installed on **All repositories**.
+
+### Changed
+
+- Only repositories that the installation lists as private take the archive path. Public
+  repositories build as before, and if `kadran-git` is down, public builds continue. For a private
+  repository, any failure fails the build; there is no silent anonymous fallback.
+- The root executor no longer reaches the network or reads a token. Its size cap drops from
+  2990 to 2981 lines.
+- `--allow-repo` stays optional. When set, it limits every build and intersects with the
+  installation's repositories.
+
+### Removed
+
+- The K-146 token-file setup: `--git-credentials` and `/etc/kadran/private-git/credentials.json`.
+  Upgrading stops, before it replaces any binary, if a `kadran-exec` drop-in still sets
+  `--git-credentials`. Upgrading also needs `systemd-resolved` with its stub at `127.0.0.53` and
+  stops otherwise. The [guide](docs/guides/private-git.md#upgrading) shows both messages.
+
+### Security
+
+- Disconnecting deletes the token on the server but cannot revoke it on GitHub, which would need a
+  client secret that Kadran does not hold. The command prints the two pages where you revoke it.
+- Trust note: whoever holds the private key of the default "Kadran Deploy" App could read the
+  selected repositories of every account that installed it. Kadran stores no private key. Register
+  your own App to remove that trust.
+
 ## v0.12.0 — 2026-11-12
 
 Live resource usage for each server and each application (K-166), a new desktop shell (K-165) and

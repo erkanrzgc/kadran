@@ -153,15 +153,11 @@ func run() error {
 	kadranv1.RegisterExecutorServiceServer(server, service)
 
 	seq, _ := journal.Head()
-	// ⚠ Beyaz listenin durumu KASTEN günlüğe yazılıyor.
-	//
-	// Hostta bir git kimlik bilgisi varken boş bir beyaz liste, token'ın
-	// gördüğü HER özel deponun ImageBuild ile okunabilmesi demektir
-	// (internal/exec/repoallow.go). Executor bu durumu güvenilir biçimde
-	// TESPİT EDEMİYOR — kimlik bilgisi başka bir credential helper'da da
-	// olabilir — ama GÖRÜNÜR kılabilir. Operatör "depo_kisiti=YOK"
-	// satırını görmeli.
-	repoLimit := "NONE (no restriction applied)"
+	// Ek depo kısıtının durumu KASTEN günlüğe yazılıyor. Yürütücüde jeton yok
+	// (K-167): özel depoların izin listesi GitHub'daki uygulama kurulumudur ve
+	// --allow-repo verilmişse onunla kesişir. Boş liste "ek kısıt yok" demektir,
+	// "her şey açık" değil; operatör hangisinin geçerli olduğunu buradan görür.
+	repoLimit := "none (no extra limit; the GitHub app installation decides for private repositories)"
 	if n := len(splitHosts(*gitRepos)); n > 0 {
 		repoLimit = fmt.Sprintf("%d depo", n)
 	}

@@ -124,12 +124,13 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # bağlantı. Sınır kasanın kodunu getiren commit'te değişti.
 #
 # Çıktı HER ZAMAN iki sayıyı da basar; ham sayı gizlenmiyor.
-# K-146: private Git is an explicit addition to the root trust boundary.
+# K-146 (SUPERSEDED by K-167, see below): private Git was an explicit
+# addition to the root trust boundary; the network and token code left it.
 # Measured before changing this gate: 2876 code lines / 4884 raw, from
 # 2581 code lines. Fixed GitHub requests, credential ownership checks and
 # bounded archive validation run here so tokens never enter the daemon,
 # Docker URL or renderer. The import-graph measurement stays unchanged.
-# Default network access stays AF_UNIX; private Git needs an opt-in unit.
+# (Historical: that opt-in network unit no longer exists; the unit is AF_UNIX only.)
 #
 # ── 2900 → 2925: uygulama ağının alt ağ denetimi (K-150), kullanıcı kararı ──
 #

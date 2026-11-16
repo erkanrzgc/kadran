@@ -12867,3 +12867,31 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
 - **Yan bulgu:** `kadran-offsite` aynı link-local engelini taşıyor ve rclone (Go) kullanıyor. GCP'de
   uzak yedek yapılandırılırsa DNS'e takılabilir. GCP'de son koşu zamanı boş; ayrı iş olarak
   denetlenecek.
+
+**Uygulama (12-16 Kasım, dal `github-device-flow`):** özet; ayrıntı `.superpowers/sdd/2026-11-12-github-cihaz-akisi/progress.md` (Karar 1-34).
+
+- **Ne yapıldı** (commit sırasıyla):
+  - proto ve yüzey testi: `27ed800`, `5650c7d`;
+  - `internal/github` (HTTP istemcisi, jeton deposu ve yenileme, cihaz akışı): `a6b68db`, `0d97ead`, `9765efb`;
+  - `kadran-git` süreci ve iki soketi: `720c356`, `7302402`, `a7ac29f` (birim sertleştirme);
+  - yürütücü arşiv çekici ve `--git-credentials` kaldırma: `03fc416`, `d803e56`;
+  - kadrand dört çağrı: `f971f24`, `745ba11`, `b979728`;
+  - `kadran github` CLI: `27c09c2`, `3659998`; masaüstü ekranı: `0d9326d`;
+  - mutasyon betiği `mutate-github.sh`, 22 mutant, 145 sn, hepsi yakalandı: `1794c5d`;
+  - belgeler: rehber (İngilizce, baştan yazıldı), README, CHANGELOG, SECURITY, bayat K-146 metinleri: bu commit.
+- **Kararların özeti:**
+  - Karar kurulumun depo listesine göre verilir, tarball durum koduna göre değil (K1-2, K19); özel depoda
+    karardan SONRAKİ her hata derlemeyi düşürür, karardan ÖNCEKİ hata ya da 5 sn aşımı herkese açık yola düşer;
+  - yenileme jetonu diske yazılmadan kullanılmaz, yazma hatası bağlantıyı koparır (K14, K17);
+  - `kadran-git` ağı: özel aralıklar da kapalı, yalnız `127.0.0.53` açık, `/etc/resolv.conf` stub'a bağlı (K26);
+  - `--allow-repo` isteğe bağlı kesişim olarak kaldı; "All repositories" reddedilmez, uyarılır;
+  - denetim kaydına `context_source=github-app|public` eklendi (K27); yürütücüye ayar `ExecStart`'a yazılmadı;
+  - arşiv sınırları sunucuda kalır: toplam boyut sınırı ve parça başına boşta zaman aşımı 60 sn (K28).
+- **Yüzey bütçesi:** ayrıcalıklı kod 2990 -> 2981 (ağ ve jeton kodu yürütücüden çıktı; ölçüm 2982 -> 2981).
+- **`systemd-analyze security --offline` (Ubuntu 24.04, WSL):** `kadran-git` **1.3** (OK); `kadran-proxy` 0.8; `verify` temiz.
+- **Yükseltme ön koşulları** (`install.sh`, ikilileri değiştirmeden önce): `systemd-resolved` ve 127.0.0.53 saplaması; `kadran-exec` drop-in'inde `--git-credentials` yok. İkisi de `check-install-sh.sh` ile sınanır.
+- **Canlı açık işler (Görev 14, her adım ayrı onay):**
+  - Hetzner: yükseltme, herkese açık uygulamaların değişmeden yeniden dağıtımı, `kadran github connect` (kodu kullanıcı girer), küçük özel depoyu dal adıyla dağıtma; sonra GCP;
+  - ölçülecek: jetonun hiçbir günlükte ve iki denetim zincirinde olmadığı, yeniden başlatmadan sonra bağlantının sürdüğü, 8 saat sonra yenilemenin çalıştığı;
+  - ölçülmedi: kapsam dışı bir depoda `ghu_` jetonunun 403 mü 404 mü aldığı (karar bu yüzden ona bağlı değil); App sayfası "özel anahtar üret" dese de kurulum sayfasının anahtarsız açılması gerçek kurulumda doğrulanacak;
+  - ayrı iş: `kadran-offsite` aynı link-local engelini taşıyor, GCP'de DNS'e takılabilir.

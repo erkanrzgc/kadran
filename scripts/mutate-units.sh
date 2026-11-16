@@ -37,7 +37,7 @@ restore() { for f in "${FILES[@]}"; do cp "$BAK/$(basename "$f")" "$f"; done; }
 trap 'restore; rm -rf "$BAK"' EXIT
 
 fail=0
-WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive|TestReverseProxyHasNoReload|TestDaemonHasAWatchdog'
+WANT='TestExecutorJournalOutsideDaemonDirs|TestOwnedPathsAreActuallyCreated|TestOffsiteRcloneConfigOutsideDaemonDirs|TestUnitsDoNotHardRequireForeignPaths|TestOffsiteUploaderCanResolveNamesButNotReachLocalhost|TestOffsiteUploaderSeesTheStubResolver|TestNotify|TestOffsiteFailureIsNotified|TestVolumeArchive|TestReverseProxyHasNoReload|TestDaemonHasAWatchdog'
 
 # ── Taban YEŞİL olmalı ───────────────────────────────────────────────
 #
@@ -145,6 +145,20 @@ mutate "istisna tüm localhost'a genişletildi" deploy/systemd/kadran-offsite.se
 
 mutate "istisna 127.0.0.0/8'e genişletildi" deploy/systemd/kadran-offsite.service \
     "s=s.replace('\nIPAddressAllow=127.0.0.53\n','\nIPAddressAllow=127.0.0.53 127.0.0.0/8\n',1)"
+
+echo "== Uzak yedek stub çözücüsü (K-168) =="
+
+mutate "stub bağı kaldırıldı (GCP'de ad çözülmez)" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('\nBindReadOnlyPaths=-/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf\n','\n',1)"
+
+mutate "bağ öneksiz (resolved'sız sunucuda birim başlamaz)" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('\nBindReadOnlyPaths=-/run/','\nBindReadOnlyPaths=/run/',1)"
+
+mutate "bağ GCP'nin engellenen resolv.conf'unu gösteriyor" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('\nBindReadOnlyPaths=-/run/systemd/resolve/stub-resolv.conf:','\nBindReadOnlyPaths=-/run/systemd/resolve/resolv.conf:',1)"
+
+mutate "açılışta resolved'dan önce koşabilir" deploy/systemd/kadran-offsite.service \
+    "s=s.replace('\nAfter=network-online.target systemd-resolved.service\n','\nAfter=network-online.target\n',1)"
 
 echo "== Alarm göndericisi (K-108) =="
 

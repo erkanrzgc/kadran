@@ -36,6 +36,7 @@ func requests(t *testing.T) []Request {
 		{Kind: KindRollback, Target: "user@host", App: "blog"},
 		{Kind: KindDelete, Target: "user@host", App: "blog"},
 		{Kind: KindBackup, Target: "user@host"},
+		{Kind: KindGitHubDisconnect, Target: "user@host"},
 		{Kind: KindUpdate, Target: "user@host", App: "blog", Update: decode(t, `{"domain":"x.example.com"}`)},
 		{Kind: KindCreate, Target: "user@host", Spec: decode(t, `{"app_id":"blog","git_host":"github.com","git_owner":"a","git_repo":"b","git_branch":"main","container_port":3000}`)},
 	}
@@ -211,5 +212,23 @@ func TestCatalogParity(t *testing.T) {
 		if same := en[k] == tr[k]; same != (k == "title" || k == "line.dockerfile") {
 			t.Errorf("%s: iki dilde aynı mı = %v (çevrilmemiş ya da listede eskimiş)", k, same)
 		}
+	}
+}
+
+func TestGitHubDisconnectBoxTexts(t *testing.T) {
+	req := Request{Kind: KindGitHubDisconnect, Target: "user@host"}
+	en := Build(English, req)
+	if en.Title != "Disconnect GitHub" || en.Action != "Disconnect" || en.Cancel != "Cancel" ||
+		en.Message != "Disconnect GitHub from user@host? Private builds stop until you connect again." {
+		t.Fatalf("%+v", en)
+	}
+	tr := Build(Turkish, req)
+	if tr.Title == en.Title || tr.Action == en.Action || !strings.Contains(tr.Message, "user@host") {
+		t.Fatalf("%+v", tr)
+	}
+	// Hedefteki görünmez karakter kutuda kaçışla görünür.
+	hostile := Build(English, Request{Kind: KindGitHubDisconnect, Target: "h" + cp(0x202e) + "x"})
+	if strings.ContainsRune(hostile.Message, 0x202e) || !strings.Contains(hostile.Message, esc(0x202e)) {
+		t.Fatalf("%q", hostile.Message)
 	}
 }

@@ -68,6 +68,7 @@ const SAME_IN_BOTH = new Set([
   "row.docker",
   "res.cpu",
   "res.disk",
+  "sub.github",
 ]);
 
 test("iki dilde aynı değer yalnız dilden bağımsız anahtarlarda", async () => {

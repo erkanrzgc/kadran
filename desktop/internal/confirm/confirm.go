@@ -24,6 +24,8 @@ const (
 	KindDelete   Kind = "delete"
 	KindRollback Kind = "rollback"
 	KindBackup   Kind = "backup"
+	// KindGitHubDisconnect, sunucudaki GitHub bağlantısını keser (K-167).
+	KindGitHubDisconnect Kind = "github-disconnect"
 )
 
 // Request, onaylanacak işlem. Spec yalnız create'te, Update yalnız

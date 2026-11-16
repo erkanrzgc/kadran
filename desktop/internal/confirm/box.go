@@ -53,15 +53,21 @@ func Build(language Language, req Request) Box {
 		lines = append(lines, t("line.delete_effect", nil))
 	case KindBackup:
 		lines = append(lines, t("line.backup_effect", nil))
+	case KindGitHubDisconnect:
+		lines = append(lines, t("line.github_disconnect_effect", nil))
 	case KindCreate:
 		lines = append(lines, createLines(t, names, req.Spec)...)
 	case KindUpdate:
 		lines = append(lines, updateLines(t, names, req.Update)...)
 	}
 
+	title := t("title", nil)
+	if req.Kind == KindGitHubDisconnect {
+		title = t("title."+string(req.Kind), nil)
+	}
 	return Box{
-		Title:   t("title", nil),
-		Message: t("message."+string(req.Kind), params{"app": app}),
+		Title:   title,
+		Message: t("message."+string(req.Kind), params{"app": app, "target": safe(req.Target)}),
 		Detail:  strings.Join(lines, "\n"),
 		Cancel:  t("cancel", nil),
 		Action:  t("action."+string(req.Kind), nil),

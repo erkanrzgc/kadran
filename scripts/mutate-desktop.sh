@@ -64,6 +64,8 @@ FILES=(
     internal/bridge/bridge.go
     internal/bridge/management.go
     internal/bridge/servers.go
+    internal/bridge/github.go
+    src/renderer/lib/github.ts
 )
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -410,6 +412,24 @@ mutate_in src/renderer/lib/format.ts "yüzde arayüz dilinde yazılmıyor" \
     "s=s.replace('return value.toLocaleString(locale, {','return value.toLocaleString(\"en\", {',1)"
 mutate_in src/renderer/i18n/tr.json "Türkçe yüzde işareti sonda" \
     "s=s.replace('\"unit.percent\": \"%{value}\",','\"unit.percent\": \"{value}%\",',1)"
+
+echo "== GitHub bağlantısı (K-167) =="
+mutate_in src/renderer/lib/github.ts "kullanıcı kodu biçimi yanlışken de gösteriliyor" \
+    "s=s.replace('typeof code === \"string\" && USER_CODE.test(code) ? code : null','typeof code === \"string\" ? code : null',1)"
+mutate_go internal/bridge/github.go "bağlantı kesme onay sözcüğü denetlenmeden gidiyor" \
+    "s=s.replace('GitHubDisconnectConfirmation(confirmation); err != nil {','GitHubDisconnectConfirmation(confirmation); false && err != nil {',1)"
+mutate_in src/renderer/lib/github.ts "yoklama pencere gizliyken de sürüyor" \
+    "s=s.replace('return state === \"pending\" && !hidden;','return state === \"pending\";',1)"
+mutate_go internal/bridge/github.go "bağlantı kesme yerel kutu olmadan gidiyor" \
+    "s=s.replace('return b.mutate(\"'+chr(36)+'github\", confirm.Request{Kind: confirm.KindGitHubDisconnect, Target: t}, \"github.disconnect\",','_ = confirm.KindGitHubDisconnect; return b.dispatch(\"github.disconnect\",',1)"
+mutate_go internal/guard/ipc.go "GitHub onay sözcüğü her şeyi kabul ediyor" \
+    "s=s.replace('if value != GitHubDisconnectWord {','if false && value != GitHubDisconnectWord {',1)"
+mutate_go internal/guard/ipc.go "tarayıcıda her adres açılıyor (GitHub beyaz listesi yok)" \
+    "s=s.replace('if githubFixedURLs[value] || githubInstallURL.MatchString(value) {','if value != \"\" {',1)"
+mutate_in src/renderer/lib/github.ts "kesme düğmesi sözcük yazılmadan açılıyor" \
+    "s=s.replace('return typed === DISCONNECT_WORD;','return typed.length > 0;',1)"
+mutate_in src/renderer/lib/github.ts "eski sunucu hata sayılıyor (yükseltin demiyor)" \
+    "s=s.replace('? \"unsupported\" : \"failed\";','? \"failed\" : \"failed\";',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

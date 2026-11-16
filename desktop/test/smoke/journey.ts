@@ -11,6 +11,7 @@
  *   denetimleri color-scheme ile temaya bağlıyor (tokens.css).
  */
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
 /** Pencereye ulaşan taraf: değerlendirme, ekran görüntüsü ve boyut. */
@@ -313,6 +314,57 @@ async function fleetJourney(win: Page): Promise<void> {
   await dismissToasts(win);
 }
 
+/** Windows panosunun düz metni; Copy düğmesinin gerçekten yazdığını görmek için. */
+function readClipboard(): string {
+  return execFileSync("powershell", ["-NoProfile", "-Command", "Get-Clipboard"], { encoding: "utf8" }).replace(/\r?\n$/, "");
+}
+
+function writeClipboard(value: string): void {
+  execFileSync("powershell", ["-NoProfile", "-Command", "$input | Set-Clipboard"], { input: value });
+}
+
+/**
+ * GitHub bağlantısı (K-167), 760x520'de: bağlı değil -> kod ve Copy ->
+ * bağlı (ALL uyarısı, özel rozeti) -> kesme onayı yazılmadan düğme kapalı ->
+ * kesildi. Sahte sunucu durumları sırayla verir: bağlı değil, bekliyor, bağlı.
+ */
+async function githubJourney(win: Page): Promise<void> {
+  await click(win, '[data-testid="nav-github"]');
+  await waitFor(win, q('[data-testid="github-not_connected"]'), "GitHub not connected");
+  await noHorizontalOverflow(win, "github not connected at 760x520");
+  await click(win, '[data-testid="github-connect"]');
+  await waitFor(win, `${q('[data-testid="github-code"] .tile-value')}?.textContent === "WDJB-MJHT"`, "GitHub user code");
+  expect((await text(win, '[data-testid="github-open-device"]')).includes("github.com/login/device"), "device page button is missing");
+  expect(Boolean(await evaluate<boolean>(win, `Boolean(${q('[data-testid="github-open-install"]')})`)), "install link button is missing");
+  await waitFor(win, `${q('[data-testid="github-remaining"]')}?.textContent.includes("Code expires in 1")`, "GitHub code countdown");
+  await noHorizontalOverflow(win, "github code at 760x520");
+  await screenshot(win, "github-code-760x520");
+  const before = readClipboard();
+  try {
+    await click(win, '[data-testid="github-copy"]');
+    await waitFor(win, `${q('[data-testid="github-copy"]')}?.textContent === "Copied"`, "GitHub code copied");
+    expect(readClipboard() === "WDJB-MJHT", "Copy did not put the code on the clipboard");
+  } finally {
+    writeClipboard(before);
+  }
+  // Yoklama 3 sn'de bir: ikinci yoklamada bağlı.
+  await waitFor(win, q('[data-testid="github-connected"]'), "GitHub connected", 20_000);
+  expect((await text(win, '[data-testid="github-account"]')).includes("octo"), "GitHub account is missing");
+  expect(Boolean(await evaluate<boolean>(win, `Boolean(${q('[data-testid="github-all-warning"]')})`)), "the ALL repositories warning is missing");
+  expect((await evaluate<number>(win, `document.querySelectorAll('[data-testid="github-private"]').length`)) === 1, "exactly one private badge expected");
+  await noHorizontalOverflow(win, "github connected at 760x520");
+  await screenshot(win, "github-connected-760x520");
+  await click(win, '[data-testid="github-disconnect"]');
+  await waitFor(win, q('[data-testid="github-disconnect-dialog"]'), "disconnect dialog");
+  expect(await evaluate<boolean>(win, `${q('[data-testid="github-disconnect-submit"]')}.disabled`), "disconnect is enabled without the confirmation word");
+  await fill(win, '[data-testid="github-disconnect-confirmation"]', "Disconnect");
+  expect(await evaluate<boolean>(win, `${q('[data-testid="github-disconnect-submit"]')}.disabled`), "disconnect accepts a wrong-case confirmation");
+  await noHorizontalOverflow(win, "github disconnect dialog at 760x520");
+  await fill(win, '[data-testid="github-disconnect-confirmation"]', "disconnect");
+  await click(win, '[data-testid="github-disconnect-submit"]');
+  await waitFor(win, q('[data-testid="github-not_connected"]'), "GitHub disconnected");
+}
+
 async function managementJourney(win: Page): Promise<void> {
   await click(win, '[data-testid="nav-apps"]');
   await waitFor(win, q('[data-testid="app-card-hello"]'), "application cards");
@@ -417,6 +469,8 @@ async function managementJourney(win: Page): Promise<void> {
   await waitFor(win, q('[data-testid="backup-result"]'), "backup success");
   await waitFor(win, `document.querySelectorAll('[data-testid="backup-row"]').length === 2`, "backup refreshed list");
   await noHorizontalOverflow(win, "backups at 760x520");
+
+  await githubJourney(win);
 
   await openServer(win, "fake@slow");
   await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "slow server connected");
@@ -561,6 +615,14 @@ export async function journey(win: Page): Promise<void> {
   await waitFor(win, `${q('[data-testid="resources-unsupported"]')}?.textContent.includes("Upgrade")`, "old server asks for an upgrade");
   expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="app-usage"]')})`)), "old server shows an application usage table");
   expect(!(await evaluate<boolean>(win, `[...document.querySelectorAll('[data-testid="toast"]')].some((el) => el.textContent.includes("Unimplemented"))`)), "old server raised a toast");
+
+  // Eski sunucuda GitHub ekranı: "sunucuyu yükseltin", düğme yok, bildirim yok (K-167).
+  await click(win, '[data-testid="nav-github"]');
+  await waitFor(win, `${q('[data-testid="screen-github"]')}?.textContent.includes("Upgrade the server")`, "old server asks for an upgrade on the GitHub screen");
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="github-connect"]')})`)), "old server offers to connect GitHub");
+  expect(!(await evaluate<boolean>(win, `[...document.querySelectorAll('[data-testid="toast"]')].some((el) => el.textContent.includes("Unimplemented"))`)), "old server raised a GitHub toast");
+  await noHorizontalOverflow(win, "github upgrade state");
+  await click(win, '[data-testid="nav-status"]');
 
   // Bağlantı koptuktan sonra yenileme: ekran bayat işaretlenmeli.
   await openServer(win, "fake@flaky");

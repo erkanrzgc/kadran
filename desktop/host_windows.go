@@ -125,6 +125,12 @@ func (h *host) SetClipboard(text string) error {
 	return runtime.ClipboardSetText(h.context(), text)
 }
 
+// OpenURL, adresi varsayılan tarayıcıda açar (bridge.OpenGitHub beyaz listeden geçirir).
+func (h *host) OpenURL(url string) error {
+	runtime.BrowserOpenURL(h.context(), url)
+	return nil
+}
+
 // Confirm, yerel görev kutusu; pencereye bağlı ve kipli.
 func (h *host) Confirm(box confirm.Box) (bool, error) {
 	return win.Confirm(h.window(), win.Box{Title: box.Title, Message: box.Message, Detail: box.Detail, Cancel: box.Cancel, Action: box.Action})

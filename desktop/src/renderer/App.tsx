@@ -18,6 +18,7 @@ import { AlarmsScreen } from "./screens/AlarmsScreen.tsx";
 import { AppsScreen } from "./screens/AppsScreen.tsx";
 import { AuditScreen } from "./screens/AuditScreen.tsx";
 import { BackupsScreen } from "./screens/BackupsScreen.tsx";
+import { GitHubScreen } from "./screens/GitHubScreen.tsx";
 import { FleetAlarms, FleetApps, FleetAudit } from "./screens/FleetLists.tsx";
 import { ServersScreen } from "./screens/ServersScreen.tsx";
 import { SettingsScreen } from "./screens/SettingsScreen.tsx";
@@ -216,6 +217,8 @@ export function App() {
                   <AuditScreen target={server.state.target} />
                 ) : serverView === "apps" ? (
                   <AppsScreen key={server.state.target} target={server.state.target} startCreating={newAppFor === active} onCreateConsumed={() => setNewAppFor(null)} />
+                ) : serverView === "github" ? (
+                  <GitHubScreen key={server.state.target} target={server.state.target} />
                 ) : serverView === "alarms" ? (
                   <AlarmsScreen key={server.state.target} target={server.state.target} />
                 ) : (

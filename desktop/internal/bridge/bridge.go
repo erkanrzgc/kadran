@@ -39,6 +39,9 @@ type Host interface {
 	// SetLook, temaya göre pencerenin zeminini ve camın tonunu ayarlar.
 	SetLook(look appearance.WindowLook)
 	SetClipboard(text string) error
+	// OpenURL, adresi varsayılan tarayıcıda açar. Çağıran (OpenGitHub) adresi
+	// beyaz listeden geçirmiş olmalı.
+	OpenURL(url string) error
 	// Confirm, yerel onay kutusunu gösterir; true: eylem onaylandı.
 	// Varsayılan düğme Cancel olmalı.
 	Confirm(box confirm.Box) (bool, error)

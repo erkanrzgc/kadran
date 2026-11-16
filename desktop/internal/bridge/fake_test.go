@@ -55,6 +55,7 @@ type fakeHost struct {
 	shown     chan struct{}
 	looks     []appearance.WindowLook
 	clipboard string
+	opened    []string
 	actions   []string
 	// onLook, SetLook çağrıldığı anda koşar (sıra testleri için).
 	onLook func()
@@ -71,6 +72,10 @@ func (h *fakeHost) SetLook(l appearance.WindowLook) {
 }
 func (h *fakeHost) SetClipboard(text string) error {
 	h.clipboard = text
+	return nil
+}
+func (h *fakeHost) OpenURL(url string) error {
+	h.opened = append(h.opened, url)
 	return nil
 }
 func (h *fakeHost) Confirm(box confirm.Box) (bool, error) {

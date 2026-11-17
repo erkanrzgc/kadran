@@ -274,6 +274,11 @@ these things before they replace any binary:
     sudo systemctl daemon-reload
     ```
 
+    This leaves the saved GitHub sign-in in `/var/lib/kadran-git`, and `kadran github disconnect`
+    cannot remove it once the service is gone. If you will not use private repositories again,
+    delete it (`sudo rm -rf /var/lib/kadran-git`) and revoke the app as described in
+    [Disconnect and revoke](#disconnect-and-revoke).
+
   Installing `systemd-resolved` changes how the host resolves DNS. A host that already runs its
   own resolver can lose DNS. Keep a copy first: `sudo cp /etc/resolv.conf /root/resolv.conf.bak`. Then
   install and enable it (on Debian: `sudo apt install systemd-resolved`, then

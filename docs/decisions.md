@@ -12878,7 +12878,9 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
   - kadrand dört çağrı: `f971f24`, `745ba11`, `b979728`;
   - `kadran github` CLI: `27c09c2`, `3659998`; masaüstü ekranı: `0d9326d`;
   - mutasyon betiği `mutate-github.sh`, 22 mutant, 145 sn, hepsi yakalandı: `1794c5d`;
-  - belgeler: rehber (İngilizce, baştan yazıldı), README, CHANGELOG, SECURITY, bayat K-146 metinleri: bu commit.
+  - belgeler: rehber (İngilizce, baştan yazıldı), README, CHANGELOG, SECURITY, bayat K-146 metinleri: `a297acb`, `f6ea360`;
+  - main (K-168) dala birleştirildi: `cc68816`;
+  - son inceleme ve gerçek GitHub denemesinin düzeltmeleri: `715a362` (sunucu, CLI, kurulum, belgeler), `c684bac` (masaüstü), belge notları: bu commit.
 - **Kararların özeti:**
   - Karar kurulumun depo listesine göre verilir, tarball durum koduna göre değil (K1-2, K19); özel depoda
     karardan SONRAKİ her hata derlemeyi düşürür, karardan ÖNCEKİ hata ya da 5 sn aşımı herkese açık yola düşer;
@@ -12887,6 +12889,11 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
   - `--allow-repo` isteğe bağlı kesişim olarak kaldı; "All repositories" reddedilmez, uyarılır;
   - denetim kaydına `context_source=github-app|public` eklendi (K27); yürütücüye ayar `ExecStart`'a yazılmadı;
   - arşiv sınırları sunucuda kalır: toplam boyut sınırı ve parça başına boşta zaman aşımı 60 sn (K28).
+- **Yerel ölçüm (Görev 13, 16-17 Kasım, WSL Ubuntu 24.04, yalnız `kadran-git`, canlı değil):**
+  - birimler: soketler etkin, servis ilk bağlantıya kadar kapalı; `/run/kadran-git` root 755, `admin.sock` kadran-git:kadran 660, `fetch.sock` root 600; `kadran` bağlanınca servis başlıyor, `nobody` dosya izninden reddediliyor; yeniden başlatma ve dağıtım yeniden açılışında döngü yok;
+  - ağ, kontrol gruplu: `api.github.com` ve dış dünya açık; WSL'in 10/8 aralığındaki DNS'i ve `127.0.0.54:53` kısıtsızken açık, birimde kapalı; `127.0.0.53` ikisinde de açık (istisna);
+  - gerçek GitHub, tek özel deneme deposu ("Only select repositories", uygulama bağlantıdan SONRA kuruldu): cihaz akışı PENDING -> CONNECTED; durum dosyası 0600, dağıtım kapanıp açılınca bağlantı sürüyor; kurulum, kurulduktan 4 sn sonra durum çağrısıyla görüldü; kapsanan özel depo ARCHIVE 1,6-1,7 sn (918 KB, 174 girdi, `.git` yok); herkese açık ve olmayan depo NOT_COVERED (~2 ms); kapsanan depoda olmayan commit: ARCHIVE kararından sonra NotFound; geçici dosya artığı yok; hiçbir günlükte `ghu_`/`ghr_` yok;
+  - bulunan hata: olmayan dal için GitHub `422` dönüyor, `kadran-git` bunu `Unavailable` yapıyor, kadrand da "servis çalışmıyor" diyordu. `715a362` ile 422 yalnız dal çözümünde NotFound, genel hata kodu `Unknown`; aynı denemede "repository or branch not found" görüldü.
 - **Yüzey bütçesi:** ayrıcalıklı kod 2990 -> 2981 (ağ ve jeton kodu yürütücüden çıktı; ölçüm 2982 -> 2981).
 - **`systemd-analyze security --offline` (Ubuntu 24.04, WSL):** `kadran-git` **1.3** (OK); `kadran-proxy` 0.8; `verify` temiz.
 - **Yükseltme ön koşulları** (`install.sh`, ikilileri değiştirmeden önce; son inceleme düzeltmesi, `check-install-sh.sh` ile sınanır):
@@ -12901,7 +12908,8 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
   - Hetzner: yükseltme, herkese açık uygulamaların değişmeden yeniden dağıtımı, `kadran github connect` (kodu kullanıcı girer), küçük özel depoyu dal adıyla dağıtma; sonra GCP;
   - ölçülecek: jetonun hiçbir günlükte ve iki denetim zincirinde olmadığı, yeniden başlatmadan sonra bağlantının sürdüğü, 8 saat sonra yenilemenin çalıştığı;
   - ölçülmedi: kapsam dışı bir depoda `ghu_` jetonunun 403 mü 404 mü aldığı (karar bu yüzden ona bağlı değil); App sayfası "özel anahtar üret" dese de kurulum sayfasının anahtarsız açılması gerçek kurulumda doğrulanacak;
-  - ayrı iş: `kadran-offsite` aynı link-local engelini taşıyor, GCP'de DNS'e takılabilir.
+  - ayrı iş: `kadran-offsite` aynı link-local engelini taşıyor, GCP'de DNS'e takılabilir (K-168 ile stub bağı eklendi, main'de);
+  - mutasyon süre tablosu (`SURELER`): `mutate-github.sh` (333 sn), `mutate-install.sh` (72 sn) ve masaüstü (517 sn) yerel ölçüm; CI'dan yeni tablo alınınca `check-mutation-shard.sh`'taki "en uzun beş" listesi de yeniden çıkarılmalı (`mutate-github.sh` 278 sn'nin altına inerse liste yeniden `totp` olur).
 
 ## K-168 — Uzak yedek GCP'de DNS'e takılır mı: bugünkü rclone ile hayır; stub bağı eklendi (2026-11-12)
 

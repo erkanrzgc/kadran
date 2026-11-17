@@ -154,8 +154,8 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
   `httpd` or `lighttpd` is running.
 - **`systemd-resolved`** (with its stub at `127.0.0.53`) is needed for private GitHub
   repositories only. Without it the installer warns, skips the `kadran-git` service, and public
-  repositories deploy as usual. See the
-  [private repositories guide](docs/guides/private-git.md#upgrading).
+  repositories deploy as usual. If `kadran-git` is already set up on the server, the installer
+  stops instead. See the [private repositories guide](docs/guides/private-git.md#upgrading).
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`): use
   `bootstrap -sudo user@server`. Root SSH stays closed. Open 80/443 in the provider's
   firewall; on GCP, use a rule with a target tag so only this machine is exposed.

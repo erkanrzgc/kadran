@@ -66,6 +66,8 @@ FILES=(
     internal/bridge/servers.go
     internal/bridge/github.go
     src/renderer/lib/github.ts
+    src/renderer/lib/github-poll.ts
+    src/renderer/hooks/useGitHub.ts
 )
 BAKDIR=$(mktemp -d)
 bak() { printf '%s/%s' "$BAKDIR" "${1//\//__}"; }
@@ -430,6 +432,25 @@ mutate_in src/renderer/lib/github.ts "kesme düğmesi sözcük yazılmadan açı
     "s=s.replace('return typed === DISCONNECT_WORD;','return typed.length > 0;',1)"
 mutate_in src/renderer/lib/github.ts "eski sunucu hata sayılıyor (yükseltin demiyor)" \
     "s=s.replace('? \"unsupported\" : \"failed\";','? \"failed\" : \"failed\";',1)"
+
+mutate_in src/renderer/lib/github-poll.ts "yoklama durunca zamanlayici temizlenmiyor" \
+    "s=s.replace('env.clearInterval(timer);','',1)"
+mutate_in src/renderer/lib/github-poll.ts "yoklama ust uste biniyor (calisan okuma beklenmiyor)" \
+    "s=s.replace('if (running || !shouldPoll(state, env.hidden())) return;','if (!shouldPoll(state, env.hidden())) return;',1)"
+mutate_in src/renderer/hooks/useGitHub.ts "kanca yoklama temizligini React a vermiyor" \
+    "s=s.replace('return startGitHubPolling(','void startGitHubPolling(',1)"
+mutate_in src/renderer/lib/github.ts "dusen baglanti bildirimi CONNECTED disinda gizli" \
+    "s=s.replace('c.reconnectRequired && c.state !==','c.reconnectRequired && c.state ===',1)"
+mutate_in src/renderer/lib/github.ts "kod suresi dolunca yeniden baglan cikmiyor" \
+    "s=s.replace('return left === 0;','return false;',1)"
+mutate_in src/renderer/lib/github.ts "hata kesme penceresinin arkasinda da tekrarlaniyor" \
+    "s=s.replace('hasConnection && !dialogOpen ? error','hasConnection ? error',1)"
+mutate_go internal/bridge/github.go "GitHubConnect islem kapisi yok (cift cagri gecer)" \
+    "s=s.replace('release, err := b.enter(t, githubConnectGate)','release, err := func() {}, error(nil)',1)"
+mutate_go internal/bridge/github.go "OpenGitHub 1 sn debounce yok" \
+    "s=s.replace('!b.lastOpen.IsZero() && t.Sub(b.lastOpen) < openGitHubDebounce','false',1)"
+mutate_go internal/bridge/github.go "OpenGitHub son acisi kaydedilmiyor" \
+    "s=s.replace('b.lastOpen = t','_ = t',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

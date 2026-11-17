@@ -1,6 +1,8 @@
 package bridge
 
 import (
+	"time"
+
 	"github.com/erkanrzgc/kadran/desktop/internal/confirm"
 	"github.com/erkanrzgc/kadran/desktop/internal/guard"
 )
@@ -24,6 +26,13 @@ func (b *Bridge) GitHubConnect(target string) (any, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Aynı anda tek bağlanma: tekrarlanan çağrı sunucuda her seferinde yeni
+	// cihaz kodu üretip GitHub hız sınırını yerdi.
+	release, err := b.enter(t, githubConnectGate)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	return b.dispatch("github.connect", map[string]any{"target": t})
 }
 
@@ -49,5 +58,34 @@ func (b *Bridge) OpenGitHub(url string) error {
 	if err != nil {
 		return err
 	}
+	if !b.openAllowed() {
+		return nil
+	}
 	return b.deps.Host.OpenURL(u)
+}
+
+const (
+	// githubConnectGate, GitHubConnect'in işlem kapısı adı ("$" ile başlayan
+	// adlar gerçek uygulama kimliği olamaz).
+	githubConnectGate = "$github-connect"
+	// openGitHubDebounce, iki tarayıcı açışı arasındaki en kısa süre.
+	openGitHubDebounce = time.Second
+)
+
+// openAllowed, son kabul edilen açıştan bu yana debounce süresi geçtiyse
+// true döner ve yeni açışı kaydeder; geçmediyse çağrı sessizce yutulur
+// (ele geçmiş bir arayüz sekme yağdıramasın, çift tıklama tek sekme açsın).
+func (b *Bridge) openAllowed() bool {
+	now := time.Now
+	if b.deps.Now != nil {
+		now = b.deps.Now
+	}
+	b.gateMu.Lock()
+	defer b.gateMu.Unlock()
+	t := now()
+	if !b.lastOpen.IsZero() && t.Sub(b.lastOpen) < openGitHubDebounce {
+		return false
+	}
+	b.lastOpen = t
+	return true
 }

@@ -35,7 +35,7 @@ scripts/mutate-backup.sh 8
 scripts/mutate-bootstrapssh.sh 629
 scripts/mutate-caps.sh 7
 scripts/mutate-client.sh 95
-scripts/mutate-desktop.sh 483
+scripts/mutate-desktop.sh 517
 scripts/mutate-domaincheck.sh 392
 scripts/mutate-env.sh 40
 scripts/mutate-get-kadran.sh 5

@@ -22,14 +22,26 @@ type fakeDispatcher struct {
 	calls   []call
 	fail    *sidecar.Error
 	results map[string]any
+	// blockMethod doluysa o yontem unblock kapanana dek doner; started, cagri
+	// iceri girince sinyal verir.
+	blockMethod string
+	unblock     chan struct{}
+	started     chan struct{}
 }
 
 func (f *fakeDispatcher) Dispatch(_ context.Context, method string, params json.RawMessage) (any, *sidecar.Error) {
 	var p map[string]any
 	_ = json.Unmarshal(params, &p)
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.calls = append(f.calls, call{method: method, params: p})
+	block := f.blockMethod == method && f.unblock != nil
+	f.mu.Unlock()
+	if block {
+		f.started <- struct{}{}
+		<-f.unblock
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.fail != nil {
 		return nil, f.fail
 	}

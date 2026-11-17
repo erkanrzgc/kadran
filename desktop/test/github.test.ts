@@ -114,7 +114,9 @@ test("the ALL repositories grant is flagged, selected ones are counted, the priv
 });
 
 test("reconnect_required and the install link are carried", () => {
-  const c = parseGitHubConnection({ connection: connected({ reconnect_required: true }) });
+  // Gercek dusme biçimi: NOT_CONNECTED + reconnect_required (CONNECTED degil).
+  const c = parseGitHubConnection({ connection: { state: "STATE_NOT_CONNECTED", reconnect_required: true, install_url: INSTALL } });
+  assert.equal(c.state, "not_connected");
   assert.equal(c.reconnectRequired, true);
   assert.equal(c.installUrl, INSTALL);
   assert.equal(parseGitHubConnection({ connection: connected({ install_url: "https://evil.example" }) }).installUrl, null);

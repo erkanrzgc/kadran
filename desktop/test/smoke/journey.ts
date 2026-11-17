@@ -339,6 +339,10 @@ async function githubJourney(win: Page): Promise<void> {
   await waitFor(win, `${q('[data-testid="github-remaining"]')}?.textContent.includes("Code expires in 1")`, "GitHub code countdown");
   await noHorizontalOverflow(win, "github code at 760x520");
   await screenshot(win, "github-code-760x520");
+  // Kabul edilen taviz (Ruling 32): Copy adimi GERCEK Windows panosunu okur ve
+  // yazar; once metni saklayip sonda geri yukler (gorsel/dosya icerigi
+  // korunmaz). Yalnizca yerel smoke icin; CI'da ya da paylasilan makinede
+  // kosulmaz.
   const before = readClipboard();
   try {
     await click(win, '[data-testid="github-copy"]');
@@ -363,6 +367,13 @@ async function githubJourney(win: Page): Promise<void> {
   await fill(win, '[data-testid="github-disconnect-confirmation"]', "disconnect");
   await click(win, '[data-testid="github-disconnect-submit"]');
   await waitFor(win, q('[data-testid="github-not_connected"]'), "GitHub disconnected");
+  // Ikinci baglanma: sahte sunucu kayitli jetonu reddeder (gercek biçim:
+  // NOT_CONNECTED + reconnect_required). Bildirim ve Connect dugmesi gorunmeli.
+  await click(win, '[data-testid="github-connect"]');
+  await waitFor(win, q('[data-testid="github-reconnect-rejected"]'), "GitHub reconnect notice after the connection dropped", 20_000);
+  expect((await text(win, '[data-testid="github-reconnect-rejected"]')).includes("rejected the saved connection"), "reconnect notice does not say GitHub rejected the connection");
+  expect(Boolean(await evaluate<boolean>(win, `Boolean(${q('[data-testid="github-connect"]')})`)), "Connect button is missing after the connection dropped");
+  await noHorizontalOverflow(win, "github reconnect notice at 760x520");
 }
 
 async function managementJourney(win: Page): Promise<void> {

@@ -1,7 +1,7 @@
 /**
  * Sunucu sayfasının GitHub bağlantısı (K-167). Durum bir kez okunur; akış
  * BEKLERKEN GITHUB_POLL_MS'de bir yoklanır, ama yalnız pencere görünürken
- * (shouldPoll; K-166 deseni). Bağlandı, başarısız oldu ya da akış bitti:
+ * (lib/github-poll.ts; K-166 deseni). Bağlandı, başarısız oldu ya da akış bitti:
  * yoklama durur. Eski sunucu (Unimplemented) "unsupported" olur ve bir daha
  * sorulmaz.
  */
@@ -12,7 +12,8 @@ import { isCancelled } from "../../shared/management.ts";
 import { bridge } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { errorText } from "../lib/errors.ts";
-import { DISCONNECT_WORD, GITHUB_POLL_MS, githubFailure, pendingConnection, shouldPoll, type GitHubConnection } from "../lib/github.ts";
+import { DISCONNECT_WORD, githubFailure, pendingConnection, type GitHubConnection } from "../lib/github.ts";
+import { browserPollEnv, startGitHubPolling } from "../lib/github-poll.ts";
 
 export interface GitHubView {
   loaded: boolean;
@@ -63,25 +64,8 @@ export function useGitHub(target: string) {
 
   const state = view.connection?.state ?? null;
   useEffect(() => {
-    if (state !== "pending") return;
     const mine = session.current;
-    let running = false;
-    const tick = async () => {
-      if (running || !shouldPoll(state, document.hidden)) return;
-      running = true;
-      try {
-        await read(mine);
-      } finally {
-        running = false;
-      }
-    };
-    const onVisible = () => void tick();
-    const timer = window.setInterval(() => void tick(), GITHUB_POLL_MS);
-    document.addEventListener("visibilitychange", onVisible);
-    return () => {
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisible);
-    };
+    return startGitHubPolling(state ?? "not_connected", () => read(mine), browserPollEnv());
   }, [state, read]);
 
   const connect = useCallback(async () => {

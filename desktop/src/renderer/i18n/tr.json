@@ -423,6 +423,7 @@
   "github.selected_truncated": "{count}+ depo (seçili)",
   "github.private": "özel",
   "github.reconnect_required": "Yeniden bağlanmak gerekiyor: kayıtlı GitHub oturumu artık geçerli değil.",
+  "github.reconnect_rejected": "Yeniden bağlanmak gerekiyor: GitHub kayıtlı bağlantıyı reddetti; yeniden bağlanın.",
   "github.manage_installations": "Kurulumları yönet",
   "github.manage_authorizations": "Yetkili uygulamalar",
   "github.disconnect": "Bağlantıyı kes",

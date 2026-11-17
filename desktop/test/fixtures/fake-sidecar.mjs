@@ -201,14 +201,18 @@ function githubCall(method, params) {
     case "github.connect":
       flow.state = "pending";
       flow.polls = 0;
+      flow.connects = (flow.connects ?? 0) + 1;
       return { result: { prompt: prompt() } };
     case "github.disconnect":
       if (params.confirmation !== "disconnect") return rpcFail("call", "confirmation must be disconnect");
       flow.state = "not_connected";
       return { result: {} };
     default: {
-      if (flow.state === "pending" && ++flow.polls >= 2) flow.state = "connected";
-      const connection = { state: "STATE_" + flow.state.toUpperCase(), login: "", pending: null, installations: [], connected_at: null, failure: "GIT_HUB_FAILURE_UNSPECIFIED", reconnect_required: false, install_url: GITHUB_INSTALL };
+      // 2. bagla: GitHub kayitli jetonu reddeder. Gercek biçim: kadran-git kimligi
+      // siler, durum NOT_CONNECTED olur ve reconnect_required sebebi soyler
+      // (hicbir zaman CONNECTED + reconnect degil).
+      if (flow.state === "pending" && ++flow.polls >= 2) flow.state = flow.connects === 2 ? "dropped" : "connected";
+      const connection = { state: "STATE_" + (flow.state === "dropped" ? "NOT_CONNECTED" : flow.state.toUpperCase()), login: "", pending: null, installations: [], connected_at: null, failure: "GIT_HUB_FAILURE_UNSPECIFIED", reconnect_required: flow.state === "dropped", install_url: GITHUB_INSTALL };
       if (flow.state === "pending") connection.pending = prompt();
       if (flow.state === "connected") {
         connection.login = "octo";

@@ -423,6 +423,7 @@
   "github.selected_truncated": "{count}+ repositories (selected)",
   "github.private": "private",
   "github.reconnect_required": "Reconnect required: the saved GitHub sign-in is no longer valid.",
+  "github.reconnect_rejected": "Reconnect required: GitHub rejected the saved connection; connect again.",
   "github.manage_installations": "Manage installations",
   "github.manage_authorizations": "Authorized apps",
   "github.disconnect": "Disconnect",

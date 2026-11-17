@@ -145,6 +145,28 @@ export function shouldPoll(state: GitHubState, hidden: boolean): boolean {
   return state === "pending" && !hidden;
 }
 
+/**
+ * Bağlantı düşünce (GitHub kayıtlı jetonu reddetti) sunucu CONNECTED dönmez:
+ * durum not_connected / pending / failed olur ve reconnect_required sebebi
+ * söyler. Bu durumlarda "yeniden bağlan" bildirimi gösterilir (CLI ile aynı).
+ */
+export function rejectedNotice(c: GitHubConnection): boolean {
+  return c.reconnectRequired && c.state !== "connected";
+}
+
+/** Geri sayım 0'a indi: kod artık işe yaramaz, "bekleniyor" yerine yeniden bağlan. */
+export function pendingExpired(left: number | null): boolean {
+  return left === 0;
+}
+
+/**
+ * Ekranın üstündeki hata satırı. Bağlantı kesme penceresi açıkken hata o
+ * pencerede gösterilir; ikinci kez ekranda tekrarlanmaz.
+ */
+export function inlineError(error: string | null, hasConnection: boolean, dialogOpen: boolean): string | null {
+  return error !== null && hasConnection && !dialogOpen ? error : null;
+}
+
 /** Bağlantıyı kesme düğmesi yalnız TAM sözcük yazılınca açılır. */
 export function canDisconnect(typed: string): boolean {
   return typed === DISCONNECT_WORD;

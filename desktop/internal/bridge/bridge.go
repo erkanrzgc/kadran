@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/erkanrzgc/kadran/desktop/internal/appearance"
 	"github.com/erkanrzgc/kadran/desktop/internal/confirm"
@@ -58,6 +59,8 @@ type Deps struct {
 	// kutusu atlanır. Dağıtılan ikilide hep false (smoke etiketi).
 	Fixture bool
 	Warn    func(message string)
+	// Now, saat kaynağı (OpenGitHub debounce'u); nil ise time.Now. Testler sahte verir.
+	Now func() time.Time
 }
 
 // Bridge, arayüzün çağırabildiği yöntemler.
@@ -71,6 +74,8 @@ type Bridge struct {
 	// farklı uygulama adlarıyla kutu yağdırıp kullanıcıyı onay yorgunluğuna
 	// itemesin.
 	dialogOpen bool
+	// lastOpen, OpenGitHub'ın son kabul edilen çağrısı (1 sn debounce).
+	lastOpen time.Time
 }
 
 // New, köprüyü kurar.

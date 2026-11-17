@@ -8,7 +8,7 @@ import { Tile } from "../components/Tile.tsx";
 import { useGitHub } from "../hooks/useGitHub.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
 import { errorText } from "../lib/errors.ts";
-import { formatRemaining, remainingSeconds, type GitHubConnection, type GitHubInstallation } from "../lib/github.ts";
+import { formatRemaining, inlineError, pendingExpired, rejectedNotice, remainingSeconds, type GitHubConnection, type GitHubInstallation } from "../lib/github.ts";
 import { useToast } from "../toast/ToastProvider.tsx";
 
 const COPIED_MS = 2000;
@@ -57,7 +57,7 @@ function GitHub({ target }: { target: string }) {
   return (
     <div className="screen" data-testid="screen-github">
       {head}
-      {view.error && c ? <p className="operation-message is-bad" role="alert" data-testid="github-error">{view.error}</p> : null}
+      {inlineError(view.error, c !== null, confirming) ? <p className="operation-message is-bad" role="alert" data-testid="github-error">{view.error}</p> : null}
       {gh.notice ? <p className="scope-note" role="status" data-testid="operation-notice">{gh.notice}</p> : null}
       {body}
       {confirming ? <GitHubDisconnectDialog pending={gh.busy} error={view.error} onClose={() => setConfirming(false)} onConfirm={() => void gh.disconnect().then((r) => { if (r !== "failed") setConfirming(false); })} /> : null}
@@ -74,12 +74,13 @@ interface BodyProps {
 
 function GitHubBody({ connection: c, view, gh, onDisconnect }: BodyProps) {
   const t = useT();
-  if (c.state === "pending") return <Pending connection={c} />;
+  if (c.state === "pending") return <Pending connection={c} busy={gh.busy} onConnect={() => void gh.connect()} />;
   if (c.state === "connected") return <Connected connection={c} busy={gh.busy} onDisconnect={onDisconnect} onReconnect={() => void gh.connect()} />;
   const message = c.state === "failed" && c.failureKey ? t(c.failureKey) : view.ended ? t("github.ended") : t("github.not_connected");
   return (
     <section className="panel" data-testid={`github-${c.state}`}>
       <div className="well">
+        {rejectedNotice(c) ? <p className="operation-message is-warn" role="alert" data-testid="github-reconnect-rejected">{t("github.reconnect_rejected")}</p> : null}
         <p className={c.state === "failed" ? "operation-message is-bad" : "meta"} role={c.state === "failed" ? "alert" : "status"} data-testid="github-message">{message}</p>
         <div className="form-actions"><button type="button" className="btn btn-primary" disabled={gh.busy} onClick={() => void gh.connect()} data-testid="github-connect">{gh.busy ? t("github.connecting") : t("github.connect")}</button></div>
       </div>
@@ -87,12 +88,13 @@ function GitHubBody({ connection: c, view, gh, onDisconnect }: BodyProps) {
   );
 }
 
-function Pending({ connection: c }: { connection: GitHubConnection }) {
+function Pending({ connection: c, busy, onConnect }: { connection: GitHubConnection; busy: boolean; onConnect: () => void }) {
   const t = useT();
   const toast = useToast();
   const open = useOpenGitHub();
   const prompt = c.prompt;
   const left = useRemaining(prompt?.expiresAt ?? null);
+  const expired = pendingExpired(left);
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
@@ -111,14 +113,16 @@ function Pending({ connection: c }: { connection: GitHubConnection }) {
   return (
     <section className="panel" data-testid="github-pending">
       <div className="well gh-pending">
+        {rejectedNotice(c) ? <p className="operation-message is-warn" role="alert" data-testid="github-reconnect-rejected">{t("github.reconnect_rejected")}</p> : null}
         {code ? <div className="gh-code"><Tile label={t("github.code_label")} value={code} testId="github-code" /></div> : <p className="operation-message is-warn" role="alert" data-testid="github-code-hidden">{t("github.code_hidden")}</p>}
         <div className="form-actions">
           {code ? <button type="button" className="btn btn-primary" onClick={() => void copy()} data-testid="github-copy">{copied ? t("github.copied") : t("github.copy")}</button> : null}
           {prompt?.verificationUri ? <button type="button" className="btn btn-ghost" onClick={() => open(prompt.verificationUri ?? "")} data-testid="github-open-device">{t("github.open_device")}</button> : null}
           {prompt?.installUrl ? <button type="button" className="btn btn-ghost" onClick={() => open(prompt.installUrl ?? "")} data-testid="github-open-install">{t("github.open_install")}</button> : null}
         </div>
-        <p className="meta" role="status" data-testid="github-waiting">{t("github.waiting")}</p>
-        {left !== null ? <p className="hint" data-testid="github-remaining">{left > 0 ? t("github.expires_in", { time: formatRemaining(left) }) : t("github.expired")}</p> : null}
+        {expired ? null : <p className="meta" role="status" data-testid="github-waiting">{t("github.waiting")}</p>}
+        {left !== null ? <p className="hint" data-testid="github-remaining">{expired ? t("github.expired") : t("github.expires_in", { time: formatRemaining(left) })}</p> : null}
+        {expired ? <div className="form-actions"><button type="button" className="btn btn-primary" disabled={busy} onClick={onConnect} data-testid="github-connect">{busy ? t("github.connecting") : t("github.connect")}</button></div> : null}
       </div>
     </section>
   );

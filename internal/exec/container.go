@@ -425,7 +425,7 @@ func (s *Server) dockerBuild(stream grpc.ServerStreamingServer[kadranv1.ImageBui
 		return stream.Send(&kadranv1.ImageBuildResponse{Data: data, IsStderr: isStderr})
 	})
 	if err != nil && notCovered {
-		err = fmt.Errorf("%w (if it is private, install the Kadran Deploy app on it)", err)
+		err = fmt.Errorf("%w (if it is private, install the GitHub app on it: see kadran github status)", err)
 	}
 	return id, err
 }

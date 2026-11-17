@@ -37,6 +37,10 @@ var (
 	errBadPath   = errors.New("github: invalid request path")
 	errResponse  = errors.New("github: invalid response")
 	errTooLarge  = errors.New("github: response too large")
+	// errUnprocessable HTTP 422'dir. Genel hatadan ayrı tutulur: commits uç
+	// noktası olmayan bir dal için 404 değil 422 döner (gerçek GitHub, 17 Kas)
+	// ve yalnız ResolveBranch onu ErrNotFound'a çevirir.
+	errUnprocessable = errors.New("github: request failed (HTTP 422)")
 )
 
 // endpoints dışa açık değildir; testler dışında hep varsayılan sabitler kullanılır.
@@ -97,6 +101,8 @@ func statusError(resp *http.Response) error {
 		return ErrNotFound
 	case code == http.StatusMovedPermanently, code == http.StatusTemporaryRedirect, code == http.StatusPermanentRedirect:
 		return ErrMoved
+	case code == http.StatusUnprocessableEntity:
+		return errUnprocessable
 	}
 	return fmt.Errorf("github: request failed (HTTP %d)", code)
 }

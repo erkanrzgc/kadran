@@ -33,13 +33,18 @@ server" and nothing else changes. The new `kadran-git` service is added by `kadr
   2990 to 2981 lines.
 - `--allow-repo` stays optional. When set, it limits every build and intersects with the
   installation's repositories.
+- `systemd-resolved` (stub at `127.0.0.53`) is needed for private repositories only. If it is not
+  running, `kadran bootstrap` warns, skips `kadran-git` (no user, units or sockets) and repeats
+  the warning in its summary; public repositories deploy as before. If `kadran-git` was already
+  set up on that server, the upgrade stops instead and says how to fix it.
 
 ### Removed
 
 - The K-146 token-file setup: `--git-credentials` and `/etc/kadran/private-git/credentials.json`.
   Upgrading stops, before it replaces any binary, if a `kadran-exec` drop-in still sets
-  `--git-credentials`. Upgrading also needs `systemd-resolved` with its stub at `127.0.0.53` and
-  stops otherwise. The [guide](docs/guides/private-git.md#upgrading) shows both messages.
+  `--git-credentials`, or still gives the executor network access (`RestrictAddressFamilies=` with
+  `AF_INET`/`AF_INET6`, `IPAddressDeny=`, `IPAddressAllow=`). Remove those lines and revoke the old
+  token on GitHub. The [guide](docs/guides/private-git.md#upgrading) shows each message.
 
 ### Security
 

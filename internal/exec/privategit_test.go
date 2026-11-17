@@ -197,3 +197,28 @@ func TestRewriteRejectsSparseTotalBelowWriterCap(t *testing.T) {
 		t.Fatalf("err = %v, want errArchiveTooLarge", err)
 	}
 }
+
+// capWriter, toplam h.Size denetiminin ARKASINDAKİ son sınırdır: seyrek
+// kayıtlar o denetimde düşer, bu yüzden yeniden yazım üzerinden yalnız
+// capWriter'ı düşüren bir arşiv kurulamaz. Hata yolu burada tek başına
+// sınanır: sınırı aşan yazma reddedilir ve alttaki yazıcıya hiçbir bayt
+// geçmez; sınıra tam oturan yazma geçer.
+func TestCapWriterRejectsWritesBeyondItsBudget(t *testing.T) {
+	var out bytes.Buffer
+	c := &capWriter{w: &out, n: 10}
+	if n, err := c.Write([]byte("123456")); n != 6 || err != nil {
+		t.Fatalf("write within budget = %d, %v", n, err)
+	}
+	if n, err := c.Write([]byte("12345")); n != 0 || err != errArchiveTooLarge {
+		t.Fatalf("write beyond budget = %d, %v; want 0, errArchiveTooLarge", n, err)
+	}
+	if out.String() != "123456" {
+		t.Fatalf("over-budget bytes reached the writer: %q", out.String())
+	}
+	if n, err := c.Write([]byte("abcd")); n != 4 || err != nil {
+		t.Fatalf("write that exactly fills the budget = %d, %v", n, err)
+	}
+	if _, err := c.Write([]byte("x")); err != errArchiveTooLarge {
+		t.Fatalf("write after the budget is spent = %v", err)
+	}
+}

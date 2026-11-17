@@ -107,7 +107,7 @@ Other states you can see:
 | `not connected: run kadran github connect` | No connection. Public builds still work |
 | `waiting for approval: code ABCD-1234, expires 14:25` | A sign-in is open. Enter the code on GitHub |
 | `connection failed: ...` | The last sign-in ended in an error. Run `connect` again |
-| `reconnect required: run kadran github connect` | The saved sign-in no longer works (see below) |
+| `reconnect required: GitHub rejected the saved connection; run kadran github connect` | Printed under `not connected`, `waiting for approval` or `connection failed`: the server dropped the saved sign-in because it no longer works (see [Troubleshooting](#troubleshooting)) |
 
 ## Desktop
 
@@ -241,18 +241,41 @@ App). Run `kadran github connect` again.
 ## Upgrading
 
 Private repositories used to need a token file and a drop-in on `kadran-exec` that set
-`--git-credentials`. That path is gone. The server upgrade (`kadran bootstrap`) checks two things
-before it replaces any binary, and stops with a message if one fails:
+`--git-credentials`. That path is gone. The server install and upgrade (`kadran bootstrap`) check
+these things before they replace any binary:
 
-- **`systemd-resolved` must be running, with its stub at `127.0.0.53`.** `kadran-git` resolves
-  GitHub through that stub. If it is missing, the upgrade stops:
+- **`systemd-resolved` must be running, with its stub at `127.0.0.53`, for private
+  repositories.** `kadran-git` resolves GitHub through that stub and does not start without it.
+  - If it is missing and `kadran-git` was never set up on the server (a fresh install, or an
+    upgrade from a version before private repositories), the installer warns and skips
+    `kadran-git`: no user, units or sockets. Public repositories deploy as usual. The warning is
+    repeated at the end of the install:
 
-  ```
-  kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)
-  ```
+    ```
+    ⚠ systemd-resolved is not running (no stub resolver at 127.0.0.53): private GitHub
+      repositories are disabled (public repositories work). See docs/guides/private-git.md
+    ```
 
-  Installing it changes how the host resolves DNS. A host that already runs its own resolver
-  can lose DNS. Keep a copy first: `sudo cp /etc/resolv.conf /root/resolv.conf.bak`. Then
+    To turn private repositories on later, set up `systemd-resolved` as below and run
+    `kadran bootstrap` again.
+  - If it is missing but `kadran-git` is already set up, the upgrade stops:
+
+    ```
+    kadran-git needs systemd-resolved (stub resolver at 127.0.0.53), and kadran-git is already set up on this server.
+    ```
+
+    Either start `systemd-resolved` as below, or remove `kadran-git` to run without private
+    repositories, then upgrade again:
+
+    ```bash
+    sudo systemctl disable --now kadran-git.service kadran-git-admin.socket kadran-git-fetch.socket
+    sudo rm /etc/systemd/system/kadran-git.service /etc/systemd/system/kadran-git-admin.socket \
+        /etc/systemd/system/kadran-git-fetch.socket
+    sudo systemctl daemon-reload
+    ```
+
+  Installing `systemd-resolved` changes how the host resolves DNS. A host that already runs its
+  own resolver can lose DNS. Keep a copy first: `sudo cp /etc/resolv.conf /root/resolv.conf.bak`. Then
   install and enable it (on Debian: `sudo apt install systemd-resolved`, then
   `sudo systemctl enable --now systemd-resolved`) and check:
 
@@ -271,19 +294,38 @@ before it replaces any binary, and stops with a message if one fails:
   remove --git-credentials from the kadran-exec drop-in; private repositories now use `kadran github connect`
   ```
 
-  Run `sudo systemctl edit kadran-exec.service`, delete `--git-credentials ...` from the
-  `ExecStart=` line (keep `--allow-repo` if you use it), save, and upgrade again. You can also
-  delete `/etc/kadran/private-git/credentials.json`; nothing reads it now. After the upgrade,
-  run `kadran github connect`.
+- **The `kadran-exec` drop-in must not give the executor network access.** The old setup added
+  `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6` and an `IPAddressDeny=` line that left
+  loopback and private ranges open. The executor no longer uses the network, so the upgrade stops
+  if any `kadran-exec` drop-in still has a `RestrictAddressFamilies=` line naming `AF_INET` or
+  `AF_INET6`, or any `IPAddressDeny=` or `IPAddressAllow=` line:
+
+  ```
+  remove the RestrictAddressFamilies= (AF_INET, AF_INET6), IPAddressDeny= and IPAddressAllow= lines from /etc/systemd/system/kadran-exec.service.d/override.conf: kadran-exec no longer uses the network
+  ```
+
+To clean up the old drop-in, run `sudo systemctl edit kadran-exec.service`. Delete
+`--git-credentials ...` from the `ExecStart=` line and keep `--allow-repo` if you use it. Delete
+the `RestrictAddressFamilies=` and `IPAddressDeny=`/`IPAddressAllow=` lines. Save, and upgrade
+again. Then remove the old token:
+
+- delete `/etc/kadran/private-git/credentials.json`; nothing reads it now;
+- revoke the fine-grained token on GitHub as well (**Settings → Developer settings → Personal
+  access tokens → Fine-grained tokens**). Deleting the file does not revoke it, and whoever
+  copied it could still read the repository.
+
+After the upgrade, run `kadran github connect`.
 
 ## Troubleshooting
 
 | Message | What it means and what to do |
 |---|---|
-| `the kadran-git service is not running` | The server has no running `kadran-git`. Check `systemctl status kadran-git`. Public builds still work. Private ones fail until it runs |
+| `the kadran-git service is not running` | `kadrand` cannot reach `kadran-git`. Check `systemctl status kadran-git-admin.socket kadran-git`. If the install skipped it because `systemd-resolved` is not running, see [Upgrading](#upgrading). Public builds still work. Private ones fail until it runs |
+| `GitHub request failed, retry later` | `kadran-git` runs, but its request to GitHub failed. Try again; if it keeps failing, check the server's network and `journalctl -u kadran-git` |
+| `repository or branch not found (renamed or moved on GitHub? update the app's repository URL)` | The branch does not exist, the app is not installed on the repository, or the repository was renamed or moved. Check the name; after a rename, update the app's repository URL |
 | `this server does not support GitHub connect: upgrade the server` | The server is older than the client. Run `kadran bootstrap` to upgrade |
 | `kadran-git is older than kadrand: upgrade the server` | The two services are from different versions. Upgrade the server |
-| `reconnect required: run kadran github connect` | The saved sign-in no longer works: it was not used for 6 months, GitHub revoked it, or the server could not save a renewed token. Run `kadran github connect` |
+| `reconnect required: GitHub rejected the saved connection; run kadran github connect` | Printed by `status` after the server dropped the connection: the saved sign-in no longer works. It was not used for 6 months, GitHub revoked it, or the server could not save a renewed token. Run `kadran github connect` |
 | `the code expired: run kadran github connect again` | You did not enter the code in 15 minutes. Run `connect` again |
 | `the sign-in flow ended on the server; run connect again` | A newer `connect` replaced this one, or the server restarted. Run `connect` again |
 | `access was denied on github.com` | You pressed Cancel on GitHub. Run `connect` again and approve |
@@ -297,10 +339,15 @@ before it replaces any binary, and stops with a message if one fails:
 
 ### A private build fails
 
-A private build that fails with `(if it is private, install the Kadran Deploy app on it)` after
-Docker's own error means the server is connected, but the app is not installed on that
-repository. Open `https://github.com/settings/installations`, configure Kadran Deploy and add the
-repository. No reconnect is needed: Kadran looks at the list again within a minute.
+A private build that fails with `(if it is private, install the GitHub app on it: see kadran
+github status)` after Docker's own error means the server is connected, but the app is not
+installed on that repository. Open `https://github.com/settings/installations`, configure the app
+(Kadran Deploy, or your own) and add the repository. No reconnect is needed: Kadran looks at the
+list again within a minute.
+
+A private build that fails with `private repository not found, renamed on GitHub, or the app is
+not installed on it` means the repository is listed as private but GitHub no longer serves it
+under that name. If it was renamed or moved, update the app's repository URL.
 
 If the error has no such hint, check `kadran github status`. A server that is not connected, or
 whose `kadran-git` is down, treats the repository as public, so Docker fails with a "not found"

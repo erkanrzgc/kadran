@@ -12,7 +12,10 @@ import (
 )
 
 var (
-	ownerPattern = regexp.MustCompile(`^[A-Za-z0-9-]{1,39}$`)
+	// ownerPattern sahip ve giriş adları içindir. `_` yola güvenle girer ve
+	// Enterprise Managed Users adlarında bulunur (ör. ad_kisaltma); kadrand ve
+	// yürütücünün yol deseni de onu kabul ediyor.
+	ownerPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,39}$`)
 	repoPattern  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
 	shaPattern   = regexp.MustCompile(`^[0-9a-f]{40}$`)
 

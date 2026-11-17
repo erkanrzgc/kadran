@@ -220,7 +220,7 @@ func TestCoverageSkipsInvalidNames(t *testing.T) {
 	gh := connectedGH()
 	gh.body("GET", "/user/installations", `{"total_count":2,"installations":[`+
 		`{"id":7,"account":{"login":"octo"},"repository_selection":"selected"},`+
-		`{"id":8,"account":{"login":"bad_login"},"repository_selection":"all"}]}`)
+		`{"id":8,"account":{"login":"bad.login"},"repository_selection":"all"}]}`)
 	gh.body("GET", "/user/installations/7/repositories", `{"total_count":5,"repositories":[`+
 		`{"full_name":"octo/ok","private":true},{"full_name":"octo/..","private":true},`+
 		`{"full_name":"a/b/c","private":true},{"full_name":"noslash","private":true},{"full_name":"octo/sp ace","private":true}]}`)
@@ -237,7 +237,7 @@ func TestCoverageSkipsInvalidNames(t *testing.T) {
 
 func TestInvalidConnectingLoginFailsFlow(t *testing.T) {
 	gh := flowGH(tokenBody)
-	gh.body("GET", "/user", `{"login":"bad_login","id":1}`)
+	gh.body("GET", "/user", `{"login":"bad.login","id":1}`)
 	e := newEnv(t, gh, false, nil)
 	if _, err := e.s.StartDeviceFlow(context.Background()); err != nil {
 		t.Fatal(err)
@@ -252,11 +252,37 @@ func TestStatusHidesInvalidLoginFromState(t *testing.T) {
 	gh := connectedGH()
 	srvEnv := newEnv(t, gh, false, nil)
 	st := sampleState()
-	st.Login = "bad_login"
+	st.Login = "bad.login"
 	if err := srvEnv.s.tk.install(st); err != nil {
 		t.Fatal(err)
 	}
 	if c := srvEnv.status(t); c.Login != "" || c.State != kadranv1.GitHubConnection_STATE_CONNECTED {
+		t.Fatalf("status = %v", c)
+	}
+}
+
+// `_` taşıyan sahip ve giriş adları (Enterprise Managed Users) geçerlidir:
+// kurulum listesine girer, durumda görünür ve arşiv yoluna gider.
+func TestUnderscoreOwnerAndLoginAreAccepted(t *testing.T) {
+	if !ValidRepoRef("corp_emu", "app") {
+		t.Fatal("ValidRepoRef rejected an owner with _")
+	}
+	gh := connectedGH()
+	gh.body("GET", "/user/installations", `{"total_count":1,"installations":[`+
+		`{"id":7,"account":{"login":"corp_emu"},"repository_selection":"selected"}]}`)
+	gh.body("GET", "/user/installations/7/repositories", `{"total_count":1,"repositories":[`+
+		`{"full_name":"corp_emu/app","private":true}]}`)
+	e := newEnv(t, gh, false, nil)
+	st := sampleState()
+	st.Login = "dev_emu"
+	if err := e.s.tk.install(st); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := e.s.Decide(context.Background(), "corp_emu", "app"); d != DecisionArchive || err != nil {
+		t.Fatalf("Decide = %v, %v; want DecisionArchive", d, err)
+	}
+	c := e.status(t)
+	if c.Login != "dev_emu" || len(c.Installations) != 1 || c.Installations[0].Account != "corp_emu" {
 		t.Fatalf("status = %v", c)
 	}
 }

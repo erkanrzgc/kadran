@@ -120,3 +120,16 @@ func TestUnimplementedKadranGitSaysUpgrade(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+// Calisan kadran-git'in genel GitHub hatasi (Unknown) gercek soket uzerinden
+// de "calismiyor" olarak okunmamali (gercek GitHub, 17 Kas: olmayan dal).
+func TestRunningKadranGitUnknownIsNotNotRunning(t *testing.T) {
+	c := serve(t, &fakeAdmin{err: status.Error(codes.Unknown, "GitHub request failed")})
+	_, err := c.ResolveBranch(context.Background(), "o", "r", "master")
+	if strings.Contains(err.Error(), MsgNotRunning) {
+		t.Fatalf("err = %v: a running kadran-git reported as not running", err)
+	}
+	if status.Code(err) != codes.Unavailable || !strings.Contains(err.Error(), MsgGitHubFailed) {
+		t.Fatalf("err = %v, want %q", err, MsgGitHubFailed)
+	}
+}

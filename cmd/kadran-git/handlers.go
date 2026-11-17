@@ -29,6 +29,11 @@ var _ gitService = (*github.Service)(nil)
 
 // statusFor hatayı SABİT metinli bir gRPC durumuna çevirir. Bilinmeyen
 // hataların metni asla taşınmaz: imzalı adres ya da jeton içerebilir.
+//
+// Taşınan depo NotFound'dur (kadrand ve yürütücü metinleri "yeniden
+// adlandırıldı mı" diye sorar). Genel başarısızlık Unknown'dır, ASLA
+// Unavailable değil: Unavailable gRPC'nin kendi taşıma hatası kodu ve
+// kadrand onu "kadran-git çalışmıyor" diye okur (gerçek GitHub, 17 Kas).
 func statusFor(err error) error {
 	switch {
 	case errors.Is(err, context.DeadlineExceeded):
@@ -40,13 +45,13 @@ func statusFor(err error) error {
 	case errors.Is(err, github.ErrForbidden):
 		return status.Error(codes.PermissionDenied, "GitHub access denied")
 	case errors.Is(err, github.ErrMoved):
-		return status.Error(codes.FailedPrecondition, "repository moved: update the app definition")
+		return status.Error(codes.NotFound, "repository moved on GitHub")
 	case errors.Is(err, github.ErrReconnect), errors.Is(err, github.ErrNotConnected):
 		return status.Error(codes.FailedPrecondition, "GitHub is not connected: reconnect GitHub")
 	case errors.Is(err, github.ErrRateLimited):
 		return status.Error(codes.ResourceExhausted, "GitHub rate limit reached")
 	}
-	return status.Error(codes.Unavailable, "GitHub request failed")
+	return status.Error(codes.Unknown, "GitHub request failed")
 }
 
 // adminServer yalnız kadrand'ın çağırabildiği yönetim yüzüdür.

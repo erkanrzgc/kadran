@@ -63,6 +63,11 @@ func (s *Service) ResolveBranch(ctx context.Context, owner, repo, branch string)
 	var sha string
 	err := s.withToken(ctx, func(token string) error {
 		raw, err := s.c.getRaw(ctx, path, token, "application/vnd.github.sha", maxSHABody)
+		if errors.Is(err, errUnprocessable) {
+			// Olmayan dal commits uç noktasında 422 alır, 404 değil. Genel
+			// hata olarak kalsaydı kadrand onu "kadran-git çalışmıyor" okurdu.
+			return ErrNotFound
+		}
 		if err != nil {
 			return err
 		}

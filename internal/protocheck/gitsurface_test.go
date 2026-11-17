@@ -1,6 +1,7 @@
 package protocheck_test
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
@@ -28,10 +30,10 @@ var forbiddenSubstrings = []string{
 	"token", "secret", "signed", "devicecode", "download", "password", "privatekey",
 }
 
-// freeTextNames, string alanda yasak olan serbest metin adlarıdır.
-var freeTextNames = map[string]bool{
-	"error": true, "message": true, "detail": true, "reason": true,
-}
+// freeTextSubstrings, string ve bytes alanların normalize edilmiş adında
+// geçmesi yasak serbest metin parçalarıdır (error_message, last_error,
+// errorDetail gibi bileşik adlar da yakalanır).
+var freeTextSubstrings = []string{"error", "message", "detail", "reason"}
 
 // forbiddenField, alanın yasak olup olmadığını ve nedenini döner.
 func forbiddenField(fd protoreflect.FieldDescriptor) (string, bool) {
@@ -41,15 +43,27 @@ func forbiddenField(fd protoreflect.FieldDescriptor) (string, bool) {
 			return "name contains " + sub, true
 		}
 	}
-	if fd.Kind() == protoreflect.StringKind && freeTextNames[name] {
-		return "free-text string field", true
+	if fd.Kind() != protoreflect.StringKind && fd.Kind() != protoreflect.BytesKind {
+		return "", false
+	}
+	for _, sub := range freeTextSubstrings {
+		if strings.Contains(name, sub) {
+			return "free-text field contains " + sub, true
+		}
 	}
 	return "", false
 }
 
+// gitScoped, yöntemin GitHub/Git yüzeyinde olup olmadığını söyler: servis ya
+// da yöntem adında "git" geçiyorsa (büyük/küçük harfe duyarsız). Fazla
+// kapsamak zararsızdır (tarama büyür), eksik kapsamak bir alanı kaçırır.
+func gitScoped(service, method string) bool {
+	return strings.Contains(strings.ToLower(service), "git") || strings.Contains(strings.ToLower(method), "git")
+}
+
 // collectGitHubScope, denetlenecek tüm mesajları toplar: git.proto'daki her
-// mesaj ve KadranService'in adında "GitHub" geçen yöntemlerinin girdi ve
-// çıktılarından erişilebilen her mesaj.
+// mesaj ve kadran.v1'in HER servisinde GitHub/Git yöntemlerinin (gitScoped)
+// girdi ve çıktılarından erişilebilen her mesaj.
 func collectGitHubScope() map[protoreflect.FullName]protoreflect.MessageDescriptor {
 	scope := map[protoreflect.FullName]protoreflect.MessageDescriptor{}
 	var visit func(md protoreflect.MessageDescriptor)
@@ -73,32 +87,47 @@ func collectGitHubScope() map[protoreflect.FullName]protoreflect.MessageDescript
 		visit(msgs.Get(i))
 	}
 
-	svcs := kadranv1.File_kadran_v1_api_proto.Services()
-	for i := 0; i < svcs.Len(); i++ {
-		svc := svcs.Get(i)
-		if svc.Name() != "KadranService" {
-			continue
-		}
-		for j := 0; j < svc.Methods().Len(); j++ {
-			m := svc.Methods().Get(j)
-			if strings.Contains(string(m.Name()), "GitHub") {
-				visit(m.Input())
-				visit(m.Output())
-			}
-		}
+	for _, m := range gitMethods() {
+		visit(m.Input())
+		visit(m.Output())
 	}
 	return scope
+}
+
+// gitMethods, kadran.v1 paketindeki her dosyanın her servisinden gitScoped
+// yöntemleri döner.
+func gitMethods() []protoreflect.MethodDescriptor {
+	var out []protoreflect.MethodDescriptor
+	protoregistry.GlobalFiles.RangeFilesByPackage("kadran.v1", func(f protoreflect.FileDescriptor) bool {
+		for i := 0; i < f.Services().Len(); i++ {
+			svc := f.Services().Get(i)
+			for j := 0; j < svc.Methods().Len(); j++ {
+				if m := svc.Methods().Get(j); gitScoped(string(svc.Name()), string(m.Name())) {
+					out = append(out, m)
+				}
+			}
+		}
+		return true
+	})
+	return out
 }
 
 func TestGitHubSurfaceHasNoSecretFields(t *testing.T) {
 	scope := collectGitHubScope()
 
-	// Boş tarama sessizce geçmemeli.
+	// Boş tarama sessizce geçmemeli: KadranService'in GitHub yöntemleri ve
+	// git.proto'nun iki servisi (GitAdminService, GitFetchService) kapsamda.
 	for _, want := range []protoreflect.FullName{
 		"kadran.v1.GitHubConnection",
 		"kadran.v1.FetchArchiveResponse",
 		"kadran.v1.ResolveGitHubBranchRequest",
 		"kadran.v1.StartGitHubConnectResponse",
+		"kadran.v1.GetGitHubStatusResponse",
+		"kadran.v1.DisconnectGitHubResponse",
+		"kadran.v1.GetGitStatusResponse",
+		"kadran.v1.ResolveBranchResponse",
+		"kadran.v1.StartDeviceFlowResponse",
+		"kadran.v1.FetchArchiveRequest",
 	} {
 		if _, ok := scope[want]; !ok {
 			t.Fatalf("scope is missing %s; the walk is not covering the schema", want)
@@ -152,6 +181,7 @@ func syntheticField(t *testing.T, name string, typ descriptorpb.FieldDescriptorP
 func TestForbiddenFieldCatchesNames(t *testing.T) {
 	str := descriptorpb.FieldDescriptorProto_TYPE_STRING
 	msg := descriptorpb.FieldDescriptorProto_TYPE_MESSAGE
+	bytes := descriptorpb.FieldDescriptorProto_TYPE_BYTES
 	cases := []struct {
 		name string
 		typ  descriptorpb.FieldDescriptorProto_Type
@@ -172,8 +202,19 @@ func TestForbiddenFieldCatchesNames(t *testing.T) {
 		{"message", str, true},
 		{"detail", str, true},
 		{"reason", str, true},
+		// Bileşik adlar ve büyük harf de serbest metindir (Ruling 9).
+		{"error_message", str, true},
+		{"last_error", str, true},
+		{"errorDetail", str, true},
+		{"failure_reason", str, true},
+		{"Message", str, true},
+		// bytes alanlar da metin taşır.
+		{"error", bytes, true},
+		{"status_detail", bytes, true},
 		// Mesaj tipli "error" serbest metin değildir.
 		{"error", msg, false},
+		{"last_error", msg, false},
+		{"chunk", bytes, false},
 		{"user_code", str, false},
 		{"verification_uri", str, false},
 		{"install_url", str, false},
@@ -193,6 +234,45 @@ func TestForbiddenFieldCatchesNames(t *testing.T) {
 		_, got := forbiddenField(fd)
 		if got != tc.want {
 			t.Errorf("forbiddenField(%s, %v) = %v, want %v", tc.name, tc.typ, got, tc.want)
+		}
+	}
+}
+
+// Yöntem süzgeci büyük/küçük harfe duyarsızdır ve yalnız KadranService'e
+// bakmaz.
+func TestGitScopedIsCaseInsensitiveAcrossServices(t *testing.T) {
+	cases := []struct {
+		svc, method string
+		want        bool
+	}{
+		{"KadranService", "GetGitHubStatus", true},
+		{"KadranService", "GetGITHUBStatus", true},
+		{"KadranService", "resolvegithubbranch", true},
+		{"GitAdminService", "StartDeviceFlow", true},
+		{"GitFetchService", "FetchArchive", true},
+		{"OtherService", "DisconnectGit", true},
+		{"KadranService", "Deploy", false},
+		{"ExecService", "ImageBuild", false},
+	}
+	for _, tc := range cases {
+		if got := gitScoped(tc.svc, tc.method); got != tc.want {
+			t.Errorf("gitScoped(%s, %s) = %v, want %v", tc.svc, tc.method, got, tc.want)
+		}
+	}
+	// Taranan yöntemlerin listesi: beklenmedik bir yöntem kapsama girerse görünür.
+	var names []string
+	for _, m := range gitMethods() {
+		names = append(names, string(m.FullName()))
+	}
+	sort.Strings(names)
+	t.Logf("git-scoped methods: %s", strings.Join(names, ", "))
+	for _, want := range []string{
+		"kadran.v1.KadranService.StartGitHubConnect",
+		"kadran.v1.GitAdminService.StartDeviceFlow",
+		"kadran.v1.GitFetchService.FetchArchive",
+	} {
+		if !slices.Contains(names, want) {
+			t.Errorf("%s is not in scope", want)
 		}
 	}
 }

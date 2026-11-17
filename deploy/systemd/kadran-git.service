@@ -17,6 +17,7 @@
 [Unit]
 Description=Kadran GitHub access broker
 Documentation=https://github.com/erkanrzgc/kadran
+# İki sokete Requires=, git_araci_kur'u yeniden koşmayı güvenli kılan şey (systemd 255'te ölçüldü): servis çalışırken `systemctl restart <soket>` servisi de yeniden başlatır; yalnız Wants= ile "Socket service … already active, refusing" der.
 Requires=kadran-git-admin.socket kadran-git-fetch.socket
 After=kadran-git-admin.socket kadran-git-fetch.socket systemd-resolved.service
 Wants=systemd-resolved.service

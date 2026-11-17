@@ -152,6 +152,10 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
   default; `-client-key` picks another. Building from source also needs Go 1.26.11+.
 - **Ports 80 and 443** must be free. The installer stops if `caddy`, `nginx`, `apache2`,
   `httpd` or `lighttpd` is running.
+- **`systemd-resolved`** (with its stub at `127.0.0.53`) is needed for private GitHub
+  repositories only. Without it the installer warns, skips the `kadran-git` service, and public
+  repositories deploy as usual. See the
+  [private repositories guide](docs/guides/private-git.md#upgrading).
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`): use
   `bootstrap -sudo user@server`. Root SSH stays closed. Open 80/443 in the provider's
   firewall; on GCP, use a rule with a target tag so only this machine is exposed.
@@ -596,9 +600,11 @@ kadran github disconnect your-server
   client secret. If you do not want that trust, register your own GitHub App and give
   `kadran-git` its `--client-id` and `--app-slug`. See the
   [guide](docs/guides/private-git.md#register-your-own-github-app).
-- Upgrading from the older token-file setup (K-146) needs two steps first: remove
-  `--git-credentials` from the `kadran-exec` drop-in, and make sure `systemd-resolved` runs.
-  The [guide](docs/guides/private-git.md#upgrading) has the messages.
+- Upgrading from the older token-file setup (K-146) needs the `kadran-exec` drop-in cleaned
+  first: remove `--git-credentials` and the old network lines (`RestrictAddressFamilies=`,
+  `IPAddressDeny=`, `IPAddressAllow=`), then revoke the old token on GitHub. Private repositories
+  also need `systemd-resolved`. The [guide](docs/guides/private-git.md#upgrading) has the
+  messages.
 
 ## Continuous deployment
 

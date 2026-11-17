@@ -451,3 +451,35 @@ func uniqueHashes() [][32]byte {
 	}
 	return out
 }
+
+// Baglanti dustugunde (GitHub kayitli jetonu reddetti) kadran-git kimligi
+// siler: durum CONNECTED DEGIL, NOT_CONNECTED/FAILED/PENDING + reconnect_required.
+// kadrand bu bayragi her durumda istemciye tasimali; yoksa CLI ve masaustu
+// "yeniden baglan" uyarisini hic gosteremez (son inceleme I3).
+func TestStatusKeepsReconnectRequiredWhenNotConnected(t *testing.T) {
+	for _, st := range []kadranv1.GitHubConnection_State{
+		kadranv1.GitHubConnection_STATE_NOT_CONNECTED,
+		kadranv1.GitHubConnection_STATE_FAILED,
+		kadranv1.GitHubConnection_STATE_PENDING,
+	} {
+		c := &kadranv1.GitHubConnection{
+			State:             st,
+			ReconnectRequired: true,
+			InstallUrl:        "https://github.com/apps/kadran-deploy/installations/new",
+		}
+		if st == kadranv1.GitHubConnection_STATE_PENDING {
+			c.Pending = goodPrompt()
+		}
+		srv, actions := gitServer(t, &fakeGit{conn: c})
+		resp, err := srv.GetGitHubStatus(context.Background(), &kadranv1.GetGitHubStatusRequest{})
+		if err != nil {
+			t.Fatalf("%v: %v", st, err)
+		}
+		if got := resp.GetConnection(); got.GetState() != st || !got.GetReconnectRequired() {
+			t.Fatalf("%v: response = %v, want the state and reconnect_required kept", st, got)
+		}
+		if len(actions()) != 0 {
+			t.Errorf("%v: not-connected status was audited: %v", st, actions())
+		}
+	}
+}

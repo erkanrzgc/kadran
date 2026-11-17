@@ -32,6 +32,9 @@ const (
 	coverageTTL = time.Minute
 	// refreshTimeout tek bir arka plan yenilemesinin üst süresidir.
 	refreshTimeout = time.Minute
+	// publicRecheckAge, herkese açık görünen bir depo kaydının beklemesiz
+	// yeniden denetlenmeden önceki en uzun yaşıdır.
+	publicRecheckAge = 5 * time.Minute
 )
 
 // coverage kurulum listesinin önbelleğidir; covMu ile korunur.
@@ -39,6 +42,7 @@ type coverage struct {
 	loaded    bool // en az bir yenileme başarıyla bitti
 	attempted bool
 	attemptAt time.Time // son yenilemenin BİTTİĞİ an (başarılı ya da değil)
+	loadedAt  time.Time // son BAŞARILI yenilemenin bittiği an
 	stale     bool      // listedeki bir özel depo çekilemedi: sıradaki Decide yenileyebilir
 	lastErr   error     // son yenilemenin hatası (başarıda nil)
 	installs  []*kadranv1.GitHubInstallation
@@ -122,7 +126,7 @@ func (s *Service) commitRefresh(rr *refreshRun, gen uint64, installs []*kadranv1
 	if err != nil {
 		return
 	}
-	s.cov.loaded, s.cov.stale = true, false
+	s.cov.loaded, s.cov.stale, s.cov.loadedAt = true, false, s.cov.attemptAt
 	s.cov.installs, s.cov.index = installs, index
 }
 
@@ -242,6 +246,7 @@ func (s *Service) Decide(ctx context.Context, owner, repo string) (Decision, err
 	s.covMu.Lock()
 	d, hit := s.lookupLocked(owner, repo)
 	if hit && !s.cov.stale {
+		s.recheckPublicLocked(d)
 		s.covMu.Unlock()
 		return d, nil
 	}
@@ -250,15 +255,45 @@ func (s *Service) Decide(ctx context.Context, owner, repo string) (Decision, err
 		defer s.covMu.Unlock()
 		return s.settledLocked(owner, repo)
 	}
+	gen := s.gen
 	s.covMu.Unlock()
-	select {
-	case <-rr.done:
-	case <-ctx.Done():
-		return DecisionNotConnected, ctx.Err()
+	return s.awaitRefresh(ctx, rr, gen, owner, repo)
+}
+
+// awaitRefresh yenilemenin bitmesini bekler ve önbellekten karar verir.
+// Beklenen yenileme yenisine yenik düştüyse (yeni bağlantı kuşağı artırdı,
+// sonucu atıldı) önbellek boştur: yeni yenilemeye aynı ctx bütçesiyle katılır,
+// yoksa boş önbellekten verisiz NotCovered dönerdi.
+func (s *Service) awaitRefresh(ctx context.Context, rr *refreshRun, gen uint64, owner, repo string) (Decision, error) {
+	for {
+		select {
+		case <-rr.done:
+		case <-ctx.Done():
+			return DecisionNotConnected, ctx.Err()
+		}
+		s.covMu.Lock()
+		if s.gen != gen && s.refresh != nil {
+			rr, gen = s.refresh, s.gen
+			s.covMu.Unlock()
+			continue
+		}
+		d, err := s.settledLocked(owner, repo)
+		s.covMu.Unlock()
+		return d, err
 	}
-	s.covMu.Lock()
-	defer s.covMu.Unlock()
-	return s.settledLocked(owner, repo)
+}
+
+// recheckPublicLocked, listede herkese açık görünen bir deponun kaydı
+// publicRecheckAge'den eskiyse arka plan yenilemesi başlatır ama BEKLEMEZ:
+// herkese açıkken özele çevrilen depo bir sonraki derlemede arşiv yoluna
+// geçer. Karar gecikmez; tek uçuş ve dakikalık kısıt geçerlidir.
+func (s *Service) recheckPublicLocked(d Decision) {
+	if d != DecisionNotCovered || s.refresh != nil || s.throttledLocked() {
+		return
+	}
+	if s.now().Sub(s.cov.loadedAt) > publicRecheckAge {
+		s.startRefreshLocked()
+	}
 }
 
 // waitableLocked sürmekte olan yenilemeyi, ya da kısıt izin veriyorsa yenisini döner.

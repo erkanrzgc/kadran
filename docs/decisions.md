@@ -12889,10 +12889,14 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
   - arşiv sınırları sunucuda kalır: toplam boyut sınırı ve parça başına boşta zaman aşımı 60 sn (K28).
 - **Yüzey bütçesi:** ayrıcalıklı kod 2990 -> 2981 (ağ ve jeton kodu yürütücüden çıktı; ölçüm 2982 -> 2981).
 - **`systemd-analyze security --offline` (Ubuntu 24.04, WSL):** `kadran-git` **1.3** (OK); `kadran-proxy` 0.8; `verify` temiz.
-- **Yükseltme ön koşulları** (`install.sh`, ikilileri değiştirmeden önce): `systemd-resolved` ve 127.0.0.53 saplaması; `kadran-exec` drop-in'inde `--git-credentials` yok. İkisi de `check-install-sh.sh` ile sınanır.
+- **Yükseltme ön koşulları** (`install.sh`, ikilileri değiştirmeden önce; son inceleme düzeltmesi, `check-install-sh.sh` ile sınanır):
+  - `systemd-resolved` ve 127.0.0.53 saplaması yalnız özel depolar için gerekir. Yoksa ve `kadran-git` hiç kurulmamışsa kurulum uyarır, aracıyı atlar (kullanıcı, birim, soket yok) ve uyarıyı özette yineler; herkese açık depolar çalışır. `kadran-git` birimleri zaten varsa durur ve iki yolu söyler (resolved'ı başlat ya da birimleri kaldır). Spec'teki "yalnız engelli çözücüde dur" koşulundan sapma: birim saplamayı `-`'sız bağlıyor, resolved'sız hiç başlamaz;
+  - `kadran-exec` drop-in'inde `--git-credentials` yok;
+  - `kadran-exec` drop-in'inde K-146'nın ağ satırları yok (`AF_INET`/`AF_INET6` adlı `RestrictAddressFamilies=`, `IPAddressDeny=`, `IPAddressAllow=`): yürütücü artık ağa çıkmıyor. Canlıdaki yalnız `ExecStart` + `--allow-repo` drop-in'i geçer.
 - **Canlı açık işler (Görev 14, her adım ayrı onay):**
   - yükseltmeden ÖNCE iki sunucuda `systemd-resolved` çalışıyor mu ve `/run/systemd/resolve/stub-resolv.conf` içinde `nameserver 127.0.0.53` var mı, doğrula;
-  - `kadran-exec` drop-in'inde kalmış `--git-credentials` varsa kaldır;
+  - `kadran-exec` drop-in'inde kalmış `--git-credentials` ya da K-146 ağ satırları varsa kaldır;
+  - özel deneme deposunu, denendiği sunucudaki `--allow-repo` drop-in'ine ekle: `--allow-repo` artık özel derlemeleri de sınırlıyor, listede yoksa derleme reddedilir;
   - uygulamayı "Only select repositories" ile kur ("All repositories" değil);
   - Hetzner: yükseltme, herkese açık uygulamaların değişmeden yeniden dağıtımı, `kadran github connect` (kodu kullanıcı girer), küçük özel depoyu dal adıyla dağıtma; sonra GCP;
   - ölçülecek: jetonun hiçbir günlükte ve iki denetim zincirinde olmadığı, yeniden başlatmadan sonra bağlantının sürdüğü, 8 saat sonra yenilemenin çalıştığı;

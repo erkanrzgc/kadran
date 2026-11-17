@@ -342,7 +342,6 @@ func TestConnectOldServerAtPollSaysUpgrade(t *testing.T) {
 
 func TestGitHubStatusWarnsAllRepositories(t *testing.T) {
 	conn := ghConnected(&kadranv1.GitHubInstallation{Account: "octocat", AllRepositories: true}, selectedInst("org", 2, false))
-	conn.ReconnectRequired = true
 	c, out, _, _ := ghCLI(&fakeGitHubRPC{statusConn: conn})
 
 	if code := c.run(t.Context(), []string{"github", "status"}); code != exitOK {
@@ -352,12 +351,46 @@ func TestGitHubStatusWarnsAllRepositories(t *testing.T) {
 		"octocat",
 		"octocat: ALL repositories — consider Only select repositories",
 		"org: 2 repositories (selected)",
-		"reconnect required: run kadran github connect",
 		"Manage the app installation: " + ghInstallURL,
 	} {
 		if !strings.Contains(out.String(), w) {
 			t.Errorf("%q yok:\n%s", w, out)
 		}
+	}
+	if strings.Contains(out.String(), "reconnect required") {
+		t.Errorf("healthy connection told to reconnect:\n%s", out)
+	}
+}
+
+// Bağlantı düşünce sunucu kimliği siler (dropForReconnect): gerçek şekil
+// NOT_CONNECTED/FAILED/PENDING + reconnect_required, CONNECTED DEĞİL. Sebep
+// satırı bu üç durumda da basılmalı; bayrak yokken basılmamalı.
+func TestGitHubStatusShowsReconnectAfterDrop(t *testing.T) {
+	const notice = "reconnect required: GitHub rejected the saved connection; run kadran github connect"
+	pending := ghState(kadranv1.GitHubConnection_STATE_PENDING)
+	pending.Pending = &kadranv1.GitHubUserCodePrompt{UserCode: "WXYZ-9999", ExpiresAt: timestamppb.New(ghBase)}
+	failed := ghState(kadranv1.GitHubConnection_STATE_FAILED)
+	failed.Failure = kadranv1.GitHubFailure_GIT_HUB_FAILURE_NETWORK
+	for name, conn := range map[string]*kadranv1.GitHubConnection{
+		"not connected": ghState(kadranv1.GitHubConnection_STATE_NOT_CONNECTED),
+		"failed":        failed,
+		"pending":       pending,
+	} {
+		conn.ReconnectRequired = true
+		c, out, _, _ := ghCLI(&fakeGitHubRPC{statusConn: conn})
+		if code := c.run(t.Context(), []string{"github", "status"}); code != exitOK {
+			t.Errorf("%s: cikis %d", name, code)
+		}
+		if !strings.Contains(out.String(), notice) {
+			t.Errorf("%s: reconnect notice missing:\n%s", name, out)
+		}
+	}
+	c, out, _, _ := ghCLI(&fakeGitHubRPC{statusConn: ghState(kadranv1.GitHubConnection_STATE_NOT_CONNECTED)})
+	if code := c.run(t.Context(), []string{"github", "status"}); code != exitOK {
+		t.Fatalf("cikis %d", code)
+	}
+	if strings.Contains(out.String(), "reconnect required") {
+		t.Errorf("never-connected server told to reconnect:\n%s", out)
 	}
 }
 

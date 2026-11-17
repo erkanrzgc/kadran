@@ -20,8 +20,9 @@
 #
 # Soketli exec testleri (mutant 16) yalnız Linux'ta koşar. Linux'ta doğrudan
 # `go test`, başka yerde test ikilisi GOOS=linux derlenip WSL'de koşturulur.
+# Dağıtım KADRAN_WSL_DISTRO ile seçilir (varsayılan Ubuntu-24.04).
 #
-# kapsam: internal/github cmd/kadran-git internal/exec internal/api cmd/kadran deploy/systemd
+# kapsam: internal/github cmd/kadran-git internal/exec internal/api internal/gitclient cmd/kadran deploy/systemd
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -34,6 +35,8 @@ FILES=(
     internal/github/repocoverage.go
     internal/github/token.go
     cmd/kadran-git/main.go
+    cmd/kadran-git/handlers.go
+    internal/gitclient/client.go
     internal/exec/gitfetch.go
     internal/exec/container.go
     internal/exec/privategit.go
@@ -53,6 +56,9 @@ trap 'exit 130' INT TERM
 
 fail=0
 
+# Linux ikilisini Linux dışında koşturan WSL dağıtımı.
+WSL_DISTRO="${KADRAN_WSL_DISTRO:-Ubuntu-24.04}"
+
 # run_tests <paket> <desen> <mod> [go test bayrakları…]
 #   mod=native: bu makinede; mod=linux: Linux ikilisi (Linux değilse WSL'de).
 run_tests() {
@@ -69,7 +75,7 @@ run_tests() {
     # go test bayrakları -test. önekiyle ikiliye geçer.
     local args=() a
     for a in "$@"; do args+=("-test.${a#-}"); done
-    MSYS_NO_PATHCONV=1 wsl.exe -d Ubuntu-24.04 --cd "$wdir" -- "$wbin" -test.run "$want" -test.count=1 "${args[@]}"
+    MSYS_NO_PATHCONV=1 wsl.exe -d "$WSL_DISTRO" --cd "$wdir" -- "$wbin" -test.run "$want" -test.count=1 "${args[@]}"
 }
 
 # Her farklı test komutu, ilk mutantından önce bir kez mutasyonsuz kodda
@@ -79,6 +85,11 @@ taban_yesil() {
     local key="$*"
     [[ -n "${TABAN[$key]:-}" ]] && return 0
     restore
+    if [ "$3" = linux ] && [ "$(uname -s)" != Linux ] &&
+        ! MSYS_NO_PATHCONV=1 wsl.exe -d "$WSL_DISTRO" -- true >/dev/null 2>&1; then
+        echo "!! WSL dağıtımı '$WSL_DISTRO' açılamadı: Linux testleri için KADRAN_WSL_DISTRO ile var olan bir dağıtım seç — ölçüm YAPILMADI"
+        exit 1
+    fi
     if ! run_tests "$@" >/dev/null 2>&1; then
         echo "!! TABAN KIRMIZI: mutasyonsuz kodda '$key' düşüyor — ölçüm YAPILMADI"
         exit 1
@@ -223,6 +234,26 @@ mutate internal/api/github.go "$API" 'TestStartRejectsForeignVerificationURI' na
 # 22. TestConnectStopsWhenFirstPollIsNotConnected
 mutate cmd/kadran/github.go ./cmd/kadran/ 'TestConnectStopsWhenFirstPollIsNotConnected' native "NOT_CONNECTED sonrası yoklama sürüyor" \
     "s=s.replace('default:'+chr(10)+chr(9)+chr(9)+'return c.githubStop(msgGitHubEnded), true','default:'+chr(10)+chr(9)+chr(9)+'return 0, false',1)"
+
+echo "== Son inceleme düzeltmeleri (gerçek GitHub, 17 Kas) =="
+# 23. TestResolveBranchMissingBranchIsNotFound
+mutate internal/github/branch.go "$GH" 'TestResolveBranchMissingBranchIsNotFound' native "olmayan dalın 422'si bulunamadı sayılmıyor" \
+    "s=s.replace('if errors.Is(err, errUnprocessable) {','if false && errors.Is(err, errUnprocessable) {',1)"
+# 24. TestFetchArchiveErrorAfterDecisionIsStatus, TestAdminMapsErrorsWithoutLeaking
+mutate cmd/kadran-git/handlers.go "$GIT" 'TestFetchArchiveErrorAfterDecisionIsStatus|TestAdminMapsErrorsWithoutLeaking' native "kadran-git genel hatası yine Unavailable (kadrand 'çalışmıyor' okur)" \
+    "s=s.replace('return status.Error(codes.Unknown, \"GitHub request failed\")','return status.Error(codes.Unavailable, \"GitHub request failed\")',1)"
+# 25. TestUnknownFromKadranGitIsNotNotRunning, TestMapErrorTable
+mutate internal/gitclient/client.go ./internal/gitclient/ 'TestUnknownFromKadranGitIsNotNotRunning|TestMapErrorTable' native "kadrand Unknown'ı genel iç hataya eşliyor" \
+    "s=s.replace(chr(9)+'case codes.Unknown:'+chr(10)+chr(9)+chr(9)+'return status.Error(codes.Unavailable, MsgGitHubFailed)'+chr(10),'',1)"
+# 26. TestDecideRejoinsRefreshThatSupersededItsOwn
+mutate internal/github/repocoverage.go "$GH" 'TestDecideRejoinsRefreshThatSupersededItsOwn' native "yeri alınan yenilemeyi bekleyen yenisine katılmıyor (verisiz NotCovered)" \
+    "s=s.replace('if s.gen != gen && s.refresh != nil {','if false && s.gen != gen && s.refresh != nil {',1)"
+# 27. TestStalePublicHitRechecksInBackground
+mutate internal/github/repocoverage.go "$GH" 'TestStalePublicHitRechecksInBackground' native "eski herkese açık kayıt yeniden denetlenmiyor (özele çevrilen depo görülmez)" \
+    "s=s.replace(chr(9)+chr(9)+'s.recheckPublicLocked(d)'+chr(10),'',1)"
+# 28. TestGitHubStatusShowsReconnectAfterDrop
+mutate cmd/kadran/github.go ./cmd/kadran/ 'TestGitHubStatusShowsReconnectAfterDrop' native "yeniden bağlan uyarısı yalnız CONNECTED'da (sunucu o şekli hiç üretmez)" \
+    "s=s.replace('conn.GetState() != kadranv1.GitHubConnection_STATE_CONNECTED && conn.GetReconnectRequired()','conn.GetState() == kadranv1.GitHubConnection_STATE_CONNECTED && conn.GetReconnectRequired()',1)"
 
 restore
 echo

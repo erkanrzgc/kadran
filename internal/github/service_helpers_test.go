@@ -77,7 +77,12 @@ func newFakeGH() *fakeGH {
 	return &fakeGH{routes: map[string]http.HandlerFunc{}, forms: map[string][]url.Values{}, auths: map[string][]string{}}
 }
 
-func (f *fakeGH) handle(method, path string, h http.HandlerFunc) { f.routes[method+" "+path] = h }
+// handle yolu kaydeder; testler yolu istekler sürerken de değiştirebilir, mu altında.
+func (f *fakeGH) handle(method, path string, h http.HandlerFunc) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.routes[method+" "+path] = h
+}
 
 func (f *fakeGH) body(method, path, body string) {
 	f.handle(method, path, func(w http.ResponseWriter, _ *http.Request) {
@@ -213,6 +218,31 @@ func (e *svcEnv) waitCoverage(t *testing.T) {
 	case <-rr.done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("coverage refresh did not finish")
+	}
+}
+
+// startLine, n çağıranın hepsi "yola çıktım" diyene dek bekletir. Uyku yerine
+// koşul: yenileme isteği, öteki çağıranlar kilide ulaşmadan bitmesin diye
+// sunucuda tutulur (tek uçuş testleri).
+type startLine struct {
+	n     int32
+	count atomic.Int32
+	all   chan struct{}
+}
+
+func newStartLine(n int32) *startLine { return &startLine{n: n, all: make(chan struct{})} }
+
+func (s *startLine) arrive() {
+	if s.count.Add(1) == s.n {
+		close(s.all)
+	}
+}
+
+func (s *startLine) wait(t *testing.T) {
+	select {
+	case <-s.all:
+	case <-time.After(10 * time.Second):
+		t.Error("not every caller started")
 	}
 }
 

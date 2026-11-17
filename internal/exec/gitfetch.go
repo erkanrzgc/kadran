@@ -181,7 +181,7 @@ func pumpChunks(stream grpc.ServerStreamingClient[kadranv1.FetchArchiveResponse]
 func statusText(err error) error {
 	switch status.Code(err) {
 	case codes.NotFound:
-		return errors.New("private repository not found or app not installed on it")
+		return errors.New("private repository not found, renamed on GitHub, or the app is not installed on it")
 	case codes.PermissionDenied:
 		return errors.New("app lacks permission for this repository")
 	case codes.FailedPrecondition:

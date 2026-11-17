@@ -157,7 +157,14 @@ func newAdminServer(svc gitService, adminUID uint32) (*grpc.Server, error) {
 
 // newFetchServer yalnız root'u (yürütücü) kabul eden sunucuyu kurar.
 func newFetchServer(svc gitService) (*grpc.Server, error) {
-	creds, err := peercred.TransportCredentials(fetchPolicy())
+	return newFetchServerFor(svc, fetchPolicy())
+}
+
+// newFetchServerFor fetch sunucusunu verilen arayan politikasıyla kurar.
+// Üretim yalnız newFetchServer'ı (root) kullanır; root'suz uçtan uca test
+// kendi uid'ini geçer.
+func newFetchServerFor(svc gitService, policy peercred.Policy) (*grpc.Server, error) {
+	creds, err := peercred.TransportCredentials(policy)
 	if err != nil {
 		return nil, fmt.Errorf("could not set up caller verification: %w", err)
 	}

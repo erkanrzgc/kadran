@@ -87,23 +87,35 @@ for f in git_kullanicisi git_birimleri git_araci_kur; do
     grep -q "^$f() {" "$GFN" || { echo "$f install.sh'tan çıkarılamadı — ölçüm geçersiz" >&2; exit 1; }
 done
 GIT_GUNLUK="$D/git-gunluk"
-: > "$GIT_GUNLUK"
-bash -c "
-    set -euo pipefail
-    STAGE=/stage; NOLOGIN=/usr/sbin/nologin
-    step() { :; }; say() { :; }
-    die() { echo HATA \"\$*\" >&2; exit 1; }
-    log() { echo \"\$*\" >> '$GIT_GUNLUK'; }
-    getent() { return 1; }
-    id() { case \"\$*\" in \"-u \"*) return 1;; \"-nG kadran-git\") echo kadran-git;; *) echo kadran;; esac; }
-    groupadd() { log groupadd \"\$@\"; }
-    useradd() { log useradd \"\$@\"; }
-    install() { log install \"\$@\"; }
-    systemctl() { log systemctl \"\$@\"; }
-    source '$GFN'
-    git_araci_kur
-" >/dev/null 2>&1
+# git_araci_kur_sahte <GIT_ARACI> <günlük>: fonksiyonu sahte komutlarla koşturur.
+git_araci_kur_sahte() {
+    : > "$2"
+    bash -c "
+        set -euo pipefail
+        STAGE=/stage; NOLOGIN=/usr/sbin/nologin; GIT_ARACI='$1'
+        step() { :; }; say() { :; }
+        die() { echo HATA \"\$*\" >&2; exit 1; }
+        log() { echo \"\$*\" >> '$2'; }
+        getent() { return 1; }
+        id() { case \"\$*\" in \"-u \"*) return 1;; \"-nG kadran-git\") echo kadran-git;; *) echo kadran;; esac; }
+        groupadd() { log groupadd \"\$@\"; }
+        useradd() { log useradd \"\$@\"; }
+        install() { log install \"\$@\"; }
+        systemctl() { log systemctl \"\$@\"; }
+        source '$GFN'
+        git_araci_kur
+    " >/dev/null 2>&1
+}
+git_araci_kur_sahte 1 "$GIT_GUNLUK"
 dene "git_araci_kur hatasız koşuyor" "[ -s '$GIT_GUNLUK' ]"
+# systemd-resolved yokken (GIT_ARACI=0) aracı ATLANIR: kullanıcı, birim ve
+# soket kurulmaz, hiçbir systemctl çağrısı yapılmaz. Çıkış 0 olmalı.
+GIT_ATLA="$D/git-atla"
+atla_rc=0
+git_araci_kur_sahte 0 "$GIT_ATLA" || atla_rc=$?
+dene "GIT_ARACI=0: git_araci_kur hatasız döner" "[ '$atla_rc' -eq 0 ]"
+dene "GIT_ARACI=0: hiçbir şey kurulmuyor (kullanıcı, birim, soket yok)" \
+    "[ -e '$GIT_ATLA' ] && [ ! -s '$GIT_ATLA' ]"
 SIRA_GIT="$(declare -f sira)"
 gsira() { # gsira <ad> <desen1> <desen2>
     dene "$1" "$SIRA_GIT; ARAC_GUNLUK='$GIT_GUNLUK'; sira '$2' '$3'"

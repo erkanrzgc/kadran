@@ -99,18 +99,21 @@ func TestSaveStateIgnoresDirSyncFailure(t *testing.T) {
 
 func TestForceRefreshIsSingleFlightAcross401s(t *testing.T) {
 	var hits atomic.Int32
+	const callers = 10
+	started := newStartLine(callers)
 	tk, _ := newTestTokens(t, sampleState(), func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		time.Sleep(50 * time.Millisecond)
+		started.wait(t) // yenileme, bütün çağıranlar yola çıkana dek sürer
 		_, _ = w.Write([]byte(refreshOK))
 	})
 	var wg sync.WaitGroup
-	results := make([]string, 10)
-	errs := make([]error, 10)
+	results := make([]string, callers)
+	errs := make([]error, callers)
 	for i := range results {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			started.arrive()
 			results[i], errs[i] = tk.ForceRefresh(context.Background(), "ghu_old")
 		}()
 	}

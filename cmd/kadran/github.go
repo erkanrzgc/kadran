@@ -29,6 +29,9 @@ const (
 	msgGitHubExpired = "the code expired: run kadran github connect again"
 	msgGitHubEnded   = "the sign-in flow ended on the server; run connect again"
 	msgGitHubNoInst  = "No installation yet: install the app, then run `kadran github status`."
+	// msgGitHubRejected, bağlantı düştükten sonraki durumların (CONNECTED
+	// dışı) sebep satırıdır.
+	msgGitHubRejected = "reconnect required: GitHub rejected the saved connection; run kadran github connect"
 )
 
 // runGitHub, `github` alt komutlarını dağıtır.
@@ -183,6 +186,11 @@ func (c *cli) githubStatus(ctx context.Context, rpc kadranv1.KadranServiceClient
 		fmt.Fprintf(c.stdout, "connection failed: %s\n", githubFailureText(conn.GetFailure()))
 	default:
 		fmt.Fprintln(c.stdout, "not connected: run kadran github connect")
+	}
+	// Bağlantı düşünce sunucu kimliği siler: durum CONNECTED değildir ama
+	// reconnect_required sebebi söyler (GitHub kayıtlı jetonu reddetti).
+	if conn.GetState() != kadranv1.GitHubConnection_STATE_CONNECTED && conn.GetReconnectRequired() {
+		fmt.Fprintln(c.stdout, msgGitHubRejected)
 	}
 	if u := conn.GetInstallUrl(); u != "" {
 		fmt.Fprintf(c.stdout, "Manage the app installation: %s\n", u)

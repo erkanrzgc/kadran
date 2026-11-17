@@ -250,9 +250,9 @@ func TestFetchArchiveErrorAfterDecisionIsStatus(t *testing.T) {
 		"reconnect":    {github.ErrReconnect, codes.FailedPrecondition},
 		"not conn":     {github.ErrNotConnected, codes.FailedPrecondition},
 		"rate limited": {github.ErrRateLimited, codes.ResourceExhausted},
-		"moved":        {github.ErrMoved, codes.FailedPrecondition},
+		"moved":        {github.ErrMoved, codes.NotFound},
 		"wrapped":      {fmt.Errorf("x: %w", github.ErrNotFound), codes.NotFound},
-		"unknown":      {errors.New("https://signed.example/?token=SECRET"), codes.Unavailable},
+		"unknown":      {errors.New("https://signed.example/?token=SECRET"), codes.Unknown},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := &fakeSvc{decision: github.DecisionArchive, tarballErr: tc.err}
@@ -272,7 +272,7 @@ func TestFetchArchiveErrorAfterDecisionIsStatus(t *testing.T) {
 	}
 	t.Run("moved text", func(t *testing.T) {
 		_, err := fetch(t, &fakeSvc{decision: github.DecisionArchive, tarballErr: github.ErrMoved}, goodReq())
-		if !strings.Contains(err.Error(), "repository moved: update the app definition") {
+		if !strings.Contains(err.Error(), "repository moved on GitHub") {
 			t.Fatalf("err = %v", err)
 		}
 	})
@@ -284,8 +284,8 @@ func TestFetchMidStreamReadErrorIsStatusAndClosesBody(t *testing.T) {
 
 	_, err := fetch(t, f, goodReq())
 
-	if status.Code(err) != codes.Unavailable || strings.Contains(err.Error(), "SECRET") {
-		t.Fatalf("err = %v, want clean Unavailable", err)
+	if status.Code(err) != codes.Unknown || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("err = %v, want clean Unknown", err)
 	}
 	if !body.closed {
 		t.Error("body not closed after read error")
@@ -321,11 +321,11 @@ func TestAdminMapsErrorsWithoutLeaking(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := a.StartDeviceFlow(ctx, &kadranv1.StartDeviceFlowRequest{})
-	if status.Code(err) != codes.Unavailable || strings.Contains(err.Error(), "SECRET") {
+	if status.Code(err) != codes.Unknown || strings.Contains(err.Error(), "SECRET") {
 		t.Fatalf("StartDeviceFlow err = %v", err)
 	}
 	_, err = a.DisconnectGit(ctx, &kadranv1.DisconnectGitRequest{})
-	if status.Code(err) != codes.Unavailable || strings.Contains(err.Error(), "SECRET") {
+	if status.Code(err) != codes.Unknown || strings.Contains(err.Error(), "SECRET") {
 		t.Fatalf("DisconnectGit err = %v", err)
 	}
 	_, err = a.ResolveBranch(ctx, &kadranv1.ResolveBranchRequest{Owner: "o", Repo: "r", Branch: "main"})
@@ -360,8 +360,8 @@ func TestFetchSendFailureOnFirstChunkIsStatusAndClosesBody(t *testing.T) {
 
 	err := (&fetchServer{svc: f}).FetchArchive(goodReq(), st)
 
-	if status.Code(err) != codes.Unavailable || strings.Contains(err.Error(), "SECRET") {
-		t.Fatalf("err = %v, want clean Unavailable", err)
+	if status.Code(err) != codes.Unknown || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("err = %v, want clean Unknown", err)
 	}
 	if !body.closed {
 		t.Error("body not closed after send failure")

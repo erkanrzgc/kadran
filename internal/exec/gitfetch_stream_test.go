@@ -64,10 +64,15 @@ func smallGzTar(t *testing.T) []byte {
 	return out.Bytes()
 }
 
-// Boşta süresi HER parçada sıfırlanır: toplam süre idle penceresini (300 ms)
-// aşsa da (7 parça x 150 ms ≈ 1 sn) parçalar aralıksız geldiği sürece indirme
-// başarılıdır. Sıfırlama kalkarsa 300. ms'de akış "stalled" diye kesilirdi.
+// Boşta süresi HER parçada sıfırlanır: toplam süre idle penceresini (600 ms)
+// aşsa da (7 parça x 200 ms ≈ 1,4 sn) parçalar aralıksız geldiği sürece
+// indirme başarılıdır. Sıfırlama kalkarsa 600. ms'de akış "stalled" diye
+// kesilirdi. Pay 3x: yavaş bir CI'da tek bir gecikmiş parça testi düşürmesin.
 func TestArchiveSlowButSteadyStreamSucceeds(t *testing.T) {
+	const (
+		idle = 600 * time.Millisecond
+		gap  = 200 * time.Millisecond
+	)
 	data := smallGzTar(t)
 	const pieces = 7
 	var chunks [][]byte
@@ -79,15 +84,15 @@ func TestArchiveSlowButSteadyStreamSucceeds(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	st := &paceStream{ctx: ctx, chunks: chunks, gap: 150 * time.Millisecond}
+	st := &paceStream{ctx: ctx, chunks: chunks, gap: gap}
 
 	start := time.Now()
-	f, err := receiveArchive(ctx, st, cancel, 300*time.Millisecond)
+	f, err := receiveArchive(ctx, st, cancel, idle)
 	if err != nil || f == nil {
 		t.Fatalf("steady slow stream failed: %v", err)
 	}
 	defer closePrivateContext(f)
-	if len(chunks) < 4 || time.Since(start) < 450*time.Millisecond {
+	if len(chunks) < 4 || time.Since(start) <= idle {
 		t.Fatalf("stream finished in %v: the fixture no longer outlasts the idle window", time.Since(start))
 	}
 }

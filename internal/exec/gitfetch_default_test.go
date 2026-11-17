@@ -21,7 +21,7 @@ const (
 	dArchive      = kadranv1.FetchArchiveResponse_DECISION_ARCHIVE
 	dNotConnected = kadranv1.FetchArchiveResponse_DECISION_NOT_CONNECTED
 	dNotCovered   = kadranv1.FetchArchiveResponse_DECISION_NOT_COVERED
-	publicHint    = "if it is private, install the Kadran Deploy app on it"
+	publicHint    = "if it is private, install the GitHub app on it: see kadran github status"
 )
 
 func TestDecisionTimeoutDefaultIsFiveSeconds(t *testing.T) {

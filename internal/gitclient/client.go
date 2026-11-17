@@ -30,6 +30,10 @@ const (
 // MsgNotRunning, kadran-git'e ulasilamadiginda donen sabit metindir.
 const MsgNotRunning = "the kadran-git service is not running"
 
+// MsgGitHubFailed, kadran-git calisirken GitHub isteginin basarisiz oldugunu
+// soyler (kadran-git'in genel hata kodu Unknown).
+const MsgGitHubFailed = "GitHub request failed, retry later"
+
 // Client, kadran-git yonetim soketine bagli bir gRPC istemcisidir.
 type Client struct {
 	conn *grpc.ClientConn
@@ -109,6 +113,10 @@ func (c *Client) ResolveBranch(ctx context.Context, owner, repo, branch string) 
 
 // mapError, kadran-git hatasini kadrand'in KENDI sabit metniyle eslar.
 // Gelen durum mesajina hic bakilmaz.
+//
+// Unavailable yalniz gercek arama ya da tasima hatasidir (gRPC'nin kendi
+// kodu): "calismiyor". kadran-git'in genel GitHub hatasi Unknown gelir ve
+// "calismiyor" DEGILDIR; yeniden denenebilir bir Unavailable'a cevrilir.
 func mapError(err error) error {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -122,7 +130,7 @@ func mapError(err error) error {
 	case codes.Unimplemented:
 		return status.Error(codes.FailedPrecondition, "kadran-git is older than kadrand: upgrade the server")
 	case codes.NotFound:
-		return status.Error(codes.NotFound, "repository or branch not found")
+		return status.Error(codes.NotFound, "repository or branch not found (renamed or moved on GitHub? update the app's repository URL)")
 	case codes.PermissionDenied:
 		return status.Error(codes.PermissionDenied, "the GitHub app lacks access to this repository")
 	case codes.FailedPrecondition:
@@ -133,6 +141,8 @@ func mapError(err error) error {
 		return status.Error(codes.InvalidArgument, "invalid repository or branch name")
 	case codes.Canceled:
 		return status.Error(codes.Canceled, "the request was canceled")
+	case codes.Unknown:
+		return status.Error(codes.Unavailable, MsgGitHubFailed)
 	default:
 		return status.Error(codes.Internal, "kadran-git failed")
 	}

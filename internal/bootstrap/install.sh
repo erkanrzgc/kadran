@@ -80,29 +80,68 @@ vekil_parmak_izi() {
 # KOK yalnız betik denetimleri için kök önekidir (scripts/check-install-sh.sh);
 # üretimde BOŞ.
 
-# git_onkosul_resolved — kadran-git adres çözümünü systemd-resolved'ın
-# 127.0.0.53 saplamasından yapıyor (birim /etc/resolv.conf'a bağlar; neden
-# deploy/systemd/kadran-git.service'in başında). Yoksa birim başlamaz; bunu
-# hiçbir şeye dokunmadan, kurulumun başında söylemek için.
-git_onkosul_resolved() {
-    systemctl is-active --quiet systemd-resolved.service \
-        || die "kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)"
-    grep -qE '^nameserver[[:space:]]+127\.0\.0\.53([[:space:]]|$)' \
-        "${KOK:-}/run/systemd/resolve/stub-resolv.conf" 2>/dev/null \
-        || die "kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)"
+# git_resolved_uyarisi — kadran-git'in atlandığını söyler. İki yerde basılır:
+# ön koşullarda ve kurulum özetinde (baştaki uyarı ekrandan kayıp gider).
+git_resolved_uyarisi() {
+    printf '\n⚠ systemd-resolved is not running (no stub resolver at 127.0.0.53): private GitHub\n'
+    printf '  repositories are disabled (public repositories work). See docs/guides/private-git.md\n'
 }
 
-# git_onkosul_eski_kimlik — eski `--git-credentials` yolu kalktı (özel depolar
-# artık kadran-git'ten). Drop-in'te kalırsa yürütücü bilinmeyen bayrakla
-# açılmaz; bunu ikililer değişmeden önce durdur. Glob eşleşmezse (drop-in
-# yok) `set -e` altında sessizce geçilir.
+# git_onkosul_resolved — kadran-git adres çözümünü systemd-resolved'ın
+# 127.0.0.53 saplamasından yapıyor (birim /etc/resolv.conf'a bağlar; neden
+# deploy/systemd/kadran-git.service'in başında). Saplama yoksa birim başlamaz.
+# Karar kurulumun başında, hiçbir şeye dokunmadan verilir ve GIT_ARACI'ya
+# yazılır: 1 aracı kurulur, 0 atlanır.
+#
+# Saplama yokken (spec'in "yalnız engelli çözücüde dur" koşulundan sapma:
+# birim saplamayı `-`'sız bağlıyor, resolved'sız hiç başlamaz):
+# - kadran-git birimleri YOKSA (taze kurulum ya da K-167 öncesinden yükseltme)
+#   uyarır ve aracıyı atlar. Herkese açık depolar resolved'sız da derlenir;
+#   durmak onları da engellerdi. kadrand.service'in Wants= satırı bulunmayan
+#   birimi yok sayar.
+# - birimler VARSA durur: kurulmuş aracıyı sessizce bozuk bırakmak yerine iki
+#   yolu söyler.
+git_onkosul_resolved() {
+    local birim
+    GIT_ARACI=1
+    if systemctl is-active --quiet systemd-resolved.service &&
+        grep -qE '^nameserver[[:space:]]+127\.0\.0\.53([[:space:]]|$)' \
+            "${KOK:-}/run/systemd/resolve/stub-resolv.conf" 2>/dev/null; then
+        return 0
+    fi
+    for birim in kadran-git.service kadran-git-admin.socket kadran-git-fetch.socket; do
+        if [ -e "${KOK:-}/etc/systemd/system/$birim" ] || [ -L "${KOK:-}/etc/systemd/system/$birim" ]; then
+            die "kadran-git needs systemd-resolved (stub resolver at 127.0.0.53), and kadran-git is already set up on this server.
+To fix: start systemd-resolved so that /run/systemd/resolve/stub-resolv.conf points at 127.0.0.53,
+or remove the kadran-git units to run without private repositories (see docs/guides/private-git.md)."
+        fi
+    done
+    GIT_ARACI=0
+    git_resolved_uyarisi
+}
+
+# git_onkosul_eski_kimlik — eski K-146 kurulumunun kadran-exec drop-in
+# artıkları; ikililer değişmeden önce durdurur. Glob eşleşmezse (drop-in yok)
+# `set -e` altında sessizce geçilir.
+# - `--git-credentials`: bayrak kalktı (özel depolar artık kadran-git'ten);
+#   drop-in'de kalırsa yürütücü bilinmeyen bayrakla açılmaz.
+# - Ağ satırları: eski rehber yürütücüye AF_INET/AF_INET6 ve loopback ile özel
+#   aralıkları açık bırakan kısmi bir IPAddressDeny veriyordu. Yürütücü artık
+#   ağa çıkmıyor; satırlar kalırsa root yürütücü ağa açık kalırdı. Satır
+#   başına çapalı: yorumdaki ad ve boş `RestrictAddressFamilies=` sıfırlaması
+#   durdurmaz.
 git_onkosul_eski_kimlik() {
-    local dropin
+    local dropin sorun nl=$'\n'
     for dropin in "${KOK:-}"/etc/systemd/system/kadran-exec.service.d/*.conf; do
         [ -e "$dropin" ] || continue
+        sorun=""
         if grep -q -- '--git-credentials' "$dropin"; then
-            die "remove --git-credentials from the kadran-exec drop-in; private repositories now use \`kadran github connect\`"
+            sorun="remove --git-credentials from the kadran-exec drop-in; private repositories now use \`kadran github connect\`"
         fi
+        if grep -qE '^[[:space:]]*(RestrictAddressFamilies=.*AF_INET|IPAddress(Deny|Allow)=)' "$dropin"; then
+            sorun="${sorun:+$sorun$nl}remove the RestrictAddressFamilies= (AF_INET, AF_INET6), IPAddressDeny= and IPAddressAllow= lines from $dropin: kadran-exec no longer uses the network"
+        fi
+        [ -z "$sorun" ] || die "$sorun"
     done
 }
 
@@ -142,8 +181,14 @@ git_birimleri() {
 # ÖNCE çağrılır (kadrand.service Wants=kadran-git-admin.socket). Servis
 # BAŞLATILMAZ: ilk bağlantıda soketle etkinleşir. Yükseltmede çalışan eski
 # ikili try-restart ile yenisine geçer (çalışmıyorsa dokunmaz).
+# GIT_ARACI=0 (systemd-resolved yok, git_onkosul_resolved) iken hiçbir şey
+# kurulmaz: kullanıcı, birim ve soket yok; ikili diğerleriyle kopyalanır.
 git_araci_kur() {
     step "GitHub broker (kadran-git)"
+    if [ "$GIT_ARACI" != 1 ]; then
+        say "skipped: systemd-resolved is not running, private GitHub repositories are disabled"
+        return 0
+    fi
     git_kullanicisi
     git_birimleri
     systemctl enable kadran-git-admin.socket kadran-git-fetch.socket
@@ -1092,8 +1137,12 @@ fi
 # etkinleştirilmemişti ve yalnızca REBOOT testinde ortaya çıktı. "Şu an
 # çalışıyor" bir kabul ölçütü değil; ölçüt "yeniden başlatmadan sonra da
 # çalışır".
-for unit in kadran-caddy-admin.socket kadran-caddy.service kadran-proxy.socket kadran-proxy.service \
-        kadran-git-admin.socket kadran-git-fetch.socket; do
+# kadran-git soketleri yalnız aracı kurulduysa (GIT_ARACI=1) sınanır.
+izlenen_birimler=(kadran-caddy-admin.socket kadran-caddy.service kadran-proxy.socket kadran-proxy.service)
+if [ "$GIT_ARACI" = 1 ]; then
+    izlenen_birimler+=(kadran-git-admin.socket kadran-git-fetch.socket)
+fi
+for unit in "${izlenen_birimler[@]}"; do
     state="$(systemctl is-enabled "$unit" 2>/dev/null || echo missing)"
     if [ "$state" = "enabled" ]; then
         check_ok "$unit enabled (survives a reboot)"
@@ -1117,8 +1166,11 @@ calisan_ikili_dogrula kadrand
 calisan_ikili_dogrula kadran-exec
 calisan_ikili_dogrula kadran-proxy
 # kadran-git soketle etkinleşir: ilk bağlantıya kadar çalışmıyor olması
-# normal ve doğrulamak için BAŞLATILMAZ. Çalışıyorsa imajı sınanır.
-if systemctl is-active --quiet kadran-git.service; then
+# normal ve doğrulamak için BAŞLATILMAZ. Çalışıyorsa imajı sınanır. Aracı
+# atlandıysa (GIT_ARACI=0) soketleri ve imajı yerine tek, hata olmayan satır.
+if [ "$GIT_ARACI" != 1 ]; then
+    printf '  - %s\n' "kadran-git not set up: systemd-resolved is not running (private GitHub repositories are disabled)"
+elif systemctl is-active --quiet kadran-git.service; then
     calisan_ikili_dogrula kadran-git
 else
     check_ok "kadran-git is socket-activated and not running yet"
@@ -1253,6 +1305,11 @@ if [ -n "$duz_kopyalar" ]; then
     printf '\n⚠ These migration copies may hold PLAIN values from before the vault, and the\n'
     printf '  daemon can read them. If your sites work, delete them:\n'
     printf '    sudo rm %s\n' $duz_kopyalar
+fi
+
+# Ön koşuldaki uyarı ekrandan kaydı; özet onu yineler.
+if [ "$GIT_ARACI" != 1 ]; then
+    git_resolved_uyarisi
 fi
 
 if [ "$DOCKER_HAVUZU" = yazildi ]; then

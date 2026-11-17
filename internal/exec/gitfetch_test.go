@@ -383,13 +383,15 @@ func TestPrivateFetchErrorFailsBuild(t *testing.T) {
 	}
 }
 
+// Unknown, kadran-git'in genel GitHub hatasıdır; yürütücüde genel metin kalır.
 func TestFetchStatusTextsAreFixed(t *testing.T) {
 	want := map[codes.Code]string{
-		codes.NotFound:           "private repository not found or app not installed on it",
+		codes.NotFound:           "private repository not found, renamed on GitHub, or the app is not installed on it",
 		codes.PermissionDenied:   "app lacks permission for this repository",
 		codes.FailedPrecondition: "GitHub connection needs attention: run kadran github status",
 		codes.ResourceExhausted:  "GitHub rate limit reached, retry later",
 		codes.Internal:           "private archive download failed",
+		codes.Unknown:            "private archive download failed",
 	}
 	for code, text := range want {
 		h := func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
@@ -517,16 +519,19 @@ func TestFetchHonorsBuildContextCancel(t *testing.T) {
 }
 
 // TestArchiveDownloadMayOutlastDecisionWindow, 5 sn'lik pencerenin ARCHIVE
-// kararıyla BİTTİĞİNİ kanıtlar: karar penceresi 200 ms, indirme 600 ms+ sürer.
-// Zamanlayıcı durdurulmazsa (mutant: `!timer.Stop()` yerine yalnız bayrak
-// bakmak) akış 200. ms'de iptal edilir ve bu test düşer.
+// kararıyla BİTTİĞİNİ kanıtlar: karar penceresi 1 sn, indirme 3 sn+ sürer.
+// Pencere yavaş bir CI el sıkışmasına yetecek kadar geniş (200 ms'de karar
+// gecikip NOT_CONNECTED'a düşebilirdi). Zamanlayıcı durdurulmazsa (mutant:
+// `!timer.Stop()` yerine yalnız bayrak bakmak) akış 1. sn'de iptal edilir ve
+// bu test düşer.
 func TestArchiveDownloadMayOutlastDecisionWindow(t *testing.T) {
+	const window = time.Second
 	good := archiveWithContent(t)
 	h := func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
 		if err := s.Send(decide(dArchive)); err != nil {
 			return err
 		}
-		time.Sleep(3 * testDecisionTimeout)
+		time.Sleep(3 * window)
 		for len(good) > 0 {
 			n := min(16, len(good))
 			if err := s.Send(chunk(good[:n])); err != nil {
@@ -537,11 +542,11 @@ func TestArchiveDownloadMayOutlastDecisionWindow(t *testing.T) {
 		return nil
 	}
 	dir := tempContexts(t)
-	d, f, err := shortFetcher(startFakeGit(t, h)).Fetch(context.Background(), validGitSource())
+	g := &gitFetcher{socket: startFakeGit(t, h), decisionTimeout: window, chunkIdle: time.Minute}
+	d, f, err := g.Fetch(context.Background(), validGitSource())
 	if d != dArchive || f == nil || err != nil {
 		t.Fatalf("slow archive failed: %v %v %v", d, f, err)
 	}
-	defer closePrivateContext(f)
 	tr := tar.NewReader(f)
 	hdr, err := tr.Next()
 	if err != nil || hdr.Name != "Dockerfile" {
@@ -550,7 +555,8 @@ func TestArchiveDownloadMayOutlastDecisionWindow(t *testing.T) {
 	if body, _ := io.ReadAll(tr); string(body) != "FROM scratch\n" {
 		t.Fatalf("body wrong: %q", body)
 	}
-	_ = dir
+	closePrivateContext(f)
+	noLeftoverContext(t, dir)
 }
 
 func TestArchiveStallFailsBuild(t *testing.T) {
@@ -576,22 +582,28 @@ func TestArchiveStallFailsBuild(t *testing.T) {
 }
 
 func TestPreDecisionLogCategories(t *testing.T) {
+	// Yalnız "timeout" kısa pencere ister; ötekiler 5 sn'lik pencerede koşar:
+	// 200 ms'lik pencerede yavaş bir CI el sıkışması kategoriyi "timeout"a
+	// çevirebilirdi.
 	cases := map[string]struct {
 		sock   func(*testing.T) string
+		window time.Duration
 		reason string
 	}{
-		"timeout": {startSilentListener, "reason=timeout"},
-		"status":  {func(t *testing.T) string { return startFakeGit(t, statusHandler(codes.Internal)) }, "reason=status"},
+		"timeout": {startSilentListener, testDecisionTimeout, "reason=timeout"},
+		"status": {func(t *testing.T) string { return startFakeGit(t, statusHandler(codes.Internal)) },
+			5 * time.Second, "reason=status"},
 		"protocol": {func(t *testing.T) string {
 			return startFakeGit(t, func(_ *kadranv1.FetchArchiveRequest, s kadranv1.GitFetchService_FetchArchiveServer) error {
 				return s.Send(chunk([]byte("x")))
 			})
-		}, "reason=protocol"},
+		}, 5 * time.Second, "reason=protocol"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			var buf bytes.Buffer
 			g := shortFetcher(tc.sock(t))
+			g.decisionTimeout = tc.window
 			g.log = slog.New(slog.NewTextHandler(&buf, nil))
 			if d, f, err := g.Fetch(context.Background(), validGitSource()); d != dNotConnected || f != nil || err != nil {
 				t.Fatalf("got %v %v %v", d, f, err)

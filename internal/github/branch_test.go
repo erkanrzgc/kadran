@@ -2,6 +2,7 @@ package github
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -104,5 +105,39 @@ func TestResolveBranchNotConnected(t *testing.T) {
 	e := newEnv(t, connectedGH(), false, nil)
 	if _, err := e.s.ResolveBranch(context.Background(), "octo", "priv", "main"); err == nil {
 		t.Fatal("expected an error when not connected")
+	}
+}
+
+// Gerçek GitHub olmayan bir dal için commits uç noktasında 404 değil 422
+// döner (17 Kas ölçümü). Genel hata olarak kalırsa kadran-git onu genel
+// başarısızlık koduyla döner ve kadrand "kadran-git çalışmıyor" derdi.
+func TestResolveBranchMissingBranchIsNotFound(t *testing.T) {
+	gh := connectedGH()
+	gh.handle("GET", "/repos/octo/priv/commits/master", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"message":"No commit found for SHA: master"}`))
+	})
+	e := newEnv(t, gh, true, nil)
+	sha, err := e.s.ResolveBranch(context.Background(), "octo", "priv", "master")
+	if !errors.Is(err, ErrNotFound) || sha != "" {
+		t.Fatalf("ResolveBranch = %q, %v; want ErrNotFound", sha, err)
+	}
+	if strings.Contains(err.Error(), "No commit") {
+		t.Fatalf("error carries the response body: %v", err)
+	}
+}
+
+// 422 yalnız ResolveBranch'te "bulunamadı"dır: başka çağrılarda genel hata
+// kalır (ör. arşiv ya da kurulum listesi 422 alırsa depo yok sayılmaz).
+func TestUnprocessableIsNotFoundOnlyForBranches(t *testing.T) {
+	c := serverClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+	})
+	err := c.getJSON(context.Background(), "/x", "t", nil)
+	if err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("getJSON 422 = %v, want a generic error that is not ErrNotFound", err)
+	}
+	if _, err := c.getRaw(context.Background(), "/x", "t", "application/vnd.github.sha", maxSHABody); err == nil || errors.Is(err, ErrNotFound) {
+		t.Fatalf("getRaw 422 = %v, want a generic error that is not ErrNotFound", err)
 	}
 }

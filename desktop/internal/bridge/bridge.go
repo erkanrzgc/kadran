@@ -74,8 +74,10 @@ type Bridge struct {
 	// farklı uygulama adlarıyla kutu yağdırıp kullanıcıyı onay yorgunluğuna
 	// itemesin.
 	dialogOpen bool
-	// lastOpen, OpenGitHub'ın son kabul edilen çağrısı (1 sn debounce).
-	lastOpen time.Time
+	// lastOpen ve lastOpenURL, OpenGitHub'ın son kabul edilen çağrısı
+	// (aynı adres 1 sn, farklı adres 250 ms).
+	lastOpen    time.Time
+	lastOpenURL string
 }
 
 // New, köprüyü kurar.

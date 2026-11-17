@@ -129,14 +129,25 @@ func TestOpenGitHubDebouncesOneSecond(t *testing.T) {
 	if err := hs.b.OpenGitHub(dev); err != nil {
 		t.Fatal(err)
 	}
+	// Ayni adres 1 sn icinde: cift tiklama tek sekme.
 	now = now.Add(999 * time.Millisecond)
-	if err := hs.b.OpenGitHub(inst); err != nil || len(hs.h.opened) != 1 {
-		t.Fatalf("999 ms sonra ikinci acis yutulmadi: %v %v", err, hs.h.opened)
+	if err := hs.b.OpenGitHub(dev); err != nil || len(hs.h.opened) != 1 {
+		t.Fatalf("999 ms sonra ayni adres yutulmadi: %v %v", err, hs.h.opened)
 	}
 	// Yutulan cagri sureyi uzatmaz: ilk acistan 1 sn sonra acilir.
 	now = now.Add(time.Millisecond)
-	if err := hs.b.OpenGitHub(inst); err != nil || len(hs.h.opened) != 2 || hs.h.opened[1] != inst {
-		t.Fatalf("1 sn sonra acis yapilmadi: %v %v", err, hs.h.opened)
+	if err := hs.b.OpenGitHub(dev); err != nil || len(hs.h.opened) != 2 {
+		t.Fatalf("1 sn sonra ayni adres acilmadi: %v %v", err, hs.h.opened)
+	}
+	// Farkli adres 250 ms tabanin altinda yutulur (sekme yagmuru siniri)...
+	now = now.Add(249 * time.Millisecond)
+	if err := hs.b.OpenGitHub(inst); err != nil || len(hs.h.opened) != 2 {
+		t.Fatalf("249 ms sonra farkli adres yutulmadi: %v %v", err, hs.h.opened)
+	}
+	// ...ama 1 sn beklemez: giris sayfasindan hemen sonra kurulum baglantisi acilir.
+	now = now.Add(time.Millisecond)
+	if err := hs.b.OpenGitHub(inst); err != nil || len(hs.h.opened) != 3 || hs.h.opened[2] != inst {
+		t.Fatalf("250 ms sonra farkli adres acilmadi: %v %v", err, hs.h.opened)
 	}
 	// Gecersiz adres hata verir, debounce'a bakilmaz.
 	now = now.Add(time.Millisecond)

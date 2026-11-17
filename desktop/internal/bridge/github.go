@@ -58,7 +58,7 @@ func (b *Bridge) OpenGitHub(url string) error {
 	if err != nil {
 		return err
 	}
-	if !b.openAllowed() {
+	if !b.openAllowed(u) {
 		return nil
 	}
 	return b.deps.Host.OpenURL(u)
@@ -68,14 +68,18 @@ const (
 	// githubConnectGate, GitHubConnect'in işlem kapısı adı ("$" ile başlayan
 	// adlar gerçek uygulama kimliği olamaz).
 	githubConnectGate = "$github-connect"
-	// openGitHubDebounce, iki tarayıcı açışı arasındaki en kısa süre.
+	// openGitHubDebounce, AYNI adresin iki açışı arasındaki en kısa süre
+	// (çift tıklama tek sekme açsın).
 	openGitHubDebounce = time.Second
+	// openGitHubMinGap, FARKLI adresler arasındaki en kısa süre: akışta kullanıcı
+	// giriş sayfasını açıp hemen kurulum bağlantısına basabilir; bu taban yalnız
+	// ele geçmiş bir arayüzün sekme yağdırmasını sınırlar.
+	openGitHubMinGap = 250 * time.Millisecond
 )
 
-// openAllowed, son kabul edilen açıştan bu yana debounce süresi geçtiyse
-// true döner ve yeni açışı kaydeder; geçmediyse çağrı sessizce yutulur
-// (ele geçmiş bir arayüz sekme yağdıramasın, çift tıklama tek sekme açsın).
-func (b *Bridge) openAllowed() bool {
+// openAllowed, açışa izin varsa true döner ve onu kaydeder; yoksa çağrı
+// sessizce yutulur. Aynı adres 1 sn, farklı adres 250 ms bekler.
+func (b *Bridge) openAllowed(u string) bool {
 	now := time.Now
 	if b.deps.Now != nil {
 		now = b.deps.Now
@@ -83,9 +87,15 @@ func (b *Bridge) openAllowed() bool {
 	b.gateMu.Lock()
 	defer b.gateMu.Unlock()
 	t := now()
-	if !b.lastOpen.IsZero() && t.Sub(b.lastOpen) < openGitHubDebounce {
-		return false
+	if !b.lastOpen.IsZero() {
+		gap := openGitHubMinGap
+		if u == b.lastOpenURL {
+			gap = openGitHubDebounce
+		}
+		if t.Sub(b.lastOpen) < gap {
+			return false
+		}
 	}
-	b.lastOpen = t
+	b.lastOpen, b.lastOpenURL = t, u
 	return true
 }

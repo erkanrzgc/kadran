@@ -447,10 +447,16 @@ mutate_in src/renderer/lib/github.ts "hata kesme penceresinin arkasinda da tekra
     "s=s.replace('hasConnection && !dialogOpen ? error','hasConnection ? error',1)"
 mutate_go internal/bridge/github.go "GitHubConnect islem kapisi yok (cift cagri gecer)" \
     "s=s.replace('release, err := b.enter(t, githubConnectGate)','release, err := func() {}, error(nil)',1)"
-mutate_go internal/bridge/github.go "OpenGitHub 1 sn debounce yok" \
-    "s=s.replace('!b.lastOpen.IsZero() && t.Sub(b.lastOpen) < openGitHubDebounce','false',1)"
+mutate_go internal/bridge/github.go "OpenGitHub debounce yok" \
+    "s=s.replace('if t.Sub(b.lastOpen) < gap {','if gap < 0 {',1)"
 mutate_go internal/bridge/github.go "OpenGitHub son acisi kaydedilmiyor" \
-    "s=s.replace('b.lastOpen = t','_ = t',1)"
+    "s=s.replace('b.lastOpen, b.lastOpenURL = t, u','_, _ = t, u',1)"
+mutate_go internal/bridge/github.go "OpenGitHub son acilan adres kaydedilmiyor" \
+    "s=s.replace('b.lastOpen, b.lastOpenURL = t, u','b.lastOpen = t',1)"
+mutate_go internal/bridge/github.go "OpenGitHub ayni adresi ayirmiyor (cift tiklama iki sekme)" \
+    "s=s.replace('if u == b.lastOpenURL {','if false {',1)"
+mutate_go internal/bridge/github.go "OpenGitHub farkli adres tabani yok (sekme yagmuru)" \
+    "s=s.replace('gap := openGitHubMinGap','gap := time.Duration(0)',1)"
 
 restore
 if [ "$fail" -ne 0 ]; then

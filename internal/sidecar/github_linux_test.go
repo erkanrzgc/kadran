@@ -86,18 +86,32 @@ func githubCall(t *testing.T, fixture *githubAPIFixture, method string, extra ma
 func TestGitHubMethodsReachRealGRPC(t *testing.T) {
 	f := &githubAPIFixture{}
 	st := githubCall(t, f, "github.status", nil)
-	conn := st.Result.(map[string]any)["connection"].(map[string]any)
+	conn := objField(t, st.Result, "connection")
 	if st.Error != nil || conn["state"] != "STATE_CONNECTED" || conn["login"] != "octo" {
 		t.Fatalf("status: %+v", st)
 	}
 	connect := githubCall(t, f, "github.connect", nil)
-	prompt := connect.Result.(map[string]any)["prompt"].(map[string]any)
+	prompt := objField(t, connect.Result, "prompt")
 	if connect.Error != nil || prompt["user_code"] != "WDJB-MJHT" {
 		t.Fatalf("connect: %+v", connect)
 	}
 	if r := githubCall(t, f, "github.disconnect", map[string]any{"confirmation": "disconnect"}); r.Error != nil || !f.disconnected {
 		t.Fatalf("disconnect: %+v disconnected=%v", r, f.disconnected)
 	}
+}
+
+// objField, JSON sonucunun nesne alanını döner; biçim yanlışsa test düşer.
+func objField(t *testing.T, v any, key string) map[string]any {
+	t.Helper()
+	obj, ok := v.(map[string]any)
+	if !ok {
+		t.Fatalf("result is not an object: %#v", v)
+	}
+	field, ok := obj[key].(map[string]any)
+	if !ok {
+		t.Fatalf("%s is not an object: %#v", key, obj[key])
+	}
+	return field
 }
 
 func TestGitHubOldServerErrorCarriesUnimplemented(t *testing.T) {

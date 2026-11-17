@@ -9,7 +9,6 @@ import (
 	"time"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 // Decision, bir deponun derlemede hangi yoldan çekileceğidir. Sıfır değer
@@ -345,7 +344,7 @@ func (s *Service) cachedInstallations() []*kadranv1.GitHubInstallation {
 	}
 	out := make([]*kadranv1.GitHubInstallation, len(s.cov.installs))
 	for i, in := range s.cov.installs {
-		out[i] = proto.Clone(in).(*kadranv1.GitHubInstallation)
+		out[i] = cloneMsg(in)
 	}
 	return out
 }

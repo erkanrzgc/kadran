@@ -55,11 +55,6 @@ func paramOf(t *testing.T, raw, key string) string {
 	return m[key]
 }
 
-func contextSource(t *testing.T, srv *Server) string {
-	t.Helper()
-	return paramOf(t, lastRecord(t, srv).ParamsJSON, "context_source")
-}
-
 // stubFetcher, soketsiz (Windows'ta da koşan) sahte GitFetcher'dır.
 type stubFetcher struct {
 	calls    atomic.Int32

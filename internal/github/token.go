@@ -80,7 +80,7 @@ func newTokens(path, clientID string, c *client, now func() time.Time) (*tokens,
 	st, ok, err := loadState(path, clientID)
 	if err != nil {
 		slog.Warn("github state file unusable, treating as not connected")
-		return t, nil
+		return t, nil //nolint:nilerr // bozuk durum = bağlı değil; kadran-git yine açılmalı
 	}
 	t.st, t.ok = st, ok
 	t.syncIdentityLocked()

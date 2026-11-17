@@ -107,6 +107,12 @@ func startSilentListener(t *testing.T) string {
 	return sock
 }
 
+// contextSource, son denetim kaydındaki bağlam kaynağı (yalnız bu dosya kullanır).
+func contextSource(t *testing.T, srv *Server) string {
+	t.Helper()
+	return paramOf(t, lastRecord(t, srv).ParamsJSON, "context_source")
+}
+
 // okFetcher başarı yolu testleri içindir: yavaş bir CI el sıkışması sonucu
 // NOT_CONNECTED'a çevirmesin diye cömert süre.
 func okFetcher(sock string) GitFetcher {
@@ -568,7 +574,10 @@ func TestArchiveStallFailsBuild(t *testing.T) {
 		return nil
 	}
 	dir := tempContexts(t)
-	g := okFetcher(startFakeGit(t, h)).(*gitFetcher)
+	g, ok := okFetcher(startFakeGit(t, h)).(*gitFetcher)
+	if !ok {
+		t.Fatal("okFetcher did not return *gitFetcher")
+	}
 	g.chunkIdle = testDecisionTimeout
 	start := time.Now()
 	d, f, err := g.Fetch(context.Background(), validGitSource())

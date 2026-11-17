@@ -43,7 +43,8 @@ func checkStateDirs(path string) error {
 		if !ok || (st.Uid != 0 && st.Uid != euid) {
 			return errStateDir
 		}
-		if fi.Mode().Perm()&0o022 != 0 && !(dir != parent && fi.Mode()&os.ModeSticky != 0 && st.Uid == 0) {
+		stickyRootAncestor := dir != parent && fi.Mode()&os.ModeSticky != 0 && st.Uid == 0
+		if fi.Mode().Perm()&0o022 != 0 && !stickyRootAncestor {
 			return errStateDir
 		}
 		if dir == filepath.Dir(dir) {

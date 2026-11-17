@@ -70,7 +70,7 @@ var syncDirFn = syncDir
 // saveState durumu atomik yazar: aynı dizinde geçici dosya (0600, gizli veri
 // yazılmadan önce), fsync, rename, dizin fsync. Hata olursa geçici dosya silinir.
 func saveState(path string, s state) (err error) {
-	data, err := json.Marshal(s)
+	data, err := json.Marshal(s) //nolint:gosec // G117: jeton bu dosyada bilerek duruyor (0600, yalnız kadran-git okur)
 	if err != nil {
 		return fmt.Errorf("github: encoding state: %w", err)
 	}

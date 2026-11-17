@@ -99,7 +99,11 @@ func (s *fakeStream) Send(m *kadranv1.FetchArchiveResponse) error {
 		return errors.New("send failed https://x?sig=SECRET")
 	}
 	// Gercek Send serilestirir; arabellek yeniden kullanildigi icin kopya tut.
-	s.sent = append(s.sent, proto.Clone(m).(*kadranv1.FetchArchiveResponse))
+	c, ok := proto.Clone(m).(*kadranv1.FetchArchiveResponse)
+	if !ok {
+		return errors.New("clone returned another type")
+	}
+	s.sent = append(s.sent, c)
 	return nil
 }
 

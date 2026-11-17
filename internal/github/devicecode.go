@@ -9,7 +9,6 @@ import (
 	"time"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -101,7 +100,7 @@ func (s *Service) StartDeviceFlow(ctx context.Context) (*kadranv1.GitHubUserCode
 	s.flow = fr
 	s.setStatus(flowStatus{pending: prompt})
 	go s.poll(runCtx, fr, dc.DeviceCode, interval, expiresAt)
-	return proto.Clone(prompt).(*kadranv1.GitHubUserCodePrompt), nil
+	return cloneMsg(prompt), nil
 }
 
 // stopFlowLocked akışı iptal eder ve goroutine'in çıkmasını bekler (lifeMu tutulurken).

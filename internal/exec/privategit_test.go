@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -193,7 +194,7 @@ func TestRewriteRejectsSparseTotalBelowWriterCap(t *testing.T) {
 	limits := archiveLimits{1 << 20, 1 << 20, 100}
 	var out bytes.Buffer
 	err := rewritePrivateArchive(context.Background(), bytes.NewReader(archive), &out, limits)
-	if err != errArchiveTooLarge {
+	if !errors.Is(err, errArchiveTooLarge) {
 		t.Fatalf("err = %v, want errArchiveTooLarge", err)
 	}
 }
@@ -209,7 +210,7 @@ func TestCapWriterRejectsWritesBeyondItsBudget(t *testing.T) {
 	if n, err := c.Write([]byte("123456")); n != 6 || err != nil {
 		t.Fatalf("write within budget = %d, %v", n, err)
 	}
-	if n, err := c.Write([]byte("12345")); n != 0 || err != errArchiveTooLarge {
+	if n, err := c.Write([]byte("12345")); n != 0 || !errors.Is(err, errArchiveTooLarge) {
 		t.Fatalf("write beyond budget = %d, %v; want 0, errArchiveTooLarge", n, err)
 	}
 	if out.String() != "123456" {
@@ -218,7 +219,7 @@ func TestCapWriterRejectsWritesBeyondItsBudget(t *testing.T) {
 	if n, err := c.Write([]byte("abcd")); n != 4 || err != nil {
 		t.Fatalf("write that exactly fills the budget = %d, %v", n, err)
 	}
-	if _, err := c.Write([]byte("x")); err != errArchiveTooLarge {
+	if _, err := c.Write([]byte("x")); !errors.Is(err, errArchiveTooLarge) {
 		t.Fatalf("write after the budget is spent = %v", err)
 	}
 }

@@ -154,7 +154,7 @@ func (s *Service) Status(_ context.Context) (*kadranv1.GitHubConnection, error) 
 	switch {
 	case fs.pending != nil:
 		conn.State = kadranv1.GitHubConnection_STATE_PENDING
-		conn.Pending = proto.Clone(fs.pending).(*kadranv1.GitHubUserCodePrompt)
+		conn.Pending = cloneMsg(fs.pending)
 	case fs.failed:
 		conn.State = kadranv1.GitHubConnection_STATE_FAILED
 		conn.Failure = fs.failure
@@ -251,4 +251,11 @@ func (s *Service) Archive(ctx context.Context, owner, repo, sha string) (Decisio
 		return DecisionArchive, nil, err
 	}
 	return DecisionArchive, rc, nil
+}
+
+// cloneMsg, proto mesajının derin kopyasını aynı tipte döner (proto.Clone
+// tipi korur; iddia hiç düşmez, yine de denetlenir).
+func cloneMsg[M proto.Message](m M) M {
+	c, _ := proto.Clone(m).(M)
+	return c
 }

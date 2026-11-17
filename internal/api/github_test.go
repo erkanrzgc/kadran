@@ -443,15 +443,6 @@ func TestNilGitAdminIsFailedPrecondition(t *testing.T) {
 	}
 }
 
-// uniqueHashes, kurtarma kodu ozetleri: her biri farkli olmali.
-func uniqueHashes() [][32]byte {
-	out := make([][32]byte, 10)
-	for i := range out {
-		out[i][0] = byte(i + 1)
-	}
-	return out
-}
-
 // Baglanti dustugunde (GitHub kayitli jetonu reddetti) kadran-git kimligi
 // siler: durum CONNECTED DEGIL, NOT_CONNECTED/FAILED/PENDING + reconnect_required.
 // kadrand bu bayragi her durumda istemciye tasimali; yoksa CLI ve masaustu

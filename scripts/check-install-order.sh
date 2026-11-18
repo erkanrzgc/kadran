@@ -76,5 +76,73 @@ dene "ana akış: çağrı kadrand yeniden başlatmasından ÖNCE" \
     "[ -n '$cagri' ] && [ -n '$yeniden' ] && [ '$cagri' -lt '$yeniden' ]"
 
 echo
+echo "== kadran-git soketleri kadrand'dan ÖNCE (K-167) =="
+# kadrand.service Wants=kadran-git-admin.socket: soketler kadrand yeniden
+# başlamadan önce etkin olmalı. Fonksiyon sahte komutlarla koşuyor; çağrı
+# SIRASI günlüğe yazılıyor.
+GFN="$D/git-fonks"
+: > "$GFN"
+for f in git_kullanicisi git_birimleri git_araci_kur; do
+    sed -n "/^$f() {/,/^}/p" internal/bootstrap/install.sh >> "$GFN"
+    grep -q "^$f() {" "$GFN" || { echo "$f install.sh'tan çıkarılamadı — ölçüm geçersiz" >&2; exit 1; }
+done
+GIT_GUNLUK="$D/git-gunluk"
+# git_araci_kur_sahte <GIT_ARACI> <günlük>: fonksiyonu sahte komutlarla koşturur.
+git_araci_kur_sahte() {
+    : > "$2"
+    bash -c "
+        set -euo pipefail
+        STAGE=/stage; NOLOGIN=/usr/sbin/nologin; GIT_ARACI='$1'
+        step() { :; }; say() { :; }
+        die() { echo HATA \"\$*\" >&2; exit 1; }
+        log() { echo \"\$*\" >> '$2'; }
+        getent() { return 1; }
+        id() { case \"\$*\" in \"-u \"*) return 1;; \"-nG kadran-git\") echo kadran-git;; *) echo kadran;; esac; }
+        groupadd() { log groupadd \"\$@\"; }
+        useradd() { log useradd \"\$@\"; }
+        install() { log install \"\$@\"; }
+        systemctl() { log systemctl \"\$@\"; }
+        source '$GFN'
+        git_araci_kur
+    " >/dev/null 2>&1
+}
+git_araci_kur_sahte 1 "$GIT_GUNLUK"
+dene "git_araci_kur hatasız koşuyor" "[ -s '$GIT_GUNLUK' ]"
+# systemd-resolved yokken (GIT_ARACI=0) aracı ATLANIR: kullanıcı, birim ve
+# soket kurulmaz, hiçbir systemctl çağrısı yapılmaz. Çıkış 0 olmalı.
+GIT_ATLA="$D/git-atla"
+atla_rc=0
+git_araci_kur_sahte 0 "$GIT_ATLA" || atla_rc=$?
+dene "GIT_ARACI=0: git_araci_kur hatasız döner" "[ '$atla_rc' -eq 0 ]"
+dene "GIT_ARACI=0: hiçbir şey kurulmuyor (kullanıcı, birim, soket yok)" \
+    "[ -e '$GIT_ATLA' ] && [ ! -s '$GIT_ATLA' ]"
+SIRA_GIT="$(declare -f sira)"
+gsira() { # gsira <ad> <desen1> <desen2>
+    dene "$1" "$SIRA_GIT; ARAC_GUNLUK='$GIT_GUNLUK'; sira '$2' '$3'"
+}
+gsira "kullanıcı birim dosyalarından ÖNCE" 'useradd.*kadran-git' 'install.*kadran-git-admin.socket'
+gsira "birim dosyaları daemon-reload'dan ÖNCE" 'install.*kadran-git-fetch.socket' 'systemctl daemon-reload'
+gsira "daemon-reload soketlerin enable'ından ÖNCE" 'systemctl daemon-reload' 'systemctl enable kadran-git-admin.socket kadran-git-fetch.socket'
+gsira "enable soketlerin yeniden başlatılmasından ÖNCE" 'systemctl enable kadran-git-admin.socket' 'systemctl restart kadran-git-admin.socket kadran-git-fetch.socket'
+gsira "soketler yeniden başlatıldıktan SONRA servis try-restart" 'systemctl restart kadran-git-admin.socket' 'systemctl try-restart kadran-git.service'
+dene "git servisi başlatılmıyor (soketle etkinleşir)" \
+    "! grep -Eq 'systemctl (start|restart) kadran-git.service' '$GIT_GUNLUK'"
+# Ana akış: git_araci_kur kadrand'ın yeniden başlatmasından önce.
+gcagri="$(grep -n '^git_araci_kur$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+dene "ana akış: git_araci_kur çağrısı var" "[ -n '$gcagri' ]"
+dene "ana akış: git_araci_kur kadrand yeniden başlatmasından ÖNCE" \
+    "[ -n '$gcagri' ] && [ -n '$yeniden' ] && [ '$gcagri' -lt '$yeniden' ]"
+# Ön koşullar hiçbir değişiklikten ÖNCE: Docker adres havuzu adımı ilk
+# yazan adım, ikili kurulumu ondan sonra.
+oncagri="$(grep -n '^git_onkosul_resolved$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+onceki="$(grep -n '^git_onkosul_eski_kimlik$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+havuz="$(grep -n '^step "Docker address pool"' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+ikili="$(grep -n '^ikili_kur "\$STAGE/kadrand"' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+dene "ön koşul (resolved) ilk değişiklikten ÖNCE" \
+    "[ -n '$oncagri' ] && [ -n '$havuz' ] && [ '$oncagri' -lt '$havuz' ] && [ '$oncagri' -lt '$ikili' ]"
+dene "ön koşul (eski kimlik) ilk değişiklikten ÖNCE" \
+    "[ -n '$onceki' ] && [ -n '$havuz' ] && [ '$onceki' -lt '$havuz' ] && [ '$onceki' -lt '$ikili' ]"
+
+echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }
 echo "Göç sırası doğru."

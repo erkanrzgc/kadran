@@ -79,9 +79,27 @@ crosses one of these is in scope and will be treated as high severity:
    upstreams are outside that capability. Bypassing the broker is in scope (K-143).
    The only non-proxy handler it accepts is a fixed-shape 308 redirect whose target
    must be a routed domain (K-152).
-9. **Leaking private repository credentials.** Opt-in repository credentials belong to
-   the executor's server configuration. They must not enter application definitions,
-   the desktop, daemon database, Docker context, audit records or error messages.
+9. **Leaking the GitHub token.** The device-flow token (and its renewal token or a signed
+   archive URL) belongs to `kadran-git` alone. It must not reach `kadrand`, the
+   workstation, the desktop, application definitions, the Docker context, audit records,
+   logs, RPC replies or error messages. The root executor must not gain network access, and
+   a private repository must never fall back to an anonymous build (K-167).
+10. **Escaping the `kadran-git` sockets.** `admin.sock` is for `kadran` only and
+    `fetch.sock` for root only, checked per connection with `SO_PEERCRED`. A deploy-only
+    key calling any of the four GitHub calls is also in scope.
+
+## Trust in the GitHub App owner
+
+The default GitHub App, "Kadran Deploy", is owned by the maintainer. Whoever holds the App's
+private key can read the selected repositories of every account that installed it. This is
+true of every public GitHub App. Kadran stores no private key and no client secret, and none
+is published. If you do not want to trust the App's owner, register your own GitHub App and
+run `kadran-git` with `--client-id` and `--app-slug`; see
+[the guide](docs/guides/private-git.md#register-your-own-github-app). A compromise of the
+maintainer's key is not a Kadran vulnerability, but please tell us.
+
+Disconnecting deletes the token on your server. It cannot revoke it on GitHub, so revoke the
+grant at `https://github.com/settings/apps/authorizations` as well.
 
 ## Explicitly out of scope
 

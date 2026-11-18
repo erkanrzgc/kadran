@@ -98,6 +98,8 @@ func (d *Dispatcher) Dispatch(ctx context.Context, method string, params json.Ra
 	switch method {
 	case "apps.list", "apps.get", "apps.create", "apps.update", "apps.delete", "apps.deploy", "apps.rollback", "apps.logs", "alarms.list", "backups.list", "backups.create":
 		return d.dispatchManagement(ctx, method, params)
+	case "github.status", "github.connect", "github.disconnect":
+		return d.dispatchGitHub(ctx, method, params)
 	case "servers.list", "servers.add", "servers.update", "servers.remove", "servers.import":
 		return d.dispatchServers(method, params)
 	case "version":

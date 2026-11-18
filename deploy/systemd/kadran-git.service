@@ -1,0 +1,72 @@
+# Kadran GitHub aracısı: cihaz akışı jetonunu tutan TEK süreç (K-167).
+#
+# Neden iki soket: admin.sock (grup kadran, 0660) kadrand'ın yönetim
+# çağrıları için; fetch.sock (root 0600) yalnız root yürütücünün özel depo
+# arşivi istemesi için. Süreç hangi sokete gelindiğini dosya tanıtıcısının
+# adından (FileDescriptorName=) bilir; iki yetki düzeyi birbirine karışmaz.
+#
+# Neden ExecStart'ta bayrak yok: iki canlı sunucudaki drop-in'ler ExecStart'ı
+# yeniden yazıyor; ayarlar koddaki varsayılan olarak kalır.
+#
+# Neden kod çözücü bağlanıyor: GCP'de /etc/resolv.conf 169.254.169.254'u
+# gösteriyor ve link-local reddi altında Go'nun saf çözücüsü ona erişemiyor
+# (K-167 ölçümü). Bu yüzden systemd-resolved'ın 127.0.0.53 saplaması
+# /etc/resolv.conf üzerine salt okunur bağlanır ve yalnız o adrese izin
+# verilir. BindReadOnlyPaths'te başta `-` YOK: dosya yoksa birim sessizce
+# bozuk çözücüyle değil, açıkça başlamayarak düşsün.
+[Unit]
+Description=Kadran GitHub access broker
+Documentation=https://github.com/erkanrzgc/kadran
+# İki sokete Requires=, git_araci_kur'u yeniden koşmayı güvenli kılan şey (systemd 255'te ölçüldü): servis çalışırken `systemctl restart <soket>` servisi de yeniden başlatır; yalnız Wants= ile "Socket service … already active, refusing" der.
+Requires=kadran-git-admin.socket kadran-git-fetch.socket
+After=kadran-git-admin.socket kadran-git-fetch.socket systemd-resolved.service
+Wants=systemd-resolved.service
+
+[Service]
+Type=notify
+User=kadran-git
+Group=kadran-git
+ExecStart=/usr/local/lib/kadran/kadran-git
+Restart=on-failure
+RestartSec=2s
+# ⚠ ASLA RuntimeDirectory= EKLEME: /run/kadran-git kök sahipli kalmalı
+# (systemd soketler için oluşturur). Dizin kadran-git kullanıcısının olursa
+# kök yürütücünün bağlandığı fetch.sock'u o değiştirebilirdi.
+StateDirectory=kadran-git
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+# TemporaryFileSystem=/run KASTEN yok: Type=notify NOTIFY_SOCKET'i
+# /run/systemd altında bekler; /run'ı boşaltmak hazır bildirimini keserdi.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @mount @debug @cpu-emulation @swap @raw-io
+InaccessiblePaths=-/run/kadran-exec -/run/docker.sock -/var/lib/kadran -/var/lib/kadran-exec -/var/lib/kadran-caddy
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Özel ve paylaşımlı aralıklar da reddedilir: Docker köprü ağları ve GCE'nin
+# IPv6 metadata adresi (fd20:ce::254) bu aralıklarda. GitHub'ın adresleri
+# herkese açık. İstemcide vekil desteği yok (Proxy nil), yani meşru hiçbir
+# şey özel bir adrese gitmez. Çözümleme yine çalışır: 127.0.0.53 saplamasına
+# izin var ve systemd-resolved üst sunucuyu birimin DIŞINDAN sorgular.
+IPAddressDeny=localhost link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10 fc00::/7
+IPAddressAllow=127.0.0.53
+BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf

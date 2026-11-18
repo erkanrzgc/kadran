@@ -3,7 +3,7 @@ import type { LineIconName } from "./LineIcon.tsx";
 import { NavButton } from "./NavButton.tsx";
 import { NavSlider } from "./NavSlider.tsx";
 
-export type ServerView = "status" | "apps" | "alarms" | "backups" | "audit";
+export type ServerView = "status" | "apps" | "alarms" | "backups" | "audit" | "github";
 
 /** Sunucu sayfasının ikinci menüsü; dar pencerede CSS onu tek satıra çevirir. */
 export function ServerSubnav({ view, onNavigate }: { view: ServerView; onNavigate: (view: ServerView) => void }) {
@@ -29,6 +29,7 @@ export function ServerSubnav({ view, onNavigate }: { view: ServerView; onNavigat
         <nav className="nav">
           <NavButton icon="key" label={t("sub.totp")} soon={soon} />
           {button("audit", "list", "sub.audit")}
+          {button("github", "shield", "sub.github")}
         </nav>
       </div>
       <div className="nav-group">

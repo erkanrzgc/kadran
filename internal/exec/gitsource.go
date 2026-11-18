@@ -56,8 +56,8 @@ func validateGitSource(src *kadranv1.GitSource, allowedHosts, allowedRepos []str
 	if err := validatePathSegment("repo", src.GetRepo()); err != nil {
 		return err
 	}
-	// Beyaz liste, hostta duran git kimlik bilgisinin ERİŞİMİNİ sınırlar:
-	// onsuz, token'ın gördüğü her özel depo ImageBuild ile okunabilirdi
+	// --allow-repo verilmişse HER derlemeyi sınırlar (kurulum seçimiyle
+	// kesişim); ImageBuild'in kurbanın deposuna çevrilmesini daraltır
 	// (repoallow.go'daki saldırı anlatımı).
 	if !repoAllowed(src.GetOwner(), src.GetRepo(), allowedRepos) {
 		return fmt.Errorf(

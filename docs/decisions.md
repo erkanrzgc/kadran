@@ -12805,6 +12805,112 @@ Kullanıcı bellek ölçütü tutmadan Wails'i seçti. Bütçe değiştirilmedi.
 
 **Bulgu:** GCP'de 9 Kasım 09:26'dan beri `/var/run/reboot-required` var (`linux-image-6.12.116`; çalışan 6.12.115). Dokunulmadı; yeniden başlatma ayrı karar.
 
+## K-167 — GitHub bağlantısı: cihaz akışıyla özel depolar (2026-11-12)
+
+**İstek (kullanıcı, 12 Kasım):** "cihaz akışıyla devam edelim", sorulara "direkt başla".
+Önceki konuşmada (8 Kasım) önerilen yol: Kadran'a GitHub girişi yok, depolara erişim için
+GitHub'ın cihaz akışı.
+
+**Ölçülen başlangıç:**
+- Özel depo desteği K-146'dan beri var, ama üç elle adım istiyor (token, root dosyası, ağı açan
+  drop-in) ve canlıda hiç kullanılmadı (`docs/guides/private-git.md` sonu).
+- Yürütücü ayrıcalıklı kodu 2982 / 2990 satır; birim `AF_UNIX`.
+- kadrand `IPAddressDeny=any`; GitHub'a çıkamaz.
+- GitHub belgesi: GitHub App cihaz akışı ve cihaz akışı jetonunun yenilenmesi istemci sırrı
+  istemez. Erişim jetonu 8 saat, yenileme jetonu 6 ay, yenileme tek kullanımlık. Kullanıcı
+  jetonu yalnız uygulamanın izni, kullanıcının erişimi ve kurulumun depolarının kesişimine
+  erişir. OAuth App'in `repo` kapsamının salt okunur sürümü yok.
+
+**Karar:** tasarım `docs/specs/2026-11-12-github-cihaz-akisi-design.md`. Özet:
+- GitHub App, yalnız Contents okuma. Uygulamayı kullanıcının hesabında uygulama içi tarayıcıdan
+  ben oluşturuyorum, kaydetmeden önce onayıyla **(kullanıcı)**.
+- Jetonlar 8 saatlik, sunucu yeniler **(kullanıcı)**.
+- Akış, jeton deposu, yenileme ve arşiv indirme ayrı, yetkisiz `kadran-git` biriminde. İki soket:
+  `admin.sock` yalnız kadrand'ye, `fetch.sock` yalnız yürütücüye açık. Jeton kadrand'ye ve iş
+  istasyonuna hiç girmez; yürütücü internete çıkmaz, ağ ve jeton kodu yürütücüden çıkar
+  (K-124'ün C seçeneği).
+- Özel depoların izin listesi github.com'daki kurulum seçimi. `--allow-repo` verilmişse yine
+  uygulanır. "All repositories" reddedilmez, uyarılır. Bu, bugünkü kapalı kuralı (kimlik bilgisi
+  varken root'un yazdığı liste şart) gevşetir; kullanıcı açıkça onayladı (12 Kasım).
+- Tar yoluna yalnız kurulum listesinde `private: true` olan depolar girer. Karar tarball'ın
+  durum koduna göre verilmez. Herkese açık uygulamalar bugünkü yolda kalır.
+- Jeton dosyası yolu (`--git-credentials`) kalkar; yükseltme yürütücüyü başlayamaz bırakmaz.
+- Özel depoda dal adı sunucuda çözülür (`ResolveGitHubBranch`); CI yine `-commit` verir.
+- Protokol 3 kalır; dört yeni çağrı yalnız yöneticiye açık.
+
+**Durum:** tasarım kullanıcı onaylı (12 Kasım, "evet onaylıyorum"). Dal `github-device-flow`.
+Uygulama kaydedildi (12 Kasım, kullanıcı onayıyla, Chrome'da onun oturumuyla): "Kadran" adı
+@kadran hesabına ayrılmış çıktı, ad **Kadran Deploy**; App ID `5733313`, Client ID
+`Iv23lizBm3zlCdYH3NQ5`, kısa ad `kadran-deploy`. Yalnız Contents ve Metadata okuma, webhook
+kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anahtar ve istemci sırrı
+üretilmedi.
+
+**Ölçüm (12 Kasım, plan Görev 1, kullanıcı onayıyla, iki sunucuda salt okunur):**
+- İlk tur geçersizdi. `systemd-run -p IPAddressDeny=localhost ...` "Failed to parse IP address
+  prefix: localhost" verdi; kısıtlı denemeler ağ yüzünden değil bu yüzden düşüyordu. Sembolik adları
+  birim dosyası kabul ediyor, `systemd-run` etmiyor. İkinci tur sayısal aralıklarla
+  (`127.0.0.0/8 ::1/128 169.254.0.0/16 fe80::/10 224.0.0.0/4 ff00::/8`, izin `127.0.0.53/32`) ve her
+  denemenin kısıtsız kontrolüyle yapıldı.
+- Hetzner: `resolv.conf` → stub (127.0.0.53), `nsswitch` `files dns`.
+- GCP: `resolv.conf` → `/run/systemd/resolve/resolv.conf`, `nameserver 169.254.169.254`.
+  `nsswitch` `files myhostname resolve [!UNAVAIL=return] dns`. glibc programları `resolve` üzerinden
+  çözer. Sunucu ikilileri `CGO_ENABLED=0` (Go'nun saf çözücüsü, `resolv.conf`'u okur) olduğu için
+  kısıtlı birimde `getent -s dns` GCP'de çıkış 2 verdi, Hetzner'de çözdü.
+- Kısıtlı birime `BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf` verilince
+  iki sunucuda da çözüyor.
+- Kısıtlı birimden, iki sunucuda:
+  - HTTPS `api.github.com/zen` 200;
+  - `169.254.169.254` zaman aşımı (kısıtsız kontrol 200);
+  - `https://1.1.1.1` 301 (dış dünya açık);
+  - `127.0.0.1:2019` zaman aşımı.
+- **Karar:** `kadran-git.service` stub'ı bağlar. Kurulum `systemd-resolved` yoksa açık mesajla durur.
+- **Yan bulgu:** `kadran-offsite` aynı link-local engelini taşıyor ve rclone (Go) kullanıyor. GCP'de
+  uzak yedek yapılandırılırsa DNS'e takılabilir. GCP'de son koşu zamanı boş; ayrı iş olarak
+  denetlenecek.
+
+**Uygulama (12-16 Kasım, dal `github-device-flow`):** özet; ayrıntı `.superpowers/sdd/2026-11-12-github-cihaz-akisi/progress.md` (Karar 1-34).
+
+- **Ne yapıldı** (commit sırasıyla):
+  - proto ve yüzey testi: `27ed800`, `5650c7d`;
+  - `internal/github` (HTTP istemcisi, jeton deposu ve yenileme, cihaz akışı): `a6b68db`, `0d97ead`, `9765efb`;
+  - `kadran-git` süreci ve iki soketi: `720c356`, `7302402`, `a7ac29f` (birim sertleştirme);
+  - yürütücü arşiv çekici ve `--git-credentials` kaldırma: `03fc416`, `d803e56`;
+  - kadrand dört çağrı: `f971f24`, `745ba11`, `b979728`;
+  - `kadran github` CLI: `27c09c2`, `3659998`; masaüstü ekranı: `0d9326d`;
+  - mutasyon betiği `mutate-github.sh`, 22 mutant, 145 sn, hepsi yakalandı: `1794c5d`;
+  - belgeler: rehber (İngilizce, baştan yazıldı), README, CHANGELOG, SECURITY, bayat K-146 metinleri: `a297acb`, `f6ea360`;
+  - main (K-168) dala birleştirildi: `cc68816`;
+  - son inceleme ve gerçek GitHub denemesinin düzeltmeleri: `715a362` (sunucu, CLI, kurulum, belgeler), `c684bac` (masaüstü), belge notları: bu commit.
+- **Kararların özeti:**
+  - Karar kurulumun depo listesine göre verilir, tarball durum koduna göre değil (K1-2, K19); özel depoda
+    karardan SONRAKİ her hata derlemeyi düşürür, karardan ÖNCEKİ hata ya da 5 sn aşımı herkese açık yola düşer;
+  - yenileme jetonu diske yazılmadan kullanılmaz, yazma hatası bağlantıyı koparır (K14, K17);
+  - `kadran-git` ağı: özel aralıklar da kapalı, yalnız `127.0.0.53` açık, `/etc/resolv.conf` stub'a bağlı (K26);
+  - `--allow-repo` isteğe bağlı kesişim olarak kaldı; "All repositories" reddedilmez, uyarılır;
+  - denetim kaydına `context_source=github-app|public` eklendi (K27); yürütücüye ayar `ExecStart`'a yazılmadı;
+  - arşiv sınırları sunucuda kalır: toplam boyut sınırı ve parça başına boşta zaman aşımı 60 sn (K28).
+- **Yerel ölçüm (Görev 13, 16-17 Kasım, WSL Ubuntu 24.04, yalnız `kadran-git`, canlı değil):**
+  - birimler: soketler etkin, servis ilk bağlantıya kadar kapalı; `/run/kadran-git` root 755, `admin.sock` kadran-git:kadran 660, `fetch.sock` root 600; `kadran` bağlanınca servis başlıyor, `nobody` dosya izninden reddediliyor; yeniden başlatma ve dağıtım yeniden açılışında döngü yok;
+  - ağ, kontrol gruplu: `api.github.com` ve dış dünya açık; WSL'in 10/8 aralığındaki DNS'i ve `127.0.0.54:53` kısıtsızken açık, birimde kapalı; `127.0.0.53` ikisinde de açık (istisna);
+  - gerçek GitHub, tek özel deneme deposu ("Only select repositories", uygulama bağlantıdan SONRA kuruldu): cihaz akışı PENDING -> CONNECTED; durum dosyası 0600, dağıtım kapanıp açılınca bağlantı sürüyor; kurulum, kurulduktan 4 sn sonra durum çağrısıyla görüldü; kapsanan özel depo ARCHIVE 1,6-1,7 sn (918 KB, 174 girdi, `.git` yok); herkese açık ve olmayan depo NOT_COVERED (~2 ms); kapsanan depoda olmayan commit: ARCHIVE kararından sonra NotFound; geçici dosya artığı yok; hiçbir günlükte `ghu_`/`ghr_` yok;
+  - bulunan hata: olmayan dal için GitHub `422` dönüyor, `kadran-git` bunu `Unavailable` yapıyor, kadrand da "servis çalışmıyor" diyordu. `715a362` ile 422 yalnız dal çözümünde NotFound, genel hata kodu `Unknown`; aynı denemede "repository or branch not found" görüldü.
+- **Yüzey bütçesi:** ayrıcalıklı kod 2990 -> 2981 (ağ ve jeton kodu yürütücüden çıktı; ölçüm 2982 -> 2981).
+- **`systemd-analyze security --offline` (Ubuntu 24.04, WSL):** `kadran-git` **1.3** (OK); `kadran-proxy` 0.8; `verify` temiz.
+- **Yükseltme ön koşulları** (`install.sh`, ikilileri değiştirmeden önce; son inceleme düzeltmesi, `check-install-sh.sh` ile sınanır):
+  - `systemd-resolved` ve 127.0.0.53 saplaması yalnız özel depolar için gerekir. Yoksa ve `kadran-git` hiç kurulmamışsa kurulum uyarır, aracıyı atlar (kullanıcı, birim, soket yok) ve uyarıyı özette yineler; herkese açık depolar çalışır. `kadran-git` birimleri zaten varsa durur ve iki yolu söyler (resolved'ı başlat ya da birimleri kaldır). Spec'teki "yalnız engelli çözücüde dur" koşulundan sapma: birim saplamayı `-`'sız bağlıyor, resolved'sız hiç başlamaz;
+  - `kadran-exec` drop-in'inde `--git-credentials` yok;
+  - `kadran-exec` drop-in'inde K-146'nın ağ satırları yok (`AF_INET`/`AF_INET6` adlı `RestrictAddressFamilies=`, `IPAddressDeny=`, `IPAddressAllow=`): yürütücü artık ağa çıkmıyor. Canlıdaki yalnız `ExecStart` + `--allow-repo` drop-in'i geçer.
+- **Canlı açık işler (Görev 14, her adım ayrı onay):**
+  - yükseltmeden ÖNCE iki sunucuda `systemd-resolved` çalışıyor mu ve `/run/systemd/resolve/stub-resolv.conf` içinde `nameserver 127.0.0.53` var mı, doğrula;
+  - `kadran-exec` drop-in'inde kalmış `--git-credentials` ya da K-146 ağ satırları varsa kaldır;
+  - özel deneme deposunu, denendiği sunucudaki `--allow-repo` drop-in'ine ekle: `--allow-repo` artık özel derlemeleri de sınırlıyor, listede yoksa derleme reddedilir;
+  - uygulamayı "Only select repositories" ile kur ("All repositories" değil);
+  - Hetzner: yükseltme, herkese açık uygulamaların değişmeden yeniden dağıtımı, `kadran github connect` (kodu kullanıcı girer), küçük özel depoyu dal adıyla dağıtma; sonra GCP;
+  - ölçülecek: jetonun hiçbir günlükte ve iki denetim zincirinde olmadığı, yeniden başlatmadan sonra bağlantının sürdüğü, 8 saat sonra yenilemenin çalıştığı;
+  - ölçülmedi: kapsam dışı bir depoda `ghu_` jetonunun 403 mü 404 mü aldığı (karar bu yüzden ona bağlı değil); App sayfası "özel anahtar üret" dese de kurulum sayfasının anahtarsız açılması gerçek kurulumda doğrulanacak;
+  - ayrı iş: `kadran-offsite` aynı link-local engelini taşıyor, GCP'de DNS'e takılabilir (K-168 ile stub bağı eklendi, main'de);
+  - mutasyon süre tablosu (`SURELER`): `mutate-github.sh` (333 sn), `mutate-install.sh` (72 sn) ve masaüstü (517 sn) yerel ölçüm; CI'dan yeni tablo alınınca `check-mutation-shard.sh`'taki "en uzun beş" listesi de yeniden çıkarılmalı (`mutate-github.sh` 278 sn'nin altına inerse liste yeniden `totp` olur).
+
 ## K-168 — Uzak yedek GCP'de DNS'e takılır mı: bugünkü rclone ile hayır; stub bağı eklendi (2026-11-12)
 
 **İstek (kullanıcı, 12 Kasım):** K-167'nin yan bulgusunu denetle (`github-device-flow` dalındaki

@@ -5,59 +5,11 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"strings"
 	"testing"
-
-	"github.com/erkanrzgc/kadran/internal/audit"
 )
-
-const syntheticGitToken = "synthetic_private_git_token"
-
-func privateConfig() []byte {
-	return []byte(`{"repositories":[{"repository":"octocat/Hello-World","token":"` + syntheticGitToken + `"}]}`)
-}
-
-func TestPrivateGitConfigurationIsRestrictedAndRedacted(t *testing.T) {
-	allowed := []string{"octocat/Hello-World"}
-	if _, err := parsePrivateGit(privateConfig(), allowed); err != nil {
-		t.Fatalf("valid opt-in configuration failed: %v", err)
-	}
-	for _, tc := range []struct {
-		name  string
-		data  []byte
-		allow []string
-	}{
-		{"mandatory allowlist", privateConfig(), nil},
-		{"unlisted credential", privateConfig(), []string{"another/repo"}},
-		{"unknown field", []byte(`{"repositories":[],"token":"` + syntheticGitToken + `"}`), allowed},
-		{"invalid JSON secret", []byte(`{"repositories":[{"token":"` + syntheticGitToken + `"`), allowed},
-		{"duplicate credential", []byte(`{"repositories":[{"repository":"octocat/Hello-World","token":"x"},{"repository":"OCTOCAT/hello-world","token":"y"}]}`), allowed},
-		{"unsafe repository", []byte(`{"repositories":[{"repository":"../Hello-World","token":"x"}]}`), []string{"../Hello-World"}},
-		{"empty token", []byte(`{"repositories":[{"repository":"octocat/Hello-World","token":""}]}`), allowed},
-		{"header injection", []byte(`{"repositories":[{"repository":"octocat/Hello-World","token":"x\r\ny"}]}`), allowed},
-		{"trailing JSON", append(privateConfig(), []byte(` {}`)...), allowed},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			_, err := parsePrivateGit(tc.data, tc.allow)
-			if err == nil {
-				t.Fatal("unsafe credential configuration accepted")
-			}
-			if strings.Contains(err.Error(), syntheticGitToken) {
-				t.Fatal("credential appeared in parse error")
-			}
-		})
-	}
-}
-
-type privateRoundTrip func(*http.Request) (*http.Response, error)
-
-func (f privateRoundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
-func privateResponse(code int, location string, body []byte) *http.Response {
-	return &http.Response{StatusCode: code, Header: http.Header{"Location": []string{location}}, Body: io.NopCloser(bytes.NewReader(body)), ContentLength: int64(len(body))}
-}
 
 func gitArchive(t *testing.T, entries ...*tar.Header) []byte {
 	t.Helper()
@@ -85,155 +37,6 @@ func gitArchive(t *testing.T, entries ...*tar.Header) []byte {
 func goodGitArchive(t *testing.T) []byte {
 	return gitArchive(t, &tar.Header{Name: "octocat-Hello-World-7fd1a60/", Typeflag: tar.TypeDir, Mode: 0o755}, &tar.Header{Name: "octocat-Hello-World-7fd1a60/Dockerfile", Typeflag: tar.TypeReg, Mode: 0o644, Size: 12})
 }
-func configuredPrivateGit(t *testing.T) *PrivateGit {
-	t.Helper()
-	p, err := parsePrivateGit(privateConfig(), []string{"octocat/Hello-World"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-
-func TestPrivateArchiveKeepsPermanentTokenOutOfDockerContext(t *testing.T) {
-	p := configuredPrivateGit(t)
-	calls := 0
-	p.client.Transport = privateRoundTrip(func(r *http.Request) (*http.Response, error) {
-		calls++
-		if strings.Contains(r.URL.String(), syntheticGitToken) {
-			t.Fatal("permanent credential put in URL")
-		}
-		if calls == 1 {
-			if r.URL.String() != "https://api.github.com/repos/octocat/Hello-World/tarball/"+testSHA || r.Header.Get("Authorization") != "Bearer "+syntheticGitToken {
-				t.Fatalf("wrong fixed authenticated archive request: %s", r.URL.Host)
-			}
-			return privateResponse(302, "https://codeload.github.com/octocat/Hello-World/legacy.tar.gz/"+testSHA+"?token=temporary_signature", nil), nil
-		}
-		if r.Header.Get("Authorization") != "" {
-			t.Fatal("permanent token forwarded to codeload")
-		}
-		return privateResponse(200, "", goodGitArchive(t)), nil
-	})
-	f, err := p.Context(context.Background(), validGitSource())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closePrivateContext(f)
-	tr := tar.NewReader(f)
-	h, err := tr.Next()
-	if err != nil || h.Name != "Dockerfile" {
-		t.Fatalf("GitHub root directory not removed: %v, %v", h, err)
-	}
-	body, _ := io.ReadAll(tr)
-	if strings.Contains(string(body), syntheticGitToken) || calls != 2 {
-		t.Fatal("private credential crossed context boundary")
-	}
-}
-
-func TestPrivateArchiveRejectsRedirectAndRepositoryEscapes(t *testing.T) {
-	for _, location := range []string{
-		"http://codeload.github.com/octocat/Hello-World/legacy.tar.gz/" + testSHA,
-		"https://evil.example/octocat/Hello-World/legacy.tar.gz/" + testSHA,
-		"https://user@codeload.github.com/octocat/Hello-World/legacy.tar.gz/" + testSHA,
-		"https://codeload.github.com:444/octocat/Hello-World/legacy.tar.gz/" + testSHA,
-		"https://codeload.github.com/octocat/another/legacy.tar.gz/" + testSHA,
-		"https://codeload.github.com/octocat/Hello-World/legacy.tar.gz/main",
-		"https://codeload.github.com/octocat/Hello-World/legacy.tar.gz/" + testSHA + "?token=x&token=y",
-		"https://codeload.github.com/octocat/Hello-World/legacy.tar.gz/" + testSHA + "?other=x",
-		"https://codeload.github.com/octocat/Hello-World/legacy.tar.gz/" + testSHA + "#secret",
-	} {
-		t.Run(location, func(t *testing.T) {
-			p := configuredPrivateGit(t)
-			calls := 0
-			p.client.Transport = privateRoundTrip(func(*http.Request) (*http.Response, error) { calls++; return privateResponse(302, location, nil), nil })
-			if _, err := p.Context(context.Background(), validGitSource()); err == nil {
-				t.Fatal("unsafe redirect accepted")
-			}
-			if calls != 1 {
-				t.Fatal("unsafe redirect fetched")
-			}
-		})
-	}
-	p := configuredPrivateGit(t)
-	calls := 0
-	p.client.Transport = privateRoundTrip(func(*http.Request) (*http.Response, error) {
-		calls++
-		return privateResponse(200, "", goodGitArchive(t)), nil
-	})
-	src := validGitSource()
-	src.Repo = "unlisted"
-	if _, err := p.Context(context.Background(), src); err == nil || calls != 0 {
-		t.Fatal("unknown repository reached credentials/network")
-	}
-}
-
-func TestPrivateArchiveErrorsNeverExposeCredentialsAndDoNotFallback(t *testing.T) {
-	for _, code := range []int{401, 403, 404, 500} {
-		p := configuredPrivateGit(t)
-		calls := 0
-		p.client.Transport = privateRoundTrip(func(*http.Request) (*http.Response, error) {
-			calls++
-			return privateResponse(code, "", []byte(syntheticGitToken)), nil
-		})
-		_, err := p.Context(context.Background(), validGitSource())
-		if err == nil || strings.Contains(err.Error(), syntheticGitToken) || calls != 1 {
-			t.Fatalf("credential failure leaked or fell back: %v", err)
-		}
-	}
-	p := configuredPrivateGit(t)
-	p.client.Transport = privateRoundTrip(func(*http.Request) (*http.Response, error) {
-		return nil, fmt.Errorf("transport leaked %s", syntheticGitToken)
-	})
-	if _, err := p.Context(context.Background(), validGitSource()); err == nil || strings.Contains(err.Error(), syntheticGitToken) {
-		t.Fatalf("transport error leaked secret: %v", err)
-	}
-}
-
-func TestPrivateArchiveRejectsUnsafeTarEntries(t *testing.T) {
-	for _, entry := range []*tar.Header{
-		{Name: "root/../outside", Typeflag: tar.TypeReg}, {Name: "/root/outside", Typeflag: tar.TypeReg}, {Name: "root/C:\\outside", Typeflag: tar.TypeReg},
-		{Name: "root/link", Typeflag: tar.TypeSymlink, Linkname: "../../etc/passwd"}, {Name: "root/link", Typeflag: tar.TypeLink, Linkname: "../../etc/passwd"}, {Name: "root/device", Typeflag: tar.TypeChar},
-	} {
-		t.Run(entry.Name, func(t *testing.T) {
-			p := configuredPrivateGit(t)
-			p.client.Transport = privateRoundTrip(func(*http.Request) (*http.Response, error) {
-				return privateResponse(200, "", gitArchive(t, entry)), nil
-			})
-			if f, err := p.Context(context.Background(), validGitSource()); err == nil {
-				closePrivateContext(f)
-				t.Fatal("unsafe archive accepted")
-			}
-		})
-	}
-}
-
-func TestPrivateBuildCredentialFailureNeverFallsBackToDockerRemote(t *testing.T) {
-	srv := newTestServer(t)
-	p := configuredPrivateGit(t)
-	calls := 0
-	p.client.Transport = privateRoundTrip(func(*http.Request) (*http.Response, error) {
-		calls++
-		return privateResponse(401, "", []byte(syntheticGitToken)), nil
-	})
-	srv.privateGit = p
-	srv.allowedRepos = []string{"octocat/Hello-World"}
-	stream := newBuildStream()
-	err := srv.ImageBuild(validBuildRequest(), stream)
-	if err == nil || calls != 1 {
-		t.Fatalf("private source was bypassed: calls=%d, err=%v", calls, err)
-	}
-	if strings.Contains(err.Error(), syntheticGitToken) {
-		t.Fatal("credential failure exposed token through RPC")
-	}
-	records, err := srv.journal.Read(0, 100)
-	if err != nil {
-		t.Fatal(err)
-	}
-	last := records[len(records)-1]
-	if last.Outcome != audit.OutcomeFailure || strings.Contains(last.ParamsJSON, syntheticGitToken) || strings.Contains(last.Detail, syntheticGitToken) {
-		t.Fatalf("private build credential failure was not safely audited: %+v", last)
-	}
-}
-
 func TestPrivateArchiveBoundsAndCorruption(t *testing.T) {
 	archive := goodGitArchive(t)
 	for _, tc := range []struct {
@@ -256,14 +59,167 @@ func TestPrivateArchiveBoundsAndCorruption(t *testing.T) {
 	}
 }
 
-func TestPrivateGitCredentialRouting(t *testing.T) {
-	p := configuredPrivateGit(t)
-	src := validGitSource()
-	if !p.hasCredential(src) {
-		t.Fatal("configured repository lost private fetch")
+func TestPrivateArchiveRejectsUnsafeTarEntries(t *testing.T) {
+	for _, entry := range []*tar.Header{
+		{Name: "root/../outside", Typeflag: tar.TypeReg}, {Name: "/root/outside", Typeflag: tar.TypeReg}, {Name: "root/C:\\outside", Typeflag: tar.TypeReg},
+		{Name: "root/link", Typeflag: tar.TypeSymlink, Linkname: "../../etc/passwd"}, {Name: "root/link", Typeflag: tar.TypeLink, Linkname: "../../etc/passwd"}, {Name: "root/device", Typeflag: tar.TypeChar},
+	} {
+		t.Run(entry.Name, func(t *testing.T) {
+			if err := rewritePrivateArchive(context.Background(), bytes.NewReader(gitArchive(t, entry)), io.Discard, defaultArchiveLimits); err == nil {
+				t.Fatal("unsafe archive accepted")
+			}
+		})
 	}
-	src.Repo = "public"
-	if p.hasCredential(src) {
-		t.Fatal("public repository received private credentials")
+}
+
+func TestRewriteRejectsCumulativeExpandedSize(t *testing.T) {
+	var entries []*tar.Header
+	entries = append(entries, &tar.Header{Name: "r/", Typeflag: tar.TypeDir, Mode: 0o755})
+	for i := 0; i < 10; i++ {
+		entries = append(entries, &tar.Header{Name: fmt.Sprintf("r/f%d", i), Typeflag: tar.TypeReg, Mode: 0o644, Size: 100})
+	}
+	// Her kayıt sınırın altında (100 < 600) ama toplam (1000) üstünde.
+	limits := archiveLimits{1 << 20, 600, 100}
+	err := rewritePrivateArchive(context.Background(), bytes.NewReader(gitArchive(t, entries...)), io.Discard, limits)
+	if err == nil {
+		t.Fatal("cumulative expansion accepted")
+	}
+}
+
+// paxRecord, "<uzunluk> anahtar=değer\n" biçiminde bir PAX kaydıdır.
+func paxRecord(k, v string) string {
+	body := " " + k + "=" + v + "\n"
+	n := len(body) + 1
+	for len(fmt.Sprint(n))+len(body) != n {
+		n = len(fmt.Sprint(n)) + len(body)
+	}
+	return fmt.Sprint(n) + body
+}
+
+// xHeaderBlock, 'x' (PAX genişletilmiş başlık) kaydını ham bayt olarak kurar.
+// tar.Writer GNU.sparse.* kayıtlarını yazmıyor; bu yüzden sıradan bir başlık
+// yazılır, tür baytı 'x' yapılır ve toplam yeniden hesaplanır.
+func xHeaderBlock(t *testing.T, records string) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	tw := tar.NewWriter(&b)
+	if err := tw.WriteHeader(&tar.Header{Name: "PaxHeader/x", Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(records)), Format: tar.FormatUSTAR}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write([]byte(records)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	raw := b.Bytes()
+	raw[156] = tar.TypeXHeader
+	for i := 148; i < 156; i++ {
+		raw[i] = ' '
+	}
+	sum := 0
+	for _, c := range raw[:512] {
+		sum += int(c)
+	}
+	copy(raw[148:156], fmt.Sprintf("%06o\x00 ", sum))
+	return raw
+}
+
+// sparseArchive, her adı PAX 1.0 seyrek kaydı olarak yazar: gövde yalnız boş bir
+// harita taşır, okuyucu ise h.Size'ı realsize olarak bildirir ve o kadar sıfır
+// üretir.
+func sparseArchive(t *testing.T, names []string, realSize int) []byte {
+	t.Helper()
+	var raw bytes.Buffer
+	tw := tar.NewWriter(&raw)
+	if err := tw.WriteHeader(&tar.Header{Name: "r/", Typeflag: tar.TypeDir, Mode: 0o755}); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range names {
+		if err := tw.Flush(); err != nil {
+			t.Fatal(err)
+		}
+		recs := paxRecord("GNU.sparse.major", "1") + paxRecord("GNU.sparse.minor", "0") +
+			paxRecord("GNU.sparse.name", n) + paxRecord("GNU.sparse.realsize", fmt.Sprint(realSize))
+		raw.Write(xHeaderBlock(t, recs))
+		tw = tar.NewWriter(&raw)
+		if err := tw.WriteHeader(&tar.Header{Name: n, Typeflag: tar.TypeReg, Mode: 0o644, Size: 512, Format: tar.FormatUSTAR}); err != nil {
+			t.Fatal(err)
+		}
+		block := make([]byte, 512)
+		copy(block, "0\n")
+		if _, err := tw.Write(block); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	raw.Write(make([]byte, 1024))
+	var out bytes.Buffer
+	gz := gzip.NewWriter(&out)
+	_, _ = gz.Write(raw.Bytes())
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func TestRewriteRejectsSparseExpansion(t *testing.T) {
+	// Üç seyrek kayıt, her biri 600000 bayta açılır (tek tek 1 MiB sınırının
+	// altında); toplam 1,8 MB sınırı aşar. Girdi birkaç KB'tır.
+	archive := sparseArchive(t, []string{"r/a", "r/b", "r/c"}, 600000)
+	limits := archiveLimits{1 << 20, 1 << 20, 100}
+	var out bytes.Buffer
+	err := rewritePrivateArchive(context.Background(), bytes.NewReader(archive), &out, limits)
+	if err == nil {
+		t.Fatal("sparse expansion accepted")
+	}
+	if int64(out.Len()) > limits.expanded+int64(limits.entries)*tarOverheadPerEntry {
+		t.Fatalf("wrote %d bytes past the cap", out.Len())
+	}
+	// Karşı kontrol: tek kayıt sınırın altında, kabul edilmeli (fikstür geçerli).
+	one := sparseArchive(t, []string{"r/a"}, 600000)
+	if err := rewritePrivateArchive(context.Background(), bytes.NewReader(one), io.Discard, limits); err != nil {
+		t.Fatalf("single sparse entry under the limit rejected: %v", err)
+	}
+}
+
+// Toplam h.Size sınırı, capWriter payından (entries*2048) AYRI korunur:
+// iki 600000'lik kayıt 1,2 MB üretir; bu expanded (1 MiB) sınırını aşar ama
+// capWriter'ın 1 MiB + 200 KiB payının İÇİNDE kalır. Yalnız capWriter kalırsa
+// arşiv kabul edilirdi.
+func TestRewriteRejectsSparseTotalBelowWriterCap(t *testing.T) {
+	archive := sparseArchive(t, []string{"r/a", "r/b"}, 600000)
+	limits := archiveLimits{1 << 20, 1 << 20, 100}
+	var out bytes.Buffer
+	err := rewritePrivateArchive(context.Background(), bytes.NewReader(archive), &out, limits)
+	if !errors.Is(err, errArchiveTooLarge) {
+		t.Fatalf("err = %v, want errArchiveTooLarge", err)
+	}
+}
+
+// capWriter, toplam h.Size denetiminin ARKASINDAKİ son sınırdır: seyrek
+// kayıtlar o denetimde düşer, bu yüzden yeniden yazım üzerinden yalnız
+// capWriter'ı düşüren bir arşiv kurulamaz. Hata yolu burada tek başına
+// sınanır: sınırı aşan yazma reddedilir ve alttaki yazıcıya hiçbir bayt
+// geçmez; sınıra tam oturan yazma geçer.
+func TestCapWriterRejectsWritesBeyondItsBudget(t *testing.T) {
+	var out bytes.Buffer
+	c := &capWriter{w: &out, n: 10}
+	if n, err := c.Write([]byte("123456")); n != 6 || err != nil {
+		t.Fatalf("write within budget = %d, %v", n, err)
+	}
+	if n, err := c.Write([]byte("12345")); n != 0 || !errors.Is(err, errArchiveTooLarge) {
+		t.Fatalf("write beyond budget = %d, %v; want 0, errArchiveTooLarge", n, err)
+	}
+	if out.String() != "123456" {
+		t.Fatalf("over-budget bytes reached the writer: %q", out.String())
+	}
+	if n, err := c.Write([]byte("abcd")); n != 4 || err != nil {
+		t.Fatalf("write that exactly fills the budget = %d, %v", n, err)
+	}
+	if _, err := c.Write([]byte("x")); !errors.Is(err, errArchiveTooLarge) {
+		t.Fatalf("write after the budget is spent = %v", err)
 	}
 }

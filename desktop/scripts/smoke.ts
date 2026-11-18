@@ -36,7 +36,7 @@ const PREFIX = "SMOKE ";
 /** Go köprüsünün dışa açık yöntemleri (desktop/internal/bridge/bridge_test.go Whitelist). */
 const EXPECTED_BRIDGE = [
   "AddServer", "AlarmsList", "AppCreate", "AppDelete", "AppDeploy", "AppGet", "AppLogs", "AppRollback", "AppUpdate", "AppsList",
-  "AuditList", "AuditVerify", "BackupCreate", "BackupsList", "CopyText", "ListServers", "LoadAppearance", "RemoveServer",
+  "AuditList", "AuditVerify", "BackupCreate", "BackupsList", "CopyText", "GitHubConnect", "GitHubDisconnect", "GitHubStatus", "ListServers", "LoadAppearance", "OpenGitHub", "RemoveServer",
   "ResourceUsage", "SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
 ];
 

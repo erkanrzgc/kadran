@@ -150,3 +150,42 @@ func TestServerNameAndProvider(t *testing.T) {
 	_, err = Provider(strings.Repeat("ğ", MaxProvider+1))
 	mustFail(t, err, "provider is too long", "65")
 }
+
+func TestGitHubDisconnectConfirmationIsTheLiteralWord(t *testing.T) {
+	if err := GitHubDisconnectConfirmation("disconnect"); err != nil {
+		t.Fatal(err)
+	}
+	for _, bad := range []string{"", "Disconnect", "disconnect ", "yes", "blog"} {
+		mustFail(t, GitHubDisconnectConfirmation(bad), "confirmation", bad)
+	}
+}
+
+func TestGitHubURLAllowlist(t *testing.T) {
+	good := []string{
+		"https://github.com/login/device",
+		"https://github.com/apps/kadran-deploy/installations/new",
+		"https://github.com/apps/a1/installations/new",
+		"https://github.com/settings/apps/authorizations",
+		"https://github.com/settings/installations",
+	}
+	for _, in := range good {
+		if got, err := GitHubURL(in); err != nil || got != in {
+			t.Errorf("%q: %q %v", in, got, err)
+		}
+	}
+	bad := []string{
+		"", "http://github.com/login/device", "https://github.com/login/device?x=1", "https://github.com/login/device#a",
+		"https://github.com/login/device/", "https://github.com.evil.example/login/device", "https://evil.example/login/device",
+		"https://github.com@evil.example/login/device", "https://github.com:444/login/device", "https://GitHub.com/login/device",
+		"https://github.com/apps/Kadran/installations/new", "https://github.com/apps//installations/new",
+		"https://github.com/apps/" + strings.Repeat("a", 101) + "/installations/new",
+		"https://github.com/apps/x/installations/new/", "https://github.com/apps/x/installations/new\n",
+		"https://github.com/apps/x/installations/new?target_id=1", "https://github.com/apps/x/../y/installations/new",
+		"https://github.com/settings/tokens", "file:///c:/windows/system32/calc.exe", "javascript:alert(1)",
+		" https://github.com/login/device", "https://github.com/login/device ",
+	}
+	for _, in := range bad {
+		_, err := GitHubURL(in)
+		mustFail(t, err, "only GitHub app addresses can be opened", in)
+	}
+}

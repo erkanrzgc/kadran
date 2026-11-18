@@ -17,7 +17,7 @@ dene() {
 
 FN="$(mktemp)"
 trap 'rm -f "$FN"' EXIT
-FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur offsite_cozucu_kotu)
+FONKS=(calisan_ayni_mi vekil_parmak_izi istemci_olarak ak_yaz_istemci yonetici_satiri_yaz ssh_dizini_hazirla kisitsiz_satir_sayisi docker_havuzu_sabitle ikili_kur offsite_cozucu_kotu git_resolved_uyarisi git_onkosul_resolved git_onkosul_eski_kimlik git_kullanicisi)
 for f in "${FONKS[@]}"; do
     sed -n "/^$f() {/,/^}/p" internal/bootstrap/install.sh >> "$FN"
 done
@@ -309,10 +309,144 @@ dene "kırık bağ var sayılıyor, hedefine YAZILMIYOR" \
 dene "KONTROL: kırık bağ -e ile görünmez, -L ile görünür"     "[ ! -e '$H/bag/daemon.json' ] && [ -L '$H/bag/daemon.json' ]"
 
 echo
+echo "== kadran-git: ön koşullar ve kullanıcı (K-167) =="
+# Fonksiyonlar GERÇEKTEN koşuyor (set -euo pipefail altında). Kök dizin
+# KOK önekiyle sahtelenir; üretimde KOK boş. Beklenen hata iletisi birebir
+# aranıyor: ileti değişirse ya da kontrol düşerse kırmızı.
+G="$(mktemp -d)"
+trap 'rm -f "$FN"; rm -rf "$D" "$H" "$G"' EXIT
+hata_bekle() {
+    local ad="$1" ileti="$2" cikti rc=0
+    shift 2
+    cikti="$(bash -c "set -euo pipefail; source '$FN'; $*" 2>&1)" || rc=$?
+    if [ "$rc" -ne 0 ] && grep -qF -- "$ileti" <<<"$cikti"; then echo "  ✓ $ad"; else echo "  ✗ $ad (çıkış $rc: $cikti)"; fail=1; fi
+}
+gecer() {
+    local ad="$1" cikti rc=0
+    shift 1
+    cikti="$(bash -c "set -euo pipefail; source '$FN'; $*" 2>&1)" || rc=$?
+    if [ "$rc" -eq 0 ]; then echo "  ✓ $ad"; else echo "  ✗ $ad (çıkış $rc: $cikti)"; fail=1; fi
+}
+# git_onkosul_resolved'ın üç yolu (son inceleme I1). Her fikstür KOK'u ve
+# systemctl'i kendisi kurar: boş KOK gerçek /etc/systemd/system'i okurdu.
+# kurar: çıkış 0, GIT_ARACI=1, uyarı yok. atlar: çıkış 0, GIT_ARACI=0, uyarı var.
+RESOLVED_ILETI='kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)'
+KURULU_ILETI='and kadran-git is already set up on this server'
+UYARI_ILETI='private GitHub'
+git_karari() {
+    local ad="$1" bekle="$2" cikti rc=0
+    shift 2
+    cikti="$(bash -c "set -euo pipefail; source '$FN'; $*; echo \"GIT_ARACI=\$GIT_ARACI\"" 2>&1)" || rc=$?
+    if [ "$rc" -ne 0 ] || ! grep -qx "GIT_ARACI=$bekle" <<<"$cikti"; then
+        echo "  ✗ $ad (çıkış $rc: $cikti)"; fail=1; return
+    fi
+    if [ "$bekle" = 0 ] && ! grep -qF -- "$UYARI_ILETI" <<<"$cikti"; then
+        echo "  ✗ $ad (uyarı basılmadı: $cikti)"; fail=1; return
+    fi
+    if [ "$bekle" = 1 ] && grep -qF -- "$UYARI_ILETI" <<<"$cikti"; then
+        echo "  ✗ $ad (resolved varken uyarı basıldı: $cikti)"; fail=1; return
+    fi
+    echo "  ✓ $ad"
+}
+mkdir -p "$G/iyi/run/systemd/resolve" "$G/gcp/run/systemd/resolve" "$G/bos" \
+    "$G/kurulu/etc/systemd/system" "$G/soketli/etc/systemd/system" \
+    "$G/iyi-kurulu/run/systemd/resolve" "$G/iyi-kurulu/etc/systemd/system"
+printf 'nameserver 127.0.0.53\noptions edns0 trust-ad\n' > "$G/iyi/run/systemd/resolve/stub-resolv.conf"
+cp "$G/iyi/run/systemd/resolve/stub-resolv.conf" "$G/iyi-kurulu/run/systemd/resolve/stub-resolv.conf"
+printf 'nameserver 169.254.169.254\n' > "$G/gcp/run/systemd/resolve/stub-resolv.conf"
+: > "$G/kurulu/etc/systemd/system/kadran-git.service"
+: > "$G/iyi-kurulu/etc/systemd/system/kadran-git.service"
+: > "$G/soketli/etc/systemd/system/kadran-git-fetch.socket"
+AKTIF="systemctl() { return 0; }"
+PASIF="systemctl() { return 3; }"
+git_karari "resolved etkin + saplama 127.0.0.53 → aracı kurulur, uyarı yok" 1 \
+    "$AKTIF; KOK='$G/iyi'; git_onkosul_resolved"
+git_karari "resolved etkin, kadran-git zaten kurulu → aracı kurulur (yükseltme)" 1 \
+    "$AKTIF; KOK='$G/iyi-kurulu'; git_onkosul_resolved"
+git_karari "resolved etkin değil, kadran-git hiç kurulmamış → uyarır ve atlar" 0 \
+    "$PASIF; KOK='$G/iyi'; git_onkosul_resolved"
+git_karari "saplama başka adresi gösteriyor (GCP), birim yok → uyarır ve atlar" 0 \
+    "$AKTIF; KOK='$G/gcp'; git_onkosul_resolved"
+git_karari "saplama dosyası yok, birim yok → uyarır ve atlar (set -e altında durmaz)" 0 \
+    "$AKTIF; KOK='$G/bos'; git_onkosul_resolved"
+hata_bekle "resolved yok ama kadran-git.service var → durur" "$KURULU_ILETI" \
+    "$PASIF; KOK='$G/kurulu'; git_onkosul_resolved"
+hata_bekle "resolved yok ama yalnız bir kadran-git soketi var → durur" "$KURULU_ILETI" \
+    "$PASIF; KOK='$G/soketli'; git_onkosul_resolved"
+hata_bekle "durma iletisi resolved'ı ve ilk iletiyi söylüyor" "$RESOLVED_ILETI" \
+    "$PASIF; KOK='$G/kurulu'; git_onkosul_resolved"
+hata_bekle "durma iletisi resolved'sız yolu söylüyor (birimleri kaldır)" 'remove the kadran-git units to run without private repositories' \
+    "$PASIF; KOK='$G/kurulu'; git_onkosul_resolved"
+dene "uyarı rehberi gösteriyor" \
+    "$(ys "git_resolved_uyarisi | grep -qF 'See docs/guides/private-git.md'")"
+
+KIMLIK_ILETI='remove --git-credentials from the kadran-exec drop-in; private repositories now use'
+AG_ILETI='IPAddressAllow= lines from'
+AG_SON='kadran-exec no longer uses the network'
+DI=etc/systemd/system/kadran-exec.service.d
+mkdir -p "$G/dropinsiz" "$G/temiz/$DI" "$G/kirli/$DI" "$G/eski146/$DI" "$G/ag/$DI" "$G/izin/$DI" "$G/yorum/$DI"
+# Canlı iki sunucudaki biçim: yalnız ExecStart ve --allow-repo. GEÇMELİ.
+printf '[Service]\nExecStart=\nExecStart=/usr/local/lib/kadran/kadran-exec --allow-repo a/b\n' > "$G/temiz/$DI/10.conf"
+printf '[Service]\nExecStart=\nExecStart=/usr/local/lib/kadran/kadran-exec --git-credentials /etc/kadran/git.token\n' > "$G/kirli/$DI/20-git.conf"
+# K-146 rehberinin drop-in'i birebir (aa49db9:docs/guides/private-git.md).
+cat > "$G/eski146/$DI/override.conf" <<'ESKI146'
+[Service]
+ExecStart=
+ExecStart=/usr/local/lib/kadran/kadran-exec --socket /run/kadran-exec/exec.sock --journal /var/lib/kadran-exec/exec-audit.log --allow-user kadran --owner-group kadran --allow-repo YOUR_ORG/YOUR_REPO --git-credentials /etc/kadran/private-git/credentials.json
+RestrictAddressFamilies=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Bulut meta veri servisi root executor'dan ERİŞİLEMEZ olmalı: GCP/AWS/Azure'da
+# 169.254.169.254 örnek kimlik belirteci demektir. Link-local (IPv4 ve IPv6) ve
+# AWS'nin IPv6 meta veri adresi kapatılır.
+IPAddressDeny=169.254.0.0/16 fe80::/10 fd00:ec2::254/128
+ESKI146
+# Güncel rehberi izleyip yalnız --git-credentials'ı silen kullanıcının
+# drop-in'i: ağ satırları kaldı (son inceleme I2'nin asıl senaryosu).
+printf '[Service]\nExecStart=\nExecStart=/usr/local/lib/kadran/kadran-exec --allow-repo a/b\nRestrictAddressFamilies=\nRestrictAddressFamilies=AF_UNIX AF_INET AF_INET6\nIPAddressDeny=169.254.0.0/16 fe80::/10\n' > "$G/ag/$DI/30-net.conf"
+printf '[Service]\nIPAddressAllow=10.0.0.2\n' > "$G/izin/$DI/40.conf"
+# Yorumdaki adlar ve boş sıfırlama satırı durdurmamalı (satır başı çapası).
+printf '[Service]\n# eskiden: IPAddressDeny= ve RestrictAddressFamilies=AF_INET vardı\nRestrictAddressFamilies=\nExecStart=\nExecStart=/usr/local/lib/kadran/kadran-exec --allow-repo a/b\n' > "$G/yorum/$DI/50.conf"
+gecer "drop-in dizini yokken (glob eşleşmez) DURMAZ" \
+    "KOK='$G/dropinsiz'; git_onkosul_eski_kimlik"
+gecer "canlı biçim: yalnız ExecStart + --allow-repo → geçer" \
+    "KOK='$G/temiz'; git_onkosul_eski_kimlik"
+hata_bekle "drop-in'te --git-credentials → durur (eski ileti)" "$KIMLIK_ILETI" \
+    "KOK='$G/kirli'; git_onkosul_eski_kimlik"
+hata_bekle "ileti kadran github connect yolunu söylüyor" 'kadran github connect' \
+    "KOK='$G/kirli'; git_onkosul_eski_kimlik"
+hata_bekle "K-146 rehberinin drop-in'i → ağ satırları için durur" "$AG_SON" \
+    "KOK='$G/eski146'; git_onkosul_eski_kimlik"
+hata_bekle "K-146 rehberinin drop-in'i → --git-credentials'ı da söyler" "$KIMLIK_ILETI" \
+    "KOK='$G/eski146'; git_onkosul_eski_kimlik"
+hata_bekle "yalnız ağ satırları kalmış drop-in → durur" "$AG_ILETI" \
+    "KOK='$G/ag'; git_onkosul_eski_kimlik"
+hata_bekle "ağ iletisi dosyayı adlandırıyor" "$DI/30-net.conf" \
+    "KOK='$G/ag'; git_onkosul_eski_kimlik"
+hata_bekle "yalnız IPAddressAllow= satırı → durur" "$AG_ILETI" \
+    "KOK='$G/izin'; git_onkosul_eski_kimlik"
+gecer "yorumdaki ad ve boş RestrictAddressFamilies= → geçer" \
+    "KOK='$G/yorum'; git_onkosul_eski_kimlik"
+
+# kadran-git kullanıcısı: sahte id/useradd; çağrılar günlüğe yazılıyor.
+KUL_SAHTE='getent() { return 1; }; groupadd() { :; }; NOLOGIN=/usr/sbin/nologin
+useradd() { echo "useradd $*" >> "$GUNLUK"; }
+id() { case "$*" in "-u kadran-git") return 1;; "-nG kadran-git") echo "kadran-git $GRUP_GIT";; "-nG kadran") echo "kadran $GRUP_KADRAN";; esac; }'
+GUNLUK_G="$G/kul-gunluk"
+for g in docker kadran kadran-client kadran-proxy; do
+    hata_bekle "kadran-git $g grubundaysa durur" "kadran-git must not belong to $g" \
+        "GUNLUK='$GUNLUK_G'; GRUP_GIT='$g'; GRUP_KADRAN=''; $KUL_SAHTE; git_kullanicisi"
+done
+hata_bekle "kadran, kadran-git grubundaysa durur" "kadran must not belong to the kadran-git group" \
+    "GUNLUK='$GUNLUK_G'; GRUP_GIT=''; GRUP_KADRAN='kadran-git'; $KUL_SAHTE; git_kullanicisi"
+: > "$GUNLUK_G"
+gecer "temiz üyelikte geçer ve kullanıcı sistem hesabı olarak açılır" \
+    "GUNLUK='$GUNLUK_G'; GRUP_GIT=''; GRUP_KADRAN=''; $KUL_SAHTE; git_kullanicisi; grep -q -- '--system --gid kadran-git --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin --comment Kadran GitHub access broker kadran-git' '$GUNLUK_G'"
+
+echo
 echo "== offsite_cozucu_kotu: uzak yedeğin DNS'i süzgecine takılmamalı (K-168) =="
 # Dosyalar GCP ve Hetzner'de okunan hâlleriyle (12 Kasım).
 R="$(mktemp -d)"
-trap 'rm -f "$FN"; rm -rf "$D" "$H" "$R"' EXIT
+trap 'rm -f "$FN"; rm -rf "$D" "$H" "$G" "$R"' EXIT
 printf 'nameserver 127.0.0.53\noptions edns0 trust-ad\nsearch .\n' > "$R/stub"
 printf 'nameserver 169.254.169.254\nsearch c.ornek.internal google.internal\n' > "$R/stub-eski"
 printf 'nameserver 169.254.169.254\nsearch c.ornek.internal google.internal\n' > "$R/gcp"
@@ -367,6 +501,33 @@ on_kosulda "resolved'ın durumu systemctl'den" \
 on_kosulda "kurulu zamanlayıcıya bakıyor" '/etc/systemd/system/kadran-offsite.timer'
 on_kosulda "eski adlı zamanlayıcıya da bakıyor (göç)" '/etc/systemd/system/panely-offsite.timer'
 on_kosulda "sonuç kurulumu durduruyor" '    die "kadran-offsite needs systemd-resolved'
+
+echo
+echo "== kadran-git atlandığında ana akış (K-167, son inceleme I1) =="
+# Bu satırlar ana akışta; fonksiyon olarak koşturulamıyor. Ardışık satır
+# çifti aranıyor: koşul ters dönerse ya da gövde değişirse kırmızı.
+ardisik() { # ardisik <ad> <satır1> <satır2>
+    # ENVIRON, -v değil: -v ters eğik çizgi kaçışlarını çözer (printf
+    # satırındaki kaçış gerçek satır sonuna döner ve eşleşme hiç olmaz).
+    if A="$2" B="$3" awk 'onceki == ENVIRON["A"] && $0 == ENVIRON["B"] { f = 1 } { onceki = $0 } END { exit !f }' internal/bootstrap/install.sh; then
+        echo "  ✓ $1"
+    else
+        echo "  ✗ $1"; fail=1
+    fi
+}
+ardisik "etkinlik denetimi kadran-git soketlerini yalnız aracı kurulduysa sınıyor" \
+    'if [ "$GIT_ARACI" = 1 ]; then' '    izlenen_birimler+=(kadran-git-admin.socket kadran-git-fetch.socket)'
+ardisik "etkinlik denetimi listeden koşuyor" \
+    'fi' 'for unit in "${izlenen_birimler[@]}"; do'
+ardisik "imaj denetimi atlanan aracı için hata olmayan tek satır basıyor" \
+    'if [ "$GIT_ARACI" != 1 ]; then' '    printf '"'"'  - %s\n'"'"' "kadran-git not set up: systemd-resolved is not running (private GitHub repositories are disabled)"'
+ardisik "özet uyarıyı yineliyor" \
+    'if [ "$GIT_ARACI" != 1 ]; then' '    git_resolved_uyarisi'
+if grep -qE '^for unit in .*kadran-git' internal/bootstrap/install.sh; then
+    echo "  ✗ etkinlik döngüsü kadran-git soketlerini koşulsuz sayıyor"; fail=1
+else
+    echo "  ✓ etkinlik döngüsü kadran-git soketlerini koşulsuz saymıyor"
+fi
 
 echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }

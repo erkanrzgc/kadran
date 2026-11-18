@@ -1,8 +1,8 @@
 [Unit]
 Description=Kadran control plane daemon
 Documentation=https://github.com/erkanrzgc/kadran
-After=network-online.target kadran-exec.service kadran-proxy.socket
-Wants=network-online.target
+After=network-online.target kadran-exec.service kadran-proxy.socket kadran-git-admin.socket
+Wants=network-online.target kadran-git-admin.socket
 Requires=kadran-exec.service kadran-proxy.socket
 
 [Service]

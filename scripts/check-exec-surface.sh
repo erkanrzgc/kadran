@@ -124,12 +124,13 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # bağlantı. Sınır kasanın kodunu getiren commit'te değişti.
 #
 # Çıktı HER ZAMAN iki sayıyı da basar; ham sayı gizlenmiyor.
-# K-146: private Git is an explicit addition to the root trust boundary.
+# K-146 (SUPERSEDED by K-167, see below): private Git was an explicit
+# addition to the root trust boundary; the network and token code left it.
 # Measured before changing this gate: 2876 code lines / 4884 raw, from
 # 2581 code lines. Fixed GitHub requests, credential ownership checks and
 # bounded archive validation run here so tokens never enter the daemon,
 # Docker URL or renderer. The import-graph measurement stays unchanged.
-# Default network access stays AF_UNIX; private Git needs an opt-in unit.
+# (Historical: that opt-in network unit no longer exists; the unit is AF_UNIX only.)
 #
 # ── 2900 → 2925: uygulama ağının alt ağ denetimi (K-150), kullanıcı kararı ──
 #
@@ -154,7 +155,15 @@ SCHEMA="${1:-$REPO_ROOT/proto/kadran/v1/exec.proto}"
 # gerekiyor (container_id yasak alan), reddedildi. (2) Uygulama başına
 # CgroupParent dilimi — systemd '-' ile iç içe geçiriyor (my uygulaması
 # my-api'yi de sayardı) ve cgroup_parent yasak alan, reddedildi.
-MAX_EXEC_LINES="${MAX_EXEC_LINES:-2990}"
+# ── 2990 → 2981: ağ ve jeton kodu kadran-git'e taşındı (K-167) ──
+# Ölçüm: 2982 → 2981 (-1). Yürütücü artık GitHub'a bağlanmıyor, jeton
+# okumuyor: PrivateGit, kimlik dosyası okuma denetimi, yönlendirme doğrulama
+# ve HTTP istemcisi silindi (-44 ilk ölçüm). İnceleme turu geri ekledi:
+# kadran-git ele geçirilirse seyrek (sparse) tar kayıtlarıyla kök diskini
+# doldurabilir; toplam açılmış boyut ve çıktı yazma sınırı, ARCHIVE
+# sonrası parçalar arası boşta kalma süresi ve günlük kategorisi için
+# enjekte edilebilir günlükçü eklendi. Sınır ölçülen sayıya çekildi.
+MAX_EXEC_LINES="${MAX_EXEC_LINES:-2981}"
 
 fail=0
 note_failure() {

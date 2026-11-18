@@ -22,6 +22,9 @@ VARSAYILAN=60
 # bütün betikler beş parçada; süre, günlükte betiğin `▶` satırından bir
 # sonrakine. Önceki tablo run 42360594478'dendi (7 Kasım); ilki (run
 # 42258002478, tek iş) masaüstünü 454 sanıyordu, 618 çıkmıştı (K-164).
+# İstisna: mutate-github.sh (28 mutant, Windows + WSL) ve mutate-install.sh
+# (root'suz 42 mutant, WSL) K-167 son düzeltmesinde yerelde ölçüldü
+# (17 Kasım); sonraki tam CI koşusu yerini alır.
 SURELER='
 scripts/mutate-alarm.sh 70
 scripts/mutate-anchor.sh 38
@@ -32,13 +35,14 @@ scripts/mutate-backup.sh 8
 scripts/mutate-bootstrapssh.sh 629
 scripts/mutate-caps.sh 7
 scripts/mutate-client.sh 95
-scripts/mutate-desktop.sh 483
+scripts/mutate-desktop.sh 517
 scripts/mutate-domaincheck.sh 392
 scripts/mutate-env.sh 40
 scripts/mutate-get-kadran.sh 5
+scripts/mutate-github.sh 333
 scripts/mutate-goc.sh 63
 scripts/mutate-heal.sh 15
-scripts/mutate-install.sh 21
+scripts/mutate-install.sh 72
 scripts/mutate-kasa.sh 46
 scripts/mutate-keys.sh 58
 scripts/mutate-logrot.sh 15

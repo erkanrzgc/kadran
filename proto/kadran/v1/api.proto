@@ -4,6 +4,7 @@ package kadran.v1;
 
 import "google/protobuf/timestamp.proto";
 import "kadran/v1/common.proto";
+import "kadran/v1/git.proto";
 
 option go_package = "github.com/erkanrzgc/kadran/internal/pb/kadran/v1;kadranv1";
 
@@ -215,6 +216,47 @@ service KadranService {
   // GetTotpStatus, TOTP durumunu, kalan kurtarma kodunu ve kilitli
   // anahtarları döner.
   rpc GetTotpStatus(GetTotpStatusRequest) returns (GetTotpStatusResponse);
+
+  // StartGitHubConnect, GitHub cihaz akışını başlatır. Yalnız yönetici
+  // çağırır. Döner: kullanıcıya gösterilecek kod ve adres; jeton ve
+  // OAuth cihaz kodu ASLA dönmez (kadran-git içinde kalır).
+  rpc StartGitHubConnect(StartGitHubConnectRequest) returns (StartGitHubConnectResponse);
+
+  // GetGitHubStatus, GitHub bağlantı durumunu ve kurulumları döner.
+  // Yalnız yönetici çağırır. Jeton yoktur.
+  rpc GetGitHubStatus(GetGitHubStatusRequest) returns (GetGitHubStatusResponse);
+
+  // DisconnectGitHub, GitHub bağlantısını koparır. Yalnız yönetici çağırır.
+  rpc DisconnectGitHub(DisconnectGitHubRequest) returns (DisconnectGitHubResponse);
+
+  // ResolveGitHubBranch, uygulamanın deposundaki dalı commit karmasına
+  // çevirir. Yalnız yönetici çağırır. Döner: commit_sha; jeton yoktur.
+  rpc ResolveGitHubBranch(ResolveGitHubBranchRequest) returns (ResolveGitHubBranchResponse);
+}
+
+message StartGitHubConnectRequest {}
+
+message StartGitHubConnectResponse {
+  GitHubUserCodePrompt prompt = 1;
+}
+
+message GetGitHubStatusRequest {}
+
+message GetGitHubStatusResponse {
+  GitHubConnection connection = 1;
+}
+
+message DisconnectGitHubRequest {}
+
+message DisconnectGitHubResponse {}
+
+message ResolveGitHubBranchRequest {
+  string app_id = 1;
+  string branch = 2;
+}
+
+message ResolveGitHubBranchResponse {
+  string commit_sha = 1;
 }
 
 // AlarmSeverity, alarmın aciliyetidir.

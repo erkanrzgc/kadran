@@ -116,7 +116,7 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
 
 | Capability | Notes |
 |---|---|
-| **Git → container deploys** | Builds a commit's `Dockerfile`. Public Git by default; opt-in [private GitHub archives](docs/guides/private-git.md) use root-only credentials and an explicit repository allowlist |
+| **Git → container deploys** | Builds a commit's `Dockerfile`. Public Git by default; [private GitHub repositories](docs/guides/private-git.md) connect with `kadran github connect` (device flow, read-only, selected repositories) |
 | **Blue-green releases** | Traffic moves only after the new release answers its HTTP health check |
 | **Rollback** | Back to the previous release without rebuilding: ~18 s end to end, 55 of 55 probes returned `200` during the switch |
 | **Automatic HTTPS** | Let's Encrypt through a custom Caddy build with no file server compiled in. Atomic config reloads. A restarted or crashed proxy gets its routes back within 10 s (measured before the typed proxy broker of K-143: 3 s after a restart, 7 s after a crash; not yet re-measured with the broker) |
@@ -152,6 +152,10 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
   default; `-client-key` picks another. Building from source also needs Go 1.26.11+.
 - **Ports 80 and 443** must be free. The installer stops if `caddy`, `nginx`, `apache2`,
   `httpd` or `lighttpd` is running.
+- **`systemd-resolved`** (with its stub at `127.0.0.53`) is needed for private GitHub
+  repositories only. Without it the installer warns, skips the `kadran-git` service, and public
+  repositories deploy as usual. If `kadran-git` is already set up on the server, the installer
+  stops instead. See the [private repositories guide](docs/guides/private-git.md#upgrading).
 - **Cloud images that disable root login** (GCP's Debian ships `PermitRootLogin no`): use
   `bootstrap -sudo user@server`. Root SSH stays closed. Open 80/443 in the provider's
   firewall; on GCP, use a rule with a target tag so only this machine is exposed.
@@ -384,6 +388,7 @@ place** (K-136):
 | `kadran-exec` | `root` | Privileged, but accepts **only** typed schemas | Docker Engine API, constrained filesystem writes |
 | `kadran-caddy` | `kadran-caddy` | Binds 80/443; no file server compiled in | Reverse proxy and ACME |
 | `kadran-proxy` | `kadran-proxy` | Unix sockets only; no Docker, vault or Caddy state access | Validates typed route sets and builds fixed Caddy config; sole raw admin client |
+| `kadran-git` | `kadran-git` | No capabilities, not in `docker`; outbound-only network to GitHub, private and link-local ranges denied | Holds the GitHub token, renews it, downloads private archives (K-167) |
 | `kadran-connect` | `kadran-client` | None; ~120 lines, forced command | Byte pump between sshd and `api.sock`; writes the caller's key and role first |
 | `kadran` | workstation | — | CLI; the desktop app (Wails) embeds the same Go client |
 
@@ -423,7 +428,7 @@ removed:
   CVE-2026-33748 are unrepresentable, independently of BuildKit's own validation.
 - **Every container is confined:** empty capability bounding set, `no-new-privileges`, a PID
   limit and memory/CPU/IO limits from the app definition.
-- **Privileged code is size-capped** at 2900 lines (private archive fetch/validation added in K-146), measured from the *actual import graph*
+- **Privileged code is size-capped** at 2981 lines, measured from the *actual import graph*
   of `cmd/kadran-exec` (not a hand-kept path list a new package could walk around), comments
   excluded. CI fails the build otherwise: a least-privilege boundary that keeps growing
   stops being one.
@@ -572,6 +577,35 @@ reported "caught" while measuring nothing because the mutant did not compile. De
 retracted when a later measurement contradicts them, and the retraction stays next to the
 original. All of it is in [`docs/decisions.md`](docs/decisions.md).
 
+## Private repositories
+
+Connect the server to GitHub once, then deploy private repositories by branch name:
+
+```bash
+kadran github connect your-server   # prints a code; enter it at github.com/login/device
+kadran github status your-server
+kadran deploy -branch main APP
+kadran github disconnect your-server
+```
+
+- Kadran uses a GitHub App, "Kadran Deploy", with **read-only Contents** access to the
+  repositories you select. Install it with **Only select repositories**; `connect` and `status`
+  warn if you chose **All repositories**.
+- The token is created and renewed on the server, by a separate unprivileged service
+  (`kadran-git`). `kadrand`, your workstation and the root executor never see it, and the
+  executor still has no network access.
+- Public repositories keep the plain Git path. If `kadran-git` is down, public builds continue.
+- **Trust:** the App's owner holds its private key, and whoever holds that key could read the
+  selected repositories of every account that installed the App. Kadran stores no key and no
+  client secret. If you do not want that trust, register your own GitHub App and give
+  `kadran-git` its `--client-id` and `--app-slug`. See the
+  [guide](docs/guides/private-git.md#register-your-own-github-app).
+- Upgrading from the older token-file setup (K-146) needs the `kadran-exec` drop-in cleaned
+  first: remove `--git-credentials` and the old network lines (`RestrictAddressFamilies=`,
+  `IPAddressDeny=`, `IPAddressAllow=`), then revoke the old token on GitHub. Private repositories
+  also need `systemd-resolved`. The [guide](docs/guides/private-git.md#upgrading) has the
+  messages.
+
 ## Continuous deployment
 
 A CI key can be limited to deploying named apps. The role sits in the same line as the key,
@@ -705,8 +739,10 @@ Tracked in the open rather than hidden. Each is a real limitation today.
   alarm sender's state file) stay Turkish because running servers depend on them (K-150,
   K-153).
 - **Dockerfile builds only.** No buildpacks. [Private GitHub builds](docs/guides/private-git.md)
-  require a root credential file, repository allowlist and explicit executor network opt-in;
-  deploy an exact commit. The archive path does not clone submodules or support symlinks.
+  use an archive of the exact commit, not a clone: no `.git` directory, no submodules, no
+  symlinks, and Git LFS depends on the repository's GitHub archive setting. Disconnecting deletes
+  the token on the server but cannot revoke it on GitHub (that needs a client secret Kadran does
+  not hold); the guide lists the two revoke pages.
 - **TOTP is a sign-in, not a per-action check.** For 8 hours a session covers every admin
   call, destructive ones included; only turning TOTP off and replacing its secret ask for a fresh
   code. Tokens cannot be revoked one by one: `logout` deletes the local copy, and invalidating
@@ -723,7 +759,7 @@ Tracked in the open rather than hidden. Each is a real limitation today.
 | — | Operations: env vars, scaling, pruning, log caps | ✅ done |
 | 2 | Cloudflare (DNS/WAF/DNS-01), secret vault, one-click services, volumes, TOTP | 🔨 volumes, the secret vault and TOTP done |
 | 3 | Metrics, alerting, PTY bridge, file manager, editor | 🔨 alarms, Telegram delivery, crash notices and an external heartbeat done |
-| 4 | Webhook receiver, deploy-on-push, cron manager | 🔨 deploy-on-push through CI with deploy-only keys done |
+| 4 | Webhook receiver, deploy-on-push, cron manager | 🔨 deploy-on-push through CI with deploy-only keys and private GitHub repositories (device flow) done |
 | 5 | Offsite backups, Litestream, warm standby, DNS failover | 🔨 hourly local + encrypted offsite snapshots and volume backups done |
 | 6 | Multi-node: `kadrand --mode=agent`, mTLS gRPC | ⏳ |
 | 7 | Octópus integration (local security LLM) | ⏸ on hold (running cost) |

@@ -127,7 +127,8 @@ func TestArchiveCarriesEverythingTheInstallerNeeds(t *testing.T) {
 	// install.sh bu adlarla okuyor; listeler ayrışırsa kurulum uzakta ölür.
 	required := []string{
 		"install.sh",
-		"kadrand", "kadran-exec", "kadran-connect", "kadran-vault",
+		"kadrand", "kadran-exec", "kadran-connect", "kadran-vault", "kadran-git",
+		"kadran-git.service", "kadran-git-admin.socket", "kadran-git-fetch.socket",
 		"kadrand.service", "kadran-exec.service", "kadran-tmpfiles.conf",
 		"client_key.pub",
 

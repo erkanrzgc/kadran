@@ -1,0 +1,166 @@
+syntax = "proto3";
+
+package kadran.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/erkanrzgc/kadran/internal/pb/kadran/v1;kadranv1";
+
+// GitAdminService, kadrand ile kadran-git arasındaki YÖNETİM sözleşmesidir
+// (GitHub cihaz akışı, K-167).
+//
+// Hiçbir yanıt jeton (ghu_/ghr_), OAuth cihaz kodu ya da imzalı indirme
+// adresi taşımaz. Bunlar yalnız kadran-git içinde yaşar; kadrand ve
+// istemciler yalnız kullanıcıya gösterilecek bilgiyi görür. Hiçbir mesajda
+// serbest metin hata alanı yoktur (bkz. GitHubFailure). Bu kural
+// internal/protocheck/gitsurface_test.go ile denetlenir.
+service GitAdminService {
+  // StartDeviceFlow, GitHub cihaz akışını başlatır. Çağıran: kadrand
+  // (StartGitHubConnect). Döner: kullanıcı kodu (8 hane) ve doğrulama
+  // adresi (GitHubUserCodePrompt); bunlar kullanıcıya gösterilmek içindir.
+  // OAuth cihaz kodu yanıtta YOKTUR, kadran-git içinde kalır.
+  rpc StartDeviceFlow(StartDeviceFlowRequest) returns (StartDeviceFlowResponse);
+
+  // GetGitStatus, bağlantı durumunu döner. Çağıran: kadrand
+  // (GetGitHubStatus). Jeton yoktur; yalnız durum, kullanıcı adı ve
+  // kurulumların depo listesi döner.
+  rpc GetGitStatus(GetGitStatusRequest) returns (GetGitStatusResponse);
+
+  // DisconnectGit, bağlantıyı koparır ve diskteki jeton çiftini siler.
+  // Çağıran: kadrand (DisconnectGitHub). Yanıtta jeton dönmez.
+  rpc DisconnectGit(DisconnectGitRequest) returns (DisconnectGitResponse);
+
+  // ResolveBranch, dalı commit karmasına çevirir. Çağıran: kadrand
+  // (ResolveGitHubBranch). Döner: commit_sha; jeton asla dönmez.
+  rpc ResolveBranch(ResolveBranchRequest) returns (ResolveBranchResponse);
+}
+
+// GitFetchService, yürütücünün kaynak arşivi aldığı sözleşmedir.
+// Yürütücü jeton görmez; kadran-git arşivi kendisi indirip parça parça
+// akıtır.
+service GitFetchService {
+  // FetchArchive, belirli bir commit'in arşivini akıtır.
+  //
+  // AKIŞ DURUM MAKİNESİ (oneof "önce karar"ı şema olarak ZORLAMAZ; uyumu
+  // alıcı, yani yürütücü denetler):
+  //
+  //  1. İlk ileti bir karardır. İlk ileti chunk, boş ileti,
+  //     DECISION_UNSPECIFIED ya da bilinmeyen bir değerse bu, karardan
+  //     ÖNCEKİ bir hatadır: çağıran herkese açık yola düşer.
+  //  2. DECISION_ARCHIVE'dan sonra yalnız chunk gelebilir. Başka türde
+  //     ileti, ikinci bir karar, boş ileti, OK olmayan durum ya da yarım
+  //     kalan arşiv DERLEMEYİ DÜŞÜRÜR.
+  //  3. DECISION_NOT_CONNECTED ve DECISION_NOT_COVERED akıştaki TEK
+  //     iletidir; ardından gelen herhangi bir ileti derlemeyi düşürür.
+  rpc FetchArchive(FetchArchiveRequest) returns (stream FetchArchiveResponse);
+}
+
+// GitHubUserCodePrompt, kullanıcıya gösterilecek cihaz akışı bilgisidir.
+// OAuth cihaz kodu BİLEREK yoktur; buradaki kod yalnız insan içindir.
+message GitHubUserCodePrompt {
+  // user_code, kullanıcının github.com'da gireceği 8 haneli koddur.
+  string user_code = 1;
+  string verification_uri = 2;
+  // install_url, uygulamanın kurulum adresidir.
+  string install_url = 3;
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// GitHubRepository, kurulumun kapsadığı bir depodur.
+message GitHubRepository {
+  string full_name = 1;
+  // private, tar yolunun yalnız özel depolar için kullanılmasını sağlar.
+  bool private = 2;
+}
+
+// GitHubInstallation, uygulamanın bir hesaptaki kurulumudur.
+message GitHubInstallation {
+  string account = 1;
+  bool all_repositories = 2;
+  repeated GitHubRepository repositories = 3;
+  // truncated, depo listesinin sınırda kesildiğini söyler.
+  bool truncated = 4;
+}
+
+// GitHubFailure, bağlantının neden başarısız olduğunu söyler.
+enum GitHubFailure {
+  GIT_HUB_FAILURE_UNSPECIFIED = 0;
+  GIT_HUB_FAILURE_ACCESS_DENIED = 1;
+  GIT_HUB_FAILURE_CODE_EXPIRED = 2;
+  GIT_HUB_FAILURE_DEVICE_FLOW_DISABLED = 3;
+  GIT_HUB_FAILURE_BAD_CLIENT = 4;
+  GIT_HUB_FAILURE_NETWORK = 5;
+  GIT_HUB_FAILURE_RATE_LIMITED = 6;
+  GIT_HUB_FAILURE_INTERNAL = 7;
+}
+
+// GitHubConnection, GitHub bağlantısının durumudur. Jeton içermez.
+message GitHubConnection {
+  enum State {
+    STATE_UNSPECIFIED = 0;
+    STATE_NOT_CONNECTED = 1;
+    STATE_PENDING = 2;
+    STATE_CONNECTED = 3;
+    STATE_FAILED = 4;
+  }
+  State state = 1;
+  string login = 2;
+  // pending, STATE_PENDING iken kullanıcıya gösterilecek koddur.
+  GitHubUserCodePrompt pending = 3;
+  repeated GitHubInstallation installations = 4;
+  google.protobuf.Timestamp connected_at = 5;
+  // failure, STATE_FAILED nedenidir. Serbest metin YOKTUR: hata metni
+  // imzalı adres ya da jeton taşıyabilirdi. İstemci metni enum'dan üretir.
+  GitHubFailure failure = 6;
+  // reconnect_required, yenileme jetonu geçersizse true olur.
+  bool reconnect_required = 7;
+  string install_url = 8;
+}
+
+message StartDeviceFlowRequest {}
+
+message StartDeviceFlowResponse {
+  GitHubUserCodePrompt prompt = 1;
+}
+
+message GetGitStatusRequest {}
+
+message GetGitStatusResponse {
+  GitHubConnection connection = 1;
+}
+
+message DisconnectGitRequest {}
+
+message DisconnectGitResponse {}
+
+message ResolveBranchRequest {
+  string owner = 1;
+  string repo = 2;
+  string branch = 3;
+}
+
+message ResolveBranchResponse {
+  string commit_sha = 1;
+}
+
+message FetchArchiveRequest {
+  string owner = 1;
+  string repo = 2;
+  string commit_sha = 3;
+}
+
+message FetchArchiveResponse {
+  enum Decision {
+    DECISION_UNSPECIFIED = 0;
+    DECISION_ARCHIVE = 1;
+    DECISION_NOT_CONNECTED = 2;
+    DECISION_NOT_COVERED = 3;
+  }
+  // Durum makinesi için bkz. GitFetchService.FetchArchive yorumu: ilk ileti
+  // karardır; ARCHIVE ise ardından yalnız chunk gelir; diğer kararlar tek
+  // iletidir.
+  oneof kind {
+    Decision decision = 1;
+    bytes chunk = 2;
+  }
+}

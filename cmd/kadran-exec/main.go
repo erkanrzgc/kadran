@@ -8,8 +8,8 @@
 //
 // Ayrıcalık kaçınılmazdır: Docker soketine erişim pratikte root yetkisidir.
 // Modelin özü bu ayrıcalığı, şema doğrulamalı ve denetlenebilir küçük bir
-// yüzeye hapsetmektir. Ayrıcalıklı kod 2900 satırla sınırlıdır; artışın
-// kapsamı docs/decisions.md K-146'da ölçülerek kaydedilir.
+// yüzeye hapsetmektir. Ayrıcalıklı kod scripts/check-exec-surface.sh'taki
+// sınırla bağlıdır; her artış orada ölçülerek gerekçelendirilir.
 package main
 
 import (
@@ -54,20 +54,20 @@ func main() {
 
 func run() error {
 	var (
-		socketPath     = flag.String("socket", defaultSocket, "unix socket to listen on")
-		journalPath    = flag.String("journal", defaultJournal, "audit log file")
-		dockerSocket   = flag.String("docker-socket", kadranexec.DefaultDockerSocket, "Docker Engine API socket")
-		allowUser      = flag.String("allow-user", defaultAllowedUser, "the only user allowed to connect")
-		ownerGroup     = flag.String("owner-group", defaultOwnerGroup, "group of the socket and the log file")
-		showVersion    = flag.Bool("version", false, "print the version and exit")
-		vaultKey       = flag.String("vault-key", defaultVaultKey, "vault key (K-123)")
-		gitCredentials = flag.String("git-credentials", "", "root-owned 0600 private GitHub credential file (requires allow-repo and opt-in network access)")
-		debug          = flag.Bool("debug", false, "verbose logging (also enabled by KADRAN_DEBUG=1)")
-		gitHosts       = flag.String("allow-git-host", kadranexec.DefaultGitHost,
+		socketPath   = flag.String("socket", defaultSocket, "unix socket to listen on")
+		journalPath  = flag.String("journal", defaultJournal, "audit log file")
+		dockerSocket = flag.String("docker-socket", kadranexec.DefaultDockerSocket, "Docker Engine API socket")
+		allowUser    = flag.String("allow-user", defaultAllowedUser, "the only user allowed to connect")
+		ownerGroup   = flag.String("owner-group", defaultOwnerGroup, "group of the socket and the log file")
+		showVersion  = flag.Bool("version", false, "print the version and exit")
+		vaultKey     = flag.String("vault-key", defaultVaultKey, "vault key (K-123)")
+		debug        = flag.Bool("debug", false, "verbose logging (also enabled by KADRAN_DEBUG=1)")
+		gitHosts     = flag.String("allow-git-host", kadranexec.DefaultGitHost,
 			"git hosts allowed for ImageBuild (comma-separated)")
 		gitRepos = flag.String("allow-repo", "",
-			"owner/repo pairs allowed to be built (comma-separated; "+
-				"empty = no limit). MUST be set if the host has git credentials")
+			"owner/repo pairs allowed to be built (comma-separated; empty = no extra "+
+				"limit). When given, it intersects every build; private repositories "+
+				"are otherwise allowed by the GitHub app installation")
 	)
 	flag.Parse()
 
@@ -87,11 +87,6 @@ func run() error {
 		return fmt.Errorf(
 			"executor must run as root, found effective uid %d — check the systemd unit file", euid)
 	}
-	privateGit, err := kadranexec.LoadPrivateGitCredentials(*gitCredentials, splitHosts(*gitRepos))
-	if err != nil {
-		return err
-	}
-
 	vault, err := kadranexec.LoadVaultIdentity(*vaultKey)
 	if err != nil {
 		return err
@@ -131,7 +126,7 @@ func run() error {
 	}()
 
 	service, err := kadranexec.NewServer(kadranexec.ServerOptions{
-		PrivateGit:      privateGit,
+		GitFetch:        kadranexec.NewGitFetcher(kadranexec.DefaultGitFetchSocket),
 		Journal:         journal,
 		DockerSocket:    *dockerSocket,
 		AllowedGitHosts: splitHosts(*gitHosts),
@@ -158,15 +153,11 @@ func run() error {
 	kadranv1.RegisterExecutorServiceServer(server, service)
 
 	seq, _ := journal.Head()
-	// ⚠ Beyaz listenin durumu KASTEN günlüğe yazılıyor.
-	//
-	// Hostta bir git kimlik bilgisi varken boş bir beyaz liste, token'ın
-	// gördüğü HER özel deponun ImageBuild ile okunabilmesi demektir
-	// (internal/exec/repoallow.go). Executor bu durumu güvenilir biçimde
-	// TESPİT EDEMİYOR — kimlik bilgisi başka bir credential helper'da da
-	// olabilir — ama GÖRÜNÜR kılabilir. Operatör "depo_kisiti=YOK"
-	// satırını görmeli.
-	repoLimit := "NONE (no restriction applied)"
+	// Ek depo kısıtının durumu KASTEN günlüğe yazılıyor. Yürütücüde jeton yok
+	// (K-167): özel depoların izin listesi GitHub'daki uygulama kurulumudur ve
+	// --allow-repo verilmişse onunla kesişir. Boş liste "ek kısıt yok" demektir,
+	// "her şey açık" değil; operatör hangisinin geçerli olduğunu buradan görür.
+	repoLimit := "none (no extra limit; the GitHub app installation decides for private repositories)"
 	if n := len(splitHosts(*gitRepos)); n > 0 {
 		repoLimit = fmt.Sprintf("%d depo", n)
 	}

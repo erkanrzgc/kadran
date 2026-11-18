@@ -13,6 +13,12 @@ import (
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
 
+// resolveBranch, anonim dal çözümüdür; testler ağa çıkmamak için değiştirir.
+var resolveBranch = ResolveBranch
+
+// githubHost, sunucu yedek yolunun (GitHub uygulaması) geçerli olduğu tek host.
+const githubHost = "github.com"
+
 // FullSHA, tam commit özeti: 40 küçük onaltılık hane.
 var FullSHA = regexp.MustCompile(`^[0-9a-f]{40}$`)
 
@@ -74,10 +80,41 @@ func ResolveCommit(
 			spec.GetGitHost(), spec.GetGitOwner(), spec.GetGitRepo(), branch)
 	}
 
-	sha, err := ResolveBranch(ctx,
+	sha, err := resolveBranch(ctx,
 		spec.GetGitHost(), spec.GetGitOwner(), spec.GetGitRepo(), branch)
 	if err != nil {
-		return "", err
+		if spec.GetGitHost() != githubHost {
+			return "", err
+		}
+		return resolveViaServer(ctx, rpc, appID, branch, err, progress)
+	}
+	return sha, nil
+}
+
+// resolveViaServer, anonim çözüm başarısız olunca (özel depo) dalı
+// kadrand'ın GitHub uygulaması üzerinden çözer. Dağıtım anahtarları buraya
+// hiç gelmez: GetApp'te PermissionDenied ile zaten dönmüşlerdir.
+//
+// Eski sunucu (Unimplemented) ilk, anonim hatayı aynen korur; öteki
+// hatalarda iki hata birlikte söylenir. kadrand'ın metni sabit ve güvenli.
+func resolveViaServer(
+	ctx context.Context, rpc kadranv1.KadranServiceClient,
+	appID, branch string, anonErr error, progress io.Writer,
+) (string, error) {
+	resp, err := rpc.ResolveGitHubBranch(ctx,
+		&kadranv1.ResolveGitHubBranchRequest{AppId: appID, Branch: branch})
+	if status.Code(err) == codes.Unimplemented {
+		return "", anonErr
+	}
+	if err != nil {
+		return "", fmt.Errorf("%w; through the GitHub app: %s", anonErr, status.Convert(err).Message())
+	}
+	sha := resp.GetCommitSha()
+	if !FullSHA.MatchString(sha) {
+		return "", fmt.Errorf("%w; through the GitHub app: the server returned an invalid commit", anonErr)
+	}
+	if progress != nil {
+		fmt.Fprintln(progress, "resolved through the GitHub app")
 	}
 	return sha, nil
 }

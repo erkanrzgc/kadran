@@ -56,9 +56,10 @@ if [ "$(parcala 5 "$(LC_ALL=C sort -r <<<"$hepsi")")" = "$(parcala 5 "$hepsi")" 
 
 echo "== Denge =="
 out="$(parcala 5 "$hepsi")"
-# CI'da ölçülen en uzun beş betik (K-164) beş ayrı parçada olmalı: her
-# birinin bulunduğu satır numarası farklı.
-farkli="$(for b in bootstrapssh desktop domaincheck proxywatch totp; do grep -n "scripts/mutate-$b\.sh" <<<"$out" | cut -d: -f1; done | sort -u | wc -l)"
+# Tablodaki en uzun beş betik (K-164) beş ayrı parçada olmalı: her birinin
+# bulunduğu satır numarası farklı. mutate-github.sh K-167 son düzeltmesinde
+# (yerel ölçüm, 333 sn) totp'u beşinci sıradan çıkardı.
+farkli="$(for b in bootstrapssh desktop domaincheck github proxywatch; do grep -n "scripts/mutate-$b\.sh" <<<"$out" | cut -d: -f1; done | sort -u | wc -l)"
 if [ "$farkli" -eq 5 ]; then ok "en uzun beş betik ayrı parçalarda"; else no "en uzun beş betik ayrı parçalarda"; fi
 
 # LPT sınırı: en ağır parça 4/3 · max(en ağır betik, ortalama) aşmaz.

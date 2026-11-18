@@ -1,0 +1,14 @@
+[Unit]
+Description=Kadran GitHub broker fetch socket (root executor)
+
+[Socket]
+ListenStream=/run/kadran-git/fetch.sock
+SocketUser=root
+SocketGroup=root
+SocketMode=0600
+FileDescriptorName=fetch
+RemoveOnStop=yes
+Service=kadran-git.service
+
+[Install]
+WantedBy=sockets.target

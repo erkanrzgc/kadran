@@ -184,6 +184,49 @@ function resourceUsage(params) {
   return { ...resourcesBase, sampled_at_unix_ms: sampled, host, apps };
 }
 
+/**
+ * GitHub bağlantısı (K-167): hedef başına küçük bir durum makinesi. Yanıtların
+ * biçimi gerçek protojson'dur (internal/sidecar/github_linux_test.go aynı alanları
+ * gerçek gRPC'den doğrular). Sıra: bağlı değil -> (connect) -> bekliyor, bekliyor
+ * -> bağlı. `fake@noalarms` eski sunucudur: Unimplemented döner.
+ */
+const GITHUB_INSTALL = "https://github.com/apps/kadran-deploy/installations/new";
+const githubFlows = new Map();
+function githubCall(method, params) {
+  if (params.target === "fake@noalarms") return rpcFail("call", "rpc error: code = Unimplemented desc = unknown method GetGitHubStatus for service kadran.v1.KadranService");
+  const flow = githubFlows.get(params.target) ?? { state: "not_connected", polls: 0 };
+  githubFlows.set(params.target, flow);
+  const prompt = () => ({ user_code: "WDJB-MJHT", verification_uri: "https://github.com/login/device", install_url: GITHUB_INSTALL, expires_at: new Date(Date.now() + 900_000).toISOString().replace(".000Z", "Z") });
+  switch (method) {
+    case "github.connect":
+      flow.state = "pending";
+      flow.polls = 0;
+      flow.connects = (flow.connects ?? 0) + 1;
+      return { result: { prompt: prompt() } };
+    case "github.disconnect":
+      if (params.confirmation !== "disconnect") return rpcFail("call", "confirmation must be disconnect");
+      flow.state = "not_connected";
+      return { result: {} };
+    default: {
+      // 2. bagla: GitHub kayitli jetonu reddeder. Gercek biçim: kadran-git kimligi
+      // siler, durum NOT_CONNECTED olur ve reconnect_required sebebi soyler
+      // (hicbir zaman CONNECTED + reconnect degil).
+      if (flow.state === "pending" && ++flow.polls >= 2) flow.state = flow.connects === 2 ? "dropped" : "connected";
+      const connection = { state: "STATE_" + (flow.state === "dropped" ? "NOT_CONNECTED" : flow.state.toUpperCase()), login: "", pending: null, installations: [], connected_at: null, failure: "GIT_HUB_FAILURE_UNSPECIFIED", reconnect_required: flow.state === "dropped", install_url: GITHUB_INSTALL };
+      if (flow.state === "pending") connection.pending = prompt();
+      if (flow.state === "connected") {
+        connection.login = "octo";
+        connection.connected_at = "2026-11-12T09:00:00Z";
+        connection.installations = [
+          { account: "octo", all_repositories: false, truncated: false, repositories: [{ full_name: "octo/site", private: true }, { full_name: "octo/docs", private: false }] },
+          { account: "acme", all_repositories: true, truncated: false, repositories: [] },
+        ];
+      }
+      return { result: { connection } };
+    }
+  }
+}
+
 const rl = createInterface({ input: process.stdin });
 rl.on("line", (line) => {
   let req;
@@ -295,6 +338,11 @@ rl.on("line", (line) => {
         backups.unshift(backup);
         reply({ result: { backup, volumes_excluded: true } });
       }, 150);
+      return;
+    case "github.status":
+    case "github.connect":
+    case "github.disconnect":
+      reply(githubCall(req.method, params));
       return;
     default:
       reply({ error: { code: -32601, message: `unknown method "${req.method}"` } });

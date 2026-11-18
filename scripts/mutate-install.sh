@@ -227,6 +227,49 @@ mutate_in "$INST" "ağ başına /24 yazılıyor (aracının /16 varsayımı)" \
 mutate_in "$INST" "havuz 192.168'e sabitleniyor" \
     "s=s.replace('\"base\": \"172.16.0.0/12\", \"size\": 16}'+chr(39),'\"base\": \"192.168.0.0/16\", \"size\": 16}'+chr(39),1)"
 
+echo "== kadran-git ön koşulları: resolved yoksa atla, kuruluysa dur (K-167, I1) =="
+
+mutate_in "$INST" "resolved yokken hiç kurulmamış sunucu da duruyor (eski davranış)" \
+    "s=s.replace('    GIT_ARACI=0\n    git_resolved_uyarisi\n}','    die \"kadran-git needs systemd-resolved (stub resolver at 127.0.0.53)\"\n}',1)"
+
+mutate_in "$INST" "atlamada GIT_ARACI=0 yazılmıyor (aracı yine kurulur)" \
+    "s=s.replace('    GIT_ARACI=0\n','',1)"
+
+mutate_in "$INST" "atlamada uyarı basılmıyor" \
+    "s=s.replace('    GIT_ARACI=0\n    git_resolved_uyarisi\n','    GIT_ARACI=0\n',1)"
+
+mutate_in "$INST" "resolved varken de aracı atlanıyor" \
+    "s=s.replace('    GIT_ARACI=1\n','    GIT_ARACI=0\n',1)"
+
+mutate_in "$INST" "kadran-git kuruluyken de atlanıyor (kurulu aracı sessizce bozulur)" \
+    "s=s.replace('        if [ -e \"\${KOK:-}/etc/systemd/system/\$birim\" ] || [ -L \"\${KOK:-}/etc/systemd/system/\$birim\" ]; then','        if false; then',1)"
+
+mutate_in "$INST" "yalnız servis dosyasına bakılıyor (soket artığı görülmüyor)" \
+    "s=s.replace('for birim in kadran-git.service kadran-git-admin.socket kadran-git-fetch.socket; do','for birim in kadran-git.service; do',1)"
+
+mutate_in "$INST" "git_araci_kur atlama bayrağına bakmıyor (resolved'sız sunucuya birim kurar)" \
+    "s=s.replace('    if [ \"\$GIT_ARACI\" != 1 ]; then\n        say \"skipped:','    if false; then\n        say \"skipped:',1)"
+
+mutate_in "$INST" "etkinlik denetimi atlanan aracının soketlerini de istiyor" \
+    "s=s.replace('if [ \"\$GIT_ARACI\" = 1 ]; then\n    izlenen_birimler+=','if true; then\n    izlenen_birimler+=',1)"
+
+mutate_in "$INST" "kurulum özeti uyarıyı yinelemiyor" \
+    "s=s.replace('if [ \"\$GIT_ARACI\" != 1 ]; then\n    git_resolved_uyarisi\nfi\n','',1)"
+
+echo "== kadran-git ön koşulları: eski K-146 drop-in'inin ağ satırları (K-167, I2) =="
+
+mutate_in "$INST" "ağ satırı denetimi hiç eşleşmiyor (root yürütücü ağa açık kalır)" \
+    "s=s.replace(\"'^[[:space:]]*(RestrictAddressFamilies=.*AF_INET|IPAddress(Deny|Allow)=)'\",\"'^KADRAN_HIC_ESLESMEZ\$'\",1)"
+
+mutate_in "$INST" "IPAddressAllow= satırı görülmüyor" \
+    "s=s.replace('|IPAddress(Deny|Allow)=)','|IPAddressDeny=)',1)"
+
+mutate_in "$INST" "ağ denetiminde satır başı çapası yok (yorum da durdurur)" \
+    "s=s.replace(\"'^[[:space:]]*(RestrictAddressFamilies=\",\"'(RestrictAddressFamilies=\",1)"
+
+mutate_in "$INST" "ağ iletisi --git-credentials iletisini eziyor" \
+    "s=s.replace('sorun=\"\${sorun:+\$sorun\$nl}remove the','sorun=\"remove the',1)"
+
 echo "== Uzak yedek çözücüsü (K-168) =="
 
 mutate_in "$INST" "ön koşul hiç çağrılmıyor" \

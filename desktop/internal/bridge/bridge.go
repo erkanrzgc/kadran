@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/erkanrzgc/kadran/desktop/internal/appearance"
 	"github.com/erkanrzgc/kadran/desktop/internal/confirm"
@@ -39,6 +40,9 @@ type Host interface {
 	// SetLook, temaya göre pencerenin zeminini ve camın tonunu ayarlar.
 	SetLook(look appearance.WindowLook)
 	SetClipboard(text string) error
+	// OpenURL, adresi varsayılan tarayıcıda açar. Çağıran (OpenGitHub) adresi
+	// beyaz listeden geçirmiş olmalı.
+	OpenURL(url string) error
 	// Confirm, yerel onay kutusunu gösterir; true: eylem onaylandı.
 	// Varsayılan düğme Cancel olmalı.
 	Confirm(box confirm.Box) (bool, error)
@@ -55,6 +59,8 @@ type Deps struct {
 	// kutusu atlanır. Dağıtılan ikilide hep false (smoke etiketi).
 	Fixture bool
 	Warn    func(message string)
+	// Now, saat kaynağı (OpenGitHub debounce'u); nil ise time.Now. Testler sahte verir.
+	Now func() time.Time
 }
 
 // Bridge, arayüzün çağırabildiği yöntemler.
@@ -68,6 +74,10 @@ type Bridge struct {
 	// farklı uygulama adlarıyla kutu yağdırıp kullanıcıyı onay yorgunluğuna
 	// itemesin.
 	dialogOpen bool
+	// lastOpen ve lastOpenURL, OpenGitHub'ın son kabul edilen çağrısı
+	// (aynı adres 1 sn, farklı adres 250 ms).
+	lastOpen    time.Time
+	lastOpenURL string
 }
 
 // New, köprüyü kurar.

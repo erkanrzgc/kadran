@@ -10,6 +10,7 @@
 
 import type { Appearance, Material } from "../shared/appearance.ts";
 import { isCancelled, type Cancellable } from "../shared/management.ts";
+import { parseGitHubConnection, parseGitHubPrompt, type GitHubConnection, type GitHubPrompt } from "./lib/github.ts";
 import { validateManagementResult } from "./lib/management-results.ts";
 import { parseResources, type ResourceSnapshot } from "./lib/resources.ts";
 import type { AuditListPayload, StatusPayload, VerifyPayload, VersionPayload } from "./lib/types.ts";
@@ -59,6 +60,12 @@ export interface KadranBridge {
   saveAppearance(appearance: Appearance): Promise<Appearance>;
   windowControl(action: WindowAction): Promise<void>;
   copyText(text: string): Promise<void>;
+  /** GitHub bağlantısı (K-167): durum, cihaz akışını başlatma, bağlantıyı kesme. */
+  githubStatus(target: string): Promise<GitHubConnection>;
+  githubConnect(target: string): Promise<GitHubPrompt>;
+  githubDisconnect(target: string, confirmation: string): Promise<Cancellable<unknown>>;
+  /** Yalnız GitHub bağlantı akışının dört adresi; Go tarafı başkasını reddeder. */
+  openGitHub(url: string): Promise<void>;
 }
 
 /** Go'daki yöntemler (desktop/internal/bridge); Wails `window.go` altına koyar. */
@@ -87,6 +94,10 @@ interface GoBridge {
   SaveAppearance(appearance: Appearance): Promise<Appearance>;
   WindowControl(action: WindowAction): Promise<void>;
   CopyText(text: string): Promise<void>;
+  GitHubStatus(target: string): Promise<unknown>;
+  GitHubConnect(target: string): Promise<unknown>;
+  GitHubDisconnect(target: string, confirmation: string): Promise<unknown>;
+  OpenGitHub(url: string): Promise<void>;
 }
 
 declare global {
@@ -149,4 +160,13 @@ export const bridge: KadranBridge = {
   saveAppearance: (appearance) => call((go) => go.SaveAppearance(appearance)),
   windowControl: (action) => call((go) => go.WindowControl(action)),
   copyText: (text) => call((go) => go.CopyText(text)),
+  githubStatus: (target) => call<unknown>((go) => go.GitHubStatus(target)).then(parseGitHubConnection),
+  githubConnect: (target) =>
+    call<unknown>((go) => go.GitHubConnect(target)).then((value) => {
+      const prompt = parseGitHubPrompt(value);
+      if (!prompt) throw new Error("invalid github.connect response; refresh and check the server version");
+      return prompt;
+    }),
+  githubDisconnect: (target, confirmation) => call<Cancellable<unknown>>((go) => go.GitHubDisconnect(target, confirmation)),
+  openGitHub: (url) => call((go) => go.OpenGitHub(url)),
 };

@@ -128,6 +128,37 @@ func Confirmation(appID, value string) error {
 	return nil
 }
 
+// GitHubDisconnectWord, GitHub bağlantısını kesmek için yazılan onay sözcüğü.
+const GitHubDisconnectWord = "disconnect"
+
+// GitHubDisconnectConfirmation, onay sözcüğü TAM "disconnect" olmalı.
+func GitHubDisconnectConfirmation(value string) error {
+	if value != GitHubDisconnectWord {
+		return errors.New(`confirmation must be "disconnect"`)
+	}
+	return nil
+}
+
+// githubInstallURL, uygulamanın kurulum adresi (kısa ad küçük harf).
+var githubInstallURL = regexp.MustCompile(`^https://github\.com/apps/[a-z0-9-]{1,100}/installations/new$`)
+
+// githubFixedURLs, GitHub bağlantı akışının sabit adresleri.
+var githubFixedURLs = map[string]bool{
+	"https://github.com/login/device":                 true,
+	"https://github.com/settings/apps/authorizations": true,
+	"https://github.com/settings/installations":       true,
+}
+
+// GitHubURL, tarayıcıda açılabilecek TEK adres biçimleri: cihaz kodu sayfası,
+// kurulum bağlantısı ve iki ayar sayfası. Sorgu, parça, kimlik bilgisi, kapı
+// ve başka host reddedilir; genel bir "adres aç" köprüsü yok.
+func GitHubURL(value string) (string, error) {
+	if githubFixedURLs[value] || githubInstallURL.MatchString(value) {
+		return value, nil
+	}
+	return "", errors.New("only GitHub app addresses can be opened")
+}
+
 // Ref, dağıtılacak dal, etiket ya da tam commit; boşsa sunucunun varsayılanı.
 func Ref(value string) (string, error) {
 	if value != "" && !BranchPattern.MatchString(value) {

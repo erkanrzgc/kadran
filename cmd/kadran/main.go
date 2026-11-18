@@ -88,6 +88,8 @@ type cli struct {
 	rdapBootstrap string
 	// `domain check -wait`: bekleme (nil: gerçek zamanlayıcı).
 	sleep func(ctx context.Context, d time.Duration) error
+	// `github connect`: yerel saat (nil: time.Now).
+	now func() time.Time
 	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
 	keys keyManager
 	// TOTP oturum jetonları (Dir boş: kullanıcının yapılandırma dizini).
@@ -138,6 +140,7 @@ func commands() []command {
 		{"server", "<add|list|rm|rename> …", "manages the saved server list", (*cli).runServer},
 		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
 		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
+		{"github", "<connect|status|disconnect> [target]", "connects private GitHub repositories", (*cli).runGitHub},
 		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
 		{"login", "[-recovery] [target]", "signs in with a TOTP code (when TOTP is on)", (*cli).runLogin},
 		{"logout", "[target]", "deletes the saved sign-in for a server", (*cli).runLogout},

@@ -3,27 +3,26 @@ package exec
 import "strings"
 
 // ══════════════════════════════════════════════════════════════════════
-//  Depo beyaz listesi — kimlik bilgisinin ERİŞİMİNİ sınırlar
+//  Depo beyaz listesi (--allow-repo) — derlenebilecek depoları sınırlar
 // ══════════════════════════════════════════════════════════════════════
 //
 // # Neden var?
 //
-// K-057, dockerd'nin host credential helper'ını kullanmadığını gösterdi.
-// K-146'da özel depolar root executor'ın sabit GitHub archive isteğiyle
-// okunuyor. Kimlik bilgisi RPC'den GEÇMİYOR —
-// bu iyi — ama bir bedeli var: token'ın erişebildiği HER depo, Kadran'ın
-// de erişebildiği depo hâline geliyor.
+// K-167'den beri özel depoları kadran-git indirir; yürütücüde jeton yok ve
+// hangi özel depoların okunabileceğini GitHub'daki uygulama kurulumu belirler
+// (kullanıcının seçtiği depolar). Bu liste ONUN ÜSTÜNE konan, root'un yazdığı
+// ikinci kapıdır: kadrand ele geçirilse de değiştiremez. Verilmişse HER
+// derlemede (özel ya da herkese açık) kesişim olarak uygulanır.
 //
-// Somut saldırı: ImageBuild çağırabilen biri owner/repo'yu kurbanın özel
-// deposuna çevirir. Kurban deposunda Dockerfile OLMASI GEREKMEZ —
-// `dockerfile_path` de istekten geliyor ve derleme çıktısı istemciye
-// AYNEN akıyor. Yani kaynak, hiçbir konteyner çalışmadan sızar.
+// Saldırı anlatımı hâlâ geçerli: ImageBuild çağırabilen biri owner/repo'yu
+// kurbanın deposuna çevirirse, Dockerfile OLMASI GEREKMEZ — `dockerfile_path`
+// de istekten geliyor ve derleme çıktısı istemciye AYNEN akıyor. Kurulum
+// seçimi bu saldırıyı kurulu depolarla sınırlar; --allow-repo daha da daraltır.
 //
-// # Neden "ince taneli token" tek başına yetmez?
+// # Neden kurulum seçimi tek başına yetmeyebilir?
 //
-// Yetmez çünkü DOĞRULANAMAZ: operatörün token'ı hangi depolara açtığını
-// executor göremez. Beyaz liste, zorlanabilir olan yarısıdır. İkisi
-// birlikte kullanılmalı.
+// "All repositories" kurulumu bütün depoları açar (Kadran yalnız uyarır).
+// Onu kısmak isteyen operatör listeyi burada verir.
 //
 // # Bozuk girdi KAPALI tarafa düşer
 //
@@ -40,9 +39,8 @@ import "strings"
 
 // repoAllowed, deponun derlenmesine izin verilip verilmediğini bildirir.
 //
-// Boş liste "kısıt yok" demek. Bu, hostta kimlik bilgisi YOKKEN doğru
-// davranış (herkese açık depolar zaten herkese açık); kimlik bilgisi
-// varken tehlikeli olurdu ve o birleşimi kurulum betiği engelliyor.
+// Boş liste "ek kısıt yok" demek. Herkese açık depolar zaten herkese açık;
+// özel depolar için sınırı yürütücü değil GitHub kurulumu koyar (K-167).
 func repoAllowed(owner, repo string, allowed []string) bool {
 	if len(allowed) == 0 {
 		return true

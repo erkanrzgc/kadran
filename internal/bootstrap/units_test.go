@@ -37,6 +37,35 @@ var kadranOwnedPaths = map[string]bool{
 	"/run/kadran-exec":     true,
 }
 
+// kurulumunDogruladigiYollar, tmpfiles ile YARATILMAYAN ama install.sh'in
+// kurulumdan önce varlığını doğrulayıp yoksa durduğu yollar (K-167). Öneksiz
+// bağlanabilirler: kaynak yoksa kurulum zaten hiçbir şeye dokunmadan düşer.
+// TestVerifiedPathsAreChecked listedeki her yolun install.sh'te gerçekten
+// sınandığını doğrular.
+var kurulumunDogruladigiYollar = map[string]bool{
+	"/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf": true,
+}
+
+// TestVerifiedPathsAreChecked, kurulumunDogruladigiYollar'daki her kaynağın
+// install.sh'te git_onkosul_resolved içinde sınandığını doğrular.
+func TestVerifiedPathsAreChecked(t *testing.T) {
+	b, err := os.ReadFile("install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, fn, ok := strings.Cut(string(b), "git_onkosul_resolved() {")
+	if !ok {
+		t.Fatal("git_onkosul_resolved install.sh'te yok")
+	}
+	fn, _, _ = strings.Cut(fn, "\n}\n")
+	for yol := range kurulumunDogruladigiYollar {
+		kaynak, _, _ := strings.Cut(yol, ":")
+		if !strings.Contains(fn, kaynak) {
+			t.Errorf("%s kurulumunDogruladigiYollar'da ama git_onkosul_resolved onu sınamıyor", kaynak)
+		}
+	}
+}
+
 // tmpfilesDizinleri, kadran-tmpfiles.conf'un yarattığı dizinleri
 // yol → {kip, sahip, grup} olarak döndürür.
 func tmpfilesDizinleri(t *testing.T) map[string][3]string {
@@ -160,7 +189,7 @@ func TestUnitsDoNotHardRequireForeignPaths(t *testing.T) {
 				if strings.HasPrefix(ham, "-") {
 					continue // isteğe bağlı, sorun yok
 				}
-				if kadranOwnedPaths[ham] {
+				if kadranOwnedPaths[ham] || kurulumunDogruladigiYollar[ham] {
 					continue // kurulumun garanti ettiği yol
 				}
 				t.Errorf("%s:%d — %s=%s: Kadran bu yolu oluşturmuyor, "+

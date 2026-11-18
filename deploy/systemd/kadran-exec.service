@@ -12,23 +12,16 @@ NotifyAccess=main
 #
 # ── ÖZEL DEPOLAR: --allow-repo ───────────────────────────────────────
 #
-# K-146: --git-credentials ile root-only GitHub archive desteği geldi.
-# Varsayılan birim hâlâ ağa çıkmaz. Dosya, allowlist ve ağ opt-in drop-in
-# birlikte docs/guides/private-git.md'de anlatılır. Eski git helper yolu
-# aşağıdaki tarihsel ölçümde olduğu gibi kullanılmaz.
+# K-167: özel depolar kadran-git aracısı üzerinden (fetch.sock) gidiyor; bu
+# birim ağa çıkmaz ve jeton görmez. K-146'nın `--git-credentials` yolu kalktı
+# (bayrak ve kod silindi); kurulum, drop-in'te görürse ikilileri değiştirmeden
+# durur. Hostta duran bir git kimlik bilgisi ayrıca İŞE YARAMAZ (K-057 ölçümü):
+# dockerd, git'i `HOME=/dev/null` + `GIT_CONFIG_NOSYSTEM=1` ile çalıştırıyor.
 #
-# ⚠ Hostta duran bir git kimlik bilgisi bugün İŞE YARAMIYOR. Ölçüldü
-# (K-057): dockerd, git'i `HOME=/dev/null` + `GIT_CONFIG_NOSYSTEM=1` ile
-# çalıştırıyor, yani ne `~/.gitconfig`'i ne `/etc/gitconfig`'i okuyor.
-# Kimlik bilgisinin nerede durduğu fark etmiyor. Bir zamanlar bunun
-# çalıştığı yazıyordu; o ölçüm yanlış yorumlanmıştı.
-#
-# Beyaz liste yine de burada ve GEREKLİ: özel depo desteği hangi
-# mekanizmayla gelirse gelsin, kimlik bir kez derlemeye ulaştığında
-# ImageBuild çağırabilen biri owner/repo'yu kurbanın deposuna
-# çevirebilir — kurban deposunda Dockerfile olmasına bile gerek yok,
-# çünkü dockerfile_path de istekten geliyor ve derleme çıktısı istemciye
-# aynen akıyor. Kısıt BURAYA eklenir:
+# Özel depoların izin listesi github.com'daki uygulama kurulumudur (kullanıcının
+# seçtiği depolar). --allow-repo ek ve isteğe bağlı bir kapıdır: verilirse HER
+# derlemede kurulum seçimiyle kesişir. Root yazar; kadrand değiştiremez. Kısıt
+# BURAYA eklenir:
 #
 #   systemctl edit kadran-exec.service
 #   [Service]
@@ -39,8 +32,8 @@ NotifyAccess=main
 #       --allow-user kadran --owner-group kadran \
 #       --allow-repo erkanrzgc/portfolio,erkanrzgc/retain-io
 #
-# Executor açılışta `depo_kisiti=` alanını günlüğe yazıyor; "YOK" diyorsa
-# kısıt uygulanmıyor demektir.
+# Yürütücü açılışta `repo_restriction` alanını günlüğe yazıyor; "none" diyorsa
+# ek kısıt yok demektir (özel depolar için kurulum seçimi geçerli).
 ExecStart=/usr/local/lib/kadran/kadran-exec \
     --socket /run/kadran-exec/exec.sock \
     --journal /var/lib/kadran-exec/exec-audit.log \

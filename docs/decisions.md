@@ -12839,7 +12839,8 @@ GitHub'ın cihaz akışı.
 - Protokol 3 kalır; dört yeni çağrı yalnız yöneticiye açık.
 
 **Durum:** tasarım kullanıcı onaylı (12 Kasım, "evet onaylıyorum"). PR #38 → `28f73fb`, main'de
-(18 Kasım, squash); CI 18/18 yeşil. v0.13.0'a giriyor; canlı adımlar (Görev 14) her biri ayrı onay.
+(18 Kasım, squash); CI 18/18 yeşil. v0.13.0'da yayımlandı (18 Kasım; etiket `5b1b074`, tam CI
+18/18 yeşil, iki temiz kopyada `SHA256SUMS` aynı); canlı adımlar (Görev 14) her biri ayrı onay.
 Uygulama kaydedildi (12 Kasım, kullanıcı onayıyla, Chrome'da onun oturumuyla): "Kadran" adı
 @kadran hesabına ayrılmış çıktı, ad **Kadran Deploy**; App ID `5733313`, Client ID
 `Iv23lizBm3zlCdYH3NQ5`, kısa ad `kadran-deploy`. Yalnız Contents ve Metadata okuma, webhook
@@ -13031,7 +13032,7 @@ main'e girince eklenecekti.
 - `systemd-analyze verify` (WSL): yeni birimde yönerge hatası yok, yalnız betik WSL'de yok.
   Kontrol: bağ yolu göreli yapılınca "path is not absolute, ignoring".
 
-**Durum:** PR #37 → `3dda3f7`, main'de (17 Kasım). v0.13.0'a giriyor. Canlıya sunucu yükseltmesiyle gider
+**Durum:** PR #37 → `3dda3f7`, main'de (17 Kasım). v0.13.0'da yayımlandı (18 Kasım). Canlıya sunucu yükseltmesiyle gider
 (`secimli_guncelle` kurulu uzak yedek birimini yeniler); ayrı onay.
 
 **Artık:** GCP'deki 3 Ekim prova artıkları (`olcum.conf` drop-in'i, `/srv/olcum-uzak`, yerel

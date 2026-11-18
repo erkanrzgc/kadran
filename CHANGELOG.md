@@ -3,11 +3,16 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.13.0 — 2026-11-18
 
-Private GitHub repositories connect with a device flow (K-167). Upgrade the server for it; the
-protocol stays 3 and the four new calls are additions, so an older server answers "upgrade the
-server" and nothing else changes. The new `kadran-git` service is added by `kadran bootstrap`.
+Private GitHub repositories through a device flow (K-167), and offsite backups that resolve names
+through systemd-resolved (K-168). The protocol stays 3: the four new calls are additions, so this
+client still works with a v0.12.0 server (the GitHub commands answer "upgrade the server" and
+nothing else changes), and a v0.12.0 client still works with a v0.13.0 server. Private repositories
+need the new server: `kadrand` and `kadran-exec` changed, `kadran bootstrap` adds the new
+`kadran-git` service and, where offsite backups are set up, refreshes the `kadran-offsite` unit, so
+upgrade your servers. The desktop app is still not among the release files: build it from source in
+`desktop/` (see the [desktop guide](docs/guides/desktop.md)).
 
 ### Added
 
@@ -37,6 +42,17 @@ server" and nothing else changes. The new `kadran-git` service is added by `kadr
   running, `kadran bootstrap` warns, skips `kadran-git` (no user, units or sockets) and repeats
   the warning in its summary; public repositories deploy as before. If `kadran-git` was already
   set up on that server, the upgrade stops instead and says how to fix it.
+
+### Fixed
+
+- The offsite backup unit (`kadran-offsite`) binds systemd-resolved's stub resolver over its
+  `/etc/resolv.conf`, so names resolve through `127.0.0.53` whatever rclone build is installed.
+  The unit's network filter blocks loopback and link-local addresses, and a pure-Go rclone would
+  otherwise ask the host's resolver directly (GCP's default is `169.254.169.254`) and upload
+  nothing. The distribution's rclone on both test servers resolves through glibc and was not
+  affected (K-168). If offsite backups are set up, systemd-resolved is not running and the host's
+  `/etc/resolv.conf` names a loopback or link-local resolver, `kadran bootstrap` stops before it
+  changes anything and says how to fix it (see the [offsite guide](deploy/offsite/README.md#setup)).
 
 ### Removed
 

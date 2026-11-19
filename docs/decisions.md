@@ -13089,4 +13089,39 @@ main'e girince eklenecekti.
 (`secimli_guncelle` kurulu uzak yedek birimini yeniler); ayrı onay.
 
 **Artık:** GCP'deki 3 Ekim prova artıkları (`olcum.conf` drop-in'i, `/srv/olcum-uzak`, yerel
-`rclone.conf`) duruyor; dokunulmadı.
+`rclone.conf`) duruyor; dokunulmadı. 18 Kasım: kullanıcı onayıyla silindi, ayrıntı K-167 "Canlı"da.
+
+## K-169 — Kadran Konsolu: masaüstünde CLI'ın komut diliyle alt panel (2026-11-18)
+
+**İstek (kullanıcı, 18 Kasım):** masaüstüne terminal. Sunucuya ya da konteynere gerçek kabuk reddedildi
+(`kadran-client` anahtarı `restrict`, kabuk açamaz). Kullanıcının itirazı: "Kadran açmazsa kabuğu havalı
+olmuyor." Uzlaşma: terminal gibi görünen, içinde Kadran'ın kendi komut dilinin çalıştığı bir konsol.
+
+**Karar:** tasarım `docs/specs/2026-11-18-kadran-konsolu-design.md` (`6a89b05`). Özet:
+- Alt panel, Ctrl+` ile açılır **(kullanıcı)**. Komutlar CLI'ın aynısı, `kadran` öneki olmadan **(kullanıcı)**.
+- CLI'ın komut kodu `internal/cli` paketine taşınır; masaüstü aynı kodu çalıştırır **(kullanıcı: yaklaşım 1)**.
+- Komutlar altı sınıfta. Sınıfı olmayan komut konsolda çalışmaz:
+  - okuma doğrudan çalışır;
+  - değiştirme yerel onay kutusundan geçer;
+  - tehlikeli komutta önce ad yazılır, sonra yerel kutu gelir;
+  - root komutları için "konsolda yönetici komutları" ayarı açık olmalı, ardından ad yazılır, yerel kutu gelir ve yerel kayıt tutulur;
+  - yasak sınıfındakiler reddedilir.
+- Konsoldan çıkanlar **(kullanıcı, 19 Kasım)**:
+  - `bootstrap`: masaüstü derlemesinde sunucu paketi özetleri yok;
+  - `server add|rm|rename`;
+  - `sidecar`;
+  - `audit verify -anchors`.
+- `totp enable` konsolda kalır. Sır, QR ve kurtarma kodları ayrı bir gizli çıktı kartında görünür; tampona,
+  geçmişe ve kayda girmez **(kullanıcı, 19 Kasım)**.
+- Root komutlarında ad yazmak dikkat adımıdır, güvenlik kapısı değil: kapı yerel onay kutusudur. Arayüze
+  güvenilmez (K-165) **(kullanıcı onayladı, 19 Kasım)**.
+- **K-165 istisnası:** köprüye satır çalıştıran yöntemler eklenir. Sınıflandırma ve onay Go'dadır; kapının
+  arkasındaki her komut zaten tipli ve sunucuda sınırlı.
+- Sunucu, protokol ve ayrıcalıklı yüzey değişmez.
+
+**Bağımsız okuyucu denetimi (19 Kasım):** 7 soru çıktı; ikisi kullanıcıya soruldu, gerisi spec'te "benim
+kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
+- "28 dosya, ~11 bin satır": test dışı 5.265 satırdı;
+- "süreç geneline yalnız `main.go` dokunuyor": ortam değişkenleri ve kancasız `ssh` çağrıları da vardı.
+
+**Durum:** spec onaylı ve main'de (`6a89b05`). Plan `docs/plans/2026-11-19-kadran-konsolu.md`. Uygulama başlamadı.

@@ -13,7 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -59,6 +59,12 @@ type cli struct {
 	stdin  io.Reader
 	stdout io.Writer
 	stderr io.Writer
+
+	// Env kancalari (nil: bugunku davranis).
+	sensitiveOut io.Writer
+	command      func(ctx context.Context, name string, args ...string) *exec.Cmd
+	getenvFn     func(string) string
+	homeDirFn    func() (string, error)
 
 	// Testlerin değiştirdiği bağımlılıklar; nil ise gerçekleri kullanılır.
 	resolver    domaincheck.Resolver
@@ -350,11 +356,11 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 // günlük kullanım yetkisiz `kadran-client` üzerinden yürür.
 func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	fs := c.newFlagSet("bootstrap")
-	binaryDir := fs.String("binaries", defaultBinaryDir(),
+	binaryDir := fs.String("binaries", c.defaultBinaryDir(),
 		"install the linux binaries from this directory instead of the release")
 	repoRoot := fs.String("repo", ".",
 		"read the systemd units from this repository root instead of the release")
-	clientKey := fs.String("client-key", defaultClientKey(), "PUBLIC key to authorize on the server")
+	clientKey := fs.String("client-key", c.defaultClientKey(), "PUBLIC key to authorize on the server")
 	// 30 dakika: kurulum paketi ~75 MiB. Taze sunucu testinde (K-112)
 	// aynı ev hattından bir koşu 5 dakikada yalnızca 28 MB gönderdi ve 10
 	// dakikalık eski sınır kurulumu yükleme bitmeden kesti; aynı gün başka
@@ -379,7 +385,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	if target.IsLocal() {
 		return c.usageError("`bootstrap` needs a remote target, not a local socket")
 	}
-	if !client.SSHAvailable() {
+	if c.command == nil && !client.SSHAvailable() {
 		return c.fail(errors.New("`ssh` not found — the OpenSSH client is required"))
 	}
 
@@ -393,8 +399,8 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	explicit := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
 	var release *bootstrap.Release
-	if useRelease(version.Version, explicit, os.Getenv("KADRAN_BINARY_DIR")) {
-		base := os.Getenv("KADRAN_RELEASE_BASE")
+	if useRelease(version.Version, explicit, c.getenv("KADRAN_BINARY_DIR")) {
+		base := c.getenv("KADRAN_RELEASE_BASE")
 		if base == "" {
 			base = bootstrap.DefaultReleaseBase
 		}
@@ -415,6 +421,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		Release:       release,
 		Stdout:        c.stdout,
 		Stderr:        c.stderr,
+		Command:       c.command,
 	})
 	if err != nil {
 		return c.fail(err)
@@ -444,16 +451,16 @@ func useRelease(ver string, explicit map[string]bool, binaryDirEnv string) bool 
 }
 
 // defaultBinaryDir, derlenmiş linux binary'lerinin varsayılan yeri.
-func defaultBinaryDir() string {
-	if dir := os.Getenv("KADRAN_BINARY_DIR"); dir != "" {
+func (c *cli) defaultBinaryDir() string {
+	if dir := c.getenv("KADRAN_BINARY_DIR"); dir != "" {
 		return dir
 	}
 	return "bin"
 }
 
 // defaultClientKey, iş istasyonunun varsayılan açık anahtarı.
-func defaultClientKey() string {
-	home, err := os.UserHomeDir()
+func (c *cli) defaultClientKey() string {
+	home, err := c.homeDir()
 	if err != nil {
 		return ""
 	}

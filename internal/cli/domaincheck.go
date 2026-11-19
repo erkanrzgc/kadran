@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -53,7 +52,7 @@ func offlineExchange(context.Context, netip.AddrPort, []byte) ([]byte, error) {
 func (c *cli) resolveSSHHost(ctx context.Context, host string) string {
 	lookup := c.sshHostname
 	if lookup == nil {
-		lookup = sshConfigHostname
+		lookup = c.sshConfigHostname
 	}
 	if name, err := lookup(ctx, host); err == nil && name != "" {
 		return name
@@ -64,10 +63,10 @@ func (c *cli) resolveSSHHost(ctx context.Context, host string) string {
 // sshConfigHostname, `ssh -G` çıktısındaki `hostname` satırını döndürür.
 // Argv dizi olarak veriliyor ve `-` ile başlayan ad ParseTarget'ta
 // reddediliyor (bkz. rejectOptionLike).
-func sshConfigHostname(ctx context.Context, host string) (string, error) {
+func (c *cli) sshConfigHostname(ctx context.Context, host string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, sshConfigTimeout)
 	defer cancel()
-	out, err := exec.CommandContext(ctx, "ssh", "-G", host).Output() //nolint:gosec // sabit program, kabuksuz argv
+	out, err := c.sshCmd(ctx, "ssh", "-G", host).Output() //nolint:gosec // sabit program, kabuksuz argv
 	if err != nil {
 		return "", err
 	}

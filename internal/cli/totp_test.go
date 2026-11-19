@@ -546,7 +546,7 @@ func TestTotpResetUsesRootPath(t *testing.T) {
 	if code := d.calistir(t, "totp", "reset", "-sudo", "erkan@srv.example:2222"); code != ExitOK {
 		t.Fatalf("çıkış %d: %s", code, d.errOut)
 	}
-	if got != (bootstrap.KeyOptions{Host: "erkan@srv.example", Port: 2222, Sudo: true}) {
+	if got.Host != "erkan@srv.example" || got.Port != 2222 || !got.Sudo {
 		t.Fatalf("seçenekler %+v", got)
 	}
 	if !strings.Contains(d.out.String(), "every session is invalid") || len(d.conns) != 0 {

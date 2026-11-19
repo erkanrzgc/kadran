@@ -82,7 +82,9 @@ func (c *cli) keyTarget(raw string, sudo bool) (bootstrap.KeyOptions, error) {
 	if err := c.checkServerTarget(raw); err != nil {
 		return bootstrap.KeyOptions{}, err
 	}
-	return rootTarget("key", raw, sudo, c.keys != nil)
+	opts, err := rootTarget("key", raw, sudo, c.keys != nil || c.command != nil)
+	opts.Command = c.command
+	return opts, err
 }
 
 // rootTarget, root yetkisi isteyen bir komutun (key, totp reset) hedefini

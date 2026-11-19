@@ -120,6 +120,9 @@ type Options struct {
 	// BinaryDir ve RepoRoot yok sayılır.
 	Release *Release
 
+	// Command, ssh başlatan her yerden geçer (nil: exec.CommandContext).
+	Command func(ctx context.Context, name string, args ...string) *exec.Cmd
+
 	// Stdout/Stderr, uzak betiğin çıktısının aktarılacağı akışlar.
 	Stdout io.Writer
 	Stderr io.Writer
@@ -492,7 +495,7 @@ func sshArgs(opts Options, remoteCommand string) []string {
 func sshOutput(ctx context.Context, opts Options, remoteCommand string) (string, error) {
 	// G204 gerekçesi için runInstaller'daki nota bakın: sabit komut adı,
 	// kabuksuz argv, ve `-` ile başlayan hedef validate()'te reddediliyor.
-	cmd := exec.CommandContext(ctx, sshCommand, sshArgs(opts, remoteCommand)...) //nolint:gosec
+	cmd := opts.sshCmd(ctx, sshArgs(opts, remoteCommand)...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -517,4 +520,14 @@ func humanSize(n int) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGT"[exp])
+}
+
+// sshCmd, ssh başlatan tek kapı: Command kancası varsa o, yoksa
+// exec.CommandContext. G204 gerekçesi: sabit program adı, kabuksuz argv,
+// `-` ile başlayan hedef validate()'te reddediliyor.
+func (o Options) sshCmd(ctx context.Context, args ...string) *exec.Cmd {
+	if o.Command != nil {
+		return o.Command(ctx, sshCommand, args...)
+	}
+	return exec.CommandContext(ctx, sshCommand, args...) //nolint:gosec
 }

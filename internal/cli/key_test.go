@@ -72,7 +72,7 @@ func TestKeyListShowsRolesAndScopes(t *testing.T) {
 			t.Errorf("çıktıda %q yok:\n%s", want, o)
 		}
 	}
-	if s.opts != (bootstrap.KeyOptions{Host: "erkan@sunucu", Port: 2222, Sudo: true}) {
+	if s.opts.Host != "erkan@sunucu" || s.opts.Port != 2222 || !s.opts.Sudo {
 		t.Errorf("hedef yanlış iletildi: %+v", s.opts)
 	}
 }
@@ -139,7 +139,7 @@ func TestKeyUsageErrors(t *testing.T) {
 		if code := c.run(context.Background(), args); code == ExitOK {
 			t.Errorf("%q başarılı döndü", args)
 		}
-		if s.opts != (bootstrap.KeyOptions{}) {
+		if s.opts.Host != "" || s.opts.Port != 0 || s.opts.Sudo {
 			t.Errorf("%q: geçersiz çağrı sunucuya gitti: %+v", args, s.opts)
 		}
 	}

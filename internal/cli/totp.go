@@ -297,10 +297,11 @@ func (c *cli) runTotpReset(ctx context.Context, args []string) int {
 	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
 		return c.fail(err)
 	}
-	opts, err := rootTarget("totp reset", fs.Arg(0), *sudo, c.totpReset != nil)
+	opts, err := rootTarget("totp reset", fs.Arg(0), *sudo, c.totpReset != nil || c.command != nil)
 	if err != nil {
 		return c.fail(err)
 	}
+	opts.Command = c.command
 	reset := c.totpReset
 	if reset == nil {
 		reset = bootstrap.ResetTOTP
@@ -399,9 +400,9 @@ func (c *cli) runTotpEnable(ctx context.Context, raw string, recovery bool) int 
 	}
 
 	fmt.Fprintln(c.stdout, "TOTP is on.")
-	fmt.Fprintln(c.stdout, "recovery codes (shown once, store them offline):")
+	fmt.Fprintln(c.sensitive(), "recovery codes (shown once, store them offline):")
 	for _, rc := range r.GetRecoveryCodes() {
-		fmt.Fprintf(c.stdout, "  %s\n", rc)
+		fmt.Fprintf(c.sensitive(), "  %s\n", rc)
 	}
 	exp := r.GetExpiresAt().AsTime()
 	if err := c.saveSession(raw, r.GetSessionToken(), exp); err != nil {
@@ -444,19 +445,19 @@ func (c *cli) runTotpDisable(ctx context.Context, raw string, recovery bool) int
 // yazar (K-156): QR, tek parça anahtar ve bağlantı. Anahtar boşlukla
 // GRUPLANMIYOR: canlıda bir uygulama gruplu hâlini kabul etmedi (K-155).
 func (c *cli) printEnrollment(b *kadranv1.BeginTotpEnrollmentResponse) {
-	fmt.Fprintf(c.stdout, "add this server to your authenticator app (confirm before %s):\n",
+	fmt.Fprintf(c.sensitive(), "add this server to your authenticator app (confirm before %s):\n",
 		localTime(b.GetExpiresAt().AsTime()))
-	fmt.Fprintln(c.stdout, "  1. scan this QR code with the app:")
-	fmt.Fprintln(c.stdout)
+	fmt.Fprintln(c.sensitive(), "  1. scan this QR code with the app:")
+	fmt.Fprintln(c.sensitive())
 	if q, err := qrBlock(qrLink(b.GetOtpauthUri())); err != nil {
 		fmt.Fprintln(c.stderr, progName+": warning: could not draw the QR code:", err)
 	} else {
-		fmt.Fprint(c.stdout, q)
+		fmt.Fprint(c.sensitive(), q)
 	}
-	fmt.Fprintln(c.stdout)
-	fmt.Fprintln(c.stdout, "     if the app does not scan it (some cannot read light-on-dark codes),")
-	fmt.Fprintln(c.stdout, "     add an account by hand, time based, with this key:")
-	fmt.Fprintf(c.stdout, "       %s\n", b.GetSecretBase32())
-	fmt.Fprintf(c.stdout, "     link: %s\n", b.GetOtpauthUri())
-	fmt.Fprintln(c.stdout, "  2. type the 6-digit code the app shows (not the key)")
+	fmt.Fprintln(c.sensitive())
+	fmt.Fprintln(c.sensitive(), "     if the app does not scan it (some cannot read light-on-dark codes),")
+	fmt.Fprintln(c.sensitive(), "     add an account by hand, time based, with this key:")
+	fmt.Fprintf(c.sensitive(), "       %s\n", b.GetSecretBase32())
+	fmt.Fprintf(c.sensitive(), "     link: %s\n", b.GetOtpauthUri())
+	fmt.Fprintln(c.sensitive(), "  2. type the 6-digit code the app shows (not the key)")
 }

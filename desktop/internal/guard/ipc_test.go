@@ -189,3 +189,18 @@ func TestGitHubURLAllowlist(t *testing.T) {
 		mustFail(t, err, "only GitHub app addresses can be opened", in)
 	}
 }
+
+func TestHasControlOrFormat(t *testing.T) {
+	cases := map[string]bool{
+		"deploy web": false,
+		"a\nb":       true,
+		"a\u202eb":   true,
+		"a\u200bb":   true,
+		"çğ":         false,
+	}
+	for in, want := range cases {
+		if got := HasControlOrFormat(in); got != want {
+			t.Errorf("HasControlOrFormat(%q) = %v, want %v", in, got, want)
+		}
+	}
+}

@@ -28,6 +28,13 @@ var WindowActions = []string{"minimize", "maximize", "close"}
 // kutusunda "Server:" satırını yanıltabilir; ssh hedefinde zaten anlamsızlar.
 var invisible = regexp.MustCompile(`[\p{Cc}\p{Cf}]`)
 
+// HasControlOrFormat, metinde denetim (Cc) ya da biçim (Cf, bidi dahil)
+// karakteri olup olmadığını söyler. Konsol satır ayrıştırıcısı da aynı kuralı
+// kullanır; kural tek yerde durur.
+func HasControlOrFormat(s string) bool {
+	return invisible.MatchString(s)
+}
+
 var (
 	appIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 	// BranchPattern, dal, etiket ya da tam commit; sunucunun kuralıyla aynı.
@@ -43,7 +50,7 @@ func Target(value string) (string, error) {
 		return "", errors.New("target is too long")
 	}
 	trimmed := jsTrim(value)
-	if invisible.MatchString(trimmed) {
+	if HasControlOrFormat(trimmed) {
 		return "", errors.New("target must not contain control or invisible characters")
 	}
 	// ssh seçeneği olarak okunur (-oProxyCommand=…): savunma derinliği, ssh

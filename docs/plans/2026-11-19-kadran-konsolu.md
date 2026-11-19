@@ -24,7 +24,7 @@
 ## Global Constraints
 
 - **CLI'ın davranışı değişmez.**
-  - `kadran` ikilisinin stdout/stderr'i ve çıkış kodları taşıma öncesiyle bayt bayt aynı (Görev 1'in altın çıktıları).
+  - `kadran` ikilisinin stdout/stderr'i ve çıkış kodları taşıma öncesiyle bayt bayt aynı (Task 1'in altın çıktıları).
   - Yeniden üretilebilir derleme (K-112) bozulmaz.
   - `./cmd/kadran` derleme yolu aynı kalır (`build-release.sh`, `package-release.sh`, `ci.yml` değişmez).
 - **Konsoldaki iki çıktı istisnası:**
@@ -82,15 +82,15 @@
 
 ## Review Focus
 
-1. **Çok satırlı yapıştırma:** `deploy web\nprune -all` yapıştırılınca hiçbir şey çalışmamalı. Satır sonu Cc'dir; reddedilir ve "tek satır" der (Görev 4 testi `TestParseLineRejectsPastedNewline`).
-2. **Komut çalışırken sunucu değişirse:** `use gcp` ya da kenar çubuğu, çalışan komutun hedefini değiştirmemeli. `use` çalışma sürerken reddedilir. Kenar çubuğu değişse de komut başladığı sunucuda biter ve istem o sunucuyu gösterir (Görev 6 testi `TestUseRefusedWhileRunning`, Görev 8 testi `server change keeps running prompt`).
-3. **Oturumu düşen sunucuda CLI ipucunu yapıştırmak:** CLI'ın yazdığı `kadran login -s hetzner` satırı konsolda olduğu gibi çalışmalı (Görev 4 testi `TestNormalizeAcceptsLoginHint`, `loginHint`'in gerçek çıktısıyla).
-4. **Seli andıran çıktı:** `logs -f` saniyede binlerce satır ya da tek bir 10 MB satır üretse de arayüz donmamalı. Olay başına en çok 32 KiB gider; tampon 5.000 satırı ve satır başına 8 KiB'ı aşmaz (Görev 6 testi `TestBatchWriterSplitsLargeWrites`, Görev 8 testi `consoleBuffer caps line length`).
-5. **Panel kapanırken komut çalışıyorsa:** panelin kapanması komutu durdurmaz, gizli kartı kapatır. Uygulamanın kapanması komut bağlamını iptal eder (`deploy`'da sunucu sürümü mühürler) (Görev 6 testi `TestShutdownCancelsRun`, Görev 8 testi `panel close keeps run, closes card`).
+1. **Çok satırlı yapıştırma:** `deploy web\nprune -all` yapıştırılınca hiçbir şey çalışmamalı. Satır sonu Cc'dir; reddedilir ve "tek satır" der (Task 4 testi `TestParseLineRejectsPastedNewline`).
+2. **Komut çalışırken sunucu değişirse:** `use gcp` ya da kenar çubuğu, çalışan komutun hedefini değiştirmemeli. `use` çalışma sürerken reddedilir. Kenar çubuğu değişse de komut başladığı sunucuda biter ve istem o sunucuyu gösterir (Task 6 testi `TestUseRefusedWhileRunning`, Task 8 testi `server change keeps running prompt`).
+3. **Oturumu düşen sunucuda CLI ipucunu yapıştırmak:** CLI'ın yazdığı `kadran login -s hetzner` satırı konsolda olduğu gibi çalışmalı (Task 4 testi `TestNormalizeAcceptsLoginHint`, `loginHint`'in gerçek çıktısıyla).
+4. **Seli andıran çıktı:** `logs -f` saniyede binlerce satır ya da tek bir 10 MB satır üretse de arayüz donmamalı. Olay başına en çok 32 KiB gider; tampon 5.000 satırı ve satır başına 8 KiB'ı aşmaz (Task 6 testi `TestBatchWriterSplitsLargeWrites`, Task 8 testi `consoleBuffer caps line length`).
+5. **Panel kapanırken komut çalışıyorsa:** panelin kapanması komutu durdurmaz, gizli kartı kapatır. Uygulamanın kapanması komut bağlamını iptal eder (`deploy`'da sunucu sürümü mühürler) (Task 6 testi `TestShutdownCancelsRun`, Task 8 testi `panel close keeps run, closes card`).
 
 ---
 
-### Görev 1: CLI'ı `internal/cli`'a taşı (davranış değişmeden)
+### Task 1: CLI'ı `internal/cli`'a taşı (davranış değişmeden)
 
 **Files:**
 - Move: `cmd/kadran/*.go` (main.go hariç) ve `cmd/kadran/testdata/` → `internal/cli/` (`git mv`, paket adı `cli`)
@@ -101,7 +101,7 @@
 
 **Interfaces:**
 - Produces:
-  - `cli.Env{Stdin io.Reader; Stdout, Stderr io.Writer}`. Görev 2 alan ekler.
+  - `cli.Env{Stdin io.Reader; Stdout, Stderr io.Writer}`. Task 2 alan ekler.
   - `func cli.Run(ctx context.Context, args []string, env cli.Env) int`.
   - Çıkış kodu sabitleri `cli.ExitOK`, `cli.ExitError`, `cli.ExitUsage`, `cli.ExitChainInvalid` (bugünkü `exit*` değerleri).
 
@@ -130,7 +130,7 @@
 - [ ] **Adım 5: Commit**
   - `git add -A internal/cli cmd/kadran scripts/cli-golden.sh scripts/testdata/cli-golden scripts/mutate-*.sh && git commit -m "update move cli into internal package"`
 
-### Görev 2: `Env` kancaları ve gizli kanal
+### Task 2: `Env` kancaları ve gizli kanal
 
 **Files:**
 - Modify: `internal/cli/run.go`, `internal/cli/main.go`'dan taşınan `cli` yapısı, `internal/cli/totp.go`, `internal/cli/domaincheck.go`, `internal/cli/key.go`
@@ -138,7 +138,7 @@
 - Test: `internal/cli/env_test.go`
 
 **Interfaces:**
-- Consumes: Görev 1'in `cli.Env`, `cli.Run`.
+- Consumes: Task 1'in `cli.Env`, `cli.Run`.
 - Produces: `cli.Env`'e eklenen alanlar. Hepsi isteğe bağlıdır; nil ise bugünkü davranış.
   - `Sensitive io.Writer` — nil ise `Stdout`;
   - `Dial func(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error)`;
@@ -164,7 +164,7 @@
   - `bash scripts/cli-golden.sh check` → fark yok.
 - [ ] **Adım 5: Commit** — `update cli env hooks`
 
-### Görev 3: Komut ağacı, sınıflar ve `Inspect`
+### Task 3: Komut ağacı, sınıflar ve `Inspect`
 
 **Files:**
 - Create: `internal/cli/commands.go` (ağaç, sınıflar, `Inspect`)
@@ -206,7 +206,7 @@
   - `bash scripts/cli-golden.sh check` → fark yok.
 - [ ] **Adım 5: Commit** — `update cli command classes`
 
-### Görev 4: Konsolun saf parçaları (ayrıştırma, sunucu bağlamı, arıtma, dosyalar)
+### Task 4: Konsolun saf parçaları (ayrıştırma, sunucu bağlamı, arıtma, dosyalar)
 
 **Files:**
 - Create: `desktop/internal/console/line.go`, `normalize.go`, `redact.go`, `history.go`, `admin.go` (ayar + kayıt)
@@ -262,7 +262,7 @@
 - [ ] **Adım 4: Doğrula** — `cd desktop && go test -race ./internal/console/ ./internal/guard/` → PASS.
 - [ ] **Adım 5: Commit** — `update console line parsing`
 
-### Görev 5: Konsol bağlantısı
+### Task 5: Konsol bağlantısı
 
 **Files:**
 - Modify: `internal/client/client.go`, `internal/client/session.go`
@@ -293,7 +293,7 @@
 - [ ] **Adım 4: Doğrula** — `go test -race ./internal/client/...` ve `cd desktop && go test -race ./internal/console/` → PASS.
 - [ ] **Adım 5: Commit** — `update console connection cache`
 
-### Görev 6: Çalıştırıcı ve onay akışları
+### Task 6: Çalıştırıcı ve onay akışları
 
 **Files:**
 - Create: `desktop/internal/console/runner.go`, `stream.go` (birleştirici yazıcı, istem okuyucu), `complete.go`
@@ -302,9 +302,9 @@
 
 **Interfaces:**
 - Consumes:
-  - Görev 1-3: `cli.Run`, `cli.Env`, `cli.Inspect`, `cli.Commands`;
-  - Görev 4: `ParseLine`, `Normalize`, `RejectTarget`, `Redact`, `History`, `AdminSetting`, `AdminLog`;
-  - Görev 5: `Conns`.
+  - Task 1-3: `cli.Run`, `cli.Env`, `cli.Inspect`, `cli.Commands`;
+  - Task 4: `ParseLine`, `Normalize`, `RejectTarget`, `Redact`, `History`, `AdminSetting`, `AdminLog`;
+  - Task 5: `Conns`.
 - Produces:
   - `confirm` paketinde: `type ConsoleRequest struct{ Server, Line, Effect, Admin string }` ve `func BuildConsole(language Language, req ConsoleRequest) Box`.
     - `Line` arıtılmış satırdır; `Admin` root hedefidir (`root@…` ya da `-sudo kullanıcı@…`), değilse boş.
@@ -384,7 +384,7 @@
 - [ ] **Adım 4: Doğrula** — `cd desktop && go test -race ./internal/console/ ./internal/confirm/` → PASS.
 - [ ] **Adım 5: Commit** — `update console runner`
 
-### Görev 7: Köprü, olaylar ve kablolama
+### Task 7: Köprü, olaylar ve kablolama
 
 **Files:**
 - Create: `desktop/internal/bridge/console.go`
@@ -393,7 +393,7 @@
 - Test: `desktop/internal/bridge/console_test.go`, `bridge_test.go`
 
 **Interfaces:**
-- Consumes: Görev 6'nın `Runner` yöntemleri.
+- Consumes: Task 6'nın `Runner` yöntemleri.
 - Produces: köprü yöntemleri.
   - `ConsoleRun(server, line string) (string, error)`;
   - `ConsoleInput(runID, text string) error`;
@@ -402,7 +402,7 @@
   - `ConsoleState(server string) (console.State, error)`;
   - `ConsoleSetAdmin(on bool) (bool, error)`.
   - `bridge.ts`'te karşılıkları: `consoleRun`, `consoleInput`, `consoleCancel`, `consoleComplete`, `consoleState`, `consoleSetAdmin`.
-  - Olay dinleyicisi `onConsoleEvent(handler)` (`EventsOn`, adlar Görev 6).
+  - Olay dinleyicisi `onConsoleEvent(handler)` (`EventsOn`, adlar Task 6).
 - Guard sınırları:
   - `server` → `guard.ServerName`;
   - `line` ≤ 4096 bayt;
@@ -416,13 +416,13 @@
   - `TestConsoleGuards`: 4097 baytlık satır, bidi içeren girdi, `../x` runID → hata, `Runner` çağrılmadı.
   - `Fixture` (duman) bayrağı konsolun onay kutusunu ATLAMAZ; testi: `Fixture: true` iken `Confirm` yine çağrılır.
 - [ ] **Adım 2: Koş, düştüğünü gör** — `cd desktop && go test ./internal/bridge/` → FAIL.
-- [ ] **Adım 3: Uygula** (köprü yöntemleri yalnız guard + `Runner` çağrısı; mantık Görev 6'da).
+- [ ] **Adım 3: Uygula** (köprü yöntemleri yalnız guard + `Runner` çağrısı; mantık Task 6'da).
 - [ ] **Adım 4: Doğrula**
   - `cd desktop && go test -race ./... && npm run typecheck` → PASS;
   - `go build -tags desktop,production .` derleniyor.
 - [ ] **Adım 5: Commit** — `update console bridge methods`
 
-### Görev 8: Panel (arayüz)
+### Task 8: Panel (arayüz)
 
 **Files:**
 - Create:
@@ -438,7 +438,7 @@
 - Test: `desktop/test/console-buffer.test.ts`, `console-history.test.ts`, `console-keys.test.ts`, `console-card.test.ts`; `desktop/internal/appearance/appearance_test.go`
 
 **Interfaces:**
-- Consumes: Görev 7'nin `bridge.ts` yöntemleri ve olayları.
+- Consumes: Task 7'nin `bridge.ts` yöntemleri ve olayları.
 - Produces:
   - `consoleBuffer.append(state, stream, text) → state`. Satır sınırı 5.000; satır başına en çok 8 KiB, fazlası kesilir ve `…` eklenir.
   - `consoleHistory.move(state, "up"|"down") → state`.
@@ -472,7 +472,7 @@
 - [ ] **Adım 4: Doğrula** — `cd desktop && npm test && npm run typecheck && npm run build && go test ./...` → PASS.
 - [ ] **Adım 5: Commit** — `update console panel`
 
-### Görev 9: Duman testi, mutasyon, belgeler
+### Task 9: Duman testi, mutasyon, belgeler
 
 **Files:**
 - Create:
@@ -516,7 +516,7 @@
   - `bash scripts/check-mutation-shard.sh` → PASS.
 - [ ] **Adım 6: Commit** — `update console smoke and docs`
 
-### Görev 10: Bütün dal doğrulaması, inceleme, PR (onaylı)
+### Task 10: Bütün dal doğrulaması, inceleme, PR (onaylı)
 
 - [ ] **Adım 1:**
   - `/verify`: build, vet, `golangci-lint`, `go test -race ./...` (kök ve `desktop`), `npm test`, `npm run typecheck`, `npm run e2e`, `scripts/cli-golden.sh check`, `scripts/check-exec-surface.sh` (değişmemiş).

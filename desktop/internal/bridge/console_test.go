@@ -1,8 +1,10 @@
 package bridge
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,16 +23,22 @@ type consoleHarness struct {
 	*harness
 	runs atomic.Int32
 	done chan console.DoneData
-	mu   sync.Mutex
-	evs  []console.Event
+	// onRun doluysa sahte Run onu çalıştırır (örn. stdin okuyup bekler).
+	onRun  func(cli.Env) int
+	inputs chan console.InputData
+	mu     sync.Mutex
+	evs    []console.Event
 }
 
 func newConsoleHarness(t *testing.T, answer, fixture bool) *consoleHarness {
 	t.Helper()
-	ch := &consoleHarness{harness: newHarness(t, answer), done: make(chan console.DoneData, 8)}
+	ch := &consoleHarness{harness: newHarness(t, answer), done: make(chan console.DoneData, 8), inputs: make(chan console.InputData, 8)}
 	runner := console.NewRunner(console.RunnerDeps{
-		Run: func(context.Context, []string, cli.Env) int {
+		Run: func(_ context.Context, _ []string, env cli.Env) int {
 			ch.runs.Add(1)
+			if ch.onRun != nil {
+				return ch.onRun(env)
+			}
 			return 0
 		},
 		Confirm: ch.h.Confirm,
@@ -38,15 +46,21 @@ func newConsoleHarness(t *testing.T, answer, fixture bool) *consoleHarness {
 			ch.mu.Lock()
 			ch.evs = append(ch.evs, e)
 			ch.mu.Unlock()
-			if d, ok := e.Data.(console.DoneData); ok {
+			switch d := e.Data.(type) {
+			case console.DoneData:
 				ch.done <- d
+			case console.InputData:
+				ch.inputs <- d
 			}
 		},
 		History: console.History{Dir: ch.dir},
 		Admin:   console.AdminSetting{Dir: ch.dir},
 		Log:     console.AdminLog{Dir: ch.dir},
 		Servers: func() ([]servers.Server, error) {
-			return []servers.Server{{Name: "web1", Target: "kadran-client@203.0.113.7"}}, nil
+			return []servers.Server{
+				{Name: "web1", Target: "kadran-client@203.0.113.7"},
+				{Name: "fake", Target: fixtureTarget},
+			}, nil
 		},
 	})
 	ch.b = New(Deps{
@@ -87,9 +101,10 @@ func TestConsoleRunNeverRunsUnconfirmed(t *testing.T) {
 }
 
 // Duman bayrağı konsolun kutusunu atlatmaz: konsolun tek onay yolu Host.Confirm.
+// Atlatma yalnız fake@test hedefinde var (confirmed); test o hedefle koşar.
 func TestConsoleFixtureDoesNotSkipConfirm(t *testing.T) {
 	ch := newConsoleHarness(t, false, true)
-	if _, err := ch.b.ConsoleRun("web1", "deploy web"); err != nil {
+	if _, err := ch.b.ConsoleRun("fake", "deploy web"); err != nil {
 		t.Fatal(err)
 	}
 	ch.waitDone(t)
@@ -144,12 +159,6 @@ func TestConsoleGuards(t *testing.T) {
 		{"complete line too long", func() error { _, e := b.ConsoleComplete("web1", long, 0); return e }},
 		{"complete cursor", func() error { _, e := b.ConsoleComplete("web1", "sta", 9); return e }},
 		{"state server", func() error { _, e := b.ConsoleState(strings.Repeat("s", 201)); return e }},
-		{"input bidi", func() error { return b.ConsoleInput("0123456789abcdef", "x\u202ey") }},
-		{"input newline", func() error { return b.ConsoleInput("0123456789abcdef", "x\ny") }},
-		{"input long", func() error { return b.ConsoleInput("0123456789abcdef", strings.Repeat("a", 257)) }},
-		{"input runID", func() error { return b.ConsoleInput("../x", "ok") }},
-		{"cancel runID", func() error { return b.ConsoleCancel("../x") }},
-		{"cancel upper hex", func() error { return b.ConsoleCancel("0123456789ABCDEF") }},
 	}
 	for _, c := range bad {
 		if err := c.err(); err == nil {
@@ -185,5 +194,58 @@ func TestConsoleCompleteAndState(t *testing.T) {
 	st, err := ch.b.ConsoleState("")
 	if err != nil || st.History == nil {
 		t.Fatalf("%+v %v", st, err)
+	}
+}
+
+// Kötü girdi etkin bir çalıştırmaya verilirse hata döner VE çalıştırma hâlâ
+// istem bekler: ardından gelen geçerli satır onu tamamlar.
+func TestConsoleInputGuardsKeepRunWaiting(t *testing.T) {
+	ch := newConsoleHarness(t, true, false)
+	got := make(chan string, 1)
+	ch.onRun = func(env cli.Env) int {
+		line, _ := bufio.NewReader(env.Stdin).ReadString('\n')
+		got <- strings.TrimSpace(line)
+		return 0
+	}
+	id, err := ch.b.ConsoleRun("web1", "status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ch.inputs:
+	case <-time.After(5 * time.Second):
+		t.Fatal("komut istem beklemiyor")
+	}
+	for name, text := range map[string]string{"long": strings.Repeat("a", 257), "bidi": "x\u202ey", "newline": "x\ny"} {
+		if err := ch.b.ConsoleInput(id, text); err == nil {
+			t.Errorf("%s: hata yok", name)
+		}
+	}
+	select {
+	case v := <-got:
+		t.Fatalf("kötü girdi komuta ulaştı: %q", v)
+	default:
+	}
+	if err := ch.b.ConsoleInput(id, "ok"); err != nil {
+		t.Fatalf("geçerli satır reddedildi: %v", err)
+	}
+	if v := <-got; v != "ok" {
+		t.Errorf("komut %q aldı", v)
+	}
+	if d := ch.waitDone(t); d.Exit != 0 {
+		t.Errorf("%+v", d)
+	}
+}
+
+// Kötü runID Runner a ulaşmadan reddedilir: hata ErrNoRun DEĞİL (o Runner
+// cevabı olurdu), guard cevabı.
+func TestConsoleMalformedRunIDRejectedByGuard(t *testing.T) {
+	ch := newConsoleHarness(t, true, false)
+	for _, id := range []string{"../x", "0123456789abcde", "0123456789abcdef0", "0123456789ABCDEF", ""} {
+		for name, err := range map[string]error{"input": ch.b.ConsoleInput(id, "ok"), "cancel": ch.b.ConsoleCancel(id)} {
+			if err == nil || errors.Is(err, console.ErrNoRun) {
+				t.Errorf("%s %q: guard tetiklenmedi (%v)", name, id, err)
+			}
+		}
 	}
 }

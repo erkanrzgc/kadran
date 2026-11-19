@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -19,8 +20,7 @@ import (
 // yazılmış bir mekanizmanın kendisinin sessiz kalması, onu anlamsız
 // kılardı.
 func (c *cli) runAlarms(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("alarms")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	fs, o := c.alarmsFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -42,7 +42,7 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("alarms: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -81,6 +81,18 @@ func (c *cli) runAlarms(ctx context.Context, args []string) int {
 	// Etkin alarm varken sıfır dönmek, `kadran alarms && echo tamam`
 	// gibi bir kabuk zincirinde arızayı görünmez kılardı.
 	return ExitError
+}
+
+// alarmsOpts, `alarms` komutunun bayrak değerleri.
+type alarmsOpts struct {
+	asJSON *bool
+}
+
+// alarmsFlags, `alarms` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) alarmsFlags() (*flag.FlagSet, *alarmsOpts) {
+	fs := c.newFlagSet("alarms")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	return fs, &alarmsOpts{asJSON: asJSON}
 }
 
 // severityLabel, ciddiyeti okunur etikete çevirir.

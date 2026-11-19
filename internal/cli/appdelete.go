@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"strings"
 
@@ -23,8 +24,7 @@ import (
 // açıklıyor ("uygulamanın canlı sürümü var (r1) — ...") ve sonuç iddia
 // eden bir ön ek, kullanıcıyı ilk üç kelimeden yanlış sonuca götürür.
 func (c *cli) runAppDelete(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("app delete")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	fs, o := c.appDeleteFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -47,7 +47,7 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("app delete: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -80,4 +80,16 @@ func (c *cli) runAppDelete(ctx context.Context, args []string) int {
 			len(kept), strings.Join(kept, ", "))
 	}
 	return ExitOK
+}
+
+// appDeleteOpts, `app delete` komutunun bayrak değerleri.
+type appDeleteOpts struct {
+	asJSON *bool
+}
+
+// appDeleteFlags, `app delete` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) appDeleteFlags() (*flag.FlagSet, *appDeleteOpts) {
+	fs := c.newFlagSet("app delete")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	return fs, &appDeleteOpts{asJSON: asJSON}
 }

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"time"
 
@@ -12,8 +13,7 @@ import (
 // çerçeveleme internal/sidecar'da; burada yalnız CLI'ın verdikleri
 // (oturum, sunucu listesi, dal çözümü, uyarı) bağlanır.
 func (c *cli) runSidecar(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("sidecar")
-	timeout := fs.Duration("timeout", defaultTimeout, "time limit for a single call")
+	fs, o := c.sidecarFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -21,13 +21,25 @@ func (c *cli) runSidecar(ctx context.Context, args []string) int {
 		return c.usageError("`sidecar` takes no arguments")
 	}
 
-	d := sidecar.New(c.sidecarDeps(*timeout))
+	d := sidecar.New(c.sidecarDeps(*o.timeout))
 	defer d.Close()
 
 	if err := sidecar.Serve(ctx, d, c.stdin, c.stdout); err != nil {
 		return c.fail(err)
 	}
 	return ExitOK
+}
+
+// sidecarOpts, `sidecar` komutunun bayrak değerleri.
+type sidecarOpts struct {
+	timeout *time.Duration
+}
+
+// sidecarFlags, `sidecar` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) sidecarFlags() (*flag.FlagSet, *sidecarOpts) {
+	fs := c.newFlagSet("sidecar")
+	timeout := fs.Duration("timeout", defaultTimeout, "time limit for a single call")
+	return fs, &sidecarOpts{timeout: timeout}
 }
 
 // sidecarDeps, dağıtıcının CLI'dan aldıkları.

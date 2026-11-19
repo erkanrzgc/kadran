@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"strings"
@@ -187,8 +188,7 @@ func singleTarget(args []string) (string, bool) {
 
 // runLogin, bir TOTP ya da kurtarma koduyla oturum jetonu alır ve saklar.
 func (c *cli) runLogin(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("login")
-	recovery := fs.Bool("recovery", false, "sign in with a recovery code instead of a TOTP code")
+	fs, o := c.loginFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -199,12 +199,12 @@ func (c *cli) runLogin(ctx context.Context, args []string) int {
 
 	// Kod bağlanmadan önce soruluyor: kullanıcı telefonunu ararken bir
 	// çağrı süresi işlemesin.
-	code, err := c.promptProof(bufio.NewReader(c.stdin), *recovery, codeLabel)
+	code, err := c.promptProof(bufio.NewReader(c.stdin), *o.recovery, codeLabel)
 	if err != nil {
 		return c.fail(err)
 	}
 	req := &kadranv1.LoginRequest{Code: code}
-	if *recovery {
+	if *o.recovery {
 		req = &kadranv1.LoginRequest{RecoveryCode: code}
 	}
 
@@ -226,6 +226,18 @@ func (c *cli) runLogin(ctx context.Context, args []string) int {
 	}
 	fmt.Fprintf(c.stdout, "signed in until %s\n", localTime(exp))
 	return ExitOK
+}
+
+// loginOpts, `login` komutunun bayrak değerleri.
+type loginOpts struct {
+	recovery *bool
+}
+
+// loginFlags, `login` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) loginFlags() (*flag.FlagSet, *loginOpts) {
+	fs := c.newFlagSet("login")
+	recovery := fs.Bool("recovery", false, "sign in with a recovery code instead of a TOTP code")
+	return fs, &loginOpts{recovery: recovery}
 }
 
 // runLogout, hedefin kayıtlı jetonunu bu makineden siler. Sunucuya
@@ -264,8 +276,7 @@ func (c *cli) runTotp(ctx context.Context, args []string) int {
 		}
 		return c.runTotpStatus(ctx, raw)
 	case "enable", "disable":
-		fs := c.newFlagSet("totp " + args[0])
-		recovery := fs.Bool("recovery", false, "prove with a recovery code instead of a code from the authenticator app")
+		fs, recovery := c.totpProofFlags("totp " + args[0])
 		if err := fs.Parse(args[1:]); err != nil {
 			return ExitUsage
 		}
@@ -282,12 +293,19 @@ func (c *cli) runTotp(ctx context.Context, args []string) int {
 	}
 }
 
+// totpProofFlags, `totp enable` ve `totp disable`ın bayrak kümesi; çalıştırma
+// ve Inspect aynı kurucuyu kullanır.
+func (c *cli) totpProofFlags(name string) (*flag.FlagSet, *bool) {
+	fs := c.newFlagSet(name)
+	recovery := fs.Bool("recovery", false, "prove with a recovery code instead of a code from the authenticator app")
+	return fs, recovery
+}
+
 // runTotpReset, kökün kaçış yolu: TOTP'yi sunucudaki root olarak kapatır.
 // kadran-client'tan değil, anahtar işlemleriyle aynı root yolundan gider;
 // TOTP o yolu korumuyor (SSH anahtarı + root ya da parolasız sudo).
 func (c *cli) runTotpReset(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("totp reset")
-	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	fs, o := c.totpResetFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -297,7 +315,7 @@ func (c *cli) runTotpReset(ctx context.Context, args []string) int {
 	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
 		return c.fail(err)
 	}
-	opts, err := rootTarget("totp reset", fs.Arg(0), *sudo, c.totpReset != nil || c.command != nil)
+	opts, err := rootTarget("totp reset", fs.Arg(0), *o.sudo, c.totpReset != nil || c.command != nil)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -313,6 +331,18 @@ func (c *cli) runTotpReset(ctx context.Context, args []string) int {
 	}
 	fmt.Fprintln(c.stdout, "turn it back on with kadran totp enable (new secret, new recovery codes)")
 	return ExitOK
+}
+
+// totpResetOpts, `totp reset` komutunun bayrak değerleri.
+type totpResetOpts struct {
+	sudo *bool
+}
+
+// totpResetFlags, `totp reset` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) totpResetFlags() (*flag.FlagSet, *totpResetOpts) {
+	fs := c.newFlagSet("totp reset")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &totpResetOpts{sudo: sudo}
 }
 
 func (c *cli) runTotpStatus(ctx context.Context, raw string) int {

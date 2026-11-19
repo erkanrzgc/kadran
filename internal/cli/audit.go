@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -28,11 +29,7 @@ func (c *cli) runAudit(ctx context.Context, args []string) int {
 
 // runAuditList, denetim zincirini sayfalı olarak listeler.
 func (c *cli) runAuditList(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("audit list")
-	after := fs.Uint64("after", 0, "fetch records after this sequence number")
-	limit := fs.Uint("limit", 50, "maximum number of records (at most 1000)")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	fs, o := c.auditListFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -40,7 +37,7 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 		return c.argCountError("`audit list` takes at most one target, got %d", fs.NArg())
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	conn, _, err := c.connect(ctx, fs.Arg(0))
@@ -50,14 +47,14 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 	defer func() { _ = conn.Close() }()
 
 	resp, err := conn.RPC().ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{
-		AfterSeq: *after,
-		Limit:    uint32(*limit), //nolint:gosec // sunucu üst sınırı zaten uyguluyor
+		AfterSeq: *o.after,
+		Limit:    uint32(*o.limit), //nolint:gosec // sunucu üst sınırı zaten uyguluyor
 	})
 	if err != nil {
 		return c.fail(fmt.Errorf("could not get audit records: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -67,6 +64,24 @@ func (c *cli) runAuditList(ctx context.Context, args []string) int {
 
 	c.printAuditRecords(resp)
 	return ExitOK
+}
+
+// auditListOpts, `audit list` komutunun bayrak değerleri.
+type auditListOpts struct {
+	after   *uint64
+	limit   *uint
+	asJSON  *bool
+	timeout *time.Duration
+}
+
+// auditListFlags, `audit list` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) auditListFlags() (*flag.FlagSet, *auditListOpts) {
+	fs := c.newFlagSet("audit list")
+	after := fs.Uint64("after", 0, "fetch records after this sequence number")
+	limit := fs.Uint("limit", 50, "maximum number of records (at most 1000)")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	return fs, &auditListOpts{after: after, limit: limit, asJSON: asJSON, timeout: timeout}
 }
 
 func (c *cli) printAuditRecords(resp *kadranv1.ListAuditRecordsResponse) {
@@ -118,35 +133,29 @@ func orDash(s string) string {
 // İkisini tek bir "geçerli" satırında birleştirmek, modelin tamamının
 // dayandığı ayrımı gizlerdi.
 func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("audit verify")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
-	anchorsDir := fs.String("anchors", "",
-		"directory of kadran-*.capa files downloaded from R2: the chain is recomputed on this machine and compared with the anchors (K-126)")
-	anchorsSince := fs.String("anchors-since", "",
-		"skip anchors older than this (after a database restore): 2006-01-02 or RFC3339")
+	fs, o := c.auditVerifyFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
 	if fs.NArg() > 1 {
 		return c.argCountError("`audit verify` takes at most one target, got %d", fs.NArg())
 	}
-	if *anchorsDir != "" && *asJSON {
+	if *o.anchorsDir != "" && *o.asJSON {
 		return c.usageError("-anchors and -json cannot be used together")
 	}
 	var since time.Time
-	if *anchorsSince != "" {
-		if *anchorsDir == "" {
+	if *o.anchorsSince != "" {
+		if *o.anchorsDir == "" {
 			return c.usageError("-anchors-since only makes sense with -anchors")
 		}
-		t, err := parseAnchorsSince(*anchorsSince)
+		t, err := parseAnchorsSince(*o.anchorsSince)
 		if err != nil {
 			return c.usageError("%v", err)
 		}
 		since = t
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	conn, _, err := c.connect(ctx, fs.Arg(0))
@@ -160,7 +169,7 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("could not verify the chain: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -171,14 +180,34 @@ func (c *cli) runAuditVerify(ctx context.Context, args []string) int {
 
 	c.printVerifyResult(conn.Target().String(), resp)
 	code := verifyExitCode(resp)
-	if *anchorsDir == "" {
+	if *o.anchorsDir == "" {
 		return code
 	}
 	page := func(ctx context.Context, after uint64) ([]*kadranv1.AuditRecord, error) {
 		r, err := conn.RPC().ListAuditRecords(ctx, &kadranv1.ListAuditRecordsRequest{AfterSeq: after, Limit: 1000})
 		return r.GetRecords(), err
 	}
-	return worseExit(code, c.runAnchorCheck(ctx, page, *anchorsDir, since))
+	return worseExit(code, c.runAnchorCheck(ctx, page, *o.anchorsDir, since))
+}
+
+// auditVerifyOpts, `audit verify` komutunun bayrak değerleri.
+type auditVerifyOpts struct {
+	asJSON       *bool
+	timeout      *time.Duration
+	anchorsDir   *string
+	anchorsSince *string
+}
+
+// auditVerifyFlags, `audit verify` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) auditVerifyFlags() (*flag.FlagSet, *auditVerifyOpts) {
+	fs := c.newFlagSet("audit verify")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	anchorsDir := fs.String("anchors", "",
+		"directory of kadran-*.capa files downloaded from R2: the chain is recomputed on this machine and compared with the anchors (K-126)")
+	anchorsSince := fs.String("anchors-since", "",
+		"skip anchors older than this (after a database restore): 2006-01-02 or RFC3339")
+	return fs, &auditVerifyOpts{asJSON: asJSON, timeout: timeout, anchorsDir: anchorsDir, anchorsSince: anchorsSince}
 }
 
 // worseExit, iki çıkış kodundan ağır olanı seçer: kırık zincir, erişim

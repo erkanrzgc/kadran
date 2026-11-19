@@ -29,9 +29,6 @@ type serverFlagError struct {
 
 func (e *serverFlagError) Error() string { return e.msg }
 
-// noTargetCommands, hedef almayan komutlar: -s orada bir yanlışlıktır.
-var noTargetCommands = map[string]bool{"version": true, "sidecar": true, "server": true}
-
 // adminInsertAt, kök yolundan giden komutlarda -sudo'nun ekleneceği yer
 // (komutun ve varsa alt komutun hemen ardı); öbür komutlarda -1.
 func adminInsertAt(args []string) int {
@@ -58,7 +55,7 @@ func expandServerFlag(args []string, load func() ([]servers.Server, error)) ([]s
 	if err != nil || !found {
 		return args, "", err
 	}
-	if noTargetCommands[args[0]] {
+	if isNoTarget(args[0]) {
 		return nil, "", &serverFlagError{usage: true, msg: fmt.Sprintf("`%s` does not take -s", args[0])}
 	}
 	list, err := load()

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"time"
 
@@ -58,7 +59,7 @@ func (c *cli) runGitHubWith(
 	ctx context.Context, name string, args []string,
 	run func(ctx context.Context, rpc kadranv1.KadranServiceClient) int,
 ) int {
-	fs := c.newFlagSet(name)
+	fs := c.githubFlags(name)
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -72,6 +73,10 @@ func (c *cli) runGitHubWith(
 	defer func() { _ = conn.Close() }()
 	return run(ctx, conn.RPC())
 }
+
+// githubFlags, github alt komutlarının (bayraksız) bayrak kümesi; çalıştırma
+// ve Inspect aynı kurucuyu kullanır.
+func (c *cli) githubFlags(name string) *flag.FlagSet { return c.newFlagSet(name) }
 
 func (c *cli) githubConnect(ctx context.Context, rpc kadranv1.KadranServiceClient) int {
 	callCtx, cancel := context.WithTimeout(ctx, defaultTimeout)

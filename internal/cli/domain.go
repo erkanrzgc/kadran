@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"flag"
 	"fmt"
 	"io"
 	"net"
@@ -54,13 +55,11 @@ func (c *cli) runDomain(ctx context.Context, args []string) int {
 }
 
 func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("domain check")
-	timeout := fs.Duration("timeout", 30*time.Second, "overall time limit")
-	wait := fs.Duration("wait", 0, "wait until the DNS points at the server (e.g. 10m), checking every 15s")
+	fs, o := c.domainCheckFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
-	if *wait < 0 {
+	if *o.wait < 0 {
 		return c.usageError("-wait cannot be negative")
 	}
 	if fs.NArg() < 1 || fs.NArg() > 2 {
@@ -76,11 +75,11 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return c.usageError("invalid domain (%q) — it cannot contain a scheme, port or path", fs.Arg(0))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout+*wait)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout+*o.wait)
 	defer cancel()
 
 	fmt.Fprintf(c.stdout, "Domain: %s\n", domain)
-	if *wait > 0 && !c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {
+	if *o.wait > 0 && !c.waitForDNS(ctx, domain, fs.Arg(1), *o.wait) && ctx.Err() != nil {
 		fmt.Fprintln(c.stdout, "  interrupted while waiting for DNS")
 		return ExitError
 	}
@@ -100,6 +99,20 @@ func (c *cli) runDomainCheck(ctx context.Context, args []string) int {
 		return ExitError
 	}
 	return ExitOK
+}
+
+// domainCheckOpts, `domain check` komutunun bayrak değerleri.
+type domainCheckOpts struct {
+	timeout *time.Duration
+	wait    *time.Duration
+}
+
+// domainCheckFlags, `domain check` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) domainCheckFlags() (*flag.FlagSet, *domainCheckOpts) {
+	fs := c.newFlagSet("domain check")
+	timeout := fs.Duration("timeout", 30*time.Second, "overall time limit")
+	wait := fs.Duration("wait", 0, "wait until the DNS points at the server (e.g. 10m), checking every 15s")
+	return fs, &domainCheckOpts{timeout: timeout, wait: wait}
 }
 
 // dnsWaitInterval, `-wait` sırasında iki DNS denetimi arası.

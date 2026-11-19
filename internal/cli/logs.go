@@ -3,8 +3,10 @@ package cli
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"time"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 )
@@ -20,6 +22,47 @@ const defaultTailLines = 200
 
 // runLogs, canlı sürümün çıktısını akıtır.
 func (c *cli) runLogs(ctx context.Context, args []string) int {
+	fs, o := c.logsFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		return c.argCountError("usage: kadran logs [-f] [-tail n] <app> " +
+			"[target] — options go BEFORE the app name")
+	}
+
+	if *o.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *o.timeout)
+		defer cancel()
+	}
+
+	conn, _, err := c.connect(ctx, fs.Arg(1))
+	if err != nil {
+		return c.fail(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	stream, err := conn.RPC().StreamLogs(ctx, &kadranv1.StreamLogsRequest{
+		AppId:     fs.Arg(0),
+		TailLines: uint32(*o.tail), //nolint:gosec // bayrak uint, sunucu ayrıca sınırlıyor
+		Follow:    *o.follow,
+	})
+	if err != nil {
+		return c.fail(fmt.Errorf("could not start the log stream: %w", err))
+	}
+	return c.consumeLogs(ctx, stream)
+}
+
+// logsOpts, `logs` komutunun bayrak değerleri.
+type logsOpts struct {
+	follow  *bool
+	tail    *uint
+	timeout *time.Duration
+}
+
+// logsFlags, `logs` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) logsFlags() (*flag.FlagSet, *logsOpts) {
 	fs := c.newFlagSet("logs")
 	follow := fs.Bool("f", false, "keep the stream open (Ctrl-C to quit)")
 	tail := fs.Uint("tail", defaultTailLines, "how many lines of history")
@@ -33,35 +76,7 @@ func (c *cli) runLogs(ctx context.Context, args []string) int {
 	// Sınırsız bırakmak sorumsuzluk değil: bağlantı kurma aşamasının
 	// kendi sınırı var (ssh ConnectTimeout) ve komut SIGINT'e duyarlı.
 	timeout := fs.Duration("timeout", 0, "overall time limit (0 = none)")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() < 1 || fs.NArg() > 2 {
-		return c.argCountError("usage: kadran logs [-f] [-tail n] <app> " +
-			"[target] — options go BEFORE the app name")
-	}
-
-	if *timeout > 0 {
-		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, *timeout)
-		defer cancel()
-	}
-
-	conn, _, err := c.connect(ctx, fs.Arg(1))
-	if err != nil {
-		return c.fail(err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	stream, err := conn.RPC().StreamLogs(ctx, &kadranv1.StreamLogsRequest{
-		AppId:     fs.Arg(0),
-		TailLines: uint32(*tail), //nolint:gosec // bayrak uint, sunucu ayrıca sınırlıyor
-		Follow:    *follow,
-	})
-	if err != nil {
-		return c.fail(fmt.Errorf("could not start the log stream: %w", err))
-	}
-	return c.consumeLogs(ctx, stream)
+	return fs, &logsOpts{follow: follow, tail: tail, timeout: timeout}
 }
 
 // consumeLogs, akışı okuyup uygun akıma yazar.

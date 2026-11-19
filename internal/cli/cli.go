@@ -111,30 +111,6 @@ type command struct {
 	run     func(c *cli, ctx context.Context, args []string) int
 }
 
-func commands() []command {
-	return []command{
-		{"status", "[target]", "shows server and daemon status", (*cli).runStatus},
-		{"app", "<create|update|list|show|delete> …", "manages app definitions", (*cli).runApp},
-		{"deploy", "<app> [target]", "builds a commit and switches traffic to it", (*cli).runDeploy},
-		{"rollback", "<app> [target]", "switches traffic back to the previous release", (*cli).runRollback},
-		{"logs", "[-f] <app> [target]", "streams the live release's output", (*cli).runLogs},
-		{"prune", "[-dry-run] <app>|-all [target]", "removes old releases' containers", (*cli).runPrune},
-		{"alarms", "[target]", "lists active fault conditions", (*cli).runAlarms},
-		{"backup", "<create|list> [target]", "takes and lists database backups", (*cli).runBackup},
-		{"domain", "check <domain> [target]", "checks a domain's DNS, ports and certificate", (*cli).runDomain},
-		{"audit", "<list|verify> [target]", "reads and verifies the audit chain", (*cli).runAudit},
-		{"server", "<add|list|rm|rename> …", "manages the saved server list", (*cli).runServer},
-		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
-		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
-		{"github", "<connect|status|disconnect> [target]", "connects private GitHub repositories", (*cli).runGitHub},
-		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
-		{"login", "[-recovery] [target]", "signs in with a TOTP code (when TOTP is on)", (*cli).runLogin},
-		{"logout", "[target]", "deletes the saved sign-in for a server", (*cli).runLogout},
-		{"totp", "<status|enable|disable|reset> [target]", "manages two-step sign-in", (*cli).runTotp},
-		{"version", "", "prints version information", (*cli).runVersion},
-	}
-}
-
 func (c *cli) run(ctx context.Context, args []string) int {
 	if len(args) == 0 {
 		c.usage()
@@ -222,7 +198,7 @@ func (c *cli) newFlagSet(name string) *flag.FlagSet {
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "Usage of %s:\n", name)
 		fs.PrintDefaults()
-		if !noTargetCommands[command] {
+		if !isNoTarget(command) {
 			fmt.Fprintln(fs.Output(), "  -s name\n    \ta server saved with `kadran server add`, instead of the target")
 		}
 	}
@@ -355,19 +331,7 @@ func (c *cli) runVersion(_ context.Context, args []string) int {
 // yol, root'a SSH'ı kapalı getiren bulut imajları için. Kurulumdan sonra
 // günlük kullanım yetkisiz `kadran-client` üzerinden yürür.
 func (c *cli) runBootstrap(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("bootstrap")
-	binaryDir := fs.String("binaries", c.defaultBinaryDir(),
-		"install the linux binaries from this directory instead of the release")
-	repoRoot := fs.String("repo", ".",
-		"read the systemd units from this repository root instead of the release")
-	clientKey := fs.String("client-key", c.defaultClientKey(), "PUBLIC key to authorize on the server")
-	// 30 dakika: kurulum paketi ~75 MiB. Taze sunucu testinde (K-112)
-	// aynı ev hattından bir koşu 5 dakikada yalnızca 28 MB gönderdi ve 10
-	// dakikalık eski sınır kurulumu yükleme bitmeden kesti; aynı gün başka
-	// bir koşu yüklemeyi bir dakikadan kısa sürede bitirdi.
-	timeout := fs.Duration("timeout", 30*time.Minute, "overall time limit")
-	sudo := fs.Bool("sudo", false,
-		"install through the target user's PASSWORDLESS sudo instead of SSH as root (never asks for a password)")
+	fs, o := c.bootstrapFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -389,7 +353,7 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 		return c.fail(errors.New("`ssh` not found — the OpenSSH client is required"))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	fmt.Fprintf(c.stdout, "Kadran install — %s\n", target.String())
@@ -414,10 +378,10 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 	err = bootstrap.Run(ctx, bootstrap.Options{
 		Host:          target.SSHUser + "@" + target.SSHHost,
 		Port:          target.SSHPort,
-		BinaryDir:     *binaryDir,
-		RepoRoot:      *repoRoot,
-		ClientKeyPath: *clientKey,
-		Sudo:          *sudo,
+		BinaryDir:     *o.binaryDir,
+		RepoRoot:      *o.repoRoot,
+		ClientKeyPath: *o.clientKey,
+		Sudo:          *o.sudo,
 		Release:       release,
 		Stdout:        c.stdout,
 		Stderr:        c.stderr,
@@ -429,6 +393,33 @@ func (c *cli) runBootstrap(ctx context.Context, args []string) int {
 
 	fmt.Fprintf(c.stdout, "\nTo verify:\n  %s\n", verifyHint(c.serverName, target.SSHHost))
 	return ExitOK
+}
+
+// bootstrapOpts, `bootstrap` komutunun bayrak değerleri.
+type bootstrapOpts struct {
+	binaryDir *string
+	repoRoot  *string
+	clientKey *string
+	timeout   *time.Duration
+	sudo      *bool
+}
+
+// bootstrapFlags, `bootstrap` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) bootstrapFlags() (*flag.FlagSet, *bootstrapOpts) {
+	fs := c.newFlagSet("bootstrap")
+	binaryDir := fs.String("binaries", c.defaultBinaryDir(),
+		"install the linux binaries from this directory instead of the release")
+	repoRoot := fs.String("repo", ".",
+		"read the systemd units from this repository root instead of the release")
+	clientKey := fs.String("client-key", c.defaultClientKey(), "PUBLIC key to authorize on the server")
+	// 30 dakika: kurulum paketi ~75 MiB. Taze sunucu testinde (K-112)
+	// aynı ev hattından bir koşu 5 dakikada yalnızca 28 MB gönderdi ve 10
+	// dakikalık eski sınır kurulumu yükleme bitmeden kesti; aynı gün başka
+	// bir koşu yüklemeyi bir dakikadan kısa sürede bitirdi.
+	timeout := fs.Duration("timeout", 30*time.Minute, "overall time limit")
+	sudo := fs.Bool("sudo", false,
+		"install through the target user's PASSWORDLESS sudo instead of SSH as root (never asks for a password)")
+	return fs, &bootstrapOpts{binaryDir: binaryDir, repoRoot: repoRoot, clientKey: clientKey, timeout: timeout, sudo: sudo}
 }
 
 // verifyHint, kurulumdan sonraki doğrulama komutu: -s ile kurulduysa aynı adla

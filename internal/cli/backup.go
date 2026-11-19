@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -31,8 +32,7 @@ func (c *cli) runBackup(ctx context.Context, args []string) int {
 // Zamanlı yedekleme daemon'da zaten koşuyor; bu komut riskli bir
 // işlemden hemen ÖNCE taze bir yedek istemek içindir.
 func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("backup create")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	fs, o := c.backupCreateFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -54,7 +54,7 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("backup create: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -69,6 +69,18 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 	return ExitOK
 }
 
+// backupCreateOpts, `backup create` komutunun bayrak değerleri.
+type backupCreateOpts struct {
+	asJSON *bool
+}
+
+// backupCreateFlags, `backup create` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) backupCreateFlags() (*flag.FlagSet, *backupCreateOpts) {
+	fs := c.newFlagSet("backup create")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	return fs, &backupCreateOpts{asJSON: asJSON}
+}
+
 // runBackupList, diskteki yedekleri listeler.
 //
 // ── Neden bu komut var ──────────────────────────────────────────────
@@ -77,8 +89,7 @@ func (c *cli) runBackupCreate(ctx context.Context, args []string) int {
 // olmalı" varsayımı, geri yüklemeye ihtiyaç duyulan güne kadar
 // sınanmaz — ve o gün öğrenmek için en kötü gündür.
 func (c *cli) runBackupList(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("backup list")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	fs, o := c.backupListFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -100,7 +111,7 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("backup list: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -139,6 +150,18 @@ func (c *cli) runBackupList(ctx context.Context, args []string) int {
 			"  sudo -u kadran /usr/local/lib/kadran/kadrand --restore <path>\n"+
 			"  systemctl start kadrand")
 	return ExitOK
+}
+
+// backupListOpts, `backup list` komutunun bayrak değerleri.
+type backupListOpts struct {
+	asJSON *bool
+}
+
+// backupListFlags, `backup list` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) backupListFlags() (*flag.FlagSet, *backupListOpts) {
+	fs := c.newFlagSet("backup list")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	return fs, &backupListOpts{asJSON: asJSON}
 }
 
 // printVolumeScopeWarning, yedeğin neyi KAPSAMADIĞINI yazar.

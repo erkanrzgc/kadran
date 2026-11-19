@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"strings"
 	"text/tabwriter"
@@ -43,26 +44,39 @@ func (c *cli) runServer(_ context.Context, args []string) int {
 }
 
 func (c *cli) runServerAdd(args []string) int {
-	fs := c.newFlagSet("server add")
-	provider := fs.String("provider", "", "provider label shown in the desktop app (free text)")
-	admin := fs.String("admin", "", "target for install and upgrade: root@host, or user@host with -sudo")
-	sudo := fs.Bool("sudo", false, "the admin user reaches root through PASSWORDLESS sudo")
+	fs, o := c.serverAddFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
 	if fs.NArg() != 2 {
 		return c.usageError("%s", serverUsage)
 	}
-	if *sudo && *admin == "" {
+	if *o.sudo && *o.admin == "" {
 		return c.usageError("-sudo needs -admin user@host")
 	}
-	srv := servers.Server{Name: fs.Arg(0), Target: fs.Arg(1), Provider: strings.TrimSpace(*provider), Admin: *admin, Sudo: *sudo}
+	srv := servers.Server{Name: fs.Arg(0), Target: fs.Arg(1), Provider: strings.TrimSpace(*o.provider), Admin: *o.admin, Sudo: *o.sudo}
 	list, err := c.serverStore().Update(func(l []servers.Server) ([]servers.Server, error) { return servers.Add(l, srv) })
 	if err != nil {
 		return c.fail(err)
 	}
 	fmt.Fprintf(c.stdout, "saved %s (%d servers)\n", list[len(list)-1].Name, len(list))
 	return ExitOK
+}
+
+// serverAddOpts, `server add` komutunun bayrak değerleri.
+type serverAddOpts struct {
+	provider *string
+	admin    *string
+	sudo     *bool
+}
+
+// serverAddFlags, `server add` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) serverAddFlags() (*flag.FlagSet, *serverAddOpts) {
+	fs := c.newFlagSet("server add")
+	provider := fs.String("provider", "", "provider label shown in the desktop app (free text)")
+	admin := fs.String("admin", "", "target for install and upgrade: root@host, or user@host with -sudo")
+	sudo := fs.Bool("sudo", false, "the admin user reaches root through PASSWORDLESS sudo")
+	return fs, &serverAddOpts{provider: provider, admin: admin, sudo: sudo}
 }
 
 func (c *cli) runServerList(args []string) int {

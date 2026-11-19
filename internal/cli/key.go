@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -107,15 +108,14 @@ func rootTarget(cmd, raw string, sudo, faked bool) (bootstrap.KeyOptions, error)
 }
 
 func (c *cli) runKeyList(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("key list")
-	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	fs, o := c.keyListFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
 	if fs.NArg() != 1 {
 		return c.argCountError("%s", keyUsage)
 	}
-	opts, err := c.keyTarget(fs.Arg(0), *sudo)
+	opts, err := c.keyTarget(fs.Arg(0), *o.sudo)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -132,6 +132,18 @@ func (c *cli) runKeyList(ctx context.Context, args []string) int {
 			"as kadran-client; remove them: kadran key remove <fingerprint> %s", unrestricted, fs.Arg(0)))
 	}
 	return ExitOK
+}
+
+// keyListOpts, `key list` komutunun bayrak değerleri.
+type keyListOpts struct {
+	sudo *bool
+}
+
+// keyListFlags, `key list` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) keyListFlags() (*flag.FlagSet, *keyListOpts) {
+	fs := c.newFlagSet("key list")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &keyListOpts{sudo: sudo}
 }
 
 // printKeys, anahtarları tablo olarak yazar ve kısıtsız satır sayısını döner.
@@ -172,10 +184,7 @@ func printable(s string) string {
 }
 
 func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("key add")
-	deploy := fs.String("deploy", "", "apps the key may deploy (comma-separated; REQUIRED)")
-	name := fs.String("name", "", "comment for the line (default: the key's own comment)")
-	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	fs, o := c.keyAddFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -185,10 +194,10 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 	// Yönetici anahtarı bu komutla EKLENMİYOR: yönetici anahtarı
 	// bootstrap'ın işi (-client-key). Kapsamsız bir `key add` yazım
 	// hatasıyla tam yetki vermesin diye -deploy zorunlu.
-	if *deploy == "" {
+	if *o.deploy == "" {
 		return c.usageError("-deploy is required: list the apps the key may deploy (e.g. -deploy site,api)")
 	}
-	apps, err := connproto.ParseDeployScope(*deploy)
+	apps, err := connproto.ParseDeployScope(*o.deploy)
 	if err != nil {
 		return c.usageError("-deploy: %v", err)
 	}
@@ -196,14 +205,14 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 	if err != nil {
 		return c.fail(err)
 	}
-	opts, err := c.keyTarget(fs.Arg(1), *sudo)
+	opts, err := c.keyTarget(fs.Arg(1), *o.sudo)
 	if err != nil {
 		return c.fail(err)
 	}
 	ctx, cancel := context.WithTimeout(ctx, keyTimeout)
 	defer cancel()
 
-	k, err := c.keyManager().AddDeploy(ctx, opts, pub, apps, *name)
+	k, err := c.keyManager().AddDeploy(ctx, opts, pub, apps, *o.name)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -212,6 +221,22 @@ func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
 		"commit is passed explicitly. In GitHub Actions:\n"+
 		"  kadran deploy -commit \"$GITHUB_SHA\" %s %s@<server>\n", apps[0], client.DefaultSSHUser)
 	return ExitOK
+}
+
+// keyAddOpts, `key add` komutunun bayrak değerleri.
+type keyAddOpts struct {
+	deploy *string
+	name   *string
+	sudo   *bool
+}
+
+// keyAddFlags, `key add` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) keyAddFlags() (*flag.FlagSet, *keyAddOpts) {
+	fs := c.newFlagSet("key add")
+	deploy := fs.String("deploy", "", "apps the key may deploy (comma-separated; REQUIRED)")
+	name := fs.String("name", "", "comment for the line (default: the key's own comment)")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &keyAddOpts{deploy: deploy, name: name, sudo: sudo}
 }
 
 // readPublicKey, açık anahtar dosyasını boyut sınırıyla okur. Doğrulama
@@ -233,8 +258,7 @@ func readPublicKey(path string) ([]byte, error) {
 }
 
 func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("key remove")
-	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	fs, o := c.keyRemoveFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -245,7 +269,7 @@ func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
 	if !strings.HasPrefix(fp, "SHA256:") {
 		return c.usageError("the fingerprint must look like SHA256:… (`kadran key list` shows it), not %q", fp)
 	}
-	opts, err := c.keyTarget(fs.Arg(1), *sudo)
+	opts, err := c.keyTarget(fs.Arg(1), *o.sudo)
 	if err != nil {
 		return c.fail(err)
 	}
@@ -258,4 +282,16 @@ func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
 	}
 	fmt.Fprintf(c.stdout, "Removed: %s %s\n", k.Fingerprint, printable(k.Comment))
 	return ExitOK
+}
+
+// keyRemoveOpts, `key remove` komutunun bayrak değerleri.
+type keyRemoveOpts struct {
+	sudo *bool
+}
+
+// keyRemoveFlags, `key remove` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) keyRemoveFlags() (*flag.FlagSet, *keyRemoveOpts) {
+	fs := c.newFlagSet("key remove")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &keyRemoveOpts{sudo: sudo}
 }

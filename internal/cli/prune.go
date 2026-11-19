@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"strings"
 
@@ -26,10 +27,7 @@ import (
 // ⚠ Bayraklar uygulama adından ÖNCE gelir (Go'nun `flag` paketi ilk
 // positional'da durur): `kadran prune -dry-run pfprobe`.
 func (c *cli) runPrune(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("prune")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	dry := fs.Bool("dry-run", false, "prints what would be removed, REMOVES NOTHING")
-	all := fs.Bool("all", false, "prunes every app")
+	fs, o := c.pruneFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -38,9 +36,9 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 	// verilirse hangi positional'ın ne olduğu belirsizleşirdi.
 	var appID, target string
 	switch {
-	case *all && fs.NArg() > 1:
+	case *o.all && fs.NArg() > 1:
 		return c.argCountError("usage: kadran prune -all [target]")
-	case *all:
+	case *o.all:
 		target = fs.Arg(0)
 	case fs.NArg() < 1 || fs.NArg() > 2:
 		return c.argCountError("usage: kadran prune <app> [target] " +
@@ -59,7 +57,7 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 	defer func() { _ = conn.Close() }()
 
 	ids := []string{appID}
-	if *all {
+	if *o.all {
 		list, err := conn.RPC().ListApps(ctx, &kadranv1.ListAppsRequest{})
 		if err != nil {
 			return c.fail(fmt.Errorf("prune -all: %w", err))
@@ -74,7 +72,23 @@ func (c *cli) runPrune(ctx context.Context, args []string) int {
 		}
 	}
 
-	return c.pruneEach(ctx, conn, ids, *dry, *asJSON, *all)
+	return c.pruneEach(ctx, conn, ids, *o.dry, *o.asJSON, *o.all)
+}
+
+// pruneOpts, `prune` komutunun bayrak değerleri.
+type pruneOpts struct {
+	asJSON *bool
+	dry    *bool
+	all    *bool
+}
+
+// pruneFlags, `prune` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) pruneFlags() (*flag.FlagSet, *pruneOpts) {
+	fs := c.newFlagSet("prune")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	dry := fs.Bool("dry-run", false, "prints what would be removed, REMOVES NOTHING")
+	all := fs.Bool("all", false, "prunes every app")
+	return fs, &pruneOpts{asJSON: asJSON, dry: dry, all: all}
 }
 
 // pruneEach, verilen uygulamaları tek tek budar.

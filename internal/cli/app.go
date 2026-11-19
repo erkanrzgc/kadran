@@ -3,10 +3,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"slices"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"google.golang.org/protobuf/proto"
@@ -37,6 +39,120 @@ func (c *cli) runApp(ctx context.Context, args []string) int {
 
 // runAppCreate, yeni bir uygulama tanımı kaydeder.
 func (c *cli) runAppCreate(ctx context.Context, args []string) int {
+	fs, o := c.appCreateFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		// Seçeneklerin addan ÖNCE gelmesi Go'nun flag paketinin kuralı:
+		// ilk konumsal argümanda ayrıştırma durur. Kullanım metni bunu
+		// açıkça söylüyor, çünkü tersini deneyen biri "-repo zorunlu"
+		// hatası alır ve sebebini göremez.
+		return c.argCountError("usage: kadran app create -repo host/owner/repo " +
+			"[options] <name> [target] — options go BEFORE the name")
+	}
+
+	host, owner, name, err := splitRepo(*o.repo)
+	if err != nil {
+		return c.usageError("%v", err)
+	}
+	mem, err := parseSize(*o.memory)
+	if err != nil {
+		return c.usageError("%v", err)
+	}
+
+	spec := &kadranv1.AppSpec{
+		AppId:          fs.Arg(0),
+		GitHost:        host,
+		GitOwner:       owner,
+		GitRepo:        name,
+		GitBranch:      *o.branch,
+		DockerfilePath: *o.dockerfile,
+		BuildArgs:      *o.buildArgs,
+		Env:            *o.env,
+		Volumes:        *o.volumes,
+		ContainerPort:  uint32(*o.port),     //nolint:gosec // sunucu 1-65535 doğruluyor
+		Replicas:       uint32(*o.replicas), //nolint:gosec // sunucu 1-64 doğruluyor
+		HealthPath:     *o.health,
+		Domain:         *o.domain,
+		Redirects:      *o.redirects,
+		Limits: &kadranv1.ResourceLimits{
+			MemoryBytes: mem,
+			CpuMillis:   uint32(*o.cpu),   //nolint:gosec // sunucu doğruluyor
+			BlkioWeight: uint32(*o.blkio), //nolint:gosec // sunucu 10-1000 doğruluyor
+		},
+	}
+	if *o.domain != "" {
+		spec.Www = proto.Bool(!*o.noWWW)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
+	defer cancel()
+
+	// Bağlanmadan ÖNCE: yanlış DNS'le kaydedilen alan adı sertifika
+	// alamıyordu ve bunu söyleyen bir şey yoktu (K-128).
+	if err := c.checkDomain(ctx, *o.domain, fs.Arg(1), *o.skipDNS); err != nil {
+		return c.fail(err)
+	}
+
+	conn, _, err := c.connect(ctx, fs.Arg(1))
+	if err != nil {
+		return c.fail(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	resp, err := conn.RPC().CreateApp(ctx, &kadranv1.CreateAppRequest{Spec: spec})
+	if err != nil {
+		return c.fail(fmt.Errorf("could not create the app: %w", err))
+	}
+
+	s := resp.GetApp().GetSpec()
+	known := c.afterRedirectReply(ctx, s, spec.GetWww() || len(spec.GetRedirects()) > 0,
+		true, fs.Arg(1), *o.skipDNS)
+
+	if *o.asJSON {
+		body, err := protoToJSON(resp)
+		if err != nil {
+			return c.fail(err)
+		}
+		return c.writeJSON(json.RawMessage(body))
+	}
+
+	fmt.Fprintf(c.stdout, "App created: %s\n", s.GetAppId())
+	fmt.Fprintf(c.stdout, "  Source  : %s/%s/%s (%s)\n",
+		s.GetGitHost(), s.GetGitOwner(), s.GetGitRepo(), s.GetGitBranch())
+	fmt.Fprintf(c.stdout, "  Port    : %d · replicas: %d\n", s.GetContainerPort(), s.GetReplicas())
+	if known {
+		fmt.Fprint(c.stdout, redirectsLine(s))
+	}
+	fmt.Fprintf(c.stdout, "\nTo deploy: kadran deploy %s\n", s.GetAppId())
+	return ExitOK
+}
+
+// appCreateOpts, `app create` komutunun bayrak değerleri.
+type appCreateOpts struct {
+	repo       *string
+	branch     *string
+	dockerfile *string
+	domain     *string
+	skipDNS    *bool
+	noWWW      *bool
+	redirects  *[]string
+	port       *uint
+	replicas   *uint
+	health     *string
+	memory     *string
+	cpu        *uint
+	blkio      *uint
+	buildArgs  *map[string]string
+	env        *map[string]string
+	volumes    *[]*kadranv1.AppVolume
+	asJSON     *bool
+	timeout    *time.Duration
+}
+
+// appCreateFlags, `app create` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) appCreateFlags() (*flag.FlagSet, *appCreateOpts) {
 	fs := c.newFlagSet("app create")
 	repo := fs.String("repo", "", "source repository: host/owner/name (e.g. github.com/user/blog)")
 	branch := fs.String("branch", "main", "default branch")
@@ -57,99 +173,11 @@ func (c *cli) runAppCreate(ctx context.Context, args []string) int {
 		"persistent volume NAME:/mount/point[:ro] (repeatable)")
 	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
-	if err := fs.Parse(args); err != nil {
-		return ExitUsage
-	}
-	if fs.NArg() < 1 || fs.NArg() > 2 {
-		// Seçeneklerin addan ÖNCE gelmesi Go'nun flag paketinin kuralı:
-		// ilk konumsal argümanda ayrıştırma durur. Kullanım metni bunu
-		// açıkça söylüyor, çünkü tersini deneyen biri "-repo zorunlu"
-		// hatası alır ve sebebini göremez.
-		return c.argCountError("usage: kadran app create -repo host/owner/repo " +
-			"[options] <name> [target] — options go BEFORE the name")
-	}
-
-	host, owner, name, err := splitRepo(*repo)
-	if err != nil {
-		return c.usageError("%v", err)
-	}
-	mem, err := parseSize(*memory)
-	if err != nil {
-		return c.usageError("%v", err)
-	}
-
-	spec := &kadranv1.AppSpec{
-		AppId:          fs.Arg(0),
-		GitHost:        host,
-		GitOwner:       owner,
-		GitRepo:        name,
-		GitBranch:      *branch,
-		DockerfilePath: *dockerfile,
-		BuildArgs:      *buildArgs,
-		Env:            *env,
-		Volumes:        *volumes,
-		ContainerPort:  uint32(*port),     //nolint:gosec // sunucu 1-65535 doğruluyor
-		Replicas:       uint32(*replicas), //nolint:gosec // sunucu 1-64 doğruluyor
-		HealthPath:     *health,
-		Domain:         *domain,
-		Redirects:      *redirects,
-		Limits: &kadranv1.ResourceLimits{
-			MemoryBytes: mem,
-			CpuMillis:   uint32(*cpu),   //nolint:gosec // sunucu doğruluyor
-			BlkioWeight: uint32(*blkio), //nolint:gosec // sunucu 10-1000 doğruluyor
-		},
-	}
-	if *domain != "" {
-		spec.Www = proto.Bool(!*noWWW)
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
-	defer cancel()
-
-	// Bağlanmadan ÖNCE: yanlış DNS'le kaydedilen alan adı sertifika
-	// alamıyordu ve bunu söyleyen bir şey yoktu (K-128).
-	if err := c.checkDomain(ctx, *domain, fs.Arg(1), *skipDNS); err != nil {
-		return c.fail(err)
-	}
-
-	conn, _, err := c.connect(ctx, fs.Arg(1))
-	if err != nil {
-		return c.fail(err)
-	}
-	defer func() { _ = conn.Close() }()
-
-	resp, err := conn.RPC().CreateApp(ctx, &kadranv1.CreateAppRequest{Spec: spec})
-	if err != nil {
-		return c.fail(fmt.Errorf("could not create the app: %w", err))
-	}
-
-	s := resp.GetApp().GetSpec()
-	known := c.afterRedirectReply(ctx, s, spec.GetWww() || len(spec.GetRedirects()) > 0,
-		true, fs.Arg(1), *skipDNS)
-
-	if *asJSON {
-		body, err := protoToJSON(resp)
-		if err != nil {
-			return c.fail(err)
-		}
-		return c.writeJSON(json.RawMessage(body))
-	}
-
-	fmt.Fprintf(c.stdout, "App created: %s\n", s.GetAppId())
-	fmt.Fprintf(c.stdout, "  Source  : %s/%s/%s (%s)\n",
-		s.GetGitHost(), s.GetGitOwner(), s.GetGitRepo(), s.GetGitBranch())
-	fmt.Fprintf(c.stdout, "  Port    : %d · replicas: %d\n", s.GetContainerPort(), s.GetReplicas())
-	if known {
-		fmt.Fprint(c.stdout, redirectsLine(s))
-	}
-	fmt.Fprintf(c.stdout, "\nTo deploy: kadran deploy %s\n", s.GetAppId())
-	return ExitOK
+	return fs, &appCreateOpts{repo: repo, branch: branch, dockerfile: dockerfile, domain: domain, skipDNS: skipDNS, noWWW: noWWW, redirects: redirects, port: port, replicas: replicas, health: health, memory: memory, cpu: cpu, blkio: blkio, buildArgs: buildArgs, env: env, volumes: volumes, asJSON: asJSON, timeout: timeout}
 }
 
 func (c *cli) runAppList(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("app list")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	fs, o := c.appListFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -157,7 +185,7 @@ func (c *cli) runAppList(ctx context.Context, args []string) int {
 		return c.argCountError("`app list` takes at most one target, got %d", fs.NArg())
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	conn, _, err := c.connect(ctx, fs.Arg(0))
@@ -171,7 +199,7 @@ func (c *cli) runAppList(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("could not get apps: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -196,11 +224,22 @@ func (c *cli) runAppList(ctx context.Context, args []string) int {
 	return ExitOK
 }
 
-func (c *cli) runAppShow(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("app show")
-	limit := fs.Uint("releases", 10, "number of releases to show")
+// appListOpts, `app list` komutunun bayrak değerleri.
+type appListOpts struct {
+	asJSON  *bool
+	timeout *time.Duration
+}
+
+// appListFlags, `app list` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) appListFlags() (*flag.FlagSet, *appListOpts) {
+	fs := c.newFlagSet("app list")
 	asJSON := fs.Bool("json", false, "machine-readable JSON output")
 	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	return fs, &appListOpts{asJSON: asJSON, timeout: timeout}
+}
+
+func (c *cli) runAppShow(ctx context.Context, args []string) int {
+	fs, o := c.appShowFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -208,7 +247,7 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 		return c.argCountError("usage: kadran app show [options] <name> [target]")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	conn, _, err := c.connect(ctx, fs.Arg(1))
@@ -219,13 +258,13 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 
 	resp, err := conn.RPC().GetApp(ctx, &kadranv1.GetAppRequest{
 		AppId:        fs.Arg(0),
-		ReleaseLimit: uint32(*limit), //nolint:gosec // sunucu üst sınırı uyguluyor
+		ReleaseLimit: uint32(*o.limit), //nolint:gosec // sunucu üst sınırı uyguluyor
 	})
 	if err != nil {
 		return c.fail(fmt.Errorf("could not get the app: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -235,6 +274,22 @@ func (c *cli) runAppShow(ctx context.Context, args []string) int {
 
 	c.printApp(resp)
 	return ExitOK
+}
+
+// appShowOpts, `app show` komutunun bayrak değerleri.
+type appShowOpts struct {
+	limit   *uint
+	asJSON  *bool
+	timeout *time.Duration
+}
+
+// appShowFlags, `app show` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) appShowFlags() (*flag.FlagSet, *appShowOpts) {
+	fs := c.newFlagSet("app show")
+	limit := fs.Uint("releases", 10, "number of releases to show")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	return fs, &appShowOpts{limit: limit, asJSON: asJSON, timeout: timeout}
 }
 
 func (c *cli) printApp(resp *kadranv1.GetAppResponse) {

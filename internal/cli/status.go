@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"text/tabwriter"
 	"time"
@@ -12,9 +13,7 @@ import (
 
 // runStatus, sunucunun ve daemon'ın durumunu gösterir.
 func (c *cli) runStatus(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("status")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	fs, o := c.statusFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -22,7 +21,7 @@ func (c *cli) runStatus(ctx context.Context, args []string) int {
 		return c.argCountError("`status` takes at most one target, got %d", fs.NArg())
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	conn, ping, err := c.connect(ctx, fs.Arg(0))
@@ -36,11 +35,25 @@ func (c *cli) runStatus(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("could not get system info: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		return c.printStatusJSON(conn.Target().String(), ping, info)
 	}
 	c.printStatus(conn.Target().String(), ping, info)
 	return ExitOK
+}
+
+// statusOpts, `status` komutunun bayrak değerleri.
+type statusOpts struct {
+	asJSON  *bool
+	timeout *time.Duration
+}
+
+// statusFlags, `status` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) statusFlags() (*flag.FlagSet, *statusOpts) {
+	fs := c.newFlagSet("status")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	return fs, &statusOpts{asJSON: asJSON, timeout: timeout}
 }
 
 func (c *cli) printStatus(target string, ping *kadranv1.PingResponse, info *kadranv1.GetSystemInfoResponse) {

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"time"
 
@@ -29,9 +30,7 @@ const rollbackTimeout = 3 * time.Minute
 // Hiçbir şey derlenmez: hedef sürümün imajı zaten var ve konteynerleri
 // çoğu zaman durmuş hâlde bekliyor, yani işlem saniyeler sürer.
 func (c *cli) runRollback(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("rollback")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	timeout := fs.Duration("timeout", rollbackTimeout, "overall time limit")
+	fs, o := c.rollbackFlags()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -40,7 +39,7 @@ func (c *cli) runRollback(ctx context.Context, args []string) int {
 			"options go BEFORE the app name")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	conn, _, err := c.connect(ctx, fs.Arg(1))
@@ -59,7 +58,7 @@ func (c *cli) runRollback(ctx context.Context, args []string) int {
 		return c.fail(fmt.Errorf("rollback: %w", err))
 	}
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -78,4 +77,18 @@ func (c *cli) runRollback(ctx context.Context, args []string) int {
 			"  Not: konteynerler hostta yoktu, imajdan yeniden kuruldu.\n")
 	}
 	return ExitOK
+}
+
+// rollbackOpts, `rollback` komutunun bayrak değerleri.
+type rollbackOpts struct {
+	asJSON  *bool
+	timeout *time.Duration
+}
+
+// rollbackFlags, `rollback` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) rollbackFlags() (*flag.FlagSet, *rollbackOpts) {
+	fs := c.newFlagSet("rollback")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", rollbackTimeout, "overall time limit")
+	return fs, &rollbackOpts{asJSON: asJSON, timeout: timeout}
 }

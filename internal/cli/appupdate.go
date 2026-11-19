@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"sort"
+	"time"
 
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"google.golang.org/protobuf/proto"
@@ -40,30 +41,7 @@ type appUpdateFlags struct {
 
 // runAppUpdate, var olan bir uygulamanın alanlarını değiştirir.
 func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
-	fs := c.newFlagSet("app update")
-	var v appUpdateFlags
-	fs.StringVar(&v.domain, "domain", "",
-		"domain to serve the app on; an empty value (-domain=\"\") REMOVES the app from the proxy")
-	fs.StringVar(&v.branch, "branch", "", "default branch")
-	fs.StringVar(&v.health, "health-path", "",
-		"health check path; an empty value DISABLES the check")
-	fs.UintVar(&v.replicas, "replicas", 0, "number of replicas")
-	env := c.stringMapFlag(fs, "env",
-		"environment variable KEY=VALUE (repeatable); variables not "+
-			"named are LEFT ALONE")
-	envRemove := c.stringSliceFlag(fs, "env-rm",
-		"name of an environment variable to delete (repeatable)")
-	volumes := c.volumeFlag(fs, "volume",
-		"persistent volume NAME:/mount/point[:ro]; volumes not named are LEFT ALONE")
-	volumeRemove := c.stringSliceFlag(fs, "volume-rm",
-		"name of a volume to detach (does NOT DELETE the data, only removes the mount)")
-	www := fs.Bool("www", false, "also serve and redirect the www partner of the domain")
-	noWWW := fs.Bool("no-www", false, "stop serving the www partner of the domain")
-	redirectAdd := c.stringSliceFlag(fs, "redirect", "extra name that redirects (308) to the domain (repeatable)")
-	redirectRemove := c.stringSliceFlag(fs, "redirect-rm", "extra redirect name to remove (repeatable)")
-	skipDNS := fs.Bool(skipDNSCheckFlag, false, "continue even if the domain's DNS does not point at the server (e.g. Cloudflare proxy)")
-	asJSON := fs.Bool("json", false, "machine-readable JSON output")
-	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	fs, o := c.appUpdateFlagSet()
 	if err := fs.Parse(args); err != nil {
 		return ExitUsage
 	}
@@ -88,14 +66,16 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	// Bayrak yardımcıları kendi depolarını tutuyor; struct'a burada
 	// aktarılıyorlar ki buildUpdateRequest bir FlagSet'e bağlı kalmasın
 	// ve testten doğrudan çağrılabilsin.
-	v.env = *env
-	v.envRemove = *envRemove
-	v.volumes = *volumes
-	v.volumeRemove = *volumeRemove
-	v.www = *www
-	v.noWWW = *noWWW
-	v.redirectAdd = *redirectAdd
-	v.redirectRemove = *redirectRemove
+	// Bayraklar Parse ile o.v'ye yazıldı; değeri şimdi kopyala.
+	v := o.v
+	v.env = *o.env
+	v.envRemove = *o.envRemove
+	v.volumes = *o.volumes
+	v.volumeRemove = *o.volumeRemove
+	v.www = *o.www
+	v.noWWW = *o.noWWW
+	v.redirectAdd = *o.redirectAdd
+	v.redirectRemove = *o.redirectRemove
 
 	if set["www"] && set["no-www"] {
 		return c.usageError("-www and -no-www cannot be used together")
@@ -108,13 +88,13 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 			"-env-rm, -volume, -volume-rm, -www, -no-www, -redirect or -redirect-rm")
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	ctx, cancel := context.WithTimeout(ctx, *o.timeout)
 	defer cancel()
 
 	// Yalnızca yeni bir alan adı verildiğinde; `-domain=""` vekilden
 	// çıkarır, denetlenecek ad yok (K-128).
 	if req.Domain != nil {
-		if err := c.checkDomain(ctx, req.GetDomain(), fs.Arg(1), *skipDNS); err != nil {
+		if err := c.checkDomain(ctx, req.GetDomain(), fs.Arg(1), *o.skipDNS); err != nil {
 			return c.fail(err)
 		}
 	}
@@ -136,9 +116,9 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 	s := resp.GetApp().GetSpec()
 	touchesNames := req.Domain != nil || req.Www != nil || len(req.GetRedirectAdd()) > 0
 	known := c.afterRedirectReply(ctx, s, req.GetWww() || len(req.GetRedirectAdd()) > 0,
-		touchesNames, fs.Arg(1), *skipDNS)
+		touchesNames, fs.Arg(1), *o.skipDNS)
 
-	if *asJSON {
+	if *o.asJSON {
 		body, err := protoToJSON(resp)
 		if err != nil {
 			return c.fail(err)
@@ -225,6 +205,63 @@ func (c *cli) runAppUpdate(ctx context.Context, args []string) int {
 		fmt.Fprintf(c.stdout, "\n%s\n", d)
 	}
 	return ExitOK
+}
+
+// appUpdateOpts, `app update` komutunun bayrak değerleri: v doğrudan bağlananlar, öbürleri yardımcıların işaretçileri.
+type appUpdateOpts struct {
+	v              appUpdateFlags
+	env            *map[string]string
+	envRemove      *[]string
+	volumes        *[]*kadranv1.AppVolume
+	volumeRemove   *[]string
+	www            *bool
+	noWWW          *bool
+	redirectAdd    *[]string
+	redirectRemove *[]string
+	skipDNS        *bool
+	asJSON         *bool
+	timeout        *time.Duration
+}
+
+// appUpdateFlagSet, `app update` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) appUpdateFlagSet() (*flag.FlagSet, *appUpdateOpts) {
+	fs := c.newFlagSet("app update")
+	o := &appUpdateOpts{}
+	v := &o.v
+	fs.StringVar(&v.domain, "domain", "",
+		"domain to serve the app on; an empty value (-domain=\"\") REMOVES the app from the proxy")
+	fs.StringVar(&v.branch, "branch", "", "default branch")
+	fs.StringVar(&v.health, "health-path", "",
+		"health check path; an empty value DISABLES the check")
+	fs.UintVar(&v.replicas, "replicas", 0, "number of replicas")
+	env := c.stringMapFlag(fs, "env",
+		"environment variable KEY=VALUE (repeatable); variables not "+
+			"named are LEFT ALONE")
+	envRemove := c.stringSliceFlag(fs, "env-rm",
+		"name of an environment variable to delete (repeatable)")
+	volumes := c.volumeFlag(fs, "volume",
+		"persistent volume NAME:/mount/point[:ro]; volumes not named are LEFT ALONE")
+	volumeRemove := c.stringSliceFlag(fs, "volume-rm",
+		"name of a volume to detach (does NOT DELETE the data, only removes the mount)")
+	www := fs.Bool("www", false, "also serve and redirect the www partner of the domain")
+	noWWW := fs.Bool("no-www", false, "stop serving the www partner of the domain")
+	redirectAdd := c.stringSliceFlag(fs, "redirect", "extra name that redirects (308) to the domain (repeatable)")
+	redirectRemove := c.stringSliceFlag(fs, "redirect-rm", "extra redirect name to remove (repeatable)")
+	skipDNS := fs.Bool(skipDNSCheckFlag, false, "continue even if the domain's DNS does not point at the server (e.g. Cloudflare proxy)")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	timeout := fs.Duration("timeout", defaultTimeout, "overall time limit")
+	o.env = env
+	o.envRemove = envRemove
+	o.volumes = volumes
+	o.volumeRemove = volumeRemove
+	o.www = www
+	o.noWWW = noWWW
+	o.redirectAdd = redirectAdd
+	o.redirectRemove = redirectRemove
+	o.skipDNS = skipDNS
+	o.asJSON = asJSON
+	o.timeout = timeout
+	return fs, o
 }
 
 // sortedKeys, haritanın anahtarlarını SABİT sırayla verir.

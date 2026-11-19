@@ -1,6 +1,7 @@
 package confirm
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -82,24 +83,42 @@ func Build(language Language, req Request) Box {
 // Line boşsa kutu bir konsol ayarı içindir (yönetici komutlarını açmak).
 type ConsoleRequest struct{ Server, Line, Effect, Admin string }
 
+const (
+	// MaxConsoleLineUnits, kutuda gösterilebilen (kaçışlı, arıtılmış) komut
+	// satırının en çok UTF-16 birimi. Daha uzun satır kutuya hiç gelmez:
+	// çalıştırıcı onu kutu kurmadan reddeder (ConsoleTooLong).
+	MaxConsoleLineUnits = 1024
+	// maxRowUnits, Detail'in bir satırının en çok UTF-16 birimi.
+	maxRowUnits = 96
+)
+
 // BuildConsole, konsol komutunun onay kutusunu kurar. Konsol, GUI işlemleri
 // için de bu tek biçimi kullanır (plan kararı): bayraklardan Spec/Update
 // yeniden kurmak, CLI'ın bayrak → istek çevirisini ikinci kez yazmak olurdu.
-// Ortak kalan: her değer safe'den geçer, varsayılan düğme Cancel.
+// Ortak kalan: kaçış ve varsayılan düğme Cancel.
+//
+// Komut satırı HİÇ kesilmez (R10): değiştirme sınıfında tek kapı bu kutu ve
+// bayraklarda son yazılan kazanır; ortadan kesilen satırda ikinci bir
+// `-domain` görünmeden onaylanırdı. Satır kaçıştan geçer, kesilmeden en çok
+// maxRowUnits birimlik satırlara bölünür; uzunluk sınırı çalıştırıcıda
+// (MaxConsoleLineUnits). Sunucu, yönetici hedefi ve etki kısa: safe'den geçer.
 func BuildConsole(language Language, req ConsoleRequest) Box {
 	t := func(key string, p params) string { return text(language, key, p) }
-	var lines []string
+	var rows []string
+	add := func(label string, parts []string) {
+		rows = append(rows, wrapParts(append(escapeParts(label), parts...))...)
+	}
 	if req.Server != "" {
-		lines = append(lines, t("line.server", params{"target": safe(req.Server)}))
+		add(t("line.server", params{"target": ""}), safeParts(req.Server))
 	}
 	if req.Admin != "" {
-		lines = append(lines, t("console.line.admin", params{"admin": safe(req.Admin)}))
+		add(t("console.line.admin", params{"admin": ""}), safeParts(req.Admin))
 	}
 	if req.Line != "" {
-		lines = append(lines, t("console.line.command", params{"line": safe(req.Line)}))
+		add(t("console.line.command", params{"line": ""}), escapeParts(req.Line))
 	}
 	if req.Effect != "" {
-		lines = append(lines, safe(req.Effect))
+		add("", safeParts(req.Effect))
 	}
 	kind := "command"
 	if req.Line == "" {
@@ -108,10 +127,48 @@ func BuildConsole(language Language, req ConsoleRequest) Box {
 	return Box{
 		Title:   t("title", nil),
 		Message: t("console.message."+kind, params{"server": safe(req.Server)}),
-		Detail:  strings.Join(lines, "\n"),
+		Detail:  strings.Join(rows, "\n"),
 		Cancel:  t("cancel", nil),
 		Action:  t("console.action."+kind, nil),
 	}
+}
+
+// ConsoleLineUnits, satırın kutuda göstereceği kaçışlı uzunluk (UTF-16).
+func ConsoleLineUnits(line string) int { return partsUnits(escapeParts(line)) }
+
+// ConsoleTooLong, MaxConsoleLineUnits'i aşan satırın ret metni.
+func ConsoleTooLong(language Language) string { return text(language, "console.too_long", nil) }
+
+// wrapParts, parçaları en çok maxRowUnits birimlik satırlara dizer. Kırma son
+// boşluktan sonra yapılır (boşluk satır sonunda kalır: hiçbir karakter
+// düşmez); boşluksuz uzun sözcük parça sınırında sert kırılır, kaçış bölünmez.
+func wrapParts(parts []string) []string {
+	var rows, row []string
+	width, lastSpace := 0, -1
+	flush := func(r []string) { rows = append(rows, strings.Join(r, "")) }
+	for _, p := range parts {
+		w := units(p)
+		if width+w > maxRowUnits && len(row) > 0 {
+			if p != " " && lastSpace >= 0 {
+				flush(row[:lastSpace+1])
+				row = slices.Clone(row[lastSpace+1:])
+				width = partsUnits(row)
+			}
+			if width+w > maxRowUnits || p == " " {
+				flush(row)
+				row, width = nil, 0
+			}
+			lastSpace = -1
+		}
+		row, width = append(row, p), width+w
+		if p == " " && len(row) > 1 {
+			lastSpace = len(row) - 1
+		}
+	}
+	if len(row) > 0 {
+		flush(row)
+	}
+	return rows
 }
 
 // ConsoleEffect, konsol komutunun ne yapacağını anlatan metni döner. key,

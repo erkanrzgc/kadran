@@ -302,13 +302,63 @@ func TestBuildConsoleShowsFieldsSafely(t *testing.T) {
 	if trBox.Cancel != "Vazgeç" || !strings.Contains(trBox.Detail, "Sunucu: hetzner") || trBox.Action == box.Action {
 		t.Fatalf("%+v", trBox)
 	}
-	long := BuildConsole(English, ConsoleRequest{Server: "s", Line: strings.Repeat("a", 500) + " web", Effect: "E."})
-	if !strings.Contains(long.Detail, string(rune(ellipsis))) || !strings.Contains(long.Detail, "a web") {
-		t.Fatalf("uzun satır ortadan kesilmeli: %q", long.Detail)
+	// Komut satırı HİÇ kesilmez (R10): 500 karakterlik sözcük ve sonrası
+	// kutuda bütün, "…" yok.
+	line := strings.Repeat("a", 500) + " web" + cp(0x202e) + " -domain evil.example"
+	long := BuildConsole(English, ConsoleRequest{Server: "s", Line: line, Effect: "E."})
+	whole := "Command: " + strings.Repeat("a", 500) + " web" + esc(0x202e) + " -domain evil.example"
+	if !strings.Contains(unwrap(long.Detail), whole) {
+		t.Fatalf("satır bütün değil:\n%s", long.Detail)
+	}
+	if strings.ContainsRune(long.Detail, ellipsis) || strings.Contains(long.Detail, "more") {
+		t.Fatalf("satır kesildi ya da kısaltıldı:\n%s", long.Detail)
 	}
 	noAdmin := BuildConsole(English, ConsoleRequest{Server: "s", Line: "deploy web", Effect: "E."})
 	if strings.Contains(noAdmin.Detail, "Admin target") {
 		t.Fatalf("root olmayan kutuda yönetici hedefi: %q", noAdmin.Detail)
+	}
+}
+
+// unwrap, Detail'in satır kırmalarını kaldırır: kırma hiçbir karakter
+// düşürmediği için mantıksal satırlar art arda birleşir.
+func unwrap(detail string) string { return strings.ReplaceAll(detail, "\n", "") }
+
+func TestBuildConsoleRowsAreShort(t *testing.T) {
+	line := strings.Repeat("deploy web -branch feature/x ", 20) + strings.Repeat(cp(0x202e), 40) + strings.Repeat("b", 300)
+	req := ConsoleRequest{
+		Server: strings.Repeat("s", 300),
+		Admin:  "-sudo " + strings.Repeat("u", 150) + "@host.example",
+		Line:   line,
+		Effect: strings.Repeat("effect ", 40),
+	}
+	for _, lang := range []Language{English, Turkish} {
+		box := BuildConsole(lang, req)
+		for i, row := range strings.Split(box.Detail, "\n") {
+			if units(row) > 96 {
+				t.Fatalf("%s satır %d: %d birim > 96: %q", lang, i, units(row), row)
+			}
+		}
+		// Kaçışlar satır sınırında bölünmez: 40 kaçış bütün sayılır.
+		if n := strings.Count(unwrap(box.Detail), esc(0x202e)); n != 40 {
+			t.Fatalf("%s: %d bütün kaçış, 40 olmalı", lang, n)
+		}
+		if !strings.Contains(unwrap(box.Detail), strings.Repeat("b", 300)) {
+			t.Fatalf("%s: uzun sözcük kayboldu", lang)
+		}
+	}
+	// Kırma boşlukta: sözcükler satır sınırında bölünmez.
+	words := BuildConsole(English, ConsoleRequest{Line: strings.TrimSpace(strings.Repeat("word ", 60))})
+	wholeWords := regexp.MustCompile(`^(Command: )?(word ?)+$`)
+	for i, row := range strings.Split(words.Detail, "\n") {
+		if !wholeWords.MatchString(row) {
+			t.Fatalf("satır %d sözcüğü böldü: %q", i, row)
+		}
+	}
+	if got, want := ConsoleLineUnits("a"+cp(0x202e)), 1+6; got != want {
+		t.Fatalf("ConsoleLineUnits %d, want %d (kaçış 6 birim)", got, want)
+	}
+	if ConsoleTooLong(English) == ConsoleTooLong(Turkish) || ConsoleTooLong(English) != "This line is too long to confirm here; run it in the CLI." {
+		t.Fatalf("ret metni: %q / %q", ConsoleTooLong(English), ConsoleTooLong(Turkish))
 	}
 }
 
@@ -318,7 +368,7 @@ func TestBuildConsoleSettingBox(t *testing.T) {
 	if strings.Contains(box.Detail, "Server:") || strings.Contains(box.Detail, "Command:") {
 		t.Fatalf("ayar kutusunda sunucu/komut satırı: %q", box.Detail)
 	}
-	if !strings.Contains(box.Detail, effect) || box.Message == "" || box.Cancel != "Cancel" {
+	if !strings.Contains(unwrap(box.Detail), effect) || box.Message == "" || box.Cancel != "Cancel" {
 		t.Fatalf("%+v", box)
 	}
 }

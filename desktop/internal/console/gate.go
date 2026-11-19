@@ -231,6 +231,11 @@ func (r *Runner) gate(p *plan) error {
 	if p.server.Name == "" && !worksWithoutServer(p.inv.Path) {
 		return ErrNoServer
 	}
+	// Kutu satırı kesmeden gösterir (R10); sığmayan satır yazılı ad ve kutudan
+	// önce reddedilir. Çıkış 1, öteki politika retleri gibi.
+	if needsBox(p.inv.Class) && confirm.ConsoleLineUnits(p.line) > confirm.MaxConsoleLineUnits {
+		return errors.New(confirm.ConsoleTooLong(r.language()))
+	}
 	switch p.inv.Class {
 	case cli.ClassDanger:
 		p.typed = dangerName(p.inv, p.server.Name)

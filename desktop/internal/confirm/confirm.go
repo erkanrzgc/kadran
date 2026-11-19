@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/big"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -84,11 +85,10 @@ func units(s string) int {
 	return n
 }
 
-// safe, görünmez karakterleri görünür kaçışa çevirir, SONRA uzunu ORTADAN
-// keser. Önce kesilseydi 200 karakter kaçışla ~1200'e büyürdü; baştan
-// kesilseydi `user@host` hedefinin host'u (kuyruk) kutuda görünmezdi.
-func safe(v any) string {
-	s, _ := v.(string)
+// escapeParts, metni görünür parçalara böler: her parça ya tek bir rune ya da
+// görünmez bir karakterin kaçışıdır (ters bölü, "u", dört onaltılık hane).
+// Kaçış tek parça kalır: kesme ve satır kırma onu ortadan bölemez.
+func escapeParts(s string) []string {
 	var parts []string
 	for _, r := range s {
 		if invisible(r) {
@@ -97,28 +97,43 @@ func safe(v any) string {
 			parts = append(parts, string(r))
 		}
 	}
-	whole := strings.Join(parts, "")
-	if units(whole) <= maxValueChars {
-		return whole
+	return parts
+}
+
+func partsUnits(parts []string) int {
+	n := 0
+	for _, p := range parts {
+		n += units(p)
+	}
+	return n
+}
+
+// safeParts, safe'in parçalı hâli: kaçış, SONRA uzunsa ortadan kesme.
+func safeParts(v any) []string {
+	s, _ := v.(string)
+	parts := escapeParts(s)
+	if partsUnits(parts) <= maxValueChars {
+		return parts
 	}
 	half := maxValueChars / 2
-	var head, tail strings.Builder
 	headLen, i := 0, 0
 	for i < len(parts) && headLen+units(parts[i]) <= half {
-		head.WriteString(parts[i])
 		headLen += units(parts[i])
 		i++
 	}
-	tailParts, tailLen := []string{}, 0
-	for j := len(parts) - 1; j >= i && tailLen+units(parts[j]) <= half; j-- {
-		tailParts = append([]string{parts[j]}, tailParts...)
-		tailLen += units(parts[j])
+	tailLen, j := 0, len(parts)
+	for j > i && tailLen+units(parts[j-1]) <= half {
+		tailLen += units(parts[j-1])
+		j--
 	}
-	for _, p := range tailParts {
-		tail.WriteString(p)
-	}
-	return head.String() + string(rune(ellipsis)) + tail.String()
+	out := append(slices.Clone(parts[:i]), string(rune(ellipsis)))
+	return append(out, parts[j:]...)
 }
+
+// safe, görünmez karakterleri görünür kaçışa çevirir, SONRA uzunu ORTADAN
+// keser. Önce kesilseydi 200 karakter kaçışla ~1200'e büyürdü; baştan
+// kesilseydi `user@host` hedefinin host'u (kuyruk) kutuda görünmezdi.
+func safe(v any) string { return strings.Join(safeParts(v), "") }
 
 var decimalText20 = regexp.MustCompile(`^\d{1,20}$`)
 

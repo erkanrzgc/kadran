@@ -17,23 +17,23 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 DC=internal/domaincheck/domaincheck.go
-CLI=cmd/kadran/domaincheck.go
-APP=cmd/kadran/app.go
-UPD=cmd/kadran/appupdate.go
-DOM=cmd/kadran/domain.go
+CLI=internal/cli/domaincheck.go
+APP=internal/cli/app.go
+UPD=internal/cli/appupdate.go
+DOM=internal/cli/domain.go
 JUDGE=internal/domaincheck/judge.go
 PROV=internal/domaincheck/providers.go
 ZONE=internal/domaincheck/zone.go
 CF=internal/domaincheck/cloudflare.go
 AUTH=internal/domaincheck/authoritative.go
 RDAP=internal/domaincheck/rdap.go
-GUIDE=cmd/kadran/domainguide.go
-PKGS=(./internal/domaincheck/ ./cmd/kadran/)
+GUIDE=internal/cli/domainguide.go
+PKGS=(./internal/domaincheck/ ./internal/cli/)
 TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname|Provider|AWSPattern|CleanName|CommandFor|FindZone|GuessRecordName|Cloudflare|AskAuthoritative|DefaultExchange|CheckerRules|CheckerBudget|DNSHost|OnlyTheCache|ProxiedCloudflare|StaysOffline|Registrar|WaitsUntil|WaitGivesUp|WriteDNSGuide|ShowsTheDNSHost|SplitOrLookalike|DnsWaitInterval|StopHint|WaitHint'
 FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM" "$JUDGE" "$PROV" "$ZONE" "$CF" "$AUTH" "$RDAP" "$GUIDE")
 
 # ⚠ Yedek adı TAM YOLDAN türetiliyor: internal/domaincheck/domaincheck.go
-# ile cmd/kadran/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
+# ile internal/cli/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
 # yedeği dosya adıyla tutuyordu; ikincisi birincinin yedeğini ezdi ve
 # geri yükleme paket dosyasını CLI dosyasıyla DEĞİŞTİRDİ.
 BAKDIR=$(mktemp -d)

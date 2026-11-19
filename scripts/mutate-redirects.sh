@@ -29,9 +29,9 @@ NAMES=internal/appnames/appnames.go
 SNAMES=internal/store/appnames.go
 MIG=internal/store/migrations/0010_app_redirects.sql
 VALID=internal/api/appvalidate.go
-PKGS=(./internal/proxydrv/ ./internal/proxyguard/ ./internal/deploy/ ./internal/appnames/ ./internal/store/ ./internal/api/ ./cmd/kadran/)
+PKGS=(./internal/proxydrv/ ./internal/proxyguard/ ./internal/deploy/ ./internal/appnames/ ./internal/store/ ./internal/api/ ./internal/cli/)
 OWNED=(
-    cmd/kadran/appredirects_test.go
+    internal/cli/appredirects_test.go
     internal/api/appredirects_test.go
     internal/appnames/appnames_test.go
     internal/deploy/reconcile_redirects_test.go

@@ -18,7 +18,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 ANC=internal/anchor/anchor.go
-CLI=cmd/kadran/audit_anchor.go
+CLI=internal/cli/audit_anchor.go
 SNAP=internal/store/snapshot.go
 OFF=deploy/offsite/kadran-offsite.sh
 FILES=("$ANC" "$CLI" "$SNAP" "$OFF")
@@ -42,7 +42,7 @@ fail=0
 
 olc() {
     go test ./internal/anchor/ -count=1 -timeout 60s >/dev/null 2>&1 &&
-        go test ./cmd/kadran/ -count=1 -timeout 60s \
+        go test ./internal/cli/ -count=1 -timeout 60s \
             -run 'Anchor|FetchAll|AuditRecordFromProto|AuditVerify' >/dev/null 2>&1 &&
         go test ./internal/store/ -count=1 -timeout 120s -run 'Anchor|Snapshot' >/dev/null 2>&1 &&
         "${KOK[@]}" bash scripts/check-offsite.sh >/dev/null 2>&1
@@ -79,7 +79,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
     # ── MUTANT DERLENMELİ (K-096) ───────────────────────
     local build_out
     if ! build_out=$(bash -n "$OFF" 2>&1 &&
-        go test ./internal/anchor/ ./cmd/kadran/ ./internal/store/ -run '^$' -count=1 2>&1); then
+        go test ./internal/anchor/ ./internal/cli/ ./internal/store/ -run '^$' -count=1 2>&1); then
         echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI. Çıktı:"
         echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
@@ -132,7 +132,7 @@ mutate_in "$CLI" "bozuk çapa sessizce atlanıyor" \
     "s=s.replace('\t\t\treturn nil, fmt.Errorf(\"%w: %w\", errBadAnchor, err)','\t\t\tcontinue',1)"
 
 mutate_in "$CLI" "çelişkide çıkış kodu başarı" \
-    "s=s.replace('investigated.\")\n\t\treturn exitChainInvalid','investigated.\")\n\t\treturn exitOK',1)"
+    "s=s.replace('investigated.\")\n\t\treturn ExitChainInvalid','investigated.\")\n\t\treturn ExitOK',1)"
 
 echo "== Üretim: daemon ve uzak yedek =="
 

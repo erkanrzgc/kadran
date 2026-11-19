@@ -17,8 +17,8 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 KEYS=internal/bootstrap/keys.go
-CLI=cmd/kadran/key.go
-PKGS=(./internal/bootstrap/ ./cmd/kadran/)
+CLI=internal/cli/key.go
+PKGS=(./internal/bootstrap/ ./internal/cli/)
 TESTS='TestKey|TestRemote|TestParsePublicKey|TestDeployLine|TestParseAuthorizedKeys|TestClientPaths'
 FILES=("$KEYS" "$CLI")
 

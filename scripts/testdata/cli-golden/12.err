@@ -1,0 +1,11 @@
+Usage of audit verify:
+  -anchors string
+    	directory of kadran-*.capa files downloaded from R2: the chain is recomputed on this machine and compared with the anchors (K-126)
+  -anchors-since string
+    	skip anchors older than this (after a database restore): 2006-01-02 or RFC3339
+  -json
+    	machine-readable JSON output
+  -timeout duration
+    	overall time limit (default 30s)
+  -s name
+    	a server saved with `kadran server add`, instead of the target

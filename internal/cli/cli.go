@@ -1,0 +1,461 @@
+// Package cli, kadran komut satırı aracının komutlarını taşır.
+//
+// cmd/kadran yalnız süreç kurulumunu yapar; masaüstü uygulaması da aynı
+// komut kodunu süreç içinde çalıştırır (Run).
+package cli
+
+import (
+	"context"
+	"crypto/x509"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/erkanrzgc/kadran/internal/bootstrap"
+	"github.com/erkanrzgc/kadran/internal/client"
+	"github.com/erkanrzgc/kadran/internal/domaincheck"
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+	"github.com/erkanrzgc/kadran/internal/servers"
+	"github.com/erkanrzgc/kadran/internal/version"
+)
+
+// Çıkış kodları. Betikler ve cron bunlara bakar.
+const (
+	ExitOK    = 0
+	ExitError = 1
+	ExitUsage = 2
+
+	// ExitChainInvalid, denetim zincirinin KIRIK olduğunu bildirir.
+	//
+	// "Doğrulanamadı"dan (ExitError) ayrı bir kod olması kasıtlıdır:
+	// cron'a konulan bir `kadran audit verify`, executor'ın kapalı
+	// olduğu durumla kurcalama şüphesini karıştırmamalı.
+	ExitChainInvalid = 3
+)
+
+// defaultTimeout, tek bir komutun tamamlanması için tanınan süre.
+//
+// SSH el sıkışması yavaş bir ağda birkaç saniye sürebilir; ssh'ın kendi
+// ConnectTimeout'u 10 saniye. 30 saniye ikisini de kapsar ve donmuş bir
+// komutun süresiz asılı kalmasını engeller.
+const defaultTimeout = 30 * time.Second
+
+// cli, giriş/çıkış akışlarını taşır. Testlerin çıktıyı yakalayabilmesi
+// için os.Stdout'a doğrudan yazılmıyor.
+// progName, iş istasyonu aracının adı: hata öneki, kullanım ve sürüm
+// satırı. Sunucu tarafının adları (kadrand, kadran-client, ...) v0.4.0'da
+// aynı ada geçti (K-136).
+const progName = "kadran"
+
+type cli struct {
+	stdin  io.Reader
+	stdout io.Writer
+	stderr io.Writer
+
+	// Testlerin değiştirdiği bağımlılıklar; nil ise gerçekleri kullanılır.
+	resolver    domaincheck.Resolver
+	sshHostname func(ctx context.Context, host string) (string, error)
+	dial        func(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error)
+	// `domain check`: alan adının portlarına bağlanma ve güvenilen kökler
+	// (nil: sistemin kökleri).
+	dialNet  func(ctx context.Context, network, addr string) (net.Conn, error)
+	tlsRoots *x509.CertPool
+	// K-151: NS sorgusu ve yetkili DNS sorgusu. resolver bir test
+	// sahtesiyken bunlar nil ise AĞA ÇIKILMAZ (dnsChecker).
+	nsResolver domaincheck.NSResolver
+	exchange   domaincheck.Exchanger
+	// `domain check`: kayıt firması (RDAP, K-151). resolver test sahtesiyken
+	// rdapClient nil ise sorgu yapılmaz.
+	rdapClient    *http.Client
+	rdapBootstrap string
+	// `domain check -wait`: bekleme (nil: gerçek zamanlayıcı).
+	sleep func(ctx context.Context, d time.Duration) error
+	// `github connect`: yerel saat (nil: time.Now).
+	now func() time.Time
+	// `key`: sunucudaki anahtar işlemleri (nil: gerçek ssh).
+	keys keyManager
+	// TOTP oturum jetonları (Dir boş: kullanıcının yapılandırma dizini).
+	sessions client.SessionStore
+	// Kayıtlı sunucu listesi (Path boş: kullanıcının yapılandırma dizini).
+	servers servers.Store
+	// `totp reset`: root yolundan sıfırlama (nil: gerçek ssh).
+	totpReset func(ctx context.Context, opts bootstrap.KeyOptions, out io.Writer) error
+
+	// target, connect'e verilen ham hedef: oturum hatasında "kadran login
+	// <hedef>" ipucu için.
+	target string
+	// serverName, `-s` ile seçilen kayıtlı sunucu (yoksa boş): ipuçları
+	// hedef yerine onu söyler. serverTarget, onun yerine konan hedef.
+	serverName   string
+	serverTarget string
+}
+
+type command struct {
+	name    string
+	args    string
+	summary string
+	run     func(c *cli, ctx context.Context, args []string) int
+}
+
+func commands() []command {
+	return []command{
+		{"status", "[target]", "shows server and daemon status", (*cli).runStatus},
+		{"app", "<create|update|list|show|delete> …", "manages app definitions", (*cli).runApp},
+		{"deploy", "<app> [target]", "builds a commit and switches traffic to it", (*cli).runDeploy},
+		{"rollback", "<app> [target]", "switches traffic back to the previous release", (*cli).runRollback},
+		{"logs", "[-f] <app> [target]", "streams the live release's output", (*cli).runLogs},
+		{"prune", "[-dry-run] <app>|-all [target]", "removes old releases' containers", (*cli).runPrune},
+		{"alarms", "[target]", "lists active fault conditions", (*cli).runAlarms},
+		{"backup", "<create|list> [target]", "takes and lists database backups", (*cli).runBackup},
+		{"domain", "check <domain> [target]", "checks a domain's DNS, ports and certificate", (*cli).runDomain},
+		{"audit", "<list|verify> [target]", "reads and verifies the audit chain", (*cli).runAudit},
+		{"server", "<add|list|rm|rename> …", "manages the saved server list", (*cli).runServer},
+		{"sidecar", "", "stdio JSON-RPC server for the desktop app", (*cli).runSidecar},
+		{"bootstrap", "root@server | -sudo user@server", "installs or upgrades the server", (*cli).runBootstrap},
+		{"github", "<connect|status|disconnect> [target]", "connects private GitHub repositories", (*cli).runGitHub},
+		{"key", "<list|add|remove> … root@server", "manages deploy-only keys", (*cli).runKey},
+		{"login", "[-recovery] [target]", "signs in with a TOTP code (when TOTP is on)", (*cli).runLogin},
+		{"logout", "[target]", "deletes the saved sign-in for a server", (*cli).runLogout},
+		{"totp", "<status|enable|disable|reset> [target]", "manages two-step sign-in", (*cli).runTotp},
+		{"version", "", "prints version information", (*cli).runVersion},
+	}
+}
+
+func (c *cli) run(ctx context.Context, args []string) int {
+	if len(args) == 0 {
+		c.usage()
+		return ExitUsage
+	}
+
+	name := args[0]
+	if name == "-h" || name == "--help" || name == "help" {
+		c.usage()
+		return ExitOK
+	}
+
+	// `-s ad` burada kayıtlı hedefe çevrilir (K-162, serverflag.go).
+	args, server, err := expandServerFlag(args, c.serverStore().Load)
+	if err != nil {
+		var sfe *serverFlagError
+		if errors.As(err, &sfe) && sfe.usage {
+			return c.usageError("%s", err)
+		}
+		return c.fail(err)
+	}
+	c.serverName = server
+	if server != "" {
+		c.serverTarget = args[len(args)-1]
+	}
+
+	for _, cmd := range commands() {
+		if cmd.name == name {
+			return cmd.run(c, ctx, args[1:])
+		}
+	}
+
+	fmt.Fprintf(c.stderr, progName+": unknown command %q\n\n", name)
+	c.usage()
+	return ExitUsage
+}
+
+func (c *cli) usage() {
+	fmt.Fprintf(c.stderr, `kadran %s — Kadran workstation tool
+
+Usage:
+  kadran <command> [options] [target]
+
+Commands:
+`, version.Version)
+
+	tw := tabwriter.NewWriter(c.stderr, 0, 0, 2, ' ', 0)
+	for _, cmd := range commands() {
+		fmt.Fprintf(tw, "  %s %s\t%s\n", cmd.name, cmd.args, cmd.summary)
+	}
+	_ = tw.Flush()
+
+	fmt.Fprintf(c.stderr, `
+Target forms:
+  (empty)                   local socket — %s
+  /path/api.sock            local socket, explicit path
+  user@server               SSH (default user: %s)
+  user@server:2222          SSH, custom port
+  server                    SSH, default user
+  -s name                   a server saved with kadran server add
+
+Exit codes:
+  %d  success
+  %d  error (could not connect, chain could not be verified)
+  %d  usage error
+  %d  audit chain BROKEN — possible tampering
+
+Options go after the command and before the target:
+  kadran audit list --limit 20 user@server
+`, client.DefaultSocketPath, client.DefaultSSHUser,
+		ExitOK, ExitError, ExitUsage, ExitChainInvalid)
+}
+
+// newFlagSet, komutlar için ortak davranışlı bir bayrak kümesi kurar.
+//
+// ContinueOnError kullanılıyor: flag paketinin varsayılanı os.Exit çağırır
+// ve bu, çıkış kodunu tek bir yerden yönetmeyi imkânsız kılardı.
+//
+// `-s` bayrak kümesinde değil, run() onu komuttan önce çıkarır (K-162); `-h`
+// yine de söylesin diye hedef alan komutların yardımına eklenir.
+func (c *cli) newFlagSet(name string) *flag.FlagSet {
+	fs := flag.NewFlagSet(name, flag.ContinueOnError)
+	fs.SetOutput(c.stderr)
+	command, _, _ := strings.Cut(name, " ")
+	fs.Usage = func() {
+		fmt.Fprintf(fs.Output(), "Usage of %s:\n", name)
+		fs.PrintDefaults()
+		if !noTargetCommands[command] {
+			fmt.Fprintln(fs.Output(), "  -s name\n    \ta server saved with `kadran server add`, instead of the target")
+		}
+	}
+	return fs
+}
+
+// connect, hedefi çözümler, bağlanır ve protokol uyumunu doğrular. Sunucu
+// TOTP istiyorsa kayıtlı oturum jetonunu bağlantıya ekler (K-155).
+func (c *cli) connect(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
+	// -s ile kayıtlı hedef sona eklendi. Komut başka bir hedefle bağlanmak
+	// istiyorsa bir konumsal argüman eksik demektir (`deploy -s gcp` gibi):
+	// kayıtlı hedef uygulama adının yerine geçmiş, hedef boş (yerel soket)
+	// kalmıştır. Hiçbir bağlantı denenmez (K-162).
+	if err := c.checkServerTarget(rawTarget); err != nil {
+		return nil, nil, err
+	}
+	c.target = rawTarget
+	conn, ping, err := c.dialTarget(ctx, rawTarget)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ping.GetTotpRequired() {
+		c.attachSession(conn, rawTarget)
+	}
+	return conn, ping, nil
+}
+
+// dialTarget, bağlanır ve protokol uyumunu doğrular.
+//
+// Protokol denetimi ilk iş olarak yapılır: uyumsuz sürümlerle konuşup
+// yarı anlaşılmış yanıtlar üretmektense hemen durmak daha güvenli.
+func (c *cli) dialTarget(ctx context.Context, rawTarget string) (*client.Client, *kadranv1.PingResponse, error) {
+	if c.dial != nil {
+		return c.dial(ctx, rawTarget)
+	}
+	target, err := client.ParseTarget(rawTarget)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !target.IsLocal() && !client.SSHAvailable() {
+		return nil, nil, errors.New(
+			"`ssh` not found — the OpenSSH client is needed to reach a remote server")
+	}
+
+	conn, err := client.Dial(target)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ping, err := conn.CheckProtocol(ctx)
+	if err != nil {
+		_ = conn.Close()
+		return nil, nil, err
+	}
+	return conn, ping, nil
+}
+
+// fail, hatayı stderr'e yazar ve hata çıkış kodu döndürür. Oturum
+// hatasında (TOTP) ne yazılacağını da söyler; sunucunun kendisinde (yerel
+// soket) jeton alınamadığından orada login ipucu verilmez.
+func (c *cli) fail(err error) int {
+	fmt.Fprintln(c.stderr, progName+":", err)
+	if client.IsSessionError(err) {
+		if hint := c.loginHint(); hint != "" {
+			fmt.Fprintf(c.stderr, "  run: %s\n", hint)
+		}
+	}
+	return ExitError
+}
+
+// loginHint, oturum hatasında yazılacak giriş komutu (yoksa boş). -s ile
+// gelindiyse aynı adla; ad kabukta güvenle yazılamıyorsa kayıtlı hedefle.
+func (c *cli) loginHint() string {
+	if c.serverName != "" {
+		if name, ok := shellName(c.serverName); ok {
+			return progName + " login -s " + name
+		}
+		if plainTarget(c.serverTarget) {
+			return progName + " login " + c.serverTarget
+		}
+		return ""
+	}
+	if t, err := client.ParseTarget(c.target); err == nil && !t.IsLocal() {
+		return progName + " login " + c.target
+	}
+	return ""
+}
+
+// usageError, kullanım hatasını bildirir.
+func (c *cli) usageError(format string, args ...any) int {
+	fmt.Fprintf(c.stderr, progName+": "+format+"\n", args...)
+	return ExitUsage
+}
+
+// argCountError, konumsal argüman sayısı yanlışken kullanım hatası. -s ile
+// çağrıldıysa en olası sebebi de söyler: kayıtlı hedef sona eklendiği için
+// ayrıca yazılan hedef fazladan argüman olur. Not başka kullanım hatalarında
+// (bilinmeyen alt komut, geçersiz bayrak) yanıltırdı; orada usageError.
+func (c *cli) argCountError(format string, args ...any) int {
+	c.usageError(format, args...)
+	if c.serverName != "" {
+		shown, _ := shellName(c.serverName)
+		fmt.Fprintf(c.stderr, "  note: -s %s already names the server; do not also give a target\n", shown)
+	}
+	return ExitUsage
+}
+
+func (c *cli) runVersion(_ context.Context, args []string) int {
+	if len(args) > 0 {
+		return c.usageError("`version` takes no arguments")
+	}
+	fmt.Fprintf(c.stdout, progName+" %s (%s)\nprotocol %d\n",
+		version.Version, version.Commit, version.Protocol)
+	for _, b := range []struct{ arch, sum string }{
+		{"amd64", version.ServerSHA256Amd64},
+		{"arm64", version.ServerSHA256Arm64},
+	} {
+		if b.sum != "" {
+			fmt.Fprintf(c.stdout, "server bundle linux/%s sha256 %s\n", b.arch, b.sum)
+		}
+	}
+	return ExitOK
+}
+
+// runBootstrap, sunucuyu kurar ya da yükseltir.
+//
+// Root yetkisi isteyen TEK komut bu. Yetki ya root'a SSH ile ya da -sudo
+// kipinde hedef kullanıcının PAROLASIZ sudo'suyla alınıyor (K-122); ikinci
+// yol, root'a SSH'ı kapalı getiren bulut imajları için. Kurulumdan sonra
+// günlük kullanım yetkisiz `kadran-client` üzerinden yürür.
+func (c *cli) runBootstrap(ctx context.Context, args []string) int {
+	fs := c.newFlagSet("bootstrap")
+	binaryDir := fs.String("binaries", defaultBinaryDir(),
+		"install the linux binaries from this directory instead of the release")
+	repoRoot := fs.String("repo", ".",
+		"read the systemd units from this repository root instead of the release")
+	clientKey := fs.String("client-key", defaultClientKey(), "PUBLIC key to authorize on the server")
+	// 30 dakika: kurulum paketi ~75 MiB. Taze sunucu testinde (K-112)
+	// aynı ev hattından bir koşu 5 dakikada yalnızca 28 MB gönderdi ve 10
+	// dakikalık eski sınır kurulumu yükleme bitmeden kesti; aynı gün başka
+	// bir koşu yüklemeyi bir dakikadan kısa sürede bitirdi.
+	timeout := fs.Duration("timeout", 30*time.Minute, "overall time limit")
+	sudo := fs.Bool("sudo", false,
+		"install through the target user's PASSWORDLESS sudo instead of SSH as root (never asks for a password)")
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() != 1 {
+		return c.argCountError("usage: kadran bootstrap [options] root@server  |  kadran bootstrap -sudo user@server")
+	}
+	if err := c.checkServerTarget(fs.Arg(0)); err != nil {
+		return c.fail(err)
+	}
+
+	target, err := client.ParseTarget(fs.Arg(0))
+	if err != nil {
+		return c.fail(err)
+	}
+	if target.IsLocal() {
+		return c.usageError("`bootstrap` needs a remote target, not a local socket")
+	}
+	if !client.SSHAvailable() {
+		return c.fail(errors.New("`ssh` not found — the OpenSSH client is required"))
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, *timeout)
+	defer cancel()
+
+	fmt.Fprintf(c.stdout, "Kadran install — %s\n", target.String())
+	fmt.Fprintln(c.stdout,
+		"No password or private key is asked for; `ssh` does the authentication.")
+
+	explicit := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	var release *bootstrap.Release
+	if useRelease(version.Version, explicit, os.Getenv("KADRAN_BINARY_DIR")) {
+		base := os.Getenv("KADRAN_RELEASE_BASE")
+		if base == "" {
+			base = bootstrap.DefaultReleaseBase
+		}
+		release = &bootstrap.Release{
+			Version: version.Version,
+			BaseURL: base,
+			SHA256:  map[string]string{"amd64": version.ServerSHA256Amd64, "arm64": version.ServerSHA256Arm64},
+		}
+	}
+
+	err = bootstrap.Run(ctx, bootstrap.Options{
+		Host:          target.SSHUser + "@" + target.SSHHost,
+		Port:          target.SSHPort,
+		BinaryDir:     *binaryDir,
+		RepoRoot:      *repoRoot,
+		ClientKeyPath: *clientKey,
+		Sudo:          *sudo,
+		Release:       release,
+		Stdout:        c.stdout,
+		Stderr:        c.stderr,
+	})
+	if err != nil {
+		return c.fail(err)
+	}
+
+	fmt.Fprintf(c.stdout, "\nTo verify:\n  %s\n", verifyHint(c.serverName, target.SSHHost))
+	return ExitOK
+}
+
+// verifyHint, kurulumdan sonraki doğrulama komutu: -s ile kurulduysa aynı adla
+// (kayıtlı istemci hedefi, portu da bilir), yoksa kadran-client@sunucu.
+func verifyHint(serverName, host string) string {
+	if serverName != "" {
+		if name, ok := shellName(serverName); ok {
+			return progName + " status -s " + name
+		}
+	}
+	return fmt.Sprintf("%s status %s@%s", progName, client.DefaultSSHUser, host)
+}
+
+// useRelease, bootstrap'ın sunucu dosyalarını istemcinin kendi sürümünün
+// yayınından alıp almayacağını söyler (K-159). Geliştirme derlemesinin yayını
+// yok; yerel dosya isteyen kullanıcı (-binaries, -repo, KADRAN_BINARY_DIR)
+// da eski yolda kalır.
+func useRelease(ver string, explicit map[string]bool, binaryDirEnv string) bool {
+	return ver != "dev" && !explicit["binaries"] && !explicit["repo"] && binaryDirEnv == ""
+}
+
+// defaultBinaryDir, derlenmiş linux binary'lerinin varsayılan yeri.
+func defaultBinaryDir() string {
+	if dir := os.Getenv("KADRAN_BINARY_DIR"); dir != "" {
+		return dir
+	}
+	return "bin"
+}
+
+// defaultClientKey, iş istasyonunun varsayılan açık anahtarı.
+func defaultClientKey() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".ssh", "id_ed25519.pub")
+}

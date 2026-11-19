@@ -1,0 +1,1 @@
+kadran: usage: kadran deploy [-commit sha | -branch branch] <app> [target] — options go BEFORE the app name

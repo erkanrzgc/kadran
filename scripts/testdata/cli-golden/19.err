@@ -1,0 +1,5 @@
+Usage of login:
+  -recovery
+    	sign in with a recovery code instead of a TOTP code
+  -s name
+    	a server saved with `kadran server add`, instead of the target

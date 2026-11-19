@@ -1,0 +1,7 @@
+Usage of status:
+  -json
+    	machine-readable JSON output
+  -timeout duration
+    	overall time limit (default 30s)
+  -s name
+    	a server saved with `kadran server add`, instead of the target

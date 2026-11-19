@@ -18,7 +18,7 @@ import (
 // yöntemleri birebir aynı olmalı; yeni bir yöntem bilinçli eklenir.
 var Whitelist = []string{
 	"AddServer", "AlarmsList", "AppCreate", "AppDelete", "AppDeploy", "AppGet", "AppLogs", "AppRollback", "AppUpdate", "AppsList",
-	"AuditList", "AuditVerify", "BackupCreate", "BackupsList", "CopyText", "GitHubConnect", "GitHubDisconnect", "GitHubStatus", "ListServers", "LoadAppearance", "OpenGitHub", "RemoveServer",
+	"AuditList", "AuditVerify", "BackupCreate", "BackupsList", "ConsoleCancel", "ConsoleComplete", "ConsoleInput", "ConsoleRun", "ConsoleSetAdmin", "ConsoleState", "CopyText", "GitHubConnect", "GitHubDisconnect", "GitHubStatus", "ListServers", "LoadAppearance", "OpenGitHub", "RemoveServer",
 	"ResourceUsage", "SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
 }
 

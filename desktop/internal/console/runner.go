@@ -93,8 +93,10 @@ var (
 // ise time.Now; Language nil ise İngilizce; Conns nil ise CLI'ın kendi
 // bağlantısı kullanılır.
 type RunnerDeps struct {
-	Run      func(context.Context, []string, cli.Env) int
-	Confirm  func(confirm.Box) (bool, error)
+	Run     func(context.Context, []string, cli.Env) int
+	Confirm func(confirm.Box) (bool, error)
+	// Emit, çıktı birleştirici kilidini TUTARKEN çağrılır: engellenmemeli ve
+	// Runner'a geri çağrı yapmamalı.
 	Emit     func(Event)
 	Conns    *Conns
 	History  History

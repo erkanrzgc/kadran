@@ -22,6 +22,7 @@ import (
 
 	"github.com/erkanrzgc/kadran/desktop/internal/appearance"
 	"github.com/erkanrzgc/kadran/desktop/internal/confirm"
+	"github.com/erkanrzgc/kadran/desktop/internal/console"
 	"github.com/erkanrzgc/kadran/desktop/internal/guard"
 	"github.com/erkanrzgc/kadran/desktop/internal/redact"
 	"github.com/erkanrzgc/kadran/internal/sidecar"
@@ -58,6 +59,9 @@ type Deps struct {
 	// Fixture, yalnız duman testi ikilisinde true: fake@test hedefinde onay
 	// kutusu atlanır. Dağıtılan ikilide hep false (smoke etiketi).
 	Fixture bool
+	// Console, konsolun çalıştırıcısı. Onayı yalnız Host.Confirm'dür; Fixture
+	// konsolun kutusunu ATLATMAZ. nil ise konsol yöntemleri hata döner.
+	Console *console.Runner
 	Warn    func(message string)
 	// Now, saat kaynağı (OpenGitHub debounce'u); nil ise time.Now. Testler sahte verir.
 	Now func() time.Time

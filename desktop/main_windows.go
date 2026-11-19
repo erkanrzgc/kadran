@@ -85,12 +85,14 @@ func run() error {
 	dispatcher := newDispatcher(warn)
 	defer dispatcher.Close()
 	h := &host{warn: warn, material: material, look: look}
+	runner := newConsoleRunner(userData, settings, h)
 	b := bridge.New(bridge.Deps{
 		Dispatcher: dispatcher,
 		Host:       h,
 		Settings:   settings,
 		Material:   func() appearance.Material { return material },
 		Fixture:    smokeBuild,
+		Console:    runner,
 		Warn:       warn,
 	})
 
@@ -105,6 +107,7 @@ func run() error {
 		BackgroundColour: &options.RGBA{R: bg.R, G: bg.G, B: bg.B, A: bg.A},
 		AssetServer:      &assetserver.Options{Assets: front, Middleware: func(next http.Handler) http.Handler { return headers.Middleware(smokeMiddleware(next)) }},
 		OnStartup:        h.startup,
+		OnShutdown:       func(context.Context) { runner.Shutdown() },
 		OnDomReady: func(ctx context.Context) {
 			h.domReady(ctx)
 			startSmoke(ctx, h)

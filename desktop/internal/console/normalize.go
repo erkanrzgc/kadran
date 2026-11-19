@@ -9,7 +9,7 @@ import (
 
 // Sunucu bağlamı hataları.
 var (
-	ErrOtherServer = errors.New("the console runs on the selected server only: remove -s or pick that server")
+	ErrOtherServer = errors.New("the console runs on the selected server only: switch servers with `use <name>` or remove -s")
 	ErrTarget      = errors.New("the console targets the selected server only: ssh targets and socket paths are not accepted")
 )
 

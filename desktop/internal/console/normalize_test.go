@@ -3,6 +3,7 @@ package console
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/erkanrzgc/kadran/internal/cli"
@@ -44,6 +45,13 @@ func TestNormalize(t *testing.T) {
 				t.Errorf("girdi değişti: %q", c.in)
 			}
 		})
+	}
+}
+
+func TestOtherServerErrorPointsToUse(t *testing.T) {
+	_, err := Normalize([]string{"deploy", "-s", "gcp", "web"}, "hetzner")
+	if !errors.Is(err, ErrOtherServer) || !strings.Contains(err.Error(), "use <name>") {
+		t.Errorf("hata use <name> göstermiyor: %v", err)
 	}
 }
 

@@ -466,7 +466,7 @@ func dialSSHWith(ctx context.Context, t Target, opts DialOptions) (net.Conn, err
 	}
 	cmd := exec.Command(sshCommand, args...) //nolint:noctx // gerekçe yukarıda
 	if opts.HideConsole {
-		hideConsole(cmd)
+		HideConsole(cmd)
 	}
 	// ssh ölüp stderr'i açık tutan bir alt süreç bırakırsa (ör.
 	// ControlPersist ustası) Wait, stderr kopyasını o süreç bitene kadar

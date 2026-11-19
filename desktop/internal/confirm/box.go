@@ -74,6 +74,59 @@ func Build(language Language, req Request) Box {
 	}
 }
 
+// ConsoleRequest, konsoldan çalıştırılacak bir komutun onay bilgisi.
+//   - Line arıtılmış satırdır (-env değerleri ***), eklenen -s olmadan.
+//   - Admin root hedefidir (root@… ya da -sudo kullanıcı@…); root dışında boş.
+//   - Effect, komut yoluna göre ConsoleEffect'ten gelir.
+//
+// Line boşsa kutu bir konsol ayarı içindir (yönetici komutlarını açmak).
+type ConsoleRequest struct{ Server, Line, Effect, Admin string }
+
+// BuildConsole, konsol komutunun onay kutusunu kurar. Konsol, GUI işlemleri
+// için de bu tek biçimi kullanır (plan kararı): bayraklardan Spec/Update
+// yeniden kurmak, CLI'ın bayrak → istek çevirisini ikinci kez yazmak olurdu.
+// Ortak kalan: her değer safe'den geçer, varsayılan düğme Cancel.
+func BuildConsole(language Language, req ConsoleRequest) Box {
+	t := func(key string, p params) string { return text(language, key, p) }
+	var lines []string
+	if req.Server != "" {
+		lines = append(lines, t("line.server", params{"target": safe(req.Server)}))
+	}
+	if req.Admin != "" {
+		lines = append(lines, t("console.line.admin", params{"admin": safe(req.Admin)}))
+	}
+	if req.Line != "" {
+		lines = append(lines, t("console.line.command", params{"line": safe(req.Line)}))
+	}
+	if req.Effect != "" {
+		lines = append(lines, safe(req.Effect))
+	}
+	kind := "command"
+	if req.Line == "" {
+		kind = "setting"
+	}
+	return Box{
+		Title:   t("title", nil),
+		Message: t("console.message."+kind, params{"server": safe(req.Server)}),
+		Detail:  strings.Join(lines, "\n"),
+		Cancel:  t("cancel", nil),
+		Action:  t("console.action."+kind, nil),
+	}
+}
+
+// ConsoleEffect, konsol komutunun ne yapacağını anlatan metni döner. key,
+// komut yoludur ("deploy", "app delete"; prune'ın dry-run kipi için
+// "prune -dry-run", yönetici ayarı için "console admin"). ok false ise metin
+// yok: çalıştırıcı bunu onaysız geçiş değil, ret sayar.
+func ConsoleEffect(language Language, key string) (string, bool) {
+	table, ok := catalog[language]
+	if !ok {
+		table = en
+	}
+	v, ok := table["effect."+key]
+	return v, ok && v != ""
+}
+
 type textFunc = func(key string, p params) string
 
 func createLines(t textFunc, names func([]string) string, s *jsonv.Object) []string {

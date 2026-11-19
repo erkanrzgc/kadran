@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/erkanrzgc/kadran/desktop/internal/jsonv"
+	"github.com/erkanrzgc/kadran/internal/cli"
 )
 
 func decode(t *testing.T, raw string) *jsonv.Object {
@@ -230,5 +231,94 @@ func TestGitHubDisconnectBoxTexts(t *testing.T) {
 	hostile := Build(English, Request{Kind: KindGitHubDisconnect, Target: "h" + cp(0x202e) + "x"})
 	if strings.ContainsRune(hostile.Message, 0x202e) || !strings.Contains(hostile.Message, esc(0x202e)) {
 		t.Fatalf("%q", hostile.Message)
+	}
+}
+
+// consoleEffectKeys, onaylı sınıflardaki (değiştirme, tehlikeli, root) her
+// yaprağın yolunu cli.Commands()'tan toplar; yeni bir komut etkisi yazılmadan
+// eklenirse liste büyür ve test düşer. Ağacın göstermediği iki anahtar
+// (prune'ın dry-run kipi ve yönetici ayarı) elle eklenir.
+func consoleEffectKeys() []string {
+	keys := []string{"prune -dry-run", "console admin"}
+	var walk func(prefix []string, cmds []cli.Command)
+	walk = func(prefix []string, cmds []cli.Command) {
+		for _, c := range cmds {
+			path := append(slices.Clone(prefix), c.Name)
+			if len(c.Subs) > 0 {
+				walk(path, c.Subs)
+				continue
+			}
+			switch c.Class {
+			case cli.ClassChange, cli.ClassDanger, cli.ClassRoot:
+				keys = append(keys, strings.Join(path, " "))
+			}
+		}
+	}
+	walk(nil, cli.Commands())
+	return keys
+}
+
+func TestBuildConsoleEffectsComplete(t *testing.T) {
+	keys := consoleEffectKeys()
+	// 5 değiştirme yaprağı + prune -dry-run, 6 tehlikeli, 4 root, 1 ayar.
+	if len(keys) < 17 {
+		t.Fatalf("yalnız %d anahtar: %v", len(keys), keys)
+	}
+	for _, key := range keys {
+		enText, enOK := ConsoleEffect(English, key)
+		trText, trOK := ConsoleEffect(Turkish, key)
+		if !enOK || !trOK || enText == "" || trText == "" {
+			t.Errorf("%q: etki metni eksik (en %v, tr %v)", key, enOK, trOK)
+			continue
+		}
+		if enText == trText {
+			t.Errorf("%q: çevrilmemiş", key)
+		}
+		// safe ortadan keserdi: etki cümlesi kutuda yarım görünmesin.
+		if units(enText) > maxValueChars || units(trText) > maxValueChars {
+			t.Errorf("%q: etki metni %d karakterden uzun", key, maxValueChars)
+		}
+	}
+	if _, ok := ConsoleEffect(English, "status"); ok {
+		t.Error("okuma komutunun etki metni olmamalı")
+	}
+}
+
+func TestBuildConsoleShowsFieldsSafely(t *testing.T) {
+	req := ConsoleRequest{Server: "hetzner", Line: "deploy web" + cp(0x202e), Effect: "E.", Admin: "-sudo ops@h"}
+	box := BuildConsole(English, req)
+	for _, want := range []string{"Server: hetzner", "Admin target: -sudo ops@h", "Command: deploy web" + esc(0x202e), "E."} {
+		if !strings.Contains(box.Detail, want) {
+			t.Errorf("%q yok:\n%s", want, box.Detail)
+		}
+	}
+	if strings.ContainsRune(box.Detail+box.Message, 0x202e) {
+		t.Fatal("bidi karakteri kutuya girdi")
+	}
+	if box.Cancel != "Cancel" || box.Action == "" || !strings.Contains(box.Message, "hetzner") {
+		t.Fatalf("%+v", box)
+	}
+	trBox := BuildConsole(Turkish, req)
+	if trBox.Cancel != "Vazgeç" || !strings.Contains(trBox.Detail, "Sunucu: hetzner") || trBox.Action == box.Action {
+		t.Fatalf("%+v", trBox)
+	}
+	long := BuildConsole(English, ConsoleRequest{Server: "s", Line: strings.Repeat("a", 500) + " web", Effect: "E."})
+	if !strings.Contains(long.Detail, string(rune(ellipsis))) || !strings.Contains(long.Detail, "a web") {
+		t.Fatalf("uzun satır ortadan kesilmeli: %q", long.Detail)
+	}
+	noAdmin := BuildConsole(English, ConsoleRequest{Server: "s", Line: "deploy web", Effect: "E."})
+	if strings.Contains(noAdmin.Detail, "Admin target") {
+		t.Fatalf("root olmayan kutuda yönetici hedefi: %q", noAdmin.Detail)
+	}
+}
+
+func TestBuildConsoleSettingBox(t *testing.T) {
+	effect, _ := ConsoleEffect(English, "console admin")
+	box := BuildConsole(English, ConsoleRequest{Effect: effect})
+	if strings.Contains(box.Detail, "Server:") || strings.Contains(box.Detail, "Command:") {
+		t.Fatalf("ayar kutusunda sunucu/komut satırı: %q", box.Detail)
+	}
+	if !strings.Contains(box.Detail, effect) || box.Message == "" || box.Cancel != "Cancel" {
+		t.Fatalf("%+v", box)
 	}
 }

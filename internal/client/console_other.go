@@ -4,5 +4,5 @@ package client
 
 import "os/exec"
 
-// hideConsole, Windows dışında bir şey yapmaz: konsol penceresi kavramı yok.
-func hideConsole(*exec.Cmd) {}
+// HideConsole, Windows dışında bir şey yapmaz: konsol penceresi kavramı yok.
+func HideConsole(*exec.Cmd) {}

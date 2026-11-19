@@ -12902,7 +12902,7 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
   - `systemd-resolved` ve 127.0.0.53 saplaması yalnız özel depolar için gerekir. Yoksa ve `kadran-git` hiç kurulmamışsa kurulum uyarır, aracıyı atlar (kullanıcı, birim, soket yok) ve uyarıyı özette yineler; herkese açık depolar çalışır. `kadran-git` birimleri zaten varsa durur ve iki yolu söyler (resolved'ı başlat ya da birimleri kaldır). Spec'teki "yalnız engelli çözücüde dur" koşulundan sapma: birim saplamayı `-`'sız bağlıyor, resolved'sız hiç başlamaz;
   - `kadran-exec` drop-in'inde `--git-credentials` yok;
   - `kadran-exec` drop-in'inde K-146'nın ağ satırları yok (`AF_INET`/`AF_INET6` adlı `RestrictAddressFamilies=`, `IPAddressDeny=`, `IPAddressAllow=`): yürütücü artık ağa çıkmıyor. Canlıdaki yalnız `ExecStart` + `--allow-repo` drop-in'i geçer.
-- **Canlı açık işler (Görev 14, her adım ayrı onay):**
+- **Canlı adımların planı (Görev 14, her adım ayrı onay; yapılanlar aşağıda "Canlı"da):**
   - yükseltmeden ÖNCE iki sunucuda `systemd-resolved` çalışıyor mu ve `/run/systemd/resolve/stub-resolv.conf` içinde `nameserver 127.0.0.53` var mı, doğrula;
   - `kadran-exec` drop-in'inde kalmış `--git-credentials` ya da K-146 ağ satırları varsa kaldır;
   - özel deneme deposunu, denendiği sunucudaki `--allow-repo` drop-in'ine ekle: `--allow-repo` artık özel derlemeleri de sınırlıyor, listede yoksa derleme reddedilir;
@@ -12912,6 +12912,59 @@ kapalı, cihaz akışı açık, 8 saatlik jeton etkin, "Any account". Özel anah
   - ölçülmedi: kapsam dışı bir depoda `ghu_` jetonunun 403 mü 404 mü aldığı (karar bu yüzden ona bağlı değil); App sayfası "özel anahtar üret" dese de kurulum sayfasının anahtarsız açılması gerçek kurulumda doğrulanacak;
   - ayrı iş: `kadran-offsite` aynı link-local engelini taşıyor, GCP'de DNS'e takılabilir (K-168 ile stub bağı eklendi, main'de);
   - mutasyon süre tablosu (`SURELER`): `mutate-github.sh` (333 sn), `mutate-install.sh` (72 sn) ve masaüstü (517 sn) yerel ölçüm; CI'dan yeni tablo alınınca `check-mutation-shard.sh`'taki "en uzun beş" listesi de yeniden çıkarılmalı (`mutate-github.sh` 278 sn'nin altına inerse liste yeniden `totp` olur).
+
+**Canlı (18-19 Kasım, saatler TR, kullanıcı onayıyla, her adım ayrı onay):** iki sunucu da v0.13.0'da,
+ikisi de GitHub'a bağlı ve özel depodan dağıtıyor. Yükseltmeler boş bir dizinden yayın istemcisiyle
+yapıldı: paket GitHub'dan indi, gömülü özetle doğrulandı, kurulum sonu denetimlerinin hepsi geçti.
+Kesinti iki ayrı noktadan 0,5 sn arayla yoklanarak ölçüldü.
+- **Ön denetim:** iki sunucuda `systemd-resolved` çalışıyor, stub `127.0.0.53`; `kadran-exec`
+  drop-in'lerinde `--git-credentials` ve K-146 ağ satırı yok; hostta git kimlik dosyası yok.
+- **Hetzner yükseltme** (18 Kasım 16:52, `bootstrap root@`, 32 sn): ters vekil değişmedi, yeniden
+  başlamadı; kadrand yeniden başladı, rotalar aynı anda geri yazıldı. Kesinti yok: bu bilgisayardan
+  264, GCP'den 358 istek, hiçbiri başarısız değil. `kadran-git` soketleri etkin, servis ilk
+  bağlantıya kadar kapalı; soket izinleri Görev 13'teki gibi.
+- **Herkese açık uygulamalar yeniden dağıtıldı** (18:31-18:32): `portfolio` r14, `web` r5,
+  `pfprobe` r9; commit ve imajlar aynı, denetim kaydında `context_source=public`. Kesinti yok.
+- **Hetzner yeniden başlatma** (20:43, çekirdek 6.8.0-147 → 149): kesinti ~42 sn.
+- **Özel depo, Hetzner** (21:21-21:28): deneme için ayrı özel depo açıldı,
+  `erkanrzgc/kadran-ozel-deneme` (nginx-unprivileged, port 8080). Kullanıcının çalıştığı bir projeyi
+  deneme hedefi yapmak yanlıştı; ilk seçilen oydu, değiştirildi. Uygulama "Only select repositories"
+  ile yalnız bu depoya kuruldu; kurulum sayfası özel anahtarsız açıldı. Depo `--allow-repo`
+  drop-in'ine eklendi (eski hali yedeklendi), `kadran-exec` yeniden başladı. `kadran github connect`
+  kodu kullanıcı girdi. `ozel-deneme` (iç ağ, 128Mi) r1: "resolved through the GitHub app",
+  `image.build` kaydında `context_source=github-app`, açık uygulamalar `public` kaldı.
+- **GCP** (21:53-22:16): yükseltme (`bootstrap -sudo`, 2 dk 3 sn) kesintisiz. 3 Ekim'den kalan uzak
+  yedek deneme kurulumu (yapılandırma, ölçüm drop-in'i, 81 eski şifreli kopya) silindi; yeniden
+  başlatma (çekirdek 6.12.115 → 117) ~85 sn kesinti. Sonra drop-in, bağlantı (22:15) ve
+  `ozel-deneme` r1, Hetzner'deki gibi `github-app`.
+- **Jeton izi yok** (her dağıtımdan sonra, iki sunucuda): `ghu_`/`ghr_`/`ghs_` deseni yürütücü
+  zincirinde, daemon zincirinde, bu açılışın journal'ında, imaj geçmişinde ve `docker inspect`'te 0;
+  `/tmp`'de arşiv artığı 0; `/var/lib/kadran-git` kadran-git 700. Durum dizininin içine bakılmadı.
+- **8 saatlik yenileme** (19 Kasım): erişim jetonunun bitiminden sonra, bağlantıdan 16-17 saat
+  sonra. Jeton ilk kullanımda yenilendi (bitimine 5 dk'dan az kaldıysa, `internal/github/token.go`).
+  Kanıt, dizinin içine bakmadan: durum dosyası geçici adla yazılıp yeniden adlandırıldığı için
+  `/var/lib/kadran-git`'in kendi değişiklik saati son kaydı gösterir. Hetzner'de bu saat 14:23:49,
+  `deploy` komutunun başladığı an. GCP'de 14:16:22, girişten sonraki ilk `github status` çağrısı
+  (depo sayısı GitHub'dan okunuyor). Ardından iki sunucuda `deploy ozel-deneme` r2: "resolved through
+  the GitHub app", `context_source=github-app`, sayfa doğru, jeton taraması yine 0. `kadran-git`
+  bağlantıdan beri yeniden başlamadı (NRestarts 0), günlüğünde yalnız "ready" satırı var: yenileme
+  uyarısı yok.
+- **Bulgular:**
+  - Açılışta kadrand konteynerlerden önce kalkıyor: iki sunucuda da `proxy_unreconciled` alarmı açılıp
+    rotalar yeniden yüklenince ~10 sn içinde kendiliğinden kapandı. Gürültü; ayrı iş.
+  - Masaüstü TOTP oturumu olmayan sunucuyu ~30 sn'de bir yokluyor (GCP'de 5 saatte 3528 reddedilen
+    istek). `Unauthenticated` gelince durup "giriş yap" demeli; ayrı iş.
+  - Bağlantı beklerken `kadran github status` cihaz kodunu yazdırıyor (tasarım gereği, kullanıcı
+    görmeli). Ekran paylaşılırken ya da çıktı kaydedilirken dikkat; bir kez kayda düştü, 15 dk sonra
+    geçersiz oldu.
+  - `install.sh` ön denetimi drop-in'de `--git-credentials` metnini yorum satırlarında da arıyor;
+    açıklamaya bu kelime yazılırsa yükseltme durur.
+- **Ölçülmedi:**
+  - Canlıda yeniden başlatmadan sonra bağlantının sürmesi: iki yeniden başlatma da bağlantıdan önceydi.
+    Görev 13'te WSL'de dağıtım kapanıp açılınca sürmüştü.
+  - Kapsam dışı depoda `ghu_` jetonunun 403 mü 404 mü aldığı (karar buna bağlı değil).
+- **Sunucularda kalanlar:** `ozel-deneme` uygulaması ve drop-in'deki `erkanrzgc/kadran-ozel-deneme`
+  satırı iki sunucuda duruyor; kullanıcı isterse kaldırılır.
 
 ## K-168 — Uzak yedek GCP'de DNS'e takılır mı: bugünkü rclone ile hayır; stub bağı eklendi (2026-11-12)
 

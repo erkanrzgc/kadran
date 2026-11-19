@@ -232,6 +232,10 @@ type Client struct {
 
 	mu      sync.Mutex
 	session string // TOTP oturum jetonu; boşsa metadata eklenmez
+
+	// owner doluysa bu bir paylaşılan tutamaçtır (Shared): bağlantı ve oturum
+	// sahibe aittir, Close hiçbir şey yapmaz.
+	owner *Client
 }
 
 // Dial, hedefe bağlanır.
@@ -261,6 +265,25 @@ func DialWith(target Target, opts DialOptions) (*Client, error) {
 	return dialWith(target, dialer)
 }
 
+// DialWithDialer, verilen bağlantı kurucuyla bir istemci kurar. Yalnız testler
+// ve masaüstü smoke ikilisi içindir; üretim kodu Dial/DialWith kullanır.
+func DialWithDialer(target Target, dialer func(context.Context, string) (net.Conn, error)) (*Client, error) {
+	return dialWith(target, dialer)
+}
+
+// Shared, aynı bağlantıya ikinci bir tutamaç döner. Close hiçbir şey yapmaz;
+// SetSession/Session/RPC/Target sahibe gider. Paylaşılan tutamacın Shared
+// çağrısı yine aynı sahibi gösterir (zincir yok).
+func (c *Client) Shared() *Client {
+	owner := c
+	if c.owner != nil {
+		owner = c.owner
+	}
+	// rpc/target/conn dialWith sonrası değişmez; kopyalamak, c.rpc'yi doğrudan
+	// kullanan metotların (CheckProtocol...) tutamaçta da çalışmasını sağlar.
+	return &Client{owner: owner, conn: owner.conn, rpc: owner.rpc, target: owner.target}
+}
+
 // dialWith, verilen bağlantı kurucuyla bir istemci kurar. Önleyiciler
 // SetSession'la ayarlanan jetonu her çağrıya ekler.
 func dialWith(target Target, dialer func(context.Context, string) (net.Conn, error)) (*Client, error) {
@@ -281,6 +304,9 @@ func dialWith(target Target, dialer func(context.Context, string) (net.Conn, err
 
 // Close, bağlantıyı ve varsa SSH alt sürecini kapatır.
 func (c *Client) Close() error {
+	if c.owner != nil {
+		return nil
+	}
 	if c.conn == nil {
 		return nil
 	}
@@ -292,10 +318,20 @@ func (c *Client) Close() error {
 func NewWithRPC(rpc kadranv1.KadranServiceClient) *Client { return &Client{rpc: rpc} }
 
 // Target, bağlanılan hedefi döndürür.
-func (c *Client) Target() Target { return c.target }
+func (c *Client) Target() Target {
+	if c.owner != nil {
+		return c.owner.target
+	}
+	return c.target
+}
 
 // RPC, alt seviye gRPC istemcisini döndürür.
-func (c *Client) RPC() kadranv1.KadranServiceClient { return c.rpc }
+func (c *Client) RPC() kadranv1.KadranServiceClient {
+	if c.owner != nil {
+		return c.owner.rpc
+	}
+	return c.rpc
+}
 
 // dialerFor, hedefe uygun bağlantı kurucuyu üretir.
 //

@@ -440,5 +440,20 @@
   "github.failure_network": "Sunucu GitHub'a ulaşamadı.",
   "github.failure_rate_limited": "GitHub istek sınırına ulaşıldı. Sonra yeniden deneyin.",
   "github.failure_internal": "Bağlantı kurulamadı.",
-  "toast.github_open_failed": "Sayfa açılamadı: {error}"
+  "toast.github_open_failed": "Sayfa açılamadı: {error}",
+  "console.title": "Konsol",
+  "console.resize": "Konsolu yeniden boyutlandır",
+  "console.close": "Konsolu kapat",
+  "console.input_label": "Konsol girdisi",
+  "console.placeholder": "Komut yaz, help hepsini listeler",
+  "console.running": "çalışıyor · Ctrl+C ile durdur",
+  "console.secret_shown": "gizli çıktı ayrı kartta gösterildi",
+  "console.card_title": "Gizli çıktı",
+  "console.card_hint": "Yalnız burada görünür. Kaydedilmez, kopyalanmaz, günlüğe yazılmaz.",
+  "console.card_saved": "Kaydettim",
+  "settings.console": "Konsol",
+  "settings.console_admin": "Konsolda yönetici komutları",
+  "settings.console_admin_hint": "Varsayılan kapalı. Açmak ayrı bir pencerede onay ister.",
+  "settings.console_off": "Kapalı",
+  "settings.console_on": "Açık"
 }

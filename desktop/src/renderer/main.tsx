@@ -17,6 +17,7 @@ import "./styles/layout.css";
 import "./styles/screens.css";
 import "./styles/management.css";
 import "./styles/resources.css";
+import "./styles/console.css";
 
 /** Dil görünüm ayarlarından geliyor; sağlayıcı onun içinde. */
 function Localized() {

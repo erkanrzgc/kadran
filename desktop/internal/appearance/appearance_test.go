@@ -23,9 +23,35 @@ func sanitize(t *testing.T, v any) Appearance {
 type m = map[string]any
 
 func TestDefaultsLightEnglish(t *testing.T) {
-	want := Appearance{Version: 2, Language: "en", Theme: "light", UIFont: Font{"", 400}, CodeFont: Font{"", 400}}
+	want := Appearance{Version: 2, Language: "en", Theme: "light", UIFont: Font{"", 400}, CodeFont: Font{"", 400}, ConsoleOpen: false, ConsoleHeight: 240}
 	if Defaults() != want {
 		t.Fatalf("%+v", Defaults())
+	}
+}
+
+func TestAppearanceConsoleDefaults(t *testing.T) {
+	d := Defaults()
+	if d.ConsoleOpen || d.ConsoleHeight != 240 {
+		t.Fatalf("%+v", d)
+	}
+	// Alanları olmayan sürüm-2 dosyası varsayılana döner, kalan ayarlar korunur.
+	got := sanitize(t, m{"version": 2, "theme": "dark"})
+	if got.ConsoleOpen || got.ConsoleHeight != 240 || got.Theme != "dark" {
+		t.Errorf("%+v", got)
+	}
+	if got := sanitize(t, m{"version": 2, "consoleOpen": "yes", "consoleHeight": "tall"}); got.ConsoleOpen || got.ConsoleHeight != 240 {
+		t.Errorf("metin değerler: %+v", got)
+	}
+	if got := sanitize(t, m{"version": 2, "consoleOpen": true, "consoleHeight": 300}); !got.ConsoleOpen || got.ConsoleHeight != 300 {
+		t.Errorf("geçerli değerler: %+v", got)
+	}
+}
+
+func TestAppearanceConsoleHeightClamped(t *testing.T) {
+	for in, want := range map[float64]int{50: 120, 99999: 4000, 120: 120, 4000: 4000, 300.5: 301, -5: 120} {
+		if got := sanitize(t, m{"version": 2, "consoleHeight": in}).ConsoleHeight; got != want {
+			t.Errorf("yükseklik %v → %d, beklenen %d", in, got, want)
+		}
 	}
 }
 
@@ -144,9 +170,9 @@ func TestStoreMissingDamagedAndRoundTrip(t *testing.T) {
 		t.Fatalf("%+v", saved)
 	}
 	body, _ := os.ReadFile(filepath.Join(dir, FileName))
-	want := "{\n  \"version\": 2,\n  \"language\": \"tr\",\n  \"theme\": \"light\",\n  \"uiFont\": {\n    \"family\": \"<X>\",\n    \"weight\": 900\n  },\n  \"codeFont\": {\n    \"family\": \"\",\n    \"weight\": 400\n  }\n}\n"
+	want := "{\n  \"version\": 2,\n  \"language\": \"tr\",\n  \"theme\": \"light\",\n  \"uiFont\": {\n    \"family\": \"<X>\",\n    \"weight\": 900\n  },\n  \"codeFont\": {\n    \"family\": \"\",\n    \"weight\": 400\n  },\n  \"consoleOpen\": false,\n  \"consoleHeight\": 240\n}\n"
 	if string(body) != want {
-		t.Fatalf("dosya biçimi Electron'dakinden farklı:\n%s", body)
+		t.Fatalf("dosya biçimi beklenenden farklı:\n%s", body)
 	}
 	if _, err := s.Save(json.RawMessage(`{"version":2,"language":"en"}`)); err != nil {
 		t.Fatal(err)

@@ -25,6 +25,9 @@ export interface Appearance {
   theme: Theme;
   uiFont: FontChoice;
   codeFont: FontChoice;
+  /** Konsol paneli açık mı ve yüksekliği (px); Go'da doğrulanır (120..4000). */
+  consoleOpen: boolean;
+  consoleHeight: number;
 }
 
 /**
@@ -45,5 +48,7 @@ export function defaultAppearance(): Appearance {
     theme: "light",
     uiFont: { family: "", weight: 400 },
     codeFont: { family: "", weight: 400 },
+    consoleOpen: false,
+    consoleHeight: 240,
   };
 }

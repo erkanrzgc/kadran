@@ -20,6 +20,14 @@ const Version = 2
 // MaxFontFamily, yazı tipi adının en fazla uzunluğu (UTF-16 birimi).
 const MaxFontFamily = 200
 
+// Konsol paneli yüksekliği (px): varsayılan ve doğrulama sınırları. Pencerenin
+// %70'i sınırı arayüzde uygulanır; burada yalnız kaba üst sınır var.
+const (
+	DefaultConsoleHeight = 240
+	MinConsoleHeight     = 120
+	MaxConsoleHeight     = 4000
+)
+
 var (
 	languages = []string{"en", "tr"}
 	themes    = []string{"dark", "light"}
@@ -38,6 +46,9 @@ type Appearance struct {
 	Theme    string `json:"theme"`
 	UIFont   Font   `json:"uiFont"`
 	CodeFont Font   `json:"codeFont"`
+	// ConsoleOpen ve ConsoleHeight, konsol panelinin açık/kapalı durumu ve yüksekliği.
+	ConsoleOpen   bool `json:"consoleOpen"`
+	ConsoleHeight int  `json:"consoleHeight"`
 }
 
 // Defaults, varsayılan ayarlar: İngilizce, açık tema, gömülü yazı tipleri.
@@ -48,6 +59,9 @@ func Defaults() Appearance {
 		Theme:    "light",
 		UIFont:   Font{Family: "", Weight: 400},
 		CodeFont: Font{Family: "", Weight: 400},
+
+		ConsoleOpen:   false,
+		ConsoleHeight: DefaultConsoleHeight,
 	}
 }
 
@@ -74,6 +88,15 @@ func clampWeight(v any, fallback int) int {
 	}
 	r := math.Floor(f + 0.5)
 	return int(math.Min(900, math.Max(100, r)))
+}
+
+// clampConsoleHeight: sayı değilse varsayılan; yuvarlanır, 120–4000 arasına sıkıştırılır.
+func clampConsoleHeight(v any) int {
+	f, ok := v.(float64)
+	if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+		return DefaultConsoleHeight
+	}
+	return int(math.Min(MaxConsoleHeight, math.Max(MinConsoleHeight, math.Floor(f+0.5))))
 }
 
 func font(v any, fallback Font) Font {
@@ -112,5 +135,8 @@ func Sanitize(raw json.RawMessage) Appearance {
 		Theme:    pick(o["theme"], themes, d.Theme),
 		UIFont:   font(o["uiFont"], d.UIFont),
 		CodeFont: font(o["codeFont"], d.CodeFont),
+
+		ConsoleOpen:   o["consoleOpen"] == true,
+		ConsoleHeight: clampConsoleHeight(o["consoleHeight"]),
 	}
 }

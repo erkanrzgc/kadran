@@ -6,6 +6,7 @@ import type { Profile } from "../bridge.ts";
 import { FontPicker } from "../components/FontPicker.tsx";
 import { Segmented } from "../components/Segmented.tsx";
 import { SetRow } from "../components/SetRow.tsx";
+import { useConsoleAdmin } from "../hooks/useConsoleAdmin.ts";
 import { useLanguage, useT } from "../i18n/I18nProvider.tsx";
 import { formatCount, versionLabel } from "../lib/format.ts";
 import { nearestWeight, weightsOf } from "../lib/fonts.ts";
@@ -22,6 +23,7 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
   const t = useT();
   const language = useLanguage();
   const { appearance: a, theme, glassAvailable, families, fontsListed, update, reset } = useAppearance();
+  const consoleAdmin = useConsoleAdmin();
   const names = useMemo(() => [...families.keys()].sort((x, y) => x.localeCompare(y)), [families]);
   const uiFaces = families.get(a.uiFont.family) ?? [];
   const codeFaces = families.get(a.codeFont.family) ?? [];
@@ -97,6 +99,24 @@ export function SettingsScreen({ profiles, version, onRemoveProfile }: Props) {
               ? t("font.families", { count: names.length, n: formatCount(names.length, language) })
               : t("font.unavailable")}
           </p>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head"><h2 className="section-title">{t("settings.console")}</h2></div>
+        <div className="well">
+          <SetRow title={t("settings.console_admin")} hint={t("settings.console_admin_hint")}>
+            {/* Değeri Go döndürür; okunana kadar kapalı gösterilir ve değiştirilemez. */}
+            <Segmented
+              label={t("settings.console_admin")}
+              value={consoleAdmin.admin ? "on" : "off"}
+              options={[
+                { value: "off", label: t("settings.console_off"), testId: "console-admin-off" },
+                { value: "on", label: t("settings.console_on"), testId: "console-admin-on" },
+              ]}
+              onChange={(next) => consoleAdmin.set(next === "on")}
+            />
+          </SetRow>
         </div>
       </section>
 

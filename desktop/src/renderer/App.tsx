@@ -187,15 +187,15 @@ export function App() {
     secretNote: t("console.secret_shown"),
   });
   const consoleShown = active !== null && appearance.consoleOpen;
-  const { panelClosed } = consoleApi;
+  const { setPanelOpen } = consoleApi;
   const toggleConsole = useCallback(() => {
     updateAppearance({ consoleOpen: !appearance.consoleOpen });
   }, [updateAppearance, appearance.consoleOpen]);
 
   // Gizli kart yalniz panel gorunurken yasar; kapaninca ya da sunucu ekranindan cikinca silinir.
   useEffect(() => {
-    if (!consoleShown) panelClosed();
-  }, [consoleShown, panelClosed]);
+    setPanelOpen(consoleShown);
+  }, [consoleShown, setPanelOpen]);
 
   // Ctrl+` paneli acar ve kapatir (yalniz sunucu ekranlarinda).
   useEffect(() => {

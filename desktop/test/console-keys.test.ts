@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { action, applyCompletion, type KeyLike } from "../src/renderer/lib/consoleKeys.ts";
+import { action, applyCompletion, shouldFocusPrompt, type KeyLike } from "../src/renderer/lib/consoleKeys.ts";
 import { clampHeight, DEFAULT_HEIGHT, MAX_RATIO, MIN_HEIGHT } from "../src/renderer/lib/consoleLayout.ts";
 
 const key = (init: Partial<KeyLike> & { key: string }): KeyLike => ({ ctrlKey: false, shiftKey: false, altKey: false, metaKey: false, running: false, ...init });
@@ -36,6 +36,11 @@ test("consoleKeys completion replaces the word before the cursor", () => {
   assert.deepEqual(applyCompletion("dep", 3, ["deploy", "deploy-all"]), { line: "deploy", cursor: 6, candidates: ["deploy", "deploy-all"] });
   assert.deepEqual(applyCompletion("lo web", 2, ["logs"]), { line: "logs  web", cursor: 5, candidates: [] });
   assert.deepEqual(applyCompletion("zz", 2, []), { line: "zz", cursor: 2, candidates: [] });
+});
+
+test("shouldFocusPrompt keeps the input focused while the panel is open, also while a run continues after an answer", () => {
+  assert.equal(shouldFocusPrompt(true), true);
+  assert.equal(shouldFocusPrompt(false), false);
 });
 
 test("consoleLayout clamps the panel height to 120 px .. 70% of the window", () => {

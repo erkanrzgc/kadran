@@ -19,7 +19,7 @@ import {
   begin,
   clearOutput,
   closeCard,
-  closePanel,
+  setPanelOpen,
   initialSession,
   isBusy,
   promptServer,
@@ -48,7 +48,7 @@ export interface ConsoleApi {
   complete: (cursor: number) => Promise<{ line: string; cursor: number } | null>;
   closeCard: () => void;
   /** Panel kapanırken: gizli kart kapanır, komut sürer. */
-  panelClosed: () => void;
+  setPanelOpen: (open: boolean) => void;
 }
 
 interface Options {
@@ -136,7 +136,7 @@ export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
 
   const clear = useCallback(() => update(clearOutput), []);
   const dismissCard = useCallback(() => update(closeCard), []);
-  const panelClosed = useCallback(() => update(closePanel), []);
+  const panelOpen = useCallback((open: boolean) => update((s) => setPanelOpen(s, open)), []);
   const editLine = useCallback((text: string) => setHistory((h) => edit(h, text)), []);
   const historyMove = useCallback((direction: "up" | "down") => setHistory((h) => move(h, direction)), []);
 
@@ -154,6 +154,6 @@ export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
     clear,
     complete,
     closeCard: dismissCard,
-    panelClosed,
+    setPanelOpen: panelOpen,
   };
 }

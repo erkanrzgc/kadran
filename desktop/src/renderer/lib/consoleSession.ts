@@ -34,10 +34,12 @@ export interface ConsoleSession {
   readonly input: boolean;
   /** Gizli çıktı kartı; kapalıyken null (boş dize değil). */
   readonly card: string | null;
+  /** Panel acik mi. Kapaliyken gizli cikti karta girmez (yalniz not satiri). */
+  readonly panelOpen: boolean;
 }
 
 export function initialSession(): ConsoleSession {
-  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, root: false, finished: [], input: false, card: null };
+  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, root: false, finished: [], input: false, card: null, panelOpen: false };
 }
 
 /** Çalışma var ya da başlıyor: istem kilitli, sunucu sabit. */
@@ -124,7 +126,11 @@ export function applyEvent(s: ConsoleSession, event: ConsoleEvent, secretNote: s
       const owner = claim(s, event.data.run);
       if (!owner || event.data.data === "") return s;
       // Tamponda yalnız bir not satırı; kartın metni asla.
-      const buffer = owner.card === null ? append(owner.buffer, "note", `${secretNote}\n`) : owner.buffer;
+      const last = owner.buffer.lines[owner.buffer.lines.length - 1];
+      const noted = owner.card !== null || (last?.stream === "note" && last.text === secretNote);
+      const buffer = noted ? owner.buffer : append(owner.buffer, "note", `${secretNote}\n`);
+      // Panel kapalıyken sır hiçbir yerde tutulmaz: kart null kalır, parça düşer.
+      if (!owner.panelOpen) return { ...owner, buffer };
       return { ...owner, buffer, card: (owner.card ?? "") + event.data.data };
     }
     case "console:done": {
@@ -146,9 +152,14 @@ export function closeCard(s: ConsoleSession): ConsoleSession {
   return s.card === null ? s : { ...s, card: null };
 }
 
-/** Panel kapandı: kart kapanır, komut ve kimliği durmaz. */
+/** Panel açıldı ya da kapandı. Kapanınca kart silinir; komut ve kimliği durmaz. */
+export function setPanelOpen(s: ConsoleSession, open: boolean): ConsoleSession {
+  if (open) return s.panelOpen ? s : { ...s, panelOpen: true };
+  return { ...closeCard(s), panelOpen: false };
+}
+
 export function closePanel(s: ConsoleSession): ConsoleSession {
-  return closeCard(s);
+  return setPanelOpen(s, false);
 }
 
 /** Çıktıyı temizler (Ctrl+L, `clear`); çalışma durumuna dokunmaz. */

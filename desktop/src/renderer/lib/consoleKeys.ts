@@ -67,3 +67,11 @@ export function applyCompletion(line: string, cursor: number, candidates: readon
   const word = single ? `${candidates[0]} ` : commonPrefix(candidates);
   return { line: line.slice(0, start) + word + line.slice(cursor), cursor: start + word.length, candidates: single ? [] : [...candidates] };
 }
+
+/**
+ * Panel açıkken girdi satırı odağı korur: istem yanıtlanınca satır yeniden
+ * kurulur ve komut sürerken de Ctrl+C çalışmalı (tuş dinleyicisi satırda).
+ */
+export function shouldFocusPrompt(open: boolean): boolean {
+  return open;
+}

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } fr
 
 import { useT } from "../../i18n/I18nProvider.tsx";
 import type { ConsoleApi } from "../../hooks/useConsole.ts";
+import { shouldFocusPrompt } from "../../lib/consoleKeys.ts";
 import { clampHeight } from "../../lib/consoleLayout.ts";
 import { ConsoleOutput } from "./ConsoleOutput.tsx";
 import { ConsolePrompt } from "./ConsolePrompt.tsx";
@@ -40,7 +41,7 @@ export function ConsolePanel({ api, open, height, onToggle, onHeight }: Props) {
 
   // Açılınca ve komut bitince girdi satırına odaklan.
   useEffect(() => {
-    if (open && (!api.busy || api.awaitingInput)) input.current?.focus();
+    if (shouldFocusPrompt(open)) input.current?.focus();
   }, [open, api.busy, api.awaitingInput]);
 
   if (!open) {

@@ -18,6 +18,7 @@ import {
   isBusy,
   isRootLine,
   promptServer,
+  setPanelOpen,
   started,
   startFailed,
   type ConsoleSession,
@@ -34,7 +35,7 @@ const input = (run: string, prompt: string): ConsoleEvent => ({ name: "console:i
 const apply = (s: ConsoleSession, e: ConsoleEvent): ConsoleSession => applyEvent(s, e, NOTE);
 const allText = (s: ConsoleSession): string => s.buffer.lines.map((l) => l.text).join("\n");
 
-const running = (server = "hetzner", line = "status"): ConsoleSession => started(begin(initialSession(), server, line), RUN);
+const running = (server = "hetzner", line = "status"): ConsoleSession => started(begin(setPanelOpen(initialSession(), true), server, line), RUN);
 
 test("panel close keeps run, closes card", () => {
   let s = apply(running(), secret(RUN, "KOD-1234"));
@@ -43,8 +44,22 @@ test("panel close keeps run, closes card", () => {
   assert.equal(s.card, null);
   assert.equal(s.run, RUN);
   assert.equal(isBusy(s), true);
-  // Komut sürerken gelen yeni gizli parça yeniden kart açar; kapatma komutu durdurmadı.
-  assert.equal(apply(s, secret(RUN, "kurtarma")).card, "kurtarma");
+  // Panel yeniden açılınca sonraki parça kart açar; kapatma komutu durdurmadı.
+  assert.equal(apply(setPanelOpen(s, true), secret(RUN, "kurtarma")).card, "kurtarma");
+});
+
+test("secret arriving while the panel is closed never enters state", () => {
+  let s = setPanelOpen(running("hetzner", "totp enable"), false);
+  s = apply(s, secret(RUN, "KURTARMA-KODU-1\n"));
+  s = apply(s, secret(RUN, "KURTARMA-KODU-2\n"));
+  assert.equal(s.card, null);
+  assert.equal(s.buffer.lines.filter((l) => l.text === NOTE).length, 1);
+  assert.equal(JSON.stringify(s).includes("KURTARMA"), false);
+  assert.equal(s.run, RUN);
+  // Yeniden açınca kısmi kart çıkmaz.
+  assert.equal(setPanelOpen(s, true).card, null);
+  // Oturum kapalı başlar: açılış senkronundan önce gelen sır da düşer.
+  assert.equal(apply(started(begin(initialSession(), "h", "totp enable"), RUN), secret(RUN, "X1")).card, null);
 });
 
 test("server change keeps running prompt", () => {

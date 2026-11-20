@@ -18,13 +18,14 @@
 
 import { spawn, execFileSync, type ChildProcessByStdio } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
 import { checkWordmark, evaluate, journey, waitForRoot, type Page } from "../test/smoke/journey.ts";
+import type { ConsoleBox } from "../test/smoke/console-journey.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = resolve(here, "..");
@@ -36,7 +37,7 @@ const PREFIX = "SMOKE ";
 /** Go köprüsünün dışa açık yöntemleri (desktop/internal/bridge/bridge_test.go Whitelist). */
 const EXPECTED_BRIDGE = [
   "AddServer", "AlarmsList", "AppCreate", "AppDelete", "AppDeploy", "AppGet", "AppLogs", "AppRollback", "AppUpdate", "AppsList",
-  "AuditList", "AuditVerify", "BackupCreate", "BackupsList", "CopyText", "GitHubConnect", "GitHubDisconnect", "GitHubStatus", "ListServers", "LoadAppearance", "OpenGitHub", "RemoveServer",
+  "AuditList", "AuditVerify", "BackupCreate", "BackupsList", "ConsoleCancel", "ConsoleComplete", "ConsoleInput", "ConsoleRun", "ConsoleSetAdmin", "ConsoleState", "CopyText", "GitHubConnect", "GitHubDisconnect", "GitHubStatus", "ListServers", "LoadAppearance", "OpenGitHub", "RemoveServer",
   "ResourceUsage", "SaveAppearance", "Status", "UpdateServer", "Version", "WindowControl",
 ];
 
@@ -62,6 +63,13 @@ function prepareUserData(): string {
     { name: LONG_NAME, target: LONG_TARGET, provider: "kendi-sunucum" },
   ];
   writeFileSync(join(dir, "fake-servers.json"), JSON.stringify({ version: 1, servers }));
+  // Konsolun CLI'ı kayıtlı sunucuları yapılandırma dizininden okur (K-162):
+  // APPDATA geçici dizine çevrilir, kullanıcının gerçek servers.json'una ve
+  // TOTP oturumlarına dokunulmaz. Sahte sunucunun yazdığı dosyadan ayrı bir kopya.
+  mkdirSync(join(dir, "roaming", "kadran"), { recursive: true });
+  // Uzun ad yalnız arayüz denemesi: gerçek kayıt 64 karakterden uzun adı reddeder.
+  const saved = servers.filter((s) => s.name !== LONG_NAME);
+  writeFileSync(join(dir, "roaming", "kadran", "servers.json"), JSON.stringify({ version: 1, servers: saved }));
   // Kaldırılan cam teması kayıtlı: açılışta açığa dönmeli (K-163).
   writeFileSync(join(dir, "appearance.json"), JSON.stringify({ version: 2, language: "en", theme: "glass" }));
   return dir;
@@ -123,6 +131,11 @@ function page(session: Session, evidence: string): Page {
       if (r === null || !r.ok) throw new Error(`screenshot ${name}: ${r?.error ?? "no answer"}`);
       console.log(`UI evidence: ${path}`);
     },
+    async boxes() {
+      const r = await session.request({ boxes: true }, 10_000);
+      if (r === null || !r.ok) throw new Error(`boxes: ${r?.error ?? "no answer"}`);
+      return r.value as ConsoleBox[];
+    },
     async resize(width, height) {
       await this.evaluate(`window.runtime.WindowSetSize(${width}, ${height})`);
     },
@@ -164,7 +177,7 @@ async function main(): Promise<number> {
   const child = spawn(exe, [], {
     cwd: desktop,
     stdio: ["pipe", "pipe", "inherit"],
-    env: { ...process.env, KADRAN_SMOKE_USERDATA: userData, KADRAN_SMOKE_SIDECAR: join(desktop, "test", "fixtures", "fake-sidecar.mjs") },
+    env: { ...process.env, APPDATA: join(userData, "roaming"), KADRAN_SMOKE_USERDATA: userData, KADRAN_SMOKE_SIDECAR: join(desktop, "test", "fixtures", "fake-sidecar.mjs") },
   });
   let exited = false;
   child.on("exit", () => (exited = true));

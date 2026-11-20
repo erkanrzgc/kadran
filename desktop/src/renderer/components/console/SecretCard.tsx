@@ -4,6 +4,8 @@ interface Props {
   /** Kart içeriği; kapalıyken null: o zaman hiçbir şey çizilmez, metin DOM'da kalmaz. */
   content: string | null;
   onClose: () => void;
+  /** Panelin üstünde kalan yer (px): kart pencerenin üstüne taşmasın, gövdesi kayar. */
+  maxHeight: number;
 }
 
 /**
@@ -11,11 +13,11 @@ interface Props {
  * aralığı 1 ile gösterilir: CLI'ın metin QR'ı taranabilir kalır. Seçilemez,
  * kopyalanamaz; hiçbir yere yazılmaz (lib/consoleSession.ts).
  */
-export function SecretCard({ content, onClose }: Props) {
+export function SecretCard({ content, onClose, maxHeight }: Props) {
   const t = useT();
   if (content === null) return null;
   return (
-    <section className="console-card" role="dialog" aria-label={t("console.card_title")} data-testid="console-card">
+    <section className="console-card" role="dialog" aria-label={t("console.card_title")} data-testid="console-card" style={{ maxHeight }}>
       <header className="console-card-head">
         <strong>{t("console.card_title")}</strong>
         <span>{t("console.card_hint")}</span>

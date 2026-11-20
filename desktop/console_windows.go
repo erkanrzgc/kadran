@@ -11,28 +11,26 @@ import (
 	"github.com/erkanrzgc/kadran/desktop/internal/confirm"
 	"github.com/erkanrzgc/kadran/desktop/internal/console"
 	"github.com/erkanrzgc/kadran/internal/cli"
-	"github.com/erkanrzgc/kadran/internal/client"
 	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
 	"github.com/erkanrzgc/kadran/internal/servers"
 )
 
 // newConsoleRunner, konsolun çalıştırıcısını kurar (Kadran Konsolu).
 //
-//   - Onay: yalnız h.Confirm (varsayılan düğme İptal). Duman bayrağı atlatmaz.
+//   - Onay: yalnız consoleConfirm (dağıtımda h.Confirm, varsayılan düğme İptal;
+//     duman ikilisinde kaydeden sahte). Duman bayrağı atlatmaz.
 //   - Sunucu listesi: CLI'ın sıfır servers.Store'uyla aynı servers.json; yoksa
 //     -s <seçili> çözülmez ya da kutu ile çalışan kayıt ayrışır.
 //   - Dizin: dir, masaüstünün kendi ayar (görünüm) dosyasının dizini; geçmiş,
 //     yönetici ayarı ve yönetici kaydı onun yanında, ayrı dosyalarda durur.
-//   - Bağlantı: masaüstünün dağıtıcısıyla aynı DialWith, konsol penceresi
-//     açtırmadan.
+//   - Bağlantı: consoleDial (dağıtımda DialWith, konsol penceresi açtırmadan;
+//     duman ikilisinde bufconn üstündeki sahte kadrand).
 func newConsoleRunner(dir string, settings appearance.Store, h *host) *console.Runner {
-	conns := console.NewConns(func(t client.Target) (*client.Client, error) {
-		return client.DialWith(t, client.DialOptions{HideConsole: true})
-	})
+	conns := console.NewConns(consoleDial())
 	list := servers.Store{}.Load
 	return console.NewRunner(console.RunnerDeps{
 		Run:     cli.Run,
-		Confirm: h.Confirm,
+		Confirm: consoleConfirm(h),
 		Emit:    h.emit,
 		Conns:   conns,
 		History: console.History{Dir: dir},

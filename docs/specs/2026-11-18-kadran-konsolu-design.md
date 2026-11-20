@@ -213,6 +213,11 @@ bir şey çalıştırmasını önler)**.
 
 - **değiştirme:** yerel onay kutusu: sunucu, arıtılmış komut satırı, ne yapacağı. GUI'deki
   karşılığıyla aynı metin kalıbı (`confirm.Build`); karşılığı olmayan komutlar için yeni tür.
+  **Komut satırı kutuda HİÇ kesilmez:** satırın tamamı (kaçışlı) satırlara bölünerek gösterilir;
+  kaçışlı arıtılmış satır 1024 UTF-16 birimini aşarsa kutu hiç açılmaz, çıkış 1 ile "too long to
+  confirm here; run it in the CLI" denir. Gerekçe: değiştirme sınıfında tek kapı bu kutudur ve
+  bayraklarda son yazılan kazanır; ortadan kesilen satırda ikinci bir `-domain` görünmeden
+  onaylanırdı (uygulamada değişti, K-169 Uygulama).
   Kutudaki bilgiler, `Run`'dan önce komutun kendi `FlagSet` kurucusuyla çözülen bayraklardan
   gelir **(benim kararım, 19 Kasım)**. Ayrıntılar:
   - `-env` değerleri kutuda gizlidir, GUI'deki gibi (`desktop/internal/confirm/text.go:53`);
@@ -277,9 +282,11 @@ seçenekler konsoldan çıkarmak ve Windows'un kendi kutusuydu)**.
 - **Hiçbir yere yazılmaz:** kart içeriği çıktı tamponuna, geçmişe, `console-admin.log`'a ve hiçbir
   günlüğe girmez; seçilip kopyalanamaz. Konsol satırlarında yerinde yalnız "gizli çıktı ayrı
   kartta gösterildi" yazar.
-- **Silinir:** "Kaydettim" düğmesi, panelin kapanması ya da komutun bitişi kartı kapatır. Kart
-  kapanınca içerik ekrandan ve DOM'dan kalkar, Go tarafı tuttuğu kopyayı bırakır. Komut başarısız
-  biterse de kart kapanır.
+- **Silinir:** "Kaydettim" düğmesi ya da panelin kapanması kartı kapatır. Kart kapanınca içerik
+  ekrandan ve DOM'dan kalkar, Go tarafı tuttuğu kopyayı bırakır. Komut sıfır dışı bir kodla
+  biterse kart hemen kapanır. Komut 0 ile bitince kart AÇIK KALIR: `totp enable` kurtarma
+  kodlarını en sonda basıp hemen bittiği için, bitişte kapanan bir kart kodları hiç göstermezdi
+  (R14) (uygulamada değişti, K-169 Uygulama).
 - **Kalan risk:** sır, kart açıkken web görünümünün belleğinde ve ekrandadır. Bu, sırrın
   terminal ekranında durmasıyla aynı risk; terminalin kaydırma geçmişindeki kalıcılık burada yok.
 - Bu kanalı yalnız `totp enable` kullanır. Başka bir komut gizli değer basmaya başlarsa aynı kanala
@@ -310,8 +317,9 @@ seçenekler konsoldan çıkarmak ve Windows'un kendi kutusuydu)**.
 - Yükseklik sürüklenerek ayarlanır (en az 120 px, en çok pencerenin %70'i); açık/kapalı durumu
   ve yükseklik sonraki açılışa kalır **(kullanıcı onayladı; sınırlar benim kararım)**. Mevcut
   görünüm deposuna (`appearance.Store`) eklenir.
-- Üç temada (koyu, açık, cam) aynı token'larla; yazı JetBrains Mono; vurgu buz mavisi; köşeler
-  4 px. İstem rengi: normalde vurgu, root'ta tehlike rengi.
+- Üç temada (koyu, açık, cam) aynı token'larla; yazı paketli `--font-mono` (Geist Mono; JetBrains
+  Mono eklenmedi: yeni paketli yazı tipi yeni dosya ve lisans demek, R15) (uygulamada değişti, K-169 Uygulama); vurgu buz mavisi;
+  köşeler 4 px. İstem rengi: normalde vurgu, root'ta tehlike rengi.
 - Kısayollar: Enter çalıştır, ↑/↓ geçmiş, Tab tamamla, Ctrl+C durdur, Ctrl+L temizle, Esc
   paneli kapatmaz (yalnız Ctrl+`) **(benim kararım)**.
 

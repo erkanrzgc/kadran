@@ -14,11 +14,15 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 
+import { consoleJourney, type ConsoleBox } from "./console-journey.ts";
+
 /** Pencereye ulaşan taraf: değerlendirme, ekran görüntüsü ve boyut. */
 export interface Page {
   evaluate(code: string): Promise<unknown>;
   screenshot(name: string): Promise<void>;
   resize(width: number, height: number): Promise<void>;
+  /** Konsolun şimdiye dek istediği onay kutuları (sahte Host kaydı). */
+  boxes(): Promise<ConsoleBox[]>;
 }
 
 const ROOT_POLL_MS = 100;
@@ -62,9 +66,9 @@ export async function waitForRoot(win: Page): Promise<boolean> {
   }
 }
 
-const q = (selector: string): string => `document.querySelector(${JSON.stringify(selector)})`;
+export const q = (selector: string): string => `document.querySelector(${JSON.stringify(selector)})`;
 
-async function waitFor(win: Page, expr: string, label: string, timeoutMs = 15_000): Promise<void> {
+export async function waitFor(win: Page, expr: string, label: string, timeoutMs = 15_000): Promise<void> {
   const until = Date.now() + timeoutMs;
   while (Date.now() < until) {
     if (await evaluate<boolean>(win, `Boolean(${expr})`)) return;
@@ -77,7 +81,7 @@ async function waitFor(win: Page, expr: string, label: string, timeoutMs = 15_00
  * Kullanıcı gibi tıklar: öğe görünür olmalı ve tıklama noktasında üstte o olmalı.
  * el.click() tek başına display:none düğmeye de, bildirimin altındakine de basardı.
  */
-async function click(win: Page, selector: string): Promise<void> {
+export async function click(win: Page, selector: string): Promise<void> {
   const result = await evaluate<string>(win, `(() => {
     const el = ${q(selector)};
     if (!el) return "not found";
@@ -96,12 +100,12 @@ async function text(win: Page, selector: string): Promise<string> {
   return evaluate<string>(win, `${q(selector)}?.textContent ?? ""`);
 }
 
-async function fill(win: Page, selector: string, value: string): Promise<void> {
+export async function fill(win: Page, selector: string, value: string): Promise<void> {
   const ok = await evaluate<boolean>(win, `(() => { const el = ${q(selector)}; if (!el) return false; const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, "value").set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event("input", { bubbles: true })); return true; })()`);
   if (!ok) throw new Error(`not found: ${selector}`);
 }
 
-async function noHorizontalOverflow(win: Page, label: string): Promise<void> {
+export async function noHorizontalOverflow(win: Page, label: string): Promise<void> {
   const offenders = await evaluate<string[]>(win, `(() => { const nodes = [...document.querySelectorAll('.app, .main, .stage, .rail, .panel, .table-wrap, .settings, .resource-card, .kart, .operation-dialog')]; return nodes.filter((el) => el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1).map((el) => el.className + ':' + el.scrollWidth + '>' + el.clientWidth); })()`);
   expect(offenders.length === 0, `${label} horizontal overflow: ${offenders.join(", ")}`);
 }
@@ -111,7 +115,7 @@ async function nextFrames(win: Page): Promise<void> {
   await evaluate(win, "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))");
 }
 
-async function screenshot(win: Page, name: string): Promise<void> {
+export async function screenshot(win: Page, name: string): Promise<void> {
   // A DOM update can precede its compositor frame.
   await nextFrames(win);
   await win.screenshot(name);
@@ -197,7 +201,7 @@ async function dismissToasts(win: Page): Promise<void> {
  * openServer: kullanıcı gibi Sunucular ekranındaki karta basar. Ekranda değilse
  * önce oraya döner; sekmeden değil karttan açmak kart testid'lerini de sınar.
  */
-async function openServer(win: Page, target: string): Promise<void> {
+export async function openServer(win: Page, target: string): Promise<void> {
   const card = `[data-testid="server-${target}"]`;
   if (!(await evaluate<boolean>(win, `Boolean(${q(card)})`))) await click(win, '[data-testid="rail-servers"]');
   await waitFor(win, q(card), `card ${target}`);
@@ -610,6 +614,7 @@ export async function journey(win: Page): Promise<void> {
   await waitFor(win, q('[data-testid="audit-detail-row"]'), "audit record detail");
 
   await managementJourney(win);
+  await consoleJourney(win);
 
   // Bozuk latest_seq HATA olmalı, "zincirde kayıt yok" değil.
   await openServer(win, "fake@badseq");

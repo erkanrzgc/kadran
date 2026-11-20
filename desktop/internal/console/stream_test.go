@@ -80,6 +80,14 @@ func (c *collector) names() []string {
 	return out
 }
 
+// Olay sınırı sözleşme: arayüz (K-165) olay başına en çok 32 KiB bekler; testler
+// sabiti kendisine göre ölçtüğü için değeri burada ayrıca sabitlenir.
+func TestEventLimitIsThirtyTwoKiB(t *testing.T) {
+	if maxEventBytes != 32<<10 {
+		t.Fatalf("maxEventBytes = %d, sözleşme %d", maxEventBytes, 32<<10)
+	}
+}
+
 func TestBatchWriterSplitsLargeWrites(t *testing.T) {
 	clock := &fakeClock{}
 	col := &collector{}

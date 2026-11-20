@@ -11,6 +11,10 @@ import { SecretCard } from "./SecretCard.tsx";
 /** Tutamaç okla bu kadar piksel oynar. */
 const KEY_STEP_PX = 24;
 const SHORTCUT = "Ctrl+`";
+/** Kartın üstünde ve altında bırakılan boşluk (panel kenar boşluğu, 8 px ara, pencere kenarı). */
+const CARD_GAP_PX = 40;
+/** Çok küçük pencerede bile kartın başlığı, bir parça gövdesi ve düğmesi görünür. */
+const CARD_MIN_PX = 160;
 
 interface Props {
   api: ConsoleApi;
@@ -73,7 +77,7 @@ export function ConsolePanel({ api, open, height, onToggle, onHeight }: Props) {
 
   return (
     <section className="console" style={{ height: shown }} aria-label={t("console.title")} data-testid="console">
-      <SecretCard content={api.session.card} onClose={api.closeCard} />
+      <SecretCard content={api.session.card} onClose={api.closeCard} maxHeight={Math.max(CARD_MIN_PX, windowHeight - shown - CARD_GAP_PX)} />
       <div
         className="console-grip"
         role="separator"

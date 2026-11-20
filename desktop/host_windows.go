@@ -24,6 +24,11 @@ type host struct {
 	look     appearance.WindowLook
 	// glassOff: cam uygulanamadı, yedek malzemeye düşüldü; ton değişimi yok.
 	glassOff bool
+
+	// boxes, aynı anda tek yerel kutu kapısı (GUI, konsol, konsol ayarı).
+	boxes confirm.OneBox
+	// showBox, yerel kutuyu gösterir; nil ise win.Confirm (testler değiştirir).
+	showBox func(windows.HWND, win.Box) (bool, error)
 }
 
 func (h *host) startup(ctx context.Context) {
@@ -131,9 +136,19 @@ func (h *host) OpenURL(url string) error {
 	return nil
 }
 
-// Confirm, yerel görev kutusu; pencereye bağlı ve kipli.
+// Confirm, yerel görev kutusu; pencereye bağlı ve kipli. GUI düğmeleri,
+// konsol satırları ve konsol ayarı hepsi buradan geçer: biri açıkken gelen
+// ikinci istek kutu göstermeden confirm.ErrBoxOpen alır (kapalı başarısızlık;
+// köprü ve konsol hatayı ret sayar). Köprünün ve çalıştırıcının kendi kapıları
+// da durur.
 func (h *host) Confirm(box confirm.Box) (bool, error) {
-	return win.Confirm(h.window(), win.Box{Title: box.Title, Message: box.Message, Detail: box.Detail, Cancel: box.Cancel, Action: box.Action})
+	show := h.showBox
+	if show == nil {
+		show = win.Confirm
+	}
+	return h.boxes.Show(func() (bool, error) {
+		return show(h.window(), win.Box{Title: box.Title, Message: box.Message, Detail: box.Detail, Cancel: box.Cancel, Action: box.Action})
+	})
 }
 
 // focus, ikinci kopya açılmak istenince var olan pencereyi öne getirir.

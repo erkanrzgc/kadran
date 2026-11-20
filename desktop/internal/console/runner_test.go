@@ -96,6 +96,37 @@ func TestConfirmBoxHidesEnv(t *testing.T) {
 	}
 }
 
+// -build-arg değeri kutuya ve geçmiş dosyasına girmez (confirm paketinin
+// sözü: derleme argümanı değerleri kutuya hiç girmez); komuta gerçek değer gider.
+func TestBuildArgValueNeverInBoxOrHistory(t *testing.T) {
+	h := newHarness(t)
+	h.setAnswer(true)
+	for _, line := range []string{
+		"app create -build-arg NPM_TOKEN=s3cr3t web",
+		"app create -build-arg=NPM_TOKEN=s3cr3t web",
+		"app create --build-arg NPM_TOKEN=s3cr3t web",
+		"app create --build-arg=NPM_TOKEN=s3cr3t web",
+	} {
+		if _, exit := h.exec("hetzner", line); exit != cli.ExitOK {
+			t.Fatalf("%s: exit %d", line, exit)
+		}
+		text := boxText(h.lastBox())
+		if strings.Contains(text, "s3cr3t") || !strings.Contains(text, "NPM_TOKEN=***") {
+			t.Fatalf("%s: kutu metni:\n%s", line, text)
+		}
+		if !slices.ContainsFunc(h.lastCall().args, func(a string) bool { return strings.HasSuffix(a, "NPM_TOKEN=s3cr3t") }) {
+			t.Fatalf("%s: gerçek değer komuta gitmeli: %q", line, h.lastCall().args)
+		}
+	}
+	raw, err := os.ReadFile(filepath.Join(h.dir, historyFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "s3cr3t") || !strings.Contains(string(raw), "NPM_TOKEN=***") {
+		t.Fatalf("geçmiş dosyası: %s", raw)
+	}
+}
+
 func TestSensitiveGoesToSecretEvent(t *testing.T) {
 	h := newHarness(t)
 	h.setAnswer(true)

@@ -11,14 +11,15 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   CLI's own command language there, without the `kadran` prefix. The commands are the CLI code
   itself (`internal/cli`), so the CLI's output and exit codes do not change.
   - Every command has a class. Reads run directly; changes ask the same native confirmation as the
-    buttons (default Cancel, one box at a time, the whole command line shown); dangerous ones ask
-    for the name first. Anything without a class does not run.
+    buttons (default Cancel, one box at a time across the app and the console, the whole command
+    line shown with `-env` and `-build-arg` values hidden); dangerous ones ask for the name first.
+    Anything without a class does not run.
   - Root commands (`key`, `totp reset`) stay off until you turn on "admin commands in the console";
     they add `-o StrictHostKeyChecking=yes` to `ssh` and are logged locally in `console-admin.log`.
   - `bootstrap`, `server add|rm|rename`, `sidecar` and `audit verify -anchors` are not available
     there; the console is not a shell.
   - `totp enable` shows the secret, the QR code and the recovery codes in a separate card that is
-    never saved, copied or logged.
+    never saved, copied or logged. New lines wait until you close it.
 
 ## v0.13.0 — 2026-11-18
 

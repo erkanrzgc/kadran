@@ -11,6 +11,7 @@ import {
   answer,
   applyEvent,
   begin,
+  canRun,
   clearOutput,
   closeCard,
   closePanel,
@@ -107,6 +108,72 @@ test("card stays after exit 0 and closes after a non-zero exit (R14)", () => {
   assert.equal(failed.card, null);
   assert.equal(isBusy(failed), false);
   assert.equal(JSON.stringify(failed).includes("recovery-1"), false);
+});
+
+// R17: kart onu üreten çalışmaya aittir. Kart açıkken yeni satır çalışmaz;
+// başka bir çalışmanın sıfır dışı bitişi kartı (tek gösterilen kurtarma
+// kodlarını) silmez.
+const cardOpenAfterExit0 = (): ConsoleSession =>
+  apply(apply(running("hetzner", "totp enable"), secret(RUN, "recovery-1\n")), done(RUN, 0));
+
+test("a card from run A survives run B ending non-zero (R17)", () => {
+  const a = cardOpenAfterExit0();
+  assert.equal(a.card, "recovery-1\n");
+  // B, begin'den geçemez (kart açık); B'nin çalıştığı durum elle kurulur
+  // (geç dönen consoleRun ya da eski bir çalışmanın olayları).
+  for (const exit of [1, 2]) {
+    let s: ConsoleSession = { ...a, starting: false, run: OTHER };
+    s = apply(s, out(OTHER, "typo\n", "err"));
+    assert.equal(s.run, OTHER);
+    s = apply(s, done(OTHER, exit));
+    assert.equal(s.card, "recovery-1\n", `exit ${exit}`);
+    assert.equal(isBusy(s), false);
+    // started() yolu da aynı: kimlik dönünce benimsenen çalışma.
+    const viaStarted = apply(started({ ...a, starting: true }, OTHER), done(OTHER, exit));
+    assert.equal(viaStarted.card, "recovery-1\n", `started, exit ${exit}`);
+  }
+});
+
+test("a new line is refused while the card is open (R17)", () => {
+  const a = cardOpenAfterExit0();
+  assert.equal(canRun(a), false);
+  // begin kartı korur: yankı yok, başlamıyor, kart aynı.
+  const b = begin(a, "hetzner", "totp enable");
+  assert.equal(b, a);
+  assert.equal(isBusy(b), false);
+  assert.equal(b.card, "recovery-1\n");
+  assert.equal(allText(b).includes("totp enable"), allText(a).includes("totp enable"));
+  // Çalışırken (kod istemi) kart açık olsa da satır zaten kilitli: canRun yine false.
+  const midRun = apply(running("hetzner", "totp enable"), secret(RUN, "SECRET\n"));
+  assert.equal(canRun(midRun), false);
+  assert.equal(canRun(initialSession()), true);
+});
+
+test("after I saved it a new line runs (R17)", () => {
+  const saved = closeCard(cardOpenAfterExit0());
+  assert.equal(saved.card, null);
+  assert.equal(canRun(saved), true);
+  const next = started(begin(saved, "hetzner", "status"), OTHER);
+  assert.equal(next.run, OTHER);
+  assert.ok(allText(next).includes("hetzner › status"));
+  // Kapanan kartın kimliği de gitti: yeni çalışmanın sırrı yeni kart açar.
+  const fresh = apply(next, secret(OTHER, "new-secret\n"));
+  assert.equal(fresh.card, "new-secret\n");
+  assert.equal(apply(fresh, done(OTHER, 1)).card, null);
+  // Panelin kapanması da kartı kapatır ve satırın önünü açar.
+  const closed = closePanel(cardOpenAfterExit0());
+  assert.equal(closed.card, null);
+  assert.equal(canRun(closed), true);
+});
+
+test("the card still closes when its own run ends non-zero (R17)", () => {
+  const withCard = apply(running("hetzner", "totp enable"), secret(RUN, "recovery-1\n"));
+  for (const exit of [1, 2, 130]) {
+    const failed = apply(withCard, done(RUN, exit));
+    assert.equal(failed.card, null, `exit ${exit}`);
+    assert.equal(canRun(failed), true);
+    assert.equal(JSON.stringify(failed).includes("recovery-1"), false);
+  }
 });
 
 test("events before consoleRun resolves are not dropped", () => {

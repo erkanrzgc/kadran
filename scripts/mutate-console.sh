@@ -6,7 +6,7 @@
 # ── Neyin bozulması EN PAHALI ───────────────────────────────────────
 #
 #   - Sınıf kapısı: bir yaprak sessizce "okuma" olur, onay kutusu atlanır.
-#   - Arıtma: -env değeri geçmişe ve kutuya düz yazılır.
+#   - Arıtma: -env ya da -build-arg değeri geçmişe ve kutuya düz yazılır.
 #   - Yazılı ad: büyük/küçük harf farkı onaylanır; yönetici ayarı yok sayılır.
 #   - Gizli çıktı: TOTP sırrı kart yerine düz çıktıya gider.
 #   - Sunucu bağlamı: başka sunucunun adıyla komut çalışır.
@@ -108,7 +108,9 @@ mutate cli internal/cli/commands.go "deploy yaprağı okuma sınıfı (kutusuz �
 
 echo "== Arıtma =="
 mutate desk desktop/internal/console/redact.go "-env=KEY=değer biçimi arıtılmıyor" \
-    "s=s.replace('case strings.HasPrefix(a, \"-env=\"), strings.HasPrefix(a, \"--env=\"):','case false:',1)"
+    "s=s.replace('case joined && isMaskedFlag(name):','case joined && isMaskedFlag(name) && false:',1)"
+mutate desk desktop/internal/console/redact.go "Redact -build-arg değerini arıtmıyor" \
+    "s=s.replace('var maskedFlags = []string{\"env\", \"build-arg\"}','var maskedFlags = []string{\"env\"}',1)"
 
 echo "== Yazılı ad ve yönetici ayarı =="
 mutate desk desktop/internal/console/gate.go "yazılı ad büyük/küçük harf farkını kabul ediyor" \

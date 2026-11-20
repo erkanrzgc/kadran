@@ -43,10 +43,10 @@ export function ConsolePanel({ api, open, height, onToggle, onHeight }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const shown = clampHeight(drag?.height ?? height, windowHeight);
 
-  // Açılınca ve komut bitince girdi satırına odaklan.
+  // Açılınca, komut bitince ve gizli kart kapanınca girdi satırına odaklan.
   useEffect(() => {
     if (shouldFocusPrompt(open)) input.current?.focus();
-  }, [open, api.busy, api.awaitingInput]);
+  }, [open, api.busy, api.awaitingInput, api.held]);
 
   if (!open) {
     return (
@@ -104,6 +104,7 @@ export function ConsolePanel({ api, open, height, onToggle, onHeight }: Props) {
         promptName={api.promptName}
         root={api.session.root}
         busy={api.busy}
+        held={api.held}
         awaitingInput={api.awaitingInput}
         line={api.line}
         onEdit={api.edit}

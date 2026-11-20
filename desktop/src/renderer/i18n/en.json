@@ -451,6 +451,7 @@
   "console.card_title": "Secret output",
   "console.card_hint": "Shown only here. Never saved, copied or logged.",
   "console.card_saved": "I saved it",
+  "console.card_first": "Close the secret card first (I saved it).",
   "settings.console": "Console",
   "settings.console_admin": "Admin commands in the console",
   "settings.console_admin_hint": "Off by default. Turning it on asks for confirmation in a separate window.",

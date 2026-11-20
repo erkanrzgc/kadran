@@ -451,6 +451,7 @@
   "console.card_title": "Gizli çıktı",
   "console.card_hint": "Yalnız burada görünür. Kaydedilmez, kopyalanmaz, günlüğe yazılmaz.",
   "console.card_saved": "Kaydettim",
+  "console.card_first": "Önce gizli kartı kapatın (Kaydettim).",
   "settings.console": "Konsol",
   "settings.console_admin": "Konsolda yönetici komutları",
   "settings.console_admin_hint": "Varsayılan kapalı. Açmak ayrı bir pencerede onay ister.",

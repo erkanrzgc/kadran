@@ -88,8 +88,13 @@ const (
 	// satırının en çok UTF-16 birimi. Daha uzun satır kutuya hiç gelmez:
 	// çalıştırıcı onu kutu kurmadan reddeder (ConsoleTooLong).
 	MaxConsoleLineUnits = 1024
-	// maxRowUnits, Detail'in bir satırının en çok UTF-16 birimi.
+	// maxRowUnits, Detail'in bir satırının en çok UTF-16 birimi (girinti dahil).
 	maxRowUnits = 96
+	// rowIndent, sarılan bir alanın devam satırlarının girintisi. 0. sütunda
+	// yalnız alanların etiket satırları başlar: kullanıcı değeri ("Server:
+	// staging" içeren bir -health-path gibi) devam satırında etiket gibi
+	// okunamaz.
+	rowIndent = "    "
 )
 
 // BuildConsole, konsol komutunun onay kutusunu kurar. Konsol, GUI işlemleri
@@ -102,6 +107,7 @@ const (
 // `-domain` görünmeden onaylanırdı. Satır kaçıştan geçer, kesilmeden en çok
 // maxRowUnits birimlik satırlara bölünür; uzunluk sınırı çalıştırıcıda
 // (MaxConsoleLineUnits). Sunucu, yönetici hedefi ve etki kısa: safe'den geçer.
+// Her alan etiketiyle başlar (etki de); devam satırları rowIndent ile girintili.
 func BuildConsole(language Language, req ConsoleRequest) Box {
 	t := func(key string, p params) string { return text(language, key, p) }
 	var rows []string
@@ -118,7 +124,7 @@ func BuildConsole(language Language, req ConsoleRequest) Box {
 		add(t("console.line.command", params{"line": ""}), escapeParts(req.Line))
 	}
 	if req.Effect != "" {
-		add("", safeParts(req.Effect))
+		add(t("console.line.effect", params{"effect": ""}), safeParts(req.Effect))
 	}
 	kind := "command"
 	if req.Line == "" {
@@ -139,34 +145,34 @@ func ConsoleLineUnits(line string) int { return partsUnits(escapeParts(line)) }
 // ConsoleTooLong, MaxConsoleLineUnits'i aşan satırın ret metni.
 func ConsoleTooLong(language Language) string { return text(language, "console.too_long", nil) }
 
-// wrapParts, parçaları en çok maxRowUnits birimlik satırlara dizer. Kırma son
+// wrapParts, parçaları en çok maxRowUnits birimlik satırlara dizer; ilk
+// satırdan sonrakiler rowIndent ile başlar (girinti sınıra dahil). Kırma son
 // boşluktan sonra yapılır (boşluk satır sonunda kalır: hiçbir karakter
-// düşmez); boşluksuz uzun sözcük parça sınırında sert kırılır, kaçış bölünmez.
+// düşmez); taşınan sözcük girintili satıra sığmıyorsa ya da boşluk yoksa
+// parça sınırında sert kırılır, kaçış bölünmez.
 func wrapParts(parts []string) []string {
 	var rows, row []string
-	width, lastSpace := 0, -1
-	flush := func(r []string) { rows = append(rows, strings.Join(r, "")) }
+	// base, satırın baştaki girinti parçası sayısı (ilk satırda 0).
+	width, lastSpace, base := 0, -1, 0
 	for _, p := range parts {
 		w := units(p)
-		if width+w > maxRowUnits && len(row) > 0 {
-			if p != " " && lastSpace >= 0 {
-				flush(row[:lastSpace+1])
-				row = slices.Clone(row[lastSpace+1:])
-				width = partsUnits(row)
+		if width+w > maxRowUnits && len(row) > base {
+			var carry []string
+			if p != " " && lastSpace >= 0 && units(rowIndent)+partsUnits(row[lastSpace+1:])+w <= maxRowUnits {
+				carry = slices.Clone(row[lastSpace+1:])
+				row = row[:lastSpace+1]
 			}
-			if width+w > maxRowUnits || p == " " {
-				flush(row)
-				row, width = nil, 0
-			}
-			lastSpace = -1
+			rows = append(rows, strings.Join(row, ""))
+			row = append([]string{rowIndent}, carry...)
+			width, base, lastSpace = partsUnits(row), 1, -1
 		}
 		row, width = append(row, p), width+w
-		if p == " " && len(row) > 1 {
+		if p == " " && len(row) > base+1 {
 			lastSpace = len(row) - 1
 		}
 	}
-	if len(row) > 0 {
-		flush(row)
+	if len(row) > base {
+		rows = append(rows, strings.Join(row, ""))
 	}
 	return rows
 }

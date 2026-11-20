@@ -13124,7 +13124,7 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - "28 dosya, ~11 bin satır": test dışı 5.265 satırdı;
 - "süreç geneline yalnız `main.go` dokunuyor": ortam değişkenleri ve kancasız `ssh` çağrıları da vardı.
 
-**Durum:** spec onaylı ve main'de (`6a89b05`). Plan `docs/plans/2026-11-19-kadran-konsolu.md`. Uygulama bitti (9 görev, `kadran-konsolu` dalında, 20 Kasım); son inceleme, push, PR ve birleştirme sırada. Sunucu, protokol (3) ve ayrıcalıklı yüzey değişmedi; yayınlanmadı.
+**Durum:** spec onaylı ve main'de (`6a89b05`). Plan `docs/plans/2026-11-19-kadran-konsolu.md`. Uygulama bitti (9 görev, `kadran-konsolu` dalında, 20 Kasım); son inceleme yapıldı, bulguları aynı dalda düzeltildi (aşağıda); push, PR ve birleştirme sırada. Sunucu, protokol (3) ve ayrıcalıklı yüzey değişmedi; yayınlanmadı.
 
 **Uygulama (20 Kasım):**
 
@@ -13139,8 +13139,9 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - `120dcff`, `451ed43`: köprü yöntemleri ve güvenlik testleri.
 - `6eeeeec`, `e68492c`: panel, kart, kısayollar; odak düzeltmesi.
 - Bu görev (`update console smoke and docs`): duman testi, mutasyon betiği, belgeler.
+- `update console final fixes`: son incelemenin düzeltmeleri (aşağıda, *Son inceleme düzeltmeleri*).
 
-*Alınan kararlar (R1-R15, kısa):*
+*Alınan kararlar (R1-R17, kısa):*
 - R1: kanca çağrısı `env.Command(ctx, "ssh", args...)`; imza kaynağı Görev 2.
 - R2: Cc/Cf denetimi `guard`'dan dışa açıldı, kopya yok.
 - R3: `client.DialWithDialer` (testler ve duman ikilisi için); bufconn'lu gerçek gRPC bağlantısı gerekti.
@@ -13156,6 +13157,8 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - R13: Runner bilerek sunucusuz kipe sahip (`help`, `use`, `server list` sunucusuz çalışır).
 - R14: `totp enable` kurtarma kodlarını en sonda basıp hemen bittiği için, komut 0 ile bitince gizli kart "Kaydettim" ya da panel kapanana kadar açık kalır; sıfır dışı çıkışta hemen kapanır. Spec güncellendi.
 - R15: JetBrains Mono eklenmedi, paketli `--font-mono` (Geist Mono) kullanılıyor. Spec güncellendi.
+- R16: konsol kutuları her komutta tek `BuildConsole` biçimini kullanır. Spec §5, GUI karşılığı olan komutlarda `confirm.Build` biçimini istiyordu; bayraklardan Spec/Update'i yeniden kurmak CLI'ın bayrak → istek çevirisini ikinci kez yazmak olurdu. Bedeli: aynı işlemin kutusu GUI'de ve konsolda farklı görünür. Spec güncellendi.
+- R17: gizli kart onu üreten çalışmaya bağlıdır; kartı yalnız o çalışmanın sıfır dışı bitişi kapatır, sonraki bir komutun hatası kapatmaz. Kaydedilmemiş kart açıkken yeni satır çalışmaz; istem "Önce gizli kartı kapatın (Kaydettim)." der. Ctrl+` ve panelin kapanması çalışır (panel kapanınca kart da kapanır). Bedeli: kart kapanana kadar konsol bekler. Spec güncellendi.
 
 *Duman testi (Görev 9):*
 - Sahte kadrand `desktop/console_smoke.go`'da (`//go:build windows && smoke`), bufconn üstünde gerçek gRPC sunucusu. Dağıtılan ikilide karşılığı `console_release.go` (gerçek `DialWith`, gerçek `Host.Confirm`); smoke dosyası pakete girmez.
@@ -13166,7 +13169,16 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - **Bulgu ve düzeltme:** 760x520'de gizli kart pencerenin üstüne taşıyordu (kartın üstü -99 px). Panelin üstünde kalan yere göre `max-height` verildi, kartın gövdesi kayıyor. Duman testi kartın pencerenin içinde olduğunu ve iki köşenin kartın kendisi olduğunu (hiçbir ata kırpmıyor) iki boyutta ve iki temada denetliyor.
 - Temalar: koyu ve açık (cam teması K-163'te kaldırıldı); ekran görüntüleri her ikisinde.
 
-*Mutasyon:* yeni `scripts/mutate-console.sh`, 12 mutant, hepsi yakalandı (Windows'ta 93 sn).
+*Son inceleme düzeltmeleri (20 Kasım, `update console final fixes`):*
+- Gizli kart R17'ye göre çalışmasına bağlandı (`consoleSession.ts`: `cardRun`, `canRun`). Kart açıkken istem kilitli ve nedenini söylüyor; duman testi bunu ve "Kaydettim"den sonra istemin açıldığını denetliyor.
+- `-build-arg` değerleri `-env` gibi arıtılıyor: kutuda ve geçmişte, Go'nun flag paketinin kabul ettiği dört yazımda, tekrarlı. R9 geçmişten gelen `***` değerini iki bayrakta da reddediyor; ret metni iki bayrağı da adlandırıyor.
+- Tek kutu artık GUI ile konsol arasında da zorlanıyor. Her yerel kutu `host.Confirm`'deki beklemeyen kapıdan (`confirm.OneBox`) geçer; biri açıkken gelen ikinci istek kutu göstermeden `ErrBoxOpen` alır, köprü ve konsol bunu ret sayar. Eski iki kapı (`dialogOpen`, `confirmMu`) da duruyor.
+- Konsol kutusunda sarılan alanın devam satırları dört boşlukla başlar (girinti dahil en çok 96 UTF-16 birimi); etki satırının etiketi var ("Effect:" / "Etki:"). `Server: staging` içeren bir değer 0. sütuna düşemez.
+- `cli.Run` paniklese de root komutu yönetici kaydına çıkış 1 ile düşer (`launch`'ta `defer`; panik yine `guarded`'da yakalanır).
+- Gerçek zincir testi (`desktop/internal/console/chain_test.go`): `Normalize` → `Inspect` → gerçek `cli.Run`, sahte Dial (bufconn) ve Command kancası, geçici yapılandırma dizininde `servers.json`. Yazılan `-s`, `deploy -h` ve onaylanan `deploy`'da CLI'ın bağlandığı hedef ve sunucuya giden istek kutuda gösterilenle aynı.
+- Paket bütçesi 22 MB (aşağıda, Ölçümler).
+
+*Mutasyon:* yeni `scripts/mutate-console.sh`, 12 mutant, hepsi yakalandı (Windows'ta 95 sn). Aşağıdaki iki listede 11 madde var ama 12 mutant: birleştirici maddesi iki mutanttır (sabit büyütüldü, kesme kaldırıldı). Son düzeltme dalgası 13. mutantı ekledi: `Redact` `-build-arg`'ı atlıyor (`maskedFlags`'tan çıkarılıyor). 13/13 yakalandı (Windows'ta 109 sn, duman mutantı dahil). `-env=` mutantının arama metni `Redact`'in yeni biçimine göre değişti.
 - Sekiz mutant: bir yaprağın sınıfı okuma; `Redact`'te `=`'li biçim atlanıyor; yazılı ad `EqualFold`; `ErrAdminOff` denetimi yok; `Sensitive` Stdout'a bağlı; farklı `-s` kabul; `StrictHostKeyChecking` eklenmiyor; birleştirici sınırı kalktı (iki biçim: sabit büyütüldü, kesme kaldırıldı).
 - Üç mutant: kutu satırı yine `safe()`'ten geçiyor; 1024 sınırı yok; duman bayrağı konsol kutusunu atlıyor (yalnız duman testi yakalar, Windows'ta koşar; başka yerde atlandığı yazılır).
 - İlk koşuda iki mutant sorun çıkardı: sabit büyütme (testler sabiti kendisine göre ölçüyordu; `TestEventLimitIsThirtyTwoKiB` 32 KiB'ı sabitledi) ve `-s` mutantı derlenmedi (kullanılmayan değişken; mutant düzeltildi).
@@ -13177,17 +13189,18 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - Aynı sunucu ekranı, konsol hiç açılmadan: 256,6 / 254,7 / 255,4 MB (özel çalışma kümesi 118 MB). Yani konsol ve 5.000 satır yaklaşık +29 MB ekliyor.
 - Sunucu listesi ekranı (7 Kasım ölçümünün durumu): 261,1 / 259,7 / 260,9 MB. 7 Kasım'da aynı durum 280,0 / 278,7 / 279,0 idi; sayılar makine durumuna bağlı kayıyor, karşılaştırma aynı gün aynı düzenekle yapılan satırlar arasında anlamlı.
 - Ölçüm betiği depoda değil; yöntem: Kadran sürecinden inen tüm alt süreçlerin `PrivateMemorySize64` toplamı (Node hariç), ayrıca `Win32_PerfFormattedData_PerfProc_Process.WorkingSetPrivate`.
-- **Paket: `desktop/dist/Kadran.exe` 20.012.544 bayt, bütçe ≤ 20.000.000'u 12.544 bayt (%0,06) AŞIYOR** (önceki ölçüm 18,6 MB; 18 Kasım derlemesi 18.747.392 bayt). `npm run dist` bu yüzden hata veriyor. Bütçe değiştirilmedi ve küçültme denenmedi: karar kullanıcıda. Artışın sebebi Görev 1-8 (CLI'ın tamamı artık masaüstü ikilisinde); smoke dosyaları pakete girmiyor.
+- **Paket bütçesi 22 MB: kullanıcı 20 Kasım'da yükseltti ("22 MB olsun"; `desktop/scripts/dist.ts` `MAX_BYTES = 22_000_000`).** Görev 9 ölçümünde `desktop/dist/Kadran.exe` 20.012.544 bayttı: eski ≤ 20.000.000 bütçesini 12.544 bayt aşıyordu, yeni bütçenin içinde. Son düzeltme dalgasından sonra 20.019.200 bayt (commit öncesi çalışma ağacından `npm run dist`). Önceki ölçüm 18,6 MB (18 Kasım derlemesi 18.747.392 bayt); artışın sebebi Görev 1-8 (CLI'ın tamamı artık masaüstü ikilisinde); smoke dosyaları pakete girmiyor.
 
 *Doğrulama:* `npm run e2e` geçti; `mutate-console.sh` 12/12; `check-mutation-shard.sh` yeşil; masaüstünde `go test -race ./...`, `npm test`, `npm run typecheck`, `go build -tags desktop,production .` temiz.
+Son düzeltme dalgasında yeniden: kökte ve masaüstünde `go build`, `go vet`, `golangci-lint` (0), `go test -race`; `cli-golden.sh check` (23 koşu); `npm test` (235), `typecheck`, `build`, `e2e`; `mutate-console.sh` 13/13; `check-mutation-shard.sh` yeşil; `npm run dist` 22 MB bütçesinin içinde.
 
 *Son incelemeye açık kalan küçükler (ertelenenler):*
-- Görev 1: `cmd/kadran` yolunu anan üç yorum (`fixtures-shape.test.ts`, `types.ts`, README) eski; `cli-golden.sh` yorumları ASCII.
-- Görev 2: `run.go` yorumları ASCII; `printEnrollment`'ta `c.sensitive()` 8 kez; `TestGetenvHook` dönen değeri sınamıyor.
-- Görev 3: `tree()` ~75 satırlık veri tablosu; `isNoTarget` her çağrıda ağacı kuruyor; `help -s x` davranışı doğrulanmadı.
-- Görev 4: `Redact`, `ParseLine`'ın tersi değil (tırnaklı `a|b` gibi sözcükler geçmişten geri çağrılınca reddedilir); `Normalize` `--`'u bilmiyor (konsol `--` içeren satırı reddediyor, CLI'ın `-s`'i `--`'dan sonra nasıl işlediği doğrulanmalı); `history.read()` her okuma hatasını boş sayıyor (geçici G/Ç hatasından sonra `Append` geçmişi ezebilir); `console-admin.log` zaten varsa 0600'e çekilmiyor.
-- Görev 5: ping hatası iptal edilmiş bağlamdan gelse de sağlam bağlantı düşüyor; anahtar ham hedef (`user@h` ile `user@h:22` iki bağlantı); `desktop/go.mod`'da grpc ve protobuf hâlâ `// indirect` (smoke dosyası artık doğrudan kullanıyor; `go mod tidy` ayrı karar).
-- Görev 6: root kutusunda `-sudo` gösterimi kullanıcının `-sudo=false`'ından farklı olabilir; `done` sonrası geç yazma; `cli.Run` paniğinde ya da Shutdown zaman aşımında root komutu yönetici kaydına düşmüyor; Shutdown zaman aşımında `Conns` çalışan komutun altında kapanıyor; `SetAdmin` kutusu açıkken iptal edilen çalışma yine kutu gösterebilir; `=`'sız `-env` değeri flag hata mesajıyla arıtılmadan akışa düşüyor; `Emit` birleştirici kilidi tutulurken çağrılıyor; geçmiş anahtarı ham sunucu adı; gerçek `cli.Run` ile tek entegrasyon testi yok (duman testi artık ilk gerçek uçtan uca koşu); sarılan komut satırının devamı `Server:` gibi okunabilir (Windows kutusunun ~11 satırla görünümü gerçek pencerede bakılmadı).
-- Görev 7: iki ayrı tek-kutu kapısı (`dialogOpen` ve `confirmMu`): güvenilmez arayüz bir GUI kutusu ve bir konsol kutusunu aynı anda açtırabilir; test `Emit`'i engelleyen gönderim yapıyor; `bridge.ts` `subscribeConsole` çalışma zamanı yoksa sessiz; `Input/Cancel/Complete/SetAdmin` nil yolları testsiz; `listApps` testsiz; `bridge.ts` olay tipleri `runner.go`'dan elle kopya.
-- Görev 8: `begin()` kartı temizlemiyor (yeni komutun sırrı kaydedilmemiş eski kartın üstüne ekleniyor); yazılan satır `-env` değeriyle ekrandaki tamponda (geçmiş arıtılmış); istem cevabı `type=text` (TOTP kodu yazılırken ekranda); `isRootLine` Go sınıflandırıcısının kopyası (yalnız renk); `App.tsx` girinti, "varsayılana dön" konsol yüksekliğini de sıfırlıyor, `useConsole` bağlantısı ve odak için bileşen testi yok; `done` exit 0 sonrası odak "Kaydettim"den istem kutusuna kayabilir.
+- Görev 1: `cmd/kadran` yolunu anan üç yorum (`fixtures-shape.test.ts`, `types.ts`, README) son düzeltme dalgasında `internal/cli`'a çevrildi (kapandı); `cli-golden.sh` yorumları ASCII.
+- Görev 2: `run.go` yorumları ASCII; `printEnrollment`'ta `c.sensitive()` 8 kez; `TestGetenvHook` dönen değeri sınamıyor; `env_test` QR bloğunu donduruyor.
+- Görev 3: `tree()` ~75 satırlık veri tablosu; `isNoTarget` her çağrıda ağacı kuruyor; `help -s x` davranışı doğrulanmadı; `dispatchedLeaves` elle tutuluyor; bayraksız yapraklar `-x`'i reddediyor (kapalı yönde).
+- Görev 4: `Redact`, `ParseLine`'ın tersi değil (tırnaklı `a|b` gibi sözcükler geçmişten geri çağrılınca reddedilir); `Normalize`'ın `--`'u bilmemesi KAPANDI: Görev 6 `--` içeren satırı reddediyor (`gate.go`, `ErrDashDash`); `history.read()` her okuma hatasını boş sayıyor (geçici G/Ç hatasından sonra `Append` geçmişi ezebilir); `console-admin.log` zaten varsa 0600'e çekilmiyor; `redact_test`'in sızıntı denetimi zayıf (asıl korumayı tam dize iddiası yapıyor).
+- Görev 5: ping hatası iptal edilmiş bağlamdan gelse de sağlam bağlantı düşüyor; anahtar ham hedef (`user@h` ile `user@h:22` iki bağlantı); `desktop/go.mod`'da grpc ve protobuf hâlâ `// indirect` (smoke dosyası artık doğrudan kullanıyor; `go mod tidy` ayrı karar); ilk ping hatası yutuluyor; yeniden bağlanma testi eski sahibin kapandığını doğrulamıyor.
+- Görev 6: root kutusunda `-sudo` gösterimi kullanıcının `-sudo=false`'ından farklı olabilir; `done` sonrası geç yazma; Shutdown zaman aşımında root komutu yönetici kaydına düşmüyor (`cli.Run` paniği son düzeltme dalgasında kapandı); Shutdown zaman aşımında `Conns` çalışan komutun altında kapanıyor; `SetAdmin` kutusu açıkken iptal edilen çalışma yine kutu gösterebilir; `=`'sız `-env` değeri flag hata mesajıyla arıtılmadan akışa düşüyor; `Emit` birleştirici kilidi tutulurken çağrılıyor; geçmiş anahtarı ham sunucu adı; gerçek `cli.Run` ile entegrasyon testi son düzeltme dalgasında eklendi (kapandı); sarılan satırın devamının `Server:` gibi okunması kapandı (dört boşluklu girinti, etiketli etki satırı); Windows kutusunun ~11 satırla görünümü gerçek pencerede bakılmadı.
+- Görev 7: iki ayrı tek-kutu kapısının açığı kapandı (ortak kapı `host.Confirm`'de, `confirm.OneBox`); test `Emit`'i engelleyen gönderim yapıyor; `bridge.ts` `subscribeConsole` çalışma zamanı yoksa sessiz; `Input/Cancel/Complete/SetAdmin` nil yolları testsiz; `listApps` testsiz; `bridge.ts` olay tipleri `runner.go`'dan elle kopya; Tab, erişilemeyen sunucuda `Conns.mu`'yu ~5 sn tutuyor.
+- Görev 8: `begin()`'in yeni sırrı kaydedilmemiş eski kartın altına eklemesi kapandı (R17: kart açıkken yeni satır çalışmaz); yazılan satır `-env` değeriyle ekrandaki tamponda (geçmiş arıtılmış); istem cevabı `type=text` (TOTP kodu yazılırken ekranda); `isRootLine` Go sınıflandırıcısının kopyası (yalnız renk); `App.tsx` girinti, "varsayılana dön" konsol yüksekliğini de sıfırlıyor, `useConsole` bağlantısı ve odak için bileşen testi yok; `done` exit 0 sonrası odak "Kaydettim"den istem kutusuna kayabilir.
 - Görev 9: 760x520'de kart gövdesi kayıyor (QR ve kurtarma kodları aşağıda, kullanıcı kaydırmalı) ve yatay kaydırma çubuğu görünüyor; duman mutantı yalnız Windows'ta koşar, Linux CI'da atlanır; Windows kutusunun gerçek pencerede görünümü hâlâ duman dışında.

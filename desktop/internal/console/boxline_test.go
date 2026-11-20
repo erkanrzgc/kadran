@@ -51,7 +51,8 @@ func TestBoxShowsWholeLine(t *testing.T) {
 	if cutMarker.MatchString(detail) {
 		t.Fatalf("kutuda kesme işareti:\n%s", detail)
 	}
-	if !strings.Contains(strings.ReplaceAll(detail, "\n", ""), "Command: "+redactedLine) {
+	// Devam satırları dört boşlukla girintili; kırma ve girinti kalkınca satır bütün.
+	if !strings.Contains(strings.ReplaceAll(strings.ReplaceAll(detail, "\n    ", ""), "\n", ""), "Command: "+redactedLine) {
 		t.Fatalf("satır bütün değil:\n%s", detail)
 	}
 	for i, row := range strings.Split(detail, "\n") {

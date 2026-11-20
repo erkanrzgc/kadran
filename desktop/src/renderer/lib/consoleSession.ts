@@ -12,6 +12,12 @@
  * Gizli değerler: kart içeriği yalnız `card` alanında yaşar; tampona, geçmişe
  * ya da başka bir alana yazılmaz. İstem girdisi (TOTP kodu olabilir) bu
  * katmana hiç girmez: answer() metin almaz.
+ *
+ * R17: kart onu üreten çalışmaya aittir (`cardRun`). Yalnız O çalışma sıfır
+ * dışı biterse kart kapanır; başka bir çalışmanın bitişi ona dokunmaz.
+ * Kaydedilmemiş kart açıkken yeni satır çalışmaz (canRun): tek gösterilen
+ * kurtarma kodları ne sonraki bir hatayla silinir ne de yeni bir kartın
+ * altında kalır.
  */
 
 import type { ConsoleEvent } from "../bridge.ts";
@@ -34,17 +40,28 @@ export interface ConsoleSession {
   readonly input: boolean;
   /** Gizli çıktı kartı; kapalıyken null (boş dize değil). */
   readonly card: string | null;
+  /** Kartı üreten çalışmanın kimliği; kart kapalıyken null. */
+  readonly cardRun: string | null;
   /** Panel acik mi. Kapaliyken gizli cikti karta girmez (yalniz not satiri). */
   readonly panelOpen: boolean;
 }
 
 export function initialSession(): ConsoleSession {
-  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, root: false, finished: [], input: false, card: null, panelOpen: false };
+  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, root: false, finished: [], input: false, card: null, cardRun: null, panelOpen: false };
 }
 
 /** Çalışma var ya da başlıyor: istem kilitli, sunucu sabit. */
 export function isBusy(s: ConsoleSession): boolean {
   return s.starting || s.run !== null;
+}
+
+/**
+ * Yeni satır çalışabilir mi: çalışma yok ve kaydedilmemiş gizli kart açık değil
+ * (R17). Kart açıkken istem "önce kartı kapatın" der; Ctrl+` ve panelin
+ * kapanması çalışır (panel kapanınca kart da kapanır).
+ */
+export function canRun(s: ConsoleSession): boolean {
+  return !isBusy(s) && s.card === null;
 }
 
 /** İstemin gösterdiği sunucu: çalışırken başladığı sunucu, değilse seçili olan. */
@@ -63,8 +80,12 @@ export function isRootLine(line: string): boolean {
   return words[0] === "totp" && words[1] === "reset";
 }
 
-/** Satır gönderilirken: yazılan satır yankılanır, çalışma başlıyor sayılır. */
+/**
+ * Satır gönderilirken: yazılan satır yankılanır, çalışma başlıyor sayılır.
+ * Kart açıkken (R17) hiçbir şey değişmez; çağıran canRun ile köprüye de gitmez.
+ */
 export function begin(s: ConsoleSession, server: string, line: string): ConsoleSession {
+  if (s.card !== null) return s;
   const name = server === "" ? "–" : server;
   return {
     ...s,
@@ -97,15 +118,18 @@ function claim(s: ConsoleSession, id: string): ConsoleSession | null {
 }
 
 function finishRun(s: ConsoleSession, id: string, exit: number): ConsoleSession {
+  // R14: sıfırla biten komutta kart açık kalır (totp enable kurtarma kodlarını
+  // en son basar); sıfır dışında hemen kapanır. R17: yalnız kartı üreten
+  // çalışmanın bitişi; başka çalışmanın hatası kartı silmez.
+  const closes = exit !== 0 && s.cardRun === id;
   return {
     ...s,
     buffer: finish(s.buffer, exit),
     run: null,
     input: false,
     finished: [...s.finished, id].slice(-FINISHED_KEPT),
-    // R14: sıfırla biten komutta kart açık kalır (totp enable kurtarma kodlarını
-    // en son basar); sıfır dışında hemen kapanır.
-    card: exit === 0 ? s.card : null,
+    card: closes ? null : s.card,
+    cardRun: closes ? null : s.cardRun,
   };
 }
 
@@ -131,7 +155,7 @@ export function applyEvent(s: ConsoleSession, event: ConsoleEvent, secretNote: s
       const buffer = noted ? owner.buffer : append(owner.buffer, "note", `${secretNote}\n`);
       // Panel kapalıyken sır hiçbir yerde tutulmaz: kart null kalır, parça düşer.
       if (!owner.panelOpen) return { ...owner, buffer };
-      return { ...owner, buffer, card: (owner.card ?? "") + event.data.data };
+      return { ...owner, buffer, card: (owner.card ?? "") + event.data.data, cardRun: event.data.run };
     }
     case "console:done": {
       const owner = claim(s, event.data.run);
@@ -147,9 +171,9 @@ export function answer(s: ConsoleSession): ConsoleSession {
   return { ...s, input: false, buffer: endLine(s.buffer) };
 }
 
-/** "Kaydettim": kart kapanır, içerik durumdan gider. */
+/** "Kaydettim": kart kapanır, içerik ve sahibi durumdan gider. */
 export function closeCard(s: ConsoleSession): ConsoleSession {
-  return s.card === null ? s : { ...s, card: null };
+  return s.card === null && s.cardRun === null ? s : { ...s, card: null, cardRun: null };
 }
 
 /** Panel açıldı ya da kapandı. Kapanınca kart silinir; komut ve kimliği durmaz. */

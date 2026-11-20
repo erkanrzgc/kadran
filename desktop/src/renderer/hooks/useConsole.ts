@@ -17,6 +17,7 @@ import {
   answer,
   applyEvent,
   begin,
+  canRun,
   clearOutput,
   closeCard,
   setPanelOpen,
@@ -36,6 +37,8 @@ export interface ConsoleApi {
   /** İstemde görünen sunucu: çalışırken başladığı, değilse seçili olan. */
   promptName: string;
   busy: boolean;
+  /** Kaydedilmemiş gizli kart açık, çalışma yok: yeni satır çalışmaz (R17). */
+  held: boolean;
   /** Girdi satırı komutun istemi için açık. */
   awaitingInput: boolean;
   line: string;
@@ -95,7 +98,8 @@ export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
   const run = useCallback(() => {
     const { session: s, server: name } = live.current;
     const text = current(history);
-    if (isBusy(s) || text.trim() === "") return;
+    // R17: kart açıkken satır köprüye gitmez; yazılan satır taslakta kalır.
+    if (!canRun(s) || text.trim() === "") return;
     update((x) => begin(x, promptServer(x, name), text));
     setHistory((h) => edit(h, ""));
     bridge.consoleRun(name, text).then(
@@ -144,6 +148,7 @@ export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
     session,
     promptName: promptServer(session, server),
     busy,
+    held: !busy && !canRun(session),
     awaitingInput: session.input,
     line: current(history),
     edit: editLine,

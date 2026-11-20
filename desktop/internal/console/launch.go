@@ -66,18 +66,23 @@ func commandHook(root bool) func(ctx context.Context, name string, args ...strin
 
 // launch, onaylanmış komutu cli.Run ile çalıştırır; ardından gizli çıktı
 // notunu, bilinmeyen host ipucunu ve (root'ta) yönetici kaydını yazar.
+//
+// Yönetici kaydı defer'da: cli.Run paniklese de (ssh çalışmış olabilir) satır
+// çıkış 1 ile düşer. Panik burada yakalanmaz; guarded yakalar, done ve çıkış
+// kodu değişmez.
 func (r *Runner) launch(rs *runState, p plan) int {
 	start := r.d.Now()
 	rio := r.newRunIO(rs, p.root())
-	exit := r.d.Run(rs.ctx, p.full, rio.env)
+	exit := cli.ExitError
+	if p.root() {
+		defer func() { r.logAdmin(rs, p, exit, start) }()
+	}
+	exit = r.d.Run(rs.ctx, p.full, rio.env)
 	if rio.secret.used.Load() {
 		fmt.Fprint(rio.env.Stdout, secretNotice)
 	}
 	if p.root() && exit != cli.ExitOK && rio.hostKV.seen() {
 		fmt.Fprintf(rio.env.Stderr, "connect once from the CLI first (kadran key list -s %s)\n", quote(p.server.Name))
-	}
-	if p.root() {
-		r.logAdmin(rs, p, exit, start)
 	}
 	return exit
 }

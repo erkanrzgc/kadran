@@ -4,21 +4,27 @@ import "strings"
 
 const redacted = "***"
 
+// maskedFlags, değeri arıtılan bayraklar: ikisi de KEY=değer biçiminde sır
+// taşır. Geçmişten geri çağrılan *** değerini reddeden denetim (R9) de bu
+// listeye bakar.
+var maskedFlags = []string{"env", "build-arg"}
+
 // Redact, argümanları insanın göreceği tek satıra çevirir (geçmiş ve onay
-// kutusu): -env/--env değerleri (ayrı ya da "=" biçiminde, tekrarlı) KEY=***
-// olur, "="sız değer *** olur. Boşluk ya da tırnak içeren sözcük çift tırnağa
-// alınır; içindeki " ve \ ters bölüyle kaçırılır (yalnız gösterim içindir).
+// kutusu): maskedFlags değerleri, Go'nun flag paketinin kabul ettiği her
+// yazımda (-ad ya da --ad; ayrı ya da "=" ile; tekrarlı) KEY=*** olur, "="sız
+// değer *** olur. Boşluk ya da tırnak içeren sözcük çift tırnağa alınır;
+// içindeki " ve \ ters bölüyle kaçırılır (yalnız gösterim içindir).
 func Redact(args []string) string {
 	out := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		name, value, joined := strings.Cut(a, "=")
 		switch {
-		case isEnvFlag(a) && i+1 < len(args):
+		case isMaskedFlag(a) && i+1 < len(args):
 			out = append(out, quote(a), quote(maskEnv(args[i+1])))
 			i++
-		case strings.HasPrefix(a, "-env="), strings.HasPrefix(a, "--env="):
-			eq := strings.IndexByte(a, '=')
-			out = append(out, quote(a[:eq+1]+maskEnv(a[eq+1:])))
+		case joined && isMaskedFlag(name):
+			out = append(out, quote(name+"="+maskEnv(value)))
 		default:
 			out = append(out, quote(a))
 		}
@@ -26,7 +32,15 @@ func Redact(args []string) string {
 	return strings.Join(out, " ")
 }
 
-func isEnvFlag(a string) bool { return a == "-env" || a == "--env" }
+// isMaskedFlag: a, maskedFlags'tan birinin tek ya da çift tireli adı.
+func isMaskedFlag(a string) bool {
+	for _, f := range maskedFlags {
+		if a == "-"+f || a == "--"+f {
+			return true
+		}
+	}
+	return false
+}
 
 // maskEnv, "KEY=değer" için KEY=***, "="sız değer için *** döner.
 func maskEnv(v string) string {

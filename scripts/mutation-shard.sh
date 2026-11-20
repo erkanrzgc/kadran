@@ -25,7 +25,7 @@ VARSAYILAN=60
 # İstisna: mutate-github.sh (28 mutant, Windows + WSL) ve mutate-install.sh
 # (root'suz 42 mutant, WSL) K-167 son düzeltmesinde yerelde ölçüldü
 # (17 Kasım); sonraki tam CI koşusu yerini alır. mutate-console.sh de yerelde
-# ölçüldü (20 Kasım, Windows, duman mutantı dahil: 93 sn); Linux'ta duman
+# ölçüldü (20 Kasım, Windows, duman mutantı dahil: 95 sn); Linux'ta duman
 # mutantı atlanır, CI süresi daha kısa çıkar.
 SURELER='
 scripts/mutate-alarm.sh 70

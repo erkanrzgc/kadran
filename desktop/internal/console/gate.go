@@ -35,7 +35,7 @@ const effectAdminKey = "console admin"
 // Ret nedenleri (stderr'e yazılır).
 var (
 	ErrNoServer     = errors.New("select a server with use <name> first (only help, use and server list work without one)")
-	ErrHiddenValues = errors.New("this line has hidden values from history; type them again")
+	ErrHiddenValues = errors.New("this line has hidden -env or -build-arg values from history; type them again")
 	ErrMismatch     = errors.New("confirmation did not match: nothing was run")
 	ErrDeclined     = errors.New("cancelled: nothing was run")
 	ErrCancelled    = errors.New("stopped before running: nothing was run")
@@ -187,8 +187,10 @@ func checkInvocation(inv cli.Invocation) error {
 	if err := RejectTarget(inv); err != nil {
 		return lineErr(err)
 	}
-	if hasMaskedEnv(inv.Flags["env"]) {
-		return lineErr(ErrHiddenValues)
+	for _, name := range maskedFlags {
+		if hasMaskedValue(inv.Flags[name]) {
+			return lineErr(ErrHiddenValues)
+		}
 	}
 	return nil
 }
@@ -206,9 +208,9 @@ func bannedReason(path string) error {
 	return fmt.Errorf("%s is not available in the console", path)
 }
 
-// hasMaskedEnv (R9): geçmişten geri çağrılan satırda -env değeri "***"
-// olarak durur; çalışsaydı sır gerçekten "***" olurdu.
-func hasMaskedEnv(values []string) bool {
+// hasMaskedValue (R9): geçmişten geri çağrılan satırda -env ve -build-arg
+// değeri "***" olarak durur; çalışsaydı sır gerçekten "***" olurdu.
+func hasMaskedValue(values []string) bool {
 	for _, v := range values {
 		if v == redacted {
 			return true

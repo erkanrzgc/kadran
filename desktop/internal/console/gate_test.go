@@ -2,6 +2,7 @@ package console
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -133,6 +134,49 @@ func TestRootGate(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
 	if len(lines) != 1 || !strings.Contains(lines[0], `"command":"key list"`) || !strings.Contains(lines[0], `"server":"hetzner"`) {
 		t.Fatalf("yönetici kaydı %q", raw)
+	}
+}
+
+// cli.Run paniklese de (ssh çalışmış olabilir) root komutu yönetici kaydına
+// tam bir kez düşer: çıkış 1, komut arıtılmış satır (eklenen -s yok).
+func TestRootPanicStillLogged(t *testing.T) {
+	h := newHarness(t)
+	h.setAnswer(true)
+	if err := (AdminSetting{Dir: h.dir}).Save(true); err != nil {
+		t.Fatal(err)
+	}
+	h.setRun(func(context.Context, []string, cli.Env) int { panic("boom") })
+	id := h.start("hetzner", "key list")
+	h.waitInput(id)
+	if err := h.r.Input(id, "hetzner"); err != nil {
+		t.Fatal(err)
+	}
+	if exit := h.done(id); exit != cli.ExitError || !strings.Contains(h.output(id, StreamErr), "internal error: boom") {
+		t.Fatalf("exit %d stderr %q", exit, h.output(id, StreamErr))
+	}
+	raw, err := os.ReadFile(filepath.Join(h.dir, adminLogFile))
+	if err != nil {
+		t.Fatalf("panikte yönetici kaydı yazılmadı: %v", err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("%d kayıt satırı: %q", len(lines), raw)
+	}
+	var rec struct {
+		Server  string `json:"server"`
+		Command string `json:"command"`
+		Exit    int    `json:"exit"`
+	}
+	if err := json.Unmarshal([]byte(lines[0]), &rec); err != nil {
+		t.Fatal(err)
+	}
+	if rec.Server != "hetzner" || rec.Command != "key list" || rec.Exit != cli.ExitError {
+		t.Fatalf("yönetici kaydı %+v", rec)
+	}
+	// Panikten sonra yuva boşaldı; sonraki komut çalışır.
+	h.setRun(nil)
+	if _, exit := h.exec("hetzner", "status"); exit != cli.ExitOK {
+		t.Fatalf("panikten sonra exit %d", exit)
 	}
 }
 
@@ -313,12 +357,19 @@ func TestRootAddsStrictHostKey(t *testing.T) {
 	}
 }
 
+// hiddenValuesMsg, R9 reddinin metni: iki bayrağı da adlandırır.
+const hiddenValuesMsg = "this line has hidden -env or -build-arg values from history; type them again"
+
 func TestMaskedEnvRefused(t *testing.T) {
 	h := newHarness(t)
 	h.setAnswer(true)
-	for _, line := range []string{"app create -env K=*** web", "app update -env=K=*** web", "app create --env K=*** web", "app update -env A=1 -env B=*** web"} {
+	for _, line := range []string{
+		"app create -env K=*** web", "app update -env=K=*** web", "app create --env K=*** web", "app update -env A=1 -env B=*** web",
+		"app create -build-arg K=*** web", "app create -build-arg=K=*** web", "app create --build-arg K=*** web",
+		"app create --build-arg=K=*** web", "app create -build-arg A=1 -build-arg B=*** web",
+	} {
 		id, exit := h.exec("hetzner", line)
-		if exit == cli.ExitOK || !strings.Contains(h.output(id, StreamErr), "this line has hidden values from history; type them again") {
+		if exit == cli.ExitOK || !strings.Contains(h.output(id, StreamErr), hiddenValuesMsg) {
 			t.Errorf("%s: exit %d stderr %q", line, exit, h.output(id, StreamErr))
 		}
 	}
@@ -331,6 +382,26 @@ func TestMaskedEnvRefused(t *testing.T) {
 	}
 	if _, exit := h.exec("hetzner", "app create -env K=x*** web"); exit != cli.ExitOK {
 		t.Fatalf("yalnız *** olmayan değer reddedilmemeli: exit %d", exit)
+	}
+	if _, exit := h.exec("hetzner", "app create -build-arg K=x*** web"); exit != cli.ExitOK {
+		t.Fatalf("yalnız *** olmayan derleme argümanı reddedilmemeli: exit %d", exit)
+	}
+}
+
+// Inspect -build-arg'ı (her yazımda) "build-arg" anahtarıyla taşır; R9
+// denetimi bu anahtara bakar.
+func TestInspectKeysBuildArg(t *testing.T) {
+	for _, args := range [][]string{
+		{"app", "create", "--build-arg=K=***", "web"},
+		{"app", "create", "-build-arg", "K=***", "web"},
+	} {
+		inv, err := cli.Inspect(args)
+		if err != nil {
+			t.Fatalf("%q: %v", args, err)
+		}
+		if got := inv.Flags["build-arg"]; !slices.Equal(got, []string{"K=***"}) {
+			t.Fatalf("%q: build-arg %q (bayraklar %v)", args, got, inv.Flags)
+		}
 	}
 }
 

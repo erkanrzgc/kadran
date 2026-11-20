@@ -24,6 +24,8 @@ const BUFFER_MAX = 5000;
 const INPUT = '[data-testid="console-input"]';
 const OUTPUT = '[data-testid="console-output"]';
 const CARD = '[data-testid="console-card"]';
+/** Gizli kart açıkken istemin yer tutucusu (i18n en.json console.card_first, R17). */
+const CARD_FIRST = "Close the secret card first (I saved it).";
 
 interface KeyInit {
   key: string;
@@ -47,6 +49,10 @@ const outputText = (win: Page): Promise<string> => evaluate<string>(win, `${q(OU
 /** Son çıktı satırı çıkış kodunu taşıyor ve girdi satırı açık mı. */
 const finished = (ok: boolean): string =>
   `(() => { const l = document.querySelectorAll(".console-line"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && last.classList.contains("${ok ? "is-exit-ok" : "is-exit-bad"}") && i && !i.readOnly); })()`;
+
+/** Komut 0 ile bitti ama gizli kart açık: istem kilitli ve nedenini söylüyor (R17). */
+const held = (): string =>
+  `(() => { const l = document.querySelectorAll(".console-line"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && last.classList.contains("is-exit-ok") && i && i.readOnly && i.placeholder === ${JSON.stringify(CARD_FIRST)}); })()`;
 
 /** Komut bir istem bekliyor: girdi açık ve yer tutucu boş (ConsolePrompt). */
 const awaiting = () => `(() => { const i = ${q(INPUT)}; return Boolean(i && !i.readOnly && i.placeholder === ""); })()`;
@@ -105,7 +111,8 @@ async function expectSecretOnlyInCard(win: Page): Promise<void> {
 /**
  * totp enable (tehlikeli: sunucu adı yazılır): kart açılır, sır yalnız kartta,
  * komut 0 ile bitince kart açık kalır ve kurtarma kodlarını taşır (R14),
- * "Kaydettim"den sonra sır DOM'da hiç yok.
+ * kart açıkken istem yeni satır almaz (R17), "Kaydettim"den sonra sır DOM'da
+ * hiç yok ve istem açılır.
  */
 async function totpScenario(win: Page, label: string): Promise<void> {
   await clearPanel(win);
@@ -118,7 +125,7 @@ async function totpScenario(win: Page, label: string): Promise<void> {
   await expectSecretOnlyInCard(win);
   await waitFor(win, awaiting(), "the 6-digit code prompt");
   await typeLine(win, "123456");
-  await waitFor(win, finished(true), "totp enable finished");
+  await waitFor(win, held(), "totp enable finished; the prompt waits for the card (R17)");
 
   const boxes = await win.boxes();
   expect(boxes.length === before + 1, `totp enable asked ${boxes.length - before} confirmation boxes, expected 1`);
@@ -131,6 +138,7 @@ async function totpScenario(win: Page, label: string): Promise<void> {
 
   await click(win, '[data-testid="console-card-saved"]');
   await waitFor(win, `!${q(CARD)}`, "the card closes after I saved it");
+  await waitFor(win, finished(true), "the prompt opens after I saved it");
   const leaked = await evaluate<string[]>(win, `(() => { const html = document.documentElement.outerHTML; return [${JSON.stringify(SECRET)}, ${JSON.stringify(RECOVERY)}].filter((s) => html.includes(s)); })()`);
   expect(leaked.length === 0, `secret text is still in the page after I saved it: ${leaked.join(", ")}`);
 }

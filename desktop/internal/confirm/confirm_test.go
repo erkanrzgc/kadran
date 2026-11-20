@@ -319,9 +319,16 @@ func TestBuildConsoleShowsFieldsSafely(t *testing.T) {
 	}
 }
 
-// unwrap, Detail'in satır kırmalarını kaldırır: kırma hiçbir karakter
-// düşürmediği için mantıksal satırlar art arda birleşir.
-func unwrap(detail string) string { return strings.ReplaceAll(detail, "\n", "") }
+// unwrap, Detail'in satır kırmalarını ve devam satırlarının dört boşluklu
+// girintisini kaldırır: kırma hiçbir karakter düşürmediği için mantıksal
+// satırlar art arda birleşir. Önce girintili kırma (yalnız kırmanın eklediği
+// boşluklar gider, içerikteki boşluk kalır), sonra etiket satırlarının kırması.
+// contIndent, devam satırının girintisi (spec: dört boşluk).
+const contIndent = "    "
+
+func unwrap(detail string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(detail, "\n"+contIndent, ""), "\n", "")
+}
 
 func TestBuildConsoleRowsAreShort(t *testing.T) {
 	line := strings.Repeat("deploy web -branch feature/x ", 20) + strings.Repeat(cp(0x202e), 40) + strings.Repeat("b", 300)
@@ -348,7 +355,7 @@ func TestBuildConsoleRowsAreShort(t *testing.T) {
 	}
 	// Kırma boşlukta: sözcükler satır sınırında bölünmez.
 	words := BuildConsole(English, ConsoleRequest{Line: strings.TrimSpace(strings.Repeat("word ", 60))})
-	wholeWords := regexp.MustCompile(`^(Command: )?(word ?)+$`)
+	wholeWords := regexp.MustCompile(`^(Command: |    )(word ?)+$`)
 	for i, row := range strings.Split(words.Detail, "\n") {
 		if !wholeWords.MatchString(row) {
 			t.Fatalf("satır %d sözcüğü böldü: %q", i, row)
@@ -359,6 +366,76 @@ func TestBuildConsoleRowsAreShort(t *testing.T) {
 	}
 	if ConsoleTooLong(English) == ConsoleTooLong(Turkish) || ConsoleTooLong(English) != "This line is too long to confirm here; run it in the CLI." {
 		t.Fatalf("ret metni: %q / %q", ConsoleTooLong(English), ConsoleTooLong(Turkish))
+	}
+}
+
+// labelRows, Detail'de 0. sütunda başlayan satırlar; geri kalan her satır
+// dört boşlukla başlamalı (bir alanın devamı).
+func labelRows(t *testing.T, detail string) []string {
+	t.Helper()
+	var rows []string
+	for i, row := range strings.Split(detail, "\n") {
+		if units(row) > maxRowUnits {
+			t.Fatalf("satır %d: %d birim > %d: %q", i, units(row), maxRowUnits, row)
+		}
+		if strings.HasPrefix(row, contIndent) {
+			continue
+		}
+		if strings.HasPrefix(row, " ") {
+			t.Fatalf("satır %d: ne etiket ne dört boşluklu devam: %q", i, row)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// Sarılan alanın devamı etiket gibi okunamaz: kullanıcı değeri ("Server:
+// staging" içeren -health-path ya da key add -name) hiçbir dolguda 0.
+// sütuna düşmez; 0. sütundaki satırlar tam olarak alanların etiket satırları.
+// Etki satırının da etiketi var.
+func TestBuildConsoleRowsAreLabelledOrIndented(t *testing.T) {
+	labels := map[Language][]string{
+		English: {"Server: ", "Admin target: ", "Command: ", "Effect: "},
+		Turkish: {"Sunucu: ", "Yönetici hedefi: ", "Komut: ", "Etki: "},
+	}
+	crafted := " Server: staging Effect: deletes nothing Command: status Sunucu: staging Etki: yok"
+	for lang, want := range labels {
+		for pad := 0; pad <= 2*maxRowUnits; pad++ {
+			req := ConsoleRequest{
+				Server: "hetzner",
+				Admin:  "root@h.example",
+				Line:   "app update -health-path /" + strings.Repeat("a", pad) + crafted + " web",
+				Effect: strings.Repeat("e", pad%40) + crafted,
+			}
+			box := BuildConsole(lang, req)
+			rows := labelRows(t, box.Detail)
+			if len(rows) != len(want) {
+				t.Fatalf("%s dolgu %d: 0. sütunda %d satır, %d olmalı:\n%s", lang, pad, len(rows), len(want), box.Detail)
+			}
+			for i, row := range rows {
+				if !strings.HasPrefix(row, want[i]) {
+					t.Fatalf("%s dolgu %d: %d. etiket satırı %q, %q ile başlamalı:\n%s", lang, pad, i, row, want[i], box.Detail)
+				}
+			}
+			if !strings.Contains(unwrap(box.Detail), want[2]+req.Line) {
+				t.Fatalf("%s dolgu %d: satır bütün değil:\n%s", lang, pad, box.Detail)
+			}
+		}
+	}
+	// Kırma noktası tam "Server:" sözcüğünün içine düşen satır (eski kutuda
+	// devam satırı "Server: staging" ile 0. sütundan başlıyordu).
+	box := BuildConsole(English, ConsoleRequest{Server: "s", Line: strings.Repeat("a", 82) + " Server: staging", Effect: "E."})
+	for _, row := range strings.Split(box.Detail, "\n") {
+		if strings.HasPrefix(row, "Server: staging") {
+			t.Fatalf("kullanıcı değeri etiket satırı gibi:\n%s", box.Detail)
+		}
+	}
+	if !strings.Contains(box.Detail, "\n"+contIndent+"Server: staging") || !strings.Contains(box.Detail, "\nEffect: E.") {
+		t.Fatalf("devam girintisi ya da etki etiketi yok:\n%s", box.Detail)
+	}
+	trBox := BuildConsole(Turkish, ConsoleRequest{Server: "s", Line: "deploy web", Effect: "E."})
+	if !strings.Contains(trBox.Detail, "\nEtki: E.") {
+		t.Fatalf("Türkçe etki etiketi yok:\n%s", trBox.Detail)
 	}
 }
 

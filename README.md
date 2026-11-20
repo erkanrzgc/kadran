@@ -775,7 +775,7 @@ proto/kadran/v1/     Single source of contract (api, exec)
 cmd/kadrand/         Server daemon
 cmd/kadran-exec/     Privileged executor — deliberately small
 cmd/kadran-connect/  Forced-command stdio proxy
-cmd/kadran/          Workstation CLI + `kadran sidecar`
+cmd/kadran/          Workstation CLI entry point (the commands and `kadran sidecar` are in internal/cli/, shared with the desktop console)
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
 desktop/             Wails (Go) + React + Vite: one binary, light and dark themes, glass sidebar

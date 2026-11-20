@@ -12,6 +12,8 @@ interface Props {
   root: boolean;
   /** Komut sürüyor ya da başlıyor. */
   busy: boolean;
+  /** Kaydedilmemiş gizli kart açık: yeni satır çalışmaz, istem nedenini söyler (R17). */
+  held: boolean;
   /** Komut bir istem bekliyor: satır yalnız o zaman açılır. */
   awaitingInput: boolean;
   line: string;
@@ -26,14 +28,16 @@ interface Props {
 
 /**
  * Girdi satırı. Çalışırken kilitli (salt okunur, odak kalır ki Ctrl+C
- * çalışsın); yalnız console:input gelince açılır. İstem yanıtı yerel durumda
- * durur, geçmişe ve tampona girmez, gönderilince silinir.
+ * çalışsın); yalnız console:input gelince açılır. Gizli kart açıkken de
+ * kilitli (R17): yazılan satır taslakta kalır, istem "önce kartı kapatın" der.
+ * İstem yanıtı yerel durumda durur, geçmişe ve tampona girmez, gönderilince
+ * silinir.
  */
 export const ConsolePrompt = forwardRef<HTMLInputElement, Props>(function ConsolePrompt(p, ref) {
   const t = useT();
   const [typed, setTyped] = useState("");
   const answering = p.busy && p.awaitingInput;
-  const locked = p.busy && !p.awaitingInput;
+  const locked = (p.busy && !p.awaitingInput) || p.held;
   const rootRun = p.busy && p.root;
 
   useEffect(() => {
@@ -80,7 +84,7 @@ export const ConsolePrompt = forwardRef<HTMLInputElement, Props>(function Consol
         autoCorrect="off"
         autoCapitalize="off"
         aria-label={t("console.input_label")}
-        placeholder={locked ? t("console.running") : answering ? "" : t("console.placeholder")}
+        placeholder={p.held ? t("console.card_first") : locked ? t("console.running") : answering ? "" : t("console.placeholder")}
         readOnly={locked}
         aria-disabled={locked}
         maxLength={answering ? ANSWER_MAX : LINE_MAX}

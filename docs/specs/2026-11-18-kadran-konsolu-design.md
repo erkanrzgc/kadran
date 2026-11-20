@@ -213,6 +213,11 @@ bir şey çalıştırmasını önler)**.
 
 - **değiştirme:** yerel onay kutusu: sunucu, arıtılmış komut satırı, ne yapacağı. GUI'deki
   karşılığıyla aynı metin kalıbı (`confirm.Build`); karşılığı olmayan komutlar için yeni tür.
+  Uygulamada konsol her komutta tek biçimi (`confirm.BuildConsole`) kullanır: bayraklardan
+  Spec/Update'i yeniden kurmak CLI'ın bayrak → istek çevirisini ikinci kez yazmak olurdu. Bedeli:
+  aynı işlemin kutusu GUI'de ve konsolda farklı görünür (R16) (uygulamada değişti, K-169 Uygulama).
+  Kutuda her alan etiketiyle başlar (etki de); sarılan alanın devam satırları dört boşlukla
+  girintilidir, kullanıcı değeri etiket satırı gibi görünemez.
   **Komut satırı kutuda HİÇ kesilmez:** satırın tamamı (kaçışlı) satırlara bölünerek gösterilir;
   kaçışlı arıtılmış satır 1024 UTF-16 birimini aşarsa kutu hiç açılmaz, çıkış 1 ile "too long to
   confirm here; run it in the CLI" denir. Gerekçe: değiştirme sınıfında tek kapı bu kutudur ve
@@ -220,7 +225,7 @@ bir şey çalıştırmasını önler)**.
   onaylanırdı (uygulamada değişti, K-169 Uygulama).
   Kutudaki bilgiler, `Run`'dan önce komutun kendi `FlagSet` kurucusuyla çözülen bayraklardan
   gelir **(benim kararım, 19 Kasım)**. Ayrıntılar:
-  - `-env` değerleri kutuda gizlidir, GUI'deki gibi (`desktop/internal/confirm/text.go:53`);
+  - `-env` ve `-build-arg` değerleri kutuda gizlidir, GUI'deki gibi (`desktop/internal/confirm/text.go:53`);
     yalnız anahtar adları görünür.
   - `deploy`'da kutu, verilen dalı ya da commit'i gösterir. Dalın hangi commit'e çözüleceği
     bağlandıktan sonra belli olur (`deploy.go:57`); kutu bunu "çözülecek" diye yazar.
@@ -287,6 +292,12 @@ seçenekler konsoldan çıkarmak ve Windows'un kendi kutusuydu)**.
   biterse kart hemen kapanır. Komut 0 ile bitince kart AÇIK KALIR: `totp enable` kurtarma
   kodlarını en sonda basıp hemen bittiği için, bitişte kapanan bir kart kodları hiç göstermezdi
   (R14) (uygulamada değişti, K-169 Uygulama).
+- **Kart çalışmasına bağlıdır (R17):** kart onu üreten çalışmanın kimliğini taşır; yalnız o
+  çalışma sıfır dışı biterse kapanır. Sonraki bir komutun hatası (yazım hatası, alarm varken
+  `alarms`) bir kez gösterilen kurtarma kodlarını silmez. Kaydedilmemiş kart açıkken yeni satır
+  çalışmaz; istem "Önce gizli kartı kapatın (Kaydettim)." der. Ctrl+` ve panelin kapanması
+  çalışır (panel kapanınca kart da kapanır). Bedeli: kart kapanana kadar konsol bekler
+  (uygulamada değişti, K-169 Uygulama).
 - **Kalan risk:** sır, kart açıkken web görünümünün belleğinde ve ekrandadır. Bu, sırrın
   terminal ekranında durmasıyla aynı risk; terminalin kaydırma geçmişindeki kalıcılık burada yok.
 - Bu kanalı yalnız `totp enable` kullanır. Başka bir komut gizli değer basmaya başlarsa aynı kanala

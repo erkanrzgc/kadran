@@ -21,6 +21,32 @@ func TestRedact(t *testing.T) {
 	}
 }
 
+// -build-arg değerleri de -env gibi arıtılır: Go'nun flag paketinin kabul
+// ettiği her yazımda (tek/çift tire, ayrı ya da "=" ile, tekrarlı).
+func TestRedactBuildArg(t *testing.T) {
+	cases := []struct {
+		args []string
+		want string
+	}{
+		{[]string{"app", "create", "-build-arg", "NPM_TOKEN=s3cr3t", "web"}, "app create -build-arg NPM_TOKEN=*** web"},
+		{[]string{"app", "create", "-build-arg=NPM_TOKEN=s3cr3t", "web"}, "app create -build-arg=NPM_TOKEN=*** web"},
+		{[]string{"app", "create", "--build-arg", "NPM_TOKEN=s3cr3t", "web"}, "app create --build-arg NPM_TOKEN=*** web"},
+		{[]string{"app", "create", "--build-arg=NPM_TOKEN=s3cr3t", "web"}, "app create --build-arg=NPM_TOKEN=*** web"},
+		{[]string{"app", "create", "-build-arg", "A=s3cr3t", "--build-arg=B=s3cr3t", "-env", "C=s3cr3t", "web"}, "app create -build-arg A=*** --build-arg=B=*** -env C=*** web"},
+		{[]string{"app", "create", "-build-arg", "s3cr3t", "web"}, "app create -build-arg *** web"},
+		{[]string{"app", "create", "-build-arg=s3cr3t", "web"}, "app create -build-arg=*** web"},
+	}
+	for _, c := range cases {
+		got := Redact(c.args)
+		if got != c.want {
+			t.Errorf("%q: got %q, want %q", c.args, got, c.want)
+		}
+		if strings.Contains(got, "s3cr3t") {
+			t.Errorf("%q: değer sızdı: %q", c.args, got)
+		}
+	}
+}
+
 func TestRedactQuotesWordsWithSpacesOrQuotes(t *testing.T) {
 	got := Redact([]string{"app", "create", "a b", `x"y`, ""})
 	want := `app create "a b" "x\"y" ""`

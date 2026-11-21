@@ -21,6 +21,14 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   - `totp enable` shows the secret, the QR code and the recovery codes in a separate card that is
     never saved, copied or logged. New lines wait until you close it.
 
+### Fixed
+
+- Console live fixes (K-169). The panel is on every screen and the console's server is independent
+  of the GUI connection, so `use` works without a session and `login` can be run from the console.
+  The exit marker sits on the command's echo line and output is never coloured. The confirmation box
+  has a fixed width and comes to the front when Kadran is in the background. The server badge shows
+  its reason. The memory growth was measured and the result is recorded as an open item.
+
 ## v0.13.0 — 2026-11-18
 
 Private GitHub repositories through a device flow (K-167), and offsite backups that resolve names

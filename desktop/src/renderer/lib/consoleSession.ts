@@ -193,7 +193,8 @@ export function closePanel(s: ConsoleSession): ConsoleSession {
 
 /** Çıktıyı temizler (Ctrl+L, `clear`); çalışma durumuna dokunmaz. */
 export function clearOutput(s: ConsoleSession): ConsoleSession {
-  return { ...s, buffer: emptyBuffer() };
+  // Kimlikler tekrar kullanılmaz (React anahtarı); çalışan komutun yankı satırı gitti, işaret kimseye yazılmaz.
+  return { ...s, buffer: { ...emptyBuffer(), next: s.buffer.next }, echoLine: null };
 }
 
 /** Konsolun kendi notu (tamamlama adayları). */

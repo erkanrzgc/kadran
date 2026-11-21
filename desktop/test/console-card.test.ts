@@ -268,3 +268,21 @@ test("the prompt shows # only while a root-class line runs", () => {
   assert.equal(begin(initialSession(), "hetzner", "key list").root, true);
   assert.equal(begin(initialSession(), "hetzner", "status").root, false);
 });
+
+test("clear during run never marks output", () => {
+  let s = begin(initialSession(), "hetzner", "logs -f web");
+  s = apply(started(s, RUN), out(RUN, "a\nb\n"));
+  s = clearOutput(s);
+  s = apply(s, out(RUN, "c\nd\n"));
+  s = apply(s, done(RUN, 130));
+  assert.deepEqual(s.buffer.lines.map((l) => l.exit), [null, null]);
+});
+
+test("line ids stay unique across a clear", () => {
+  let s = begin(initialSession(), "hetzner", "status");
+  s = apply(started(s, RUN), out(RUN, "a\nb\n"));
+  const before = s.buffer.lines.map((l) => l.id);
+  s = apply(clearOutput(s), out(RUN, "c\nd\n"));
+  const all = [...before, ...s.buffer.lines.map((l) => l.id)];
+  assert.equal(new Set(all).size, all.length);
+});

@@ -2,6 +2,7 @@ package win
 
 import (
 	"encoding/binary"
+	"strings"
 	"testing"
 	"unsafe"
 
@@ -50,6 +51,58 @@ func TestDialogDefaultsToCancel(t *testing.T) {
 	for off, i := range map[int]int{28: 0, 44: 1, 52: 2} {
 		if le.Uint64(cfg[off:]) != uint64(uintptr(unsafe.Pointer(texts[i]))) {
 			t.Fatalf("%d. bayttaki metin yanlış", off)
+		}
+	}
+}
+
+// cxWidth, paketli x64 yerleşimde son alan: 156. Yapı boyuyla (160) uyumlu.
+const cxWidthOffset = 156
+
+// Genişlik 0 iken Windows kendi genişliğini seçer ve etki satırı dağılır.
+func TestTaskDialogWidth(t *testing.T) {
+	mem := layout(windows.HWND(0x1234), dialogTexts(t))
+	cfg := mem[:taskDialogConfigSize]
+	if cxWidthOffset+4 != taskDialogConfigSize {
+		t.Fatal("cxWidth yapının son alanı olmalı")
+	}
+	if got := binary.LittleEndian.Uint32(cfg[cxWidthOffset:]); got != 320 {
+		t.Fatalf("cxWidth %d, 320 olmalı", got)
+	}
+}
+
+type fakeForeground struct {
+	foreground windows.HWND
+	iconic     bool
+	setOK      bool
+	calls      []string
+}
+
+func (f *fakeForeground) Foreground() windows.HWND   { return f.foreground }
+func (f *fakeForeground) IsIconic(windows.HWND) bool { return f.iconic }
+func (f *fakeForeground) Restore(windows.HWND)       { f.calls = append(f.calls, "restore") }
+func (f *fakeForeground) SetForeground(windows.HWND) bool {
+	f.calls = append(f.calls, "set")
+	return f.setOK
+}
+func (f *fakeForeground) Flash(windows.HWND) { f.calls = append(f.calls, "flash") }
+
+func TestBringOwnerForward(t *testing.T) {
+	const owner = windows.HWND(0x1234)
+	cases := []struct {
+		name string
+		api  fakeForeground
+		want []string
+	}{
+		{"already in front", fakeForeground{foreground: owner, iconic: true}, nil},
+		{"behind", fakeForeground{foreground: 0x99, setOK: true}, []string{"set"}},
+		{"minimized", fakeForeground{foreground: 0x99, iconic: true, setOK: true}, []string{"restore", "set"}},
+		{"foreground lock", fakeForeground{foreground: 0x99, iconic: true}, []string{"restore", "set", "flash"}},
+	}
+	for _, c := range cases {
+		api := c.api
+		bringForward(owner, &api)
+		if strings.Join(api.calls, ",") != strings.Join(c.want, ",") {
+			t.Fatalf("%s: calls %v, want %v", c.name, api.calls, c.want)
 		}
 	}
 }

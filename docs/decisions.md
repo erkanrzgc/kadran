@@ -13229,3 +13229,21 @@ Son düzeltme dalgasında yeniden: kökte ve masaüstünde `go build`, `go vet`,
 4. Onay kutusunda etki satırı Windows tarafından yeniden kaydırılıyor, kutu dağınık görünüyor (TaskDialog genişlik vermiyor).
 5. Kadran öndeki pencere değilken onay kutusu öne gelmiyor; kullanıcı kutuyu bulamıyor, komut "running"de bekliyor. Güvenlik açığı değil (kutu yine şart), kullanılabilirlik hatası.
 6. Bellek: 18:30'da Kadran + 12 WebView2 alt süreci 411,9 MB özel bellek (Kadran'ın kendisi 65,4 MB). Bütçe (≤ 300 MB) duman ikilisiyle, cam kapalı, 5 sahte sunucu, açılıştan 60-90 sn sonra ölçülüyor; bu ölçüm gerçek uygulamada, cam açık, iki gerçek sunucu, ~2 saat açık ve çok komut sonrası. Koşullar aynı değil: önce bütçenin koşulunda yeniden ölçülecek, sonra uzun süre açık kalmada büyüme (sızıntı) aranacak.
+
+**Bellek büyümesi (Görev 5, 21 Kasım):**
+- Yöntem: `node desktop/scripts/measure-memory.mjs <idle|console-load|navigate-load>`. Duman ikilisi (cam kapalı, 5 sahte sunucu), Kadran + tüm WebView2 alt süreçlerinin `PrivateMemorySize64` toplamı (MB). Pay ayrımı `--type=gpu-process` ve `--type=renderer` komut satırı bayraklarıyla; "diğer" (yardımcı süreçler) sabit ~60-65 MB. Her mod iki kez, tek tek koşuldu; ortalamalar kullanıldı (R4).
+  - `idle`: konsol açık, 5.000 satır, 60/75/90. sn.
+  - `console-load`: konsol açık; açılıştan 60 sn sonra başlangıç okuması; 200 `app list` (14 sn) + 300 sn `logs -f` (sahte akış, 120 ms'de bir satır) + Ctrl+C; 60 sn boşta; bitiş okuması.
+  - `navigate-load`: konsol hiç açılmadı; aynı başlangıç; 200 gezinme tıklaması + 300 sn sürekli gezinme (sunucu alt menüsü, sol menü, Ayarlar, sunucu kartına dönüş; tıklamalar arası ~60-160 ms); 60 sn boşta; bitiş okuması.
+- `idle` (bütçe ≤ 300 MB): koşu 1: 282,1 / 283,8 / 283,8; koşu 2: 286,7 / 281,9 / 283,4. Ortalama 283,6, en yüksek 286,7: bütçe içinde. Açılış payı: GPU ~97, sayfa 55-60, Kadran 65,7.
+- `console-load` (toplam; GPU; sayfa):
+  - Koşu 1: başlangıç 257,1 (92,7; 40,9) → yük sonu en yüksek 401,7 → bitiş 382,3 (104,5; 145,2). Büyüme +125,2 (GPU +11,8; sayfa +104,3; Kadran +10,5).
+  - Koşu 2: başlangıç 254,1 (94,5; 38,8) → en yüksek 409,5 → bitiş 390,0 (106,5; 155,5). Büyüme +135,9 (GPU +12,0; sayfa +116,7; Kadran +8,6).
+  - Ortalama: başlangıç 255,6, bitiş 386,2, büyüme +130,6 (GPU +11,9; sayfa +110,5). Sayfa payı 60 sn boştayken geri verilmedi.
+- `navigate-load`:
+  - Koşu 1: başlangıç 256,4 (93,7; 39,3) → en yüksek 716,9 → bitiş 460,6 (197,2; 135,2). Büyüme +204,2 (GPU +103,5; sayfa +95,9; Kadran +6,1).
+  - Koşu 2: başlangıç 263,8 (95,9; 40,6) → en yüksek 773,7 → bitiş 415,5 (168,6; 114,9). Büyüme +151,7 (GPU +72,7; sayfa +74,3; Kadran +4,6).
+  - Ortalama: başlangıç 260,1, bitiş 438,1, büyüme +178,0 (GPU +88,1; sayfa +85,1). Bitişte hâlâ yüksek ama en yüksekten (717-774) belirgin düştü.
+- Karar kuralı: `console-load` büyümesi (130,6) `navigate-load` büyümesinden (178,0) 47,4 MB DAHA AZ; 30 MB'tan fazla olması gerekirdi. Sonuç: kaynak konsol değil, genel arayüz / WebView2. Gözlem olarak kayıtlı; "açık iş" değil, kod değişikliği yok.
+- Gözlemler (sonucu değiştirmez): canlıdaki büyüme GPU ağırlıklı (113 → 209) ve GPU payı yalnız gezinmeyle büyüdü (+73...+104); konsol yükünde GPU +12. Konsolun payı sayfa süreci (+104...+117, 5.000 satırlık DOM), ama gezinmede de sayfa +74...+96 oldu. Gezinme yükü insan hızının çok üstünde (saniyede ~10 tıklama), bu yüzden mutlak sayılar canlıdaki 2 saatin ölçeği değil; yönü ve payı gösterir. İki koşu arası fark büyük (gezinmede 204 / 152); N=2.
+- Ölçüm tuzağı: ilk `navigate-load` koşu 2'sinde örnekleyici 25 süreç saydı (toplam 1.229 MB): öksüz WebView2 süreçleri, adı yeniden verilmiş köke bağlı görünüyordu (PID yeniden kullanımı). Koşu atıldı; örnekleyici çocuğun ebeveyninden sonra doğmuş olmasını şart koştu ve koşu yenilendi (yeni koşuda 7 süreç).

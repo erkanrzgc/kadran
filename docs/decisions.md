@@ -13124,7 +13124,7 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - "28 dosya, ~11 bin satır": test dışı 5.265 satırdı;
 - "süreç geneline yalnız `main.go` dokunuyor": ortam değişkenleri ve kancasız `ssh` çağrıları da vardı.
 
-**Durum:** spec onaylı ve main'de (`6a89b05`). Plan `docs/plans/2026-11-19-kadran-konsolu.md`. Uygulama bitti (9 görev, `kadran-konsolu` dalında, 20 Kasım); son inceleme yapıldı, bulguları aynı dalda düzeltildi (aşağıda); push, PR ve birleştirme sırada. Sunucu, protokol (3) ve ayrıcalıklı yüzey değişmedi; yayınlanmadı.
+**Durum:** PR #39 → `12141d5`, main'de (21 Kasım; CI 17/17 yeşil, üçüncü koşuda). Canlıda iki sunucuda denendi (aşağıda "Canlı"); deneme altı bulgu çıkardı, düzeltmesi ayrı PR. Sunucu, protokol (3) ve ayrıcalıklı yüzey değişmedi; yayınlanmadı.
 
 **Uygulama (20 Kasım):**
 
@@ -13204,3 +13204,28 @@ Son düzeltme dalgasında yeniden: kökte ve masaüstünde `go build`, `go vet`,
 - Görev 7: iki ayrı tek-kutu kapısının açığı kapandı (ortak kapı `host.Confirm`'de, `confirm.OneBox`); test `Emit`'i engelleyen gönderim yapıyor; `bridge.ts` `subscribeConsole` çalışma zamanı yoksa sessiz; `Input/Cancel/Complete/SetAdmin` nil yolları testsiz; `listApps` testsiz; `bridge.ts` olay tipleri `runner.go`'dan elle kopya; Tab, erişilemeyen sunucuda `Conns.mu`'yu ~5 sn tutuyor.
 - Görev 8: `begin()`'in yeni sırrı kaydedilmemiş eski kartın altına eklemesi kapandı (R17: kart açıkken yeni satır çalışmaz); yazılan satır `-env` değeriyle ekrandaki tamponda (geçmiş arıtılmış); istem cevabı `type=text` (TOTP kodu yazılırken ekranda); `isRootLine` Go sınıflandırıcısının kopyası (yalnız renk); `App.tsx` girinti, "varsayılana dön" konsol yüksekliğini de sıfırlıyor, `useConsole` bağlantısı ve odak için bileşen testi yok; `done` exit 0 sonrası odak "Kaydettim"den istem kutusuna kayabilir.
 - Görev 9: 760x520'de kart gövdesi kayıyor (QR ve kurtarma kodları aşağıda, kullanıcı kaydırmalı) ve yatay kaydırma çubuğu görünüyor; duman mutantı yalnız Windows'ta koşar, Linux CI'da atlanır; Windows kutusunun gerçek pencerede görünümü hâlâ duman dışında.
+
+**PR ve CI (21 Kasım):**
+- İlk koşu: Masaüstü (windows) düştü. golangci-lint `smoke` etiketiyle de koşuyor; duman dosyasındaki sahte TOTP sırrını G101 saydı. Yerelde lint etiketsiz koşulduğu için görülmemişti. `//nolint:gosec` satırı (`718f72f`).
+- İkinci koşu: dört mutasyon parçası düştü. Sekiz mutant "uygulanamadı" çıktı: Görev 2-9'daki kod değişiklikleri betiklerin iğnelerini kaydırmıştı (keys, domaincheck, desktop, totp, servers). R18'in bedeli tam bu; yerelde seri koşu yapılsaydı önceden görülürdü. İğneler yeni koda yöneltildi, hepsi yakalanıyor. Windows duman testinde kasıtlı `verifyfail` adımının 9 sn'lik bildirimi konsol düğmesini örtüyordu; yolculuk bildirimi doğrulayıp kapatıyor (`7bb2db9`).
+- Üçüncü koşu 17/17 yeşil (Windows kurulum mutasyonu atlandı, betik değişmedi). Squash: `12141d5` `update kadran console`. `kadran-konsolu` dalı yerelde ve uzakta silindi.
+
+**Canlı (21 Kasım, saatler TR, masaüstü main'den derlendi: v0.13.0-4-g12141d5, 20.019.200 bayt):**
+- Oturum açma terminalden yapıldı (`kadran login -s hetzner`, sonra `-s gcp`): konsol, oturumu düşen sunucuda açılmıyor (Bulgu 1).
+- Hetzner (16:27-18:03):
+  - `app list`: 4 uygulama.
+  - `deploy ozel-deneme`: kutu doğru (sunucu, tam satır, etki; varsayılan düğme Vazgeç); Run → derleme konsola aktı, r3 canlı.
+  - `logs -f ozel-deneme` + Ctrl+C: akış durdu, istem açıldı.
+  - `rollback ozel-deneme`: ad istendi, kutu, Run → r3 → r2. Yazılan ad ekrana yansımadı.
+  - `domain check` (portfolio alan adı): DNS, 80, 443, HTTP 308, sertifika tamam; çalışırken ayrı konsol penceresi açılmadı.
+  - Yönetici ayarı Ayarlar'dan açıldı (kutu onaylı). `key list`: istem kırmızı `hetzner #`, ad, kutu, Run → 2 anahtar. `console-admin.log`'a bir satır (sunucu, komut, exit 0, 2,2 sn).
+- GCP (18:02-18:29): `app list` (3 uygulama), `deploy ozel-deneme` (r3 canlı), `logs -f` + Ctrl+C, `rollback ozel-deneme` (r3 → r2), `key list` (sudo yolu, 1 anahtar; kayıtta ikinci satır, 3,4 sn).
+- Hiçbir değiştiren ya da tehlikeli komut kutusuz çalışmadı. GCP'deki rollback'te kutu görünmedi; Kadran öne gelince kutu da geldi ve kullanıcı Run'a bastı (kullanıcı doğruladı).
+
+**Canlıda bulunanlar (düzeltme ayrı PR):**
+1. Konsol yalnız bağlantısı kurulmuş sunucunun sayfasında, alt çubuktan açılıyor. Sunucular ve Uygulamalar listesinde Ctrl+` bir şey yapmıyor; oturumu düşen sunucuda panel yok, bu yüzden `login` konsoldan yapılamıyor. Spec'in Review Focus 3'ü (CLI ipucunu konsola yapıştırmak) canlıda bu yüzden çalışmıyor.
+2. Komut bitince renk, bitiş satırı yerine çıktının son satırına uygulanıyor (`app list`'in son uygulaması, `logs`'un son satırı yeşil).
+3. Üst çubuktaki sunucu rozeti "Healthy" ile "Attention required" arasında gidip geliyor; aynı anda Alarmlar sayfası "No active alarm conditions" diyor. Bilinen açılış alarmı (`proxy_unreconciled`) ya da rozetin kaynağıyla ilgili olabilir, incelenecek.
+4. Onay kutusunda etki satırı Windows tarafından yeniden kaydırılıyor, kutu dağınık görünüyor (TaskDialog genişlik vermiyor).
+5. Kadran öndeki pencere değilken onay kutusu öne gelmiyor; kullanıcı kutuyu bulamıyor, komut "running"de bekliyor. Güvenlik açığı değil (kutu yine şart), kullanılabilirlik hatası.
+6. Bellek: 18:30'da Kadran + 12 WebView2 alt süreci 411,9 MB özel bellek (Kadran'ın kendisi 65,4 MB). Bütçe (≤ 300 MB) duman ikilisiyle, cam kapalı, 5 sahte sunucu, açılıştan 60-90 sn sonra ölçülüyor; bu ölçüm gerçek uygulamada, cam açık, iki gerçek sunucu, ~2 saat açık ve çok komut sonrası. Koşullar aynı değil: önce bütçenin koşulunda yeniden ölçülecek, sonra uzun süre açık kalmada büyüme (sızıntı) aranacak.

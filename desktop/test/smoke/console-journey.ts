@@ -240,6 +240,35 @@ async function consoleSteps(win: Page): Promise<void> {
   await click(win, '[data-testid="console-close"]');
   await waitFor(win, `!${q('[data-testid="console"]')}`, "the console panel closes");
   await setThemeLight(win);
+  await loginWithoutSession(win);
+}
+
+/** Ctrl+Backquote: pencerenin kısayolu (React dinleyicisi window da). */
+async function toggleWithShortcut(win: Page): Promise<void> {
+  await evaluate<boolean>(win, `(document.body.dispatchEvent(new KeyboardEvent("keydown", { key: "\\u0060", code: "Backquote", ctrlKey: true, bubbles: true, cancelable: true })), true)`);
+}
+
+/**
+ * console login without session: sunucu GUI da bağlı değil (ayarlar ekranı), panel
+ * Ctrl+Backquote ile açılır, `use totp` istemi değiştirir, `login` kodu ister ve
+ * 000000 ile biter; kod tamponda yok.
+ */
+async function loginWithoutSession(win: Page): Promise<void> {
+  expect(!(await evaluate<boolean>(win, `Boolean(${q('[data-testid="console"]')})`)), "the console is open before the login scenario");
+  await toggleWithShortcut(win);
+  await waitFor(win, q('[data-testid="console"]'), "the console opens on a screen without a server");
+  await clearPanel(win);
+  await typeLine(win, "use totp");
+  await waitFor(win, `${q('[data-testid="console-prompt"]')}?.textContent.includes("totp ›")`, "the prompt names the totp server without a connection");
+  await waitFor(win, finished(true), "use totp finished");
+  await typeLine(win, "login");
+  await waitFor(win, awaiting(), "the login code prompt");
+  await typeLine(win, "000000");
+  await waitFor(win, finished(true), "login finished with exit 0");
+  expect(await showsText(win, "signed in"), "login did not report the session");
+  expect(!(await showsText(win, "000000")), "the login code reached the console output");
+  await toggleWithShortcut(win);
+  await waitFor(win, `!${q('[data-testid="console"]')}`, "the console closes with the shortcut");
 }
 
 /** Temayı açığa döndürür (themeJourney açık varsayılanı bekler); panel kapalı kalır. */

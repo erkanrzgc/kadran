@@ -61,13 +61,16 @@ interface Options {
   onUse: (name: string) => void;
   /** "Gizli çıktı ayrı kartta gösterildi" satırı (çevrilmiş). */
   secretNote: string;
+  /** Çalışma bitti: satır, başladığı sunucu ve çıkış kodu. */
+  onFinish?: (line: string, server: string, exit: number) => void;
 }
 
-export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
+export function useConsole({ server, onUse, secretNote, onFinish }: Options): ConsoleApi {
   const [session, update] = useReducer(apply, undefined, initialSession);
   const [history, setHistory] = useState<HistoryState>(() => createHistory([]));
-  const live = useRef({ session, server, onUse, secretNote });
-  live.current = { session, server, onUse, secretNote };
+  const runInfo = useRef({ line: "", server: "" });
+  const live = useRef({ session, server, onUse, secretNote, onFinish });
+  live.current = { session, server, onUse, secretNote, onFinish };
   const busy = isBusy(session);
 
   // Olaylar consoleRun dönmeden önce de gelir: abonelik panelden bağımsız, hep açık.
@@ -75,7 +78,12 @@ export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
     () =>
       bridge.onConsoleEvent((event) => {
         if (event.name === "console:use") live.current.onUse(event.data.server);
-        else update((s) => applyEvent(s, event, live.current.secretNote));
+        else {
+          if (event.name === "console:done" && isBusy(live.current.session)) {
+            live.current.onFinish?.(runInfo.current.line, runInfo.current.server, event.data.exit);
+          }
+          update((s) => applyEvent(s, event, live.current.secretNote));
+        }
       }),
     [],
   );
@@ -100,6 +108,7 @@ export function useConsole({ server, onUse, secretNote }: Options): ConsoleApi {
     const text = current(history);
     // R17: kart açıkken satır köprüye gitmez; yazılan satır taslakta kalır.
     if (!canRun(s) || text.trim() === "") return;
+    runInfo.current = { line: text, server: name };
     update((x) => begin(x, promptServer(x, name), text));
     setHistory((h) => edit(h, ""));
     bridge.consoleRun(name, text).then(

@@ -31,7 +31,7 @@ import (
 
 // smokeSecret, sahte TOTP sırrı: duman testi bu dizenin kart dışında hiçbir
 // yerde görünmediğini sınar.
-const smokeSecret = "JBSWY3DPEHPK3PXP"
+const smokeSecret = "JBSWY3DPEHPK3PXP" //nolint:gosec // yalnız duman ikilisi; bilinen sahte sır, gerçek kimlik bilgisi değil
 
 // smokeRecoveryCodes, sahte kurtarma kodları (`aaaa-bbbb` biçimi).
 var smokeRecoveryCodes = []string{"aaaa-bbbb", "cccc-dddd"}

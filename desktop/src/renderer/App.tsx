@@ -16,7 +16,7 @@ import { useFleet } from "./hooks/useFleet.ts";
 import { useServer } from "./hooks/useServer.ts";
 import { errorText, serverListError } from "./lib/errors.ts";
 import { alarmCount, classifyFailure } from "./lib/fleet.ts";
-import { healthOf } from "./lib/health.ts";
+import { healthOf, healthReason } from "./lib/health.ts";
 import { createProfileStore } from "./lib/profile-store.ts";
 import type { VersionPayload } from "./lib/types.ts";
 import { AlarmsScreen } from "./screens/AlarmsScreen.tsx";
@@ -228,7 +228,9 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [toggleConsole]);
 
-  const health = healthOf(server.state.status, server.state.verify, server.state.stale || server.state.verifyStale);
+  const healthStale = server.state.stale || server.state.verifyStale;
+  const health = healthOf(server.state.status, server.state.verify, healthStale);
+  const reason = healthReason(server.state.status, server.state.verify, healthStale);
   const currentProfile = profiles.find((p) => p.target === active) ?? null;
   const editServer = (target: string) => {
     const profile = profiles.find((p) => p.target === target);
@@ -244,7 +246,7 @@ export function App() {
       <div className="shell">
         <Rail view={active === null ? view : null} serverOpen={active !== null} alarmCount={alarmCount(cards)} version={version} onNavigate={navigate} />
         <div className="main">
-          <TopBar target={active} health={health} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
+          <TopBar target={active} health={health} healthReason={reason}profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
             <Tabs tabs={tabs} active={active} profiles={profiles} cards={cards} onSelect={(target) => void openServer(target)} onClose={closeTab} />
           </TopBar>
           {active === null ? (

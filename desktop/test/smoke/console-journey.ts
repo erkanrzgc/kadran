@@ -145,6 +145,8 @@ async function totpScenario(win: Page, label: string): Promise<void> {
 
 /** Okuma, değiştirme, akış ve reddedilen komutlar (1280x820). */
 async function commandScenarios(win: Page, label: string): Promise<void> {
+  const badge0 = await badgeOf(win);
+  expect(badge0.includes("Executor is unreachable"), `the badge does not show its reason: "${badge0}"`); // fixtures/status.json: executor_reachable false
   // app list: okuma, kutu yok.
   await clearPanel(win);
   let before = (await win.boxes()).length;
@@ -164,6 +166,7 @@ async function commandScenarios(win: Page, label: string): Promise<void> {
   expect(box.Detail.includes(COMMIT) && box.Detail.includes("web"), "the deploy box does not show the whole line");
   expect(`${box.Message}\n${box.Detail}`.includes("fake"), "the deploy box does not name the server");
   for (const step of ["build step 1/3", "build step 2/3", "build step 3/3"]) expect(await showsText(win, step), `deploy output lacks "${step}"`);
+  await expectBadgeSame(win, badge0, "after deploy finished");
   await screenshot(win, `console-${label}`);
 
   // logs -f + Ctrl+C: akış sürer, istem kilitli, Ctrl+C done getirir ve istem açılır.
@@ -171,6 +174,7 @@ async function commandScenarios(win: Page, label: string): Promise<void> {
   await typeLine(win, "logs -f web");
   await waitForText(win, "live line 2");
   expect(await evaluate<boolean>(win, `${q(INPUT)}.readOnly`), "the prompt is not locked while a command runs");
+  await expectBadgeSame(win, badge0, "while logs -f runs");
   await press(win, { key: "c", ctrlKey: true });
   await waitFor(win, `(() => { const l = document.querySelectorAll(".console-line.is-echo"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && /is-exit-/.test(last.className) && i && !i.readOnly); })()`, "logs -f stopped by Ctrl+C");
 
@@ -181,6 +185,16 @@ async function commandScenarios(win: Page, label: string): Promise<void> {
   await waitFor(win, finished(false), "key list refused");
   expect(await showsText(win, "admin commands are off"), "key list was not refused with the admin-off reason");
   expect((await win.boxes()).length === before, "a refused command opened a confirmation box");
+}
+
+/** Üst çubuk rozetinin metni ve nedeni (title). Sahte sunucunun durumu sabit: konsol komutları bunu değiştirmemeli. */
+async function badgeOf(win: Page): Promise<string> {
+  return evaluate<string>(win, `(() => { const e = document.querySelector("[data-testid=health]"); return (e?.textContent ?? "") + " | " + (e?.getAttribute("title") ?? ""); })()`);
+}
+
+async function expectBadgeSame(win: Page, baseline: string, when: string): Promise<void> {
+  const now = await badgeOf(win);
+  expect(now === baseline, `the health badge changed ${when}: "${baseline}" -> "${now}"`);
 }
 
 /** 5.000 satırı aşan çıktı: arabellek sınırlı, panel yanıt veriyor. */

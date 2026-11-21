@@ -35,6 +35,25 @@ export function healthOf(
   return h === "healthy" || h === "unknown" ? "attention" : h;
 }
 
+export type HealthReason = "stale" | "executor-unreachable" | "chain-not-valid" | "no-verify" | null;
+
+/**
+ * Rozetin neden böyle olduğu (healthOf ile aynı dallar). Yalnız "attention"
+ * ve doğrulama beklenen "unknown" için neden vardır; sağlıklı, kötü haber
+ * ve bağlantısız durumda null.
+ */
+export function healthReason(
+  status: HealthStatusInput | null,
+  verify: HealthVerifyInput | null,
+  stale = false,
+): HealthReason {
+  const h = freshHealth(status, verify);
+  if (stale && status && (h === "healthy" || h === "unknown")) return "stale";
+  if (h === "attention") return status?.executor_reachable ? "chain-not-valid" : "executor-unreachable";
+  if (h === "unknown" && status && !verify) return "no-verify";
+  return null;
+}
+
 function freshHealth(status: HealthStatusInput | null, verify: HealthVerifyInput | null): Health {
   if (!status) return "unknown";
   if (status.running_as_user === "root") return "broken-install";

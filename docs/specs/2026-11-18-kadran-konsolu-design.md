@@ -207,6 +207,8 @@ bir şey çalıştırmasını önler)**.
   da görünür; `server add` yasak olduğu için konsol "sunucu ekleme arayüzdeki akışta" der.
 - Konsola özgü üç komut **(benim kararım)**: `use <sunucu>`, `clear` (Ctrl+L), `help` (CLI'ın
   komut listesi + konsol kısayolları). Başka yerleşik komut yok.
+  `/help` tek başına `help` ile aynıdır; istem `/` iken Tab konsolun yerleşiklerini (`/help`, `use`,
+  `clear`) önerir; `/` ile başlayan başka hiçbir satır yerleşik sayılmaz (canlıda eklendi, K-169).
 - Seçili sunucu yokken (boş liste) yalnız `help`, `use` ve `server list` çalışır.
 
 ### 5. Onay akışları

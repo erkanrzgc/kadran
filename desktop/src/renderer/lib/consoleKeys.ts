@@ -64,7 +64,11 @@ export function applyCompletion(line: string, cursor: number, candidates: readon
   if (candidates.length === 0) return { line, cursor, candidates: [] };
   const start = line.slice(0, cursor).search(/\S*$/);
   const single = candidates.length === 1;
-  const word = single ? `${candidates[0]} ` : commonPrefix(candidates);
+  const typed = line.slice(start, cursor);
+  // Adayların ortak öneki yazılandan kısaysa (örn. `/` için `/help`, `use`)
+  // yazılan sözcük silinmez.
+  const shared = commonPrefix(candidates);
+  const word = single ? `${candidates[0]} ` : shared.startsWith(typed) ? shared : typed;
   return { line: line.slice(0, start) + word + line.slice(cursor), cursor: start + word.length, candidates: single ? [] : [...candidates] };
 }
 

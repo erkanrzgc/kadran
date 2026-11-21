@@ -38,6 +38,11 @@ test("consoleKeys completion replaces the word before the cursor", () => {
   assert.deepEqual(applyCompletion("zz", 2, []), { line: "zz", cursor: 2, candidates: [] });
 });
 
+test("consoleKeys completion keeps a typed slash when candidates share no prefix", () => {
+  const all = ["/help", "use", "clear"];
+  assert.deepEqual(applyCompletion("/", 1, all), { line: "/", cursor: 1, candidates: all });
+});
+
 test("shouldFocusPrompt keeps the input focused while the panel is open, also while a run continues after an answer", () => {
   assert.equal(shouldFocusPrompt(true), true);
   assert.equal(shouldFocusPrompt(false), false);

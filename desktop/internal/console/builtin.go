@@ -24,6 +24,10 @@ const consoleHelp = "\nConsole commands:\n" +
 	"  Ctrl+L         clear the output\n" +
 	"  Ctrl+`         open or close the console\n"
 
+// slashHelp, help için eğik çizgili kısayoldur; eğik çizgiyle başlayan başka
+// hiçbir sözcük yerleşik sayılmaz.
+const slashHelp = "/help"
+
 // builtin, yerleşik komutu çalıştırır; ok false ise satır yerleşik değildir.
 // Tek başına -h ve --help de help'tir (R7: `deploy -h` ise CLI'a gider).
 func (r *Runner) builtin(rs *runState, list []servers.Server, words []string) (int, bool) {
@@ -36,7 +40,7 @@ func (r *Runner) builtin(rs *runState, list []servers.Server, words []string) (i
 		}
 		rs.out.event(EventClear, ClearData{})
 		return cli.ExitOK, true
-	case len(words) == 1 && (words[0] == "help" || words[0] == "-h" || words[0] == "--help"):
+	case len(words) == 1 && (words[0] == "help" || words[0] == slashHelp || words[0] == "-h" || words[0] == "--help"):
 		return r.help(rs), true
 	}
 	return 0, false

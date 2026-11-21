@@ -157,3 +157,19 @@ func TestCompleteUsesCursor(t *testing.T) {
 		t.Fatalf("kayıtsız sunucu için uygulama adı: %q", got)
 	}
 }
+
+func TestCompleteSlashListsBuiltins(t *testing.T) {
+	h, _, _ := completeHarness(t)
+	if got := complete(h, "/"); !slices.Equal(got, []string{"/help", "use", "clear"}) {
+		t.Fatalf("/: %q", got)
+	}
+	if got := complete(h, "/h"); !slices.Equal(got, []string{"/help"}) {
+		t.Fatalf("/h: %q", got)
+	}
+	if got := complete(h, "/x"); len(got) != 0 {
+		t.Fatalf("/x: %q", got)
+	}
+	if got := complete(h, "deploy /"); len(got) != 0 {
+		t.Fatalf("deploy /: %q", got)
+	}
+}

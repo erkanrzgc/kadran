@@ -514,6 +514,12 @@ async function managementJourney(win: Page): Promise<void> {
   await waitFor(win, `${q('[data-testid="verification-time"]')}?.textContent.includes("out of date")`, "stale verification marker");
   expect((await text(win, '[data-testid="health"]')) === "Attention required", "failed verification retained healthy status");
   expect(!(await evaluate<boolean>(win, `Boolean(document.querySelector('.chains .badge.is-ok'))`)), "failed verification retained current green chain");
+  // Başarısız doğrulama bildirim çıkarır ve bildirim 9 sn kalır. Hızlı koşucuda
+  // (Windows CI) bu süre konsol yolculuğu başlayınca dolmamış oluyor ve bildirim
+  // konsol düğmesinin üstünde duruyordu. Bildirimi şimdi doğrula ve kapat.
+  await waitFor(win, `${q('[data-testid="toast"] .toast-text')}?.textContent.includes("verification connection lost")`, "reason for the failed verification");
+  await dismissToasts(win);
+  await waitFor(win, `!${q('[data-testid="toast"]')}`, "the verification toast is dismissed");
   // Executor'ı erişilebilir sunucu: uygulamalar en çok CPU kullanan üstte (ikinci okumadan sonra).
   const appOrder = `[...document.querySelectorAll('[data-testid="app-usage-row"]')].map((r) => r.dataset.app + "=" + r.querySelector('[data-testid="app-cpu"]').textContent).join(",")`;
   await waitFor(win, `${appOrder} === "worker=15%,hello=7.5%"`, "application usage order at 760x520");

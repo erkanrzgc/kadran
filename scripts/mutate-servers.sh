@@ -147,7 +147,7 @@ mutate_in "$KEY" "-s notu ilgisiz kullanım hatasında da çıkıyor" \
     "s=s.replace('return c.usageError(\"unknown key subcommand','return c.argCountError(\"unknown key subcommand',1)"
 
 mutate_in "$MAIN" "komut yardımı -s'yi söylemiyor" \
-    "s=s.replace('if !noTargetCommands[command] {','if !noTargetCommands[command] && false {',1)"
+    "s=s.replace('if !isNoTarget(command) {','if !isNoTarget(command) && false {',1)"
 
 echo "== Masaüstünün listesi (yan süreç) =="
 

@@ -208,7 +208,7 @@ mutate "kurulum anahtarı boşlukla gruplanıyor (canlıda uygulama reddetti)" "
     "./internal/cli/"
 
 mutate "kurulumda QR yazılmıyor" "$KCL" \
-    "s=s.replace('\t\tfmt.Fprint(c.stdout, q)','\t\t_ = q',1)" \
+    "s=s.replace('\t\tfmt.Fprint(c.sensitive(), q)','\t\t_ = q',1)" \
     "./internal/cli/"
 
 mutate "QR'a tam link giriyor (varsayılanlar atılmıyor, kod büyüyor)" "$KCL" \

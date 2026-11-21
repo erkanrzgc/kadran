@@ -131,7 +131,7 @@ mutate_in "$CLI" "kısıtsız satır sayılmıyor" \
     "s=s.replace('\t\t\tunrestricted++\n','',1)"
 
 mutate_in "$CLI" "-deploy zorunlu değil" \
-    "s=s.replace('\tif *deploy == \"\" {','\tif false && *deploy == \"\" {',1)"
+    "s=s.replace('\tif *o.deploy == \"\" {','\tif false && *o.deploy == \"\" {',1)"
 
 echo "== Uzak betik dosyaya kadran-client olarak dokunuyor (K-140) =="
 # Yalnız gerçek sudo altında koşan test yakalar

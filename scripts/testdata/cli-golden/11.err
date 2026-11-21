@@ -1,0 +1,9 @@
+Usage of prune:
+  -all
+    	prunes every app
+  -dry-run
+    	prints what would be removed, REMOVES NOTHING
+  -json
+    	machine-readable JSON output
+  -s name
+    	a server saved with `kadran server add`, instead of the target

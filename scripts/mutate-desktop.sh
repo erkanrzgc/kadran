@@ -299,7 +299,7 @@ mutate_go internal/confirm/box.go "oluşturma kutusunda kaynak sınırları yok"
 mutate_go internal/confirm/confirm.go "kutu JSON sayısı biçimindeki sınırı boş gösteriyor (onaylanan ≠ gönderilen)" \
     "s=s.replace('if err == nil && f >= 0 && f == math.Trunc(f)','if err == nil && f < 0 && f == math.Trunc(f)',1)"
 mutate_go internal/confirm/confirm.go "kutuda uzun değer baştan kesiliyor (host gizlenir)" \
-    "s=s.replace('return head.String() + string(rune(ellipsis)) + tail.String()','return head.String() + string(rune(ellipsis))',1)"
+    "s=s.replace('return append(out, parts[j:]...)','return out',1)"
 mutate_go internal/confirm/confirm.go "kesme kaçışsız uzunluğu sayıyor (değer ~6 kat büyür)" \
     "s=s.replace('for i < len(parts) && headLen+units(parts[i]) <= half {','for i < len(parts) && i < half {',1)"
 mutate_go internal/confirm/confirm.go "U+2000 üstü görünmezler kaçışlanmıyor (bidi, U+2028, U+3000)" \

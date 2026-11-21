@@ -2,11 +2,13 @@ package bridge
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/erkanrzgc/kadran/desktop/internal/confirm"
 	"github.com/erkanrzgc/kadran/internal/sidecar"
 )
 
@@ -60,6 +62,23 @@ func TestMutationsCancelledNeverReachTheServer(t *testing.T) {
 		}
 		if hs.h.boxCount() != 1 || hs.d.count() != 0 {
 			t.Errorf("%s: kutu %d, çağrı %d", m.name, hs.h.boxCount(), hs.d.count())
+		}
+	}
+}
+
+// Host'un tek-kutu kapısı (başka bir kutu açık) ya da kutunun hatası onay
+// sayılmaz: "true" yanıtla birlikte gelse de sunucuya gidilmez, hata arayüze
+// döner.
+func TestConfirmErrorNeverReachesTheServer(t *testing.T) {
+	for _, m := range append(mutations(), mutation{"GitHubDisconnect", "github.disconnect", func(b *Bridge, t string) (any, error) { return b.GitHubDisconnect(t, "disconnect") }}) {
+		hs := newHarness(t, true)
+		hs.h.err = confirm.ErrBoxOpen
+		got, err := m.run(hs.b, target)
+		if !errors.Is(err, confirm.ErrBoxOpen) || got != nil {
+			t.Errorf("%s: %v %v", m.name, got, err)
+		}
+		if hs.d.count() != 0 {
+			t.Errorf("%s: kutu hatasından sonra %d çağrı", m.name, hs.d.count())
 		}
 	}
 }

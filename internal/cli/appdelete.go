@@ -1,0 +1,95 @@
+package cli
+
+import (
+	"context"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"strings"
+
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+)
+
+// runAppDelete, uygulamayı ve izlerini kaldırır.
+//
+// ── Onay istemiyor, ve bu kasıtlı ───────────────────────────────────
+//
+// Bir CLI çağrısı zaten açık bir niyettir; üstüne "emin misiniz?"
+// sormak, operatörü refleksle `y` yazmaya alıştırmaktan başka bir şey
+// yapmaz. Gerçek koruma başka yerde ve daha sert: canlı sürümü olan bir
+// uygulama sunucu tarafından REDDEDİLİYOR, yani bu komutla çalışan bir
+// siteyi düşürmek imkânsız.
+//
+// ⚠ Hata ön eki yok (K-068): sunucunun hataları kendi kendini
+// açıklıyor ("uygulamanın canlı sürümü var (r1) — ...") ve sonuç iddia
+// eden bir ön ek, kullanıcıyı ilk üç kelimeden yanlış sonuca götürür.
+func (c *cli) runAppDelete(ctx context.Context, args []string) int {
+	fs, o := c.appDeleteFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		return c.argCountError("usage: kadran app delete <app> [target] — " +
+			"options go BEFORE the app name")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
+	defer cancel()
+
+	conn, _, err := c.connect(ctx, fs.Arg(1))
+	if err != nil {
+		return c.fail(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	resp, err := conn.RPC().DeleteApp(ctx, &kadranv1.DeleteAppRequest{AppId: fs.Arg(0)})
+	if err != nil {
+		return c.fail(fmt.Errorf("app delete: %w", err))
+	}
+
+	if *o.asJSON {
+		body, err := protoToJSON(resp)
+		if err != nil {
+			return c.fail(err)
+		}
+		return c.writeJSON(json.RawMessage(body))
+	}
+	// NE yok edildiği yazdırılıyor: "silindi" tek başına hiçbir şey
+	// söylemiyor, çünkü boş bir kayıt da beş sürümlü bir uygulama da
+	// aynı cevabı verirdi.
+	fmt.Fprintf(c.stdout, "%s deleted · %d containers · %d releases · %d deployment records\n",
+		resp.GetAppId(), resp.GetContainersRemoved(),
+		resp.GetReleasesDeleted(), resp.GetDeploymentsDeleted())
+
+	// ⚠ NE SİLİNMEDİĞİ de söylenmeli.
+	//
+	// `app delete` hacim verisine dokunmuyor — geri alınamaz bir veri
+	// kaybının tek bir komutun yan etkisi olması bu projede kabul
+	// edilmiyor. Ama sessiz kalmak da kabul edilemez: kullanıcı
+	// uygulamayı sildiğinde diskin de gittiğini varsayar ve aylarca
+	// farkına varmadan yer tüketir.
+	//
+	// Mesaj yolu ADLANDIRMIYOR: hacim kökü executor'ın yapılandırması ve
+	// kadrand onu bilmiyor. Bilmediği bir yolu yazmak, doğrulanmamış bir
+	// iddia olurdu.
+	if kept := resp.GetVolumesKept(); len(kept) > 0 {
+		fmt.Fprintf(c.stdout,
+			"\n⚠ the DATA of %d volumes IS STILL ON DISK (not deleted): %s\n"+
+				"  Kadran never destroys persistent storage on its own. To free the "+
+				"space, remove the volume directory on the server by hand.\n",
+			len(kept), strings.Join(kept, ", "))
+	}
+	return ExitOK
+}
+
+// appDeleteOpts, `app delete` komutunun bayrak değerleri.
+type appDeleteOpts struct {
+	asJSON *bool
+}
+
+// appDeleteFlags, `app delete` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) appDeleteFlags() (*flag.FlagSet, *appDeleteOpts) {
+	fs := c.newFlagSet("app delete")
+	asJSON := fs.Bool("json", false, "machine-readable JSON output")
+	return fs, &appDeleteOpts{asJSON: asJSON}
+}

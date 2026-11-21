@@ -22,7 +22,7 @@
 # `go test`, başka yerde test ikilisi GOOS=linux derlenip WSL'de koşturulur.
 # Dağıtım KADRAN_WSL_DISTRO ile seçilir (varsayılan Ubuntu-24.04).
 #
-# kapsam: internal/github cmd/kadran-git internal/exec internal/api internal/gitclient cmd/kadran deploy/systemd
+# kapsam: internal/github cmd/kadran-git internal/exec internal/api internal/gitclient internal/cli deploy/systemd
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -42,7 +42,7 @@ FILES=(
     internal/exec/privategit.go
     internal/api/github.go
     internal/api/authz.go
-    cmd/kadran/github.go
+    internal/cli/github.go
     deploy/systemd/kadran-git.service
     deploy/systemd/kadran-git-admin.socket
     deploy/systemd/kadran-git-fetch.socket
@@ -232,7 +232,7 @@ mutate internal/api/github.go "$API" 'TestConcurrentStatusAuditsOnce' native "de
 mutate internal/api/github.go "$API" 'TestStartRejectsForeignVerificationURI' native "verification_uri önek denetimi kaldırıldı" \
     "s=s.replace('validGitHubURL(p.GetVerificationUri(), githubVerifyPref) &&','true &&',1)"
 # 22. TestConnectStopsWhenFirstPollIsNotConnected
-mutate cmd/kadran/github.go ./cmd/kadran/ 'TestConnectStopsWhenFirstPollIsNotConnected' native "NOT_CONNECTED sonrası yoklama sürüyor" \
+mutate internal/cli/github.go ./internal/cli/ 'TestConnectStopsWhenFirstPollIsNotConnected' native "NOT_CONNECTED sonrası yoklama sürüyor" \
     "s=s.replace('default:'+chr(10)+chr(9)+chr(9)+'return c.githubStop(msgGitHubEnded), true','default:'+chr(10)+chr(9)+chr(9)+'return 0, false',1)"
 
 echo "== Son inceleme düzeltmeleri (gerçek GitHub, 17 Kas) =="
@@ -252,7 +252,7 @@ mutate internal/github/repocoverage.go "$GH" 'TestDecideRejoinsRefreshThatSupers
 mutate internal/github/repocoverage.go "$GH" 'TestStalePublicHitRechecksInBackground' native "eski herkese açık kayıt yeniden denetlenmiyor (özele çevrilen depo görülmez)" \
     "s=s.replace(chr(9)+chr(9)+'s.recheckPublicLocked(d)'+chr(10),'',1)"
 # 28. TestGitHubStatusShowsReconnectAfterDrop
-mutate cmd/kadran/github.go ./cmd/kadran/ 'TestGitHubStatusShowsReconnectAfterDrop' native "yeniden bağlan uyarısı yalnız CONNECTED'da (sunucu o şekli hiç üretmez)" \
+mutate internal/cli/github.go ./internal/cli/ 'TestGitHubStatusShowsReconnectAfterDrop' native "yeniden bağlan uyarısı yalnız CONNECTED'da (sunucu o şekli hiç üretmez)" \
     "s=s.replace('conn.GetState() != kadranv1.GitHubConnection_STATE_CONNECTED && conn.GetReconnectRequired()','conn.GetState() == kadranv1.GitHubConnection_STATE_CONNECTED && conn.GetReconnectRequired()',1)"
 
 restore

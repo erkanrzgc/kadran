@@ -1,0 +1,9 @@
+Usage of deploy:
+  -branch string
+    	branch to resolve; if empty, the app's default branch
+  -commit string
+    	commit to build (full 40-character sha); if empty the branch is resolved
+  -timeout duration
+    	overall time limit (0 = none; builds can take long)
+  -s name
+    	a server saved with `kadran server add`, instead of the target

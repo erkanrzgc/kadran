@@ -17,8 +17,8 @@ const here = dirname(fileURLToPath(import.meta.url));
 const desktop = resolve(here, "..");
 const repo = resolve(desktop, "..");
 const exe = join(desktop, "dist", "Kadran.exe");
-/** Bütçe (filo tasarımı): paket ≤ 20 MB. */
-const MAX_BYTES = 20_000_000;
+/** Bütçe (filo tasarımı; 20 Kasım 2026, kullanıcı: 22 MB, K-169): paket ≤ 22 MB. */
+const MAX_BYTES = 22_000_000;
 
 if (process.platform !== "win32") throw new Error("the desktop package is built on Windows only (K-165)");
 

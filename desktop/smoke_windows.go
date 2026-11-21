@@ -74,6 +74,8 @@ type smokeCommand struct {
 	ID      int64  `json:"id"`
 	Code    string `json:"code"`
 	Capture string `json:"capture"`
+	// Boxes: konsolun şimdiye dek istediği onay kutularını döner.
+	Boxes bool `json:"boxes"`
 }
 
 var smokeOnce sync.Once
@@ -103,6 +105,10 @@ func startSmoke(ctx context.Context, h *host) {
 				var cmd smokeCommand
 				if err := json.Unmarshal(scanner.Bytes(), &cmd); err != nil {
 					reply(map[string]any{"id": 0, "ok": false, "error": "bad command: " + err.Error()})
+					continue
+				}
+				if cmd.Boxes {
+					reply(map[string]any{"id": cmd.ID, "ok": true, "value": consoleBoxes()})
 					continue
 				}
 				if cmd.Capture != "" {

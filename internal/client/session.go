@@ -157,6 +157,10 @@ func IsSessionError(err error) bool {
 // SetSession, sonraki çağrılara eklenecek jetonu ayarlar; boş dize jetonu
 // kaldırır.
 func (c *Client) SetSession(token string) {
+	if c.owner != nil {
+		c.owner.SetSession(token)
+		return
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.session = token
@@ -164,6 +168,9 @@ func (c *Client) SetSession(token string) {
 
 // Session, ayarlı jetonu döner (boş: yok).
 func (c *Client) Session() string {
+	if c.owner != nil {
+		return c.owner.Session()
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.session

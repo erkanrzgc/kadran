@@ -1,0 +1,42 @@
+kadran dev — Kadran workstation tool
+
+Usage:
+  kadran <command> [options] [target]
+
+Commands:
+  status [target]                              shows server and daemon status
+  app <create|update|list|show|delete> …       manages app definitions
+  deploy <app> [target]                        builds a commit and switches traffic to it
+  rollback <app> [target]                      switches traffic back to the previous release
+  logs [-f] <app> [target]                     streams the live release's output
+  prune [-dry-run] <app>|-all [target]         removes old releases' containers
+  alarms [target]                              lists active fault conditions
+  backup <create|list> [target]                takes and lists database backups
+  domain check <domain> [target]               checks a domain's DNS, ports and certificate
+  audit <list|verify> [target]                 reads and verifies the audit chain
+  server <add|list|rm|rename> …                manages the saved server list
+  sidecar                                      stdio JSON-RPC server for the desktop app
+  bootstrap root@server | -sudo user@server    installs or upgrades the server
+  github <connect|status|disconnect> [target]  connects private GitHub repositories
+  key <list|add|remove> … root@server          manages deploy-only keys
+  login [-recovery] [target]                   signs in with a TOTP code (when TOTP is on)
+  logout [target]                              deletes the saved sign-in for a server
+  totp <status|enable|disable|reset> [target]  manages two-step sign-in
+  version                                      prints version information
+
+Target forms:
+  (empty)                   local socket — /run/kadran/api.sock
+  /path/api.sock            local socket, explicit path
+  user@server               SSH (default user: kadran-client)
+  user@server:2222          SSH, custom port
+  server                    SSH, default user
+  -s name                   a server saved with kadran server add
+
+Exit codes:
+  0  success
+  1  error (could not connect, chain could not be verified)
+  2  usage error
+  3  audit chain BROKEN — possible tampering
+
+Options go after the command and before the target:
+  kadran audit list --limit 20 user@server

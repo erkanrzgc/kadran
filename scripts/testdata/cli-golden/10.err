@@ -1,0 +1,8 @@
+Usage of logs:
+  -f	keep the stream open (Ctrl-C to quit)
+  -tail uint
+    	how many lines of history (default 200)
+  -timeout duration
+    	overall time limit (0 = none)
+  -s name
+    	a server saved with `kadran server add`, instead of the target

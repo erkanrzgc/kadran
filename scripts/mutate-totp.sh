@@ -18,8 +18,8 @@ HND=internal/api/totp.go
 AUZ=internal/api/authz.go
 CLI=internal/client/session.go
 RST=cmd/kadrand/totpreset.go
-KCL=cmd/kadran/totp.go
-KQR=cmd/kadran/qr.go
+KCL=internal/cli/totp.go
+KQR=internal/cli/qr.go
 FILES="$VRF $REC $STO $SES $HND $AUZ $CLI $RST $KCL $KQR"
 PKGS="./internal/totp/ ./internal/store/ ./internal/api/"
 
@@ -33,7 +33,7 @@ fail=0
 # Taban YEŞİL olmalı: kırmızı bir taban her mutantı "yakalandı" gösterirdi.
 restore
 # shellcheck disable=SC2086
-if ! go test $PKGS ./internal/client/ ./cmd/kadrand/ ./cmd/kadran/ -count=1 >/dev/null 2>&1; then
+if ! go test $PKGS ./internal/client/ ./cmd/kadrand/ ./internal/cli/ -count=1 >/dev/null 2>&1; then
     echo "!! TABAN KIRMIZI: mutasyonsuz kodda testler düşüyor — ölçüm YAPILMADI"
     exit 1
 fi
@@ -185,55 +185,55 @@ echo "== Kurulum ve kod istemi (K-156) =="
 
 mutate "6 rakam olmayan kod sunucuya gidiyor (kilide sayılır)" "$KCL" \
     "s=s.replace('if len(code) == totp.Digits && strings.Trim(code, \"0123456789\") == \"\" {','if true || len(code) == totp.Digits && strings.Trim(code, \"0123456789\") == \"\" {',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "boşluklu kod (123 456) yerelde reddediliyor" "$KCL" \
     "s=s.replace('code := strings.ReplaceAll(raw, \" \", \"\")','code := raw',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "bozuk girişte yeniden sorulmuyor (kurulumda yeni sır gerekir)" "$KCL" \
     "s=s.replace('if try == maxCodeTries {','if true {',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "kurulum anahtarı koda yazılınca söylenmiyor" "$KCL" \
     "s=s.replace('case len(code) >= 16 &&','case false && len(code) >= 16 &&',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "kurtarma kodu da 6 hane denetiminden geçiyor" "$KCL" \
     "s=s.replace('\tif recovery {\n\t\treturn c.prompt(in, \"recovery code\")','\tif false && recovery {\n\t\treturn c.prompt(in, \"recovery code\")',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "kurulum anahtarı boşlukla gruplanıyor (canlıda uygulama reddetti)" "$KCL" \
     "s=s.replace('b.GetSecretBase32())','b.GetSecretBase32()[:4]+\" \"+b.GetSecretBase32()[4:])',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "kurulumda QR yazılmıyor" "$KCL" \
-    "s=s.replace('\t\tfmt.Fprint(c.stdout, q)','\t\t_ = q',1)" \
-    "./cmd/kadran/"
+    "s=s.replace('\t\tfmt.Fprint(c.sensitive(), q)','\t\t_ = q',1)" \
+    "./internal/cli/"
 
 mutate "QR'a tam link giriyor (varsayılanlar atılmıyor, kod büyüyor)" "$KCL" \
     "s=s.replace('qrBlock(qrLink(b.GetOtpauthUri()))','qrBlock(b.GetOtpauthUri())',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "QR normal renkli (açık modül blok, beyaz kutu)" "$KQR" \
     "s=s.replace('return code.Black(x-qrQuiet, y-qrQuiet)','return !code.Black(x-qrQuiet, y-qrQuiet)',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "QR sessiz bölgesi 4 değil 1 modül" "$KQR" \
     "s=s.replace('const qrQuiet = 4','const qrQuiet = 1',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "QR hata düzeltmesi M (kod büyüyor)" "$KQR" \
     "s=s.replace('qr.Encode(text, qr.L)','qr.Encode(text, qr.M)',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "QR linkinden varsayılan olmayan değer de atılıyor (8 hane)" "$KQR" \
     "s=s.replace('if len(q[k]) == 1 && q[k][0] == v {','if len(q[k]) == 1 && (q[k][0] == v || true) {',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 mutate "bozuk link QR için yeniden yazılıyor" "$KQR" \
     "s=s.replace('\tif err != nil {\n\t\treturn uri','\tif false && err != nil {\n\t\treturn uri',1)" \
-    "./cmd/kadran/"
+    "./internal/cli/"
 
 echo "== Kurulum etiketi (K-157) =="
 

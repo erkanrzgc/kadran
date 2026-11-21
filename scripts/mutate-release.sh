@@ -16,7 +16,7 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 REL=internal/bootstrap/release.go
-MAIN=cmd/kadran/main.go
+MAIN=internal/cli/cli.go
 FILES=("$REL" "$MAIN")
 
 BAKDIR=$(mktemp -d)
@@ -29,7 +29,7 @@ fail=0
 
 olc() {
     go test -count=1 -timeout 120s ./internal/bootstrap >/dev/null 2>&1 &&
-        go test -count=1 -timeout 120s ./cmd/kadran -run TestUseRelease >/dev/null 2>&1
+        go test -count=1 -timeout 120s ./internal/cli -run TestUseRelease >/dev/null 2>&1
 }
 
 # mutate_in <dosya> <ad> <python-ifadesi>
@@ -63,7 +63,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
     # ── MUTANT DERLENMELİ (K-096) ───────────────────────
     # Derlenmeyen bir mutant her testi düşürür ve sahte "yakalandı" üretirdi.
     local build_out
-    if ! build_out=$(go vet ./internal/bootstrap ./cmd/kadran 2>&1); then
+    if ! build_out=$(go vet ./internal/bootstrap ./internal/cli 2>&1); then
         echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI. Çıktı:"
         echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1

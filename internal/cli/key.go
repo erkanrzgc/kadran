@@ -1,0 +1,297 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/erkanrzgc/kadran/internal/bootstrap"
+	"github.com/erkanrzgc/kadran/internal/client"
+	"github.com/erkanrzgc/kadran/internal/connproto"
+)
+
+// ── `kadran key`: yalnızca dağıtım yapabilen anahtarlar (K-131) ──────
+//
+// Rol authorized_keys satırında durduğu ve o dosyaya yalnız root yazdığı
+// için bu komut bootstrap'ın yetki yolunu kullanıyor: root@sunucu ya da
+// -sudo kullanıcı@sunucu. kadran-client ile ÇALIŞMAZ (zorlanmış komut).
+
+const keyUsage = "usage:\n" +
+	"  kadran key list   [-sudo] root@server\n" +
+	"  kadran key add    -deploy app1,app2 [-name name] [-sudo] <key.pub> root@server\n" +
+	"  kadran key remove [-sudo] <SHA256:fingerprint> root@server"
+
+// keyTimeout, bir anahtar işleminin üst sınırı: üç kısa uzak komut.
+const keyTimeout = 2 * time.Minute
+
+// maxPublicKeyFile, okunacak açık anahtar dosyasının üst sınırı. En büyük
+// RSA açık anahtarı birkaç KB; daha büyüğü yanlış dosyadır.
+const maxPublicKeyFile = 16 << 10
+
+// keyManager, sunucudaki anahtar işlemleri; testler sahtesini koyuyor.
+type keyManager interface {
+	List(ctx context.Context, opts bootstrap.KeyOptions) ([]bootstrap.AuthorizedKey, error)
+	AddDeploy(ctx context.Context, opts bootstrap.KeyOptions, pub []byte, apps []string, name string) (bootstrap.AuthorizedKey, error)
+	Remove(ctx context.Context, opts bootstrap.KeyOptions, fingerprint string) (bootstrap.AuthorizedKey, error)
+}
+
+type realKeys struct{}
+
+func (realKeys) List(ctx context.Context, o bootstrap.KeyOptions) ([]bootstrap.AuthorizedKey, error) {
+	return bootstrap.ListKeys(ctx, o)
+}
+
+func (realKeys) AddDeploy(ctx context.Context, o bootstrap.KeyOptions, pub []byte, apps []string, name string) (bootstrap.AuthorizedKey, error) {
+	return bootstrap.AddDeployKey(ctx, o, pub, apps, name)
+}
+
+func (realKeys) Remove(ctx context.Context, o bootstrap.KeyOptions, fp string) (bootstrap.AuthorizedKey, error) {
+	return bootstrap.RemoveKey(ctx, o, fp)
+}
+
+func (c *cli) keyManager() keyManager {
+	if c.keys != nil {
+		return c.keys
+	}
+	return realKeys{}
+}
+
+func (c *cli) runKey(ctx context.Context, args []string) int {
+	if len(args) == 0 {
+		return c.usageError("%s", keyUsage)
+	}
+	switch args[0] {
+	case "list":
+		return c.runKeyList(ctx, args[1:])
+	case "add":
+		return c.runKeyAdd(ctx, args[1:])
+	case "remove":
+		return c.runKeyRemove(ctx, args[1:])
+	default:
+		return c.usageError("unknown key subcommand %q — list, add or remove", args[0])
+	}
+}
+
+// keyTarget, son argümanı root yetkili SSH hedefi olarak çözer.
+func (c *cli) keyTarget(raw string, sudo bool) (bootstrap.KeyOptions, error) {
+	if err := c.checkServerTarget(raw); err != nil {
+		return bootstrap.KeyOptions{}, err
+	}
+	opts, err := rootTarget("key", raw, sudo, c.keys != nil || c.command != nil)
+	opts.Command = c.command
+	return opts, err
+}
+
+// rootTarget, root yetkisi isteyen bir komutun (key, totp reset) hedefini
+// çözer: root@sunucu ya da -sudo kullanıcı@sunucu. faked: test sahtesi
+// kurulu, ssh aranmaz.
+func rootTarget(cmd, raw string, sudo, faked bool) (bootstrap.KeyOptions, error) {
+	target, err := client.ParseTarget(raw)
+	if err != nil {
+		return bootstrap.KeyOptions{}, err
+	}
+	if target.IsLocal() {
+		return bootstrap.KeyOptions{}, fmt.Errorf("`%s` needs a remote target (root@server or -sudo user@server), not a local socket", cmd)
+	}
+	if !faked && !client.SSHAvailable() {
+		return bootstrap.KeyOptions{}, errors.New("`ssh` not found — the OpenSSH client is required")
+	}
+	return bootstrap.KeyOptions{
+		Host: target.SSHUser + "@" + target.SSHHost, Port: target.SSHPort, Sudo: sudo,
+	}, nil
+}
+
+func (c *cli) runKeyList(ctx context.Context, args []string) int {
+	fs, o := c.keyListFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() != 1 {
+		return c.argCountError("%s", keyUsage)
+	}
+	opts, err := c.keyTarget(fs.Arg(0), *o.sudo)
+	if err != nil {
+		return c.fail(err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, keyTimeout)
+	defer cancel()
+
+	keys, err := c.keyManager().List(ctx, opts)
+	if err != nil {
+		return c.fail(err)
+	}
+	unrestricted := printKeys(c.stdout, keys)
+	if unrestricted > 0 {
+		return c.fail(fmt.Errorf("%d lines are not forced to kadran-connect — those keys can get a shell "+
+			"as kadran-client; remove them: kadran key remove <fingerprint> %s", unrestricted, fs.Arg(0)))
+	}
+	return ExitOK
+}
+
+// keyListOpts, `key list` komutunun bayrak değerleri.
+type keyListOpts struct {
+	sudo *bool
+}
+
+// keyListFlags, `key list` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) keyListFlags() (*flag.FlagSet, *keyListOpts) {
+	fs := c.newFlagSet("key list")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &keyListOpts{sudo: sudo}
+}
+
+// printKeys, anahtarları tablo olarak yazar ve kısıtsız satır sayısını döner.
+func printKeys(w io.Writer, keys []bootstrap.AuthorizedKey) int {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "ROLE\tSCOPE\tFINGERPRINT\tCOMMENT")
+	unrestricted := 0
+	for _, k := range keys {
+		role, scope := "?", "-"
+		switch {
+		case !k.Restricted():
+			role = "⚠ UNRESTRICTED"
+			unrestricted++
+		case k.Role == connproto.RoleAdmin:
+			role = "admin"
+		case k.Role == connproto.RoleDeploy:
+			role, scope = "deploy", strings.Join(k.Apps, ",")
+		}
+		fp := k.Fingerprint
+		if fp == "" {
+			fp = "(unreadable)"
+		}
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", role, scope, fp, printable(k.Comment))
+	}
+	_ = tw.Flush()
+	return unrestricted
+}
+
+// printable, sunucudan gelen yorumu terminale güvenle basılır kılar:
+// denetim karakterleri (terminal kaçış dizileri dahil) '?' olur.
+func printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return '?'
+		}
+		return r
+	}, s)
+}
+
+func (c *cli) runKeyAdd(ctx context.Context, args []string) int {
+	fs, o := c.keyAddFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() != 2 {
+		return c.argCountError("%s", keyUsage)
+	}
+	// Yönetici anahtarı bu komutla EKLENMİYOR: yönetici anahtarı
+	// bootstrap'ın işi (-client-key). Kapsamsız bir `key add` yazım
+	// hatasıyla tam yetki vermesin diye -deploy zorunlu.
+	if *o.deploy == "" {
+		return c.usageError("-deploy is required: list the apps the key may deploy (e.g. -deploy site,api)")
+	}
+	apps, err := connproto.ParseDeployScope(*o.deploy)
+	if err != nil {
+		return c.usageError("-deploy: %v", err)
+	}
+	pub, err := readPublicKey(fs.Arg(0))
+	if err != nil {
+		return c.fail(err)
+	}
+	opts, err := c.keyTarget(fs.Arg(1), *o.sudo)
+	if err != nil {
+		return c.fail(err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, keyTimeout)
+	defer cancel()
+
+	k, err := c.keyManager().AddDeploy(ctx, opts, pub, apps, *o.name)
+	if err != nil {
+		return c.fail(err)
+	}
+	fmt.Fprintf(c.stdout, "Deploy key added: %s · scope: %s\n\n", k.Fingerprint, strings.Join(k.Apps, ", "))
+	fmt.Fprintf(c.stdout, "This key can only deploy; it cannot read the app definition, so the\n"+
+		"commit is passed explicitly. In GitHub Actions:\n"+
+		"  kadran deploy -commit \"$GITHUB_SHA\" %s %s@<server>\n", apps[0], client.DefaultSSHUser)
+	return ExitOK
+}
+
+// keyAddOpts, `key add` komutunun bayrak değerleri.
+type keyAddOpts struct {
+	deploy *string
+	name   *string
+	sudo   *bool
+}
+
+// keyAddFlags, `key add` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) keyAddFlags() (*flag.FlagSet, *keyAddOpts) {
+	fs := c.newFlagSet("key add")
+	deploy := fs.String("deploy", "", "apps the key may deploy (comma-separated; REQUIRED)")
+	name := fs.String("name", "", "comment for the line (default: the key's own comment)")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &keyAddOpts{deploy: deploy, name: name, sudo: sudo}
+}
+
+// readPublicKey, açık anahtar dosyasını boyut sınırıyla okur. Doğrulama
+// (tek satır, özel anahtar değil, gövde türüyle uyumlu) bootstrap'ta.
+func readPublicKey(path string) ([]byte, error) {
+	f, err := os.Open(path) //nolint:gosec // kullanıcının kendi verdiği dosya
+	if err != nil {
+		return nil, fmt.Errorf("could not read the public key: %w", err)
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(io.LimitReader(f, maxPublicKeyFile+1))
+	if err != nil {
+		return nil, fmt.Errorf("could not read the public key: %w", err)
+	}
+	if len(b) > maxPublicKeyFile {
+		return nil, fmt.Errorf("%s is too large to be a public key", path)
+	}
+	return b, nil
+}
+
+func (c *cli) runKeyRemove(ctx context.Context, args []string) int {
+	fs, o := c.keyRemoveFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() != 2 {
+		return c.argCountError("%s", keyUsage)
+	}
+	fp := fs.Arg(0)
+	if !strings.HasPrefix(fp, "SHA256:") {
+		return c.usageError("the fingerprint must look like SHA256:… (`kadran key list` shows it), not %q", fp)
+	}
+	opts, err := c.keyTarget(fs.Arg(1), *o.sudo)
+	if err != nil {
+		return c.fail(err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, keyTimeout)
+	defer cancel()
+
+	k, err := c.keyManager().Remove(ctx, opts, fp)
+	if err != nil {
+		return c.fail(err)
+	}
+	fmt.Fprintf(c.stdout, "Removed: %s %s\n", k.Fingerprint, printable(k.Comment))
+	return ExitOK
+}
+
+// keyRemoveOpts, `key remove` komutunun bayrak değerleri.
+type keyRemoveOpts struct {
+	sudo *bool
+}
+
+// keyRemoveFlags, `key remove` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) keyRemoveFlags() (*flag.FlagSet, *keyRemoveOpts) {
+	fs := c.newFlagSet("key remove")
+	sudo := fs.Bool("sudo", false, "through the target user's PASSWORDLESS sudo (never asks for a password)")
+	return fs, &keyRemoveOpts{sudo: sudo}
+}

@@ -28,6 +28,13 @@ var WindowActions = []string{"minimize", "maximize", "close"}
 // kutusunda "Server:" satırını yanıltabilir; ssh hedefinde zaten anlamsızlar.
 var invisible = regexp.MustCompile(`[\p{Cc}\p{Cf}]`)
 
+// HasControlOrFormat, metinde denetim (Cc) ya da biçim (Cf, bidi dahil)
+// karakteri olup olmadığını söyler. Konsol satır ayrıştırıcısı da aynı kuralı
+// kullanır; kural tek yerde durur.
+func HasControlOrFormat(s string) bool {
+	return invisible.MatchString(s)
+}
+
 var (
 	appIDPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,31}$`)
 	// BranchPattern, dal, etiket ya da tam commit; sunucunun kuralıyla aynı.
@@ -43,7 +50,7 @@ func Target(value string) (string, error) {
 		return "", errors.New("target is too long")
 	}
 	trimmed := jsTrim(value)
-	if invisible.MatchString(trimmed) {
+	if HasControlOrFormat(trimmed) {
 		return "", errors.New("target must not contain control or invisible characters")
 	}
 	// ssh seçeneği olarak okunur (-oProxyCommand=…): savunma derinliği, ssh
@@ -185,6 +192,66 @@ func ServerName(value string) (string, error) {
 		return "", errors.New("server name is too long")
 	}
 	return value, nil
+}
+
+// Konsol girdi sınırları (Kadran Konsolu).
+const (
+	// MaxConsoleLine, konsol satırının en çok bayt sayısı (ayrıştırıcıyla aynı).
+	MaxConsoleLine = 4096
+	// MaxConsoleInput, çalışan komutun istemine verilen satırın en çok bayt sayısı.
+	MaxConsoleInput = 256
+)
+
+// runIDPattern, çalıştırma kimliği: 16 küçük onaltılık hane (console.Runner).
+var runIDPattern = regexp.MustCompile(`^[0-9a-f]{16}$`)
+
+// ConsoleServer, konsolun seçili sunucu adı. Boş ad "sunucu seçili değil"
+// demektir (yalnız help ve server list çalışır); doluysa ServerName kuralı
+// geçerli. Geçmiş bu adla anahtarlandığı için doğrulama köprüde yapılır.
+func ConsoleServer(value string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	return ServerName(value)
+}
+
+// ConsoleLine, konsol satırı: yalnız bayt sınırı. Denetim ve biçim
+// karakterlerini (satır sonu dahil) satır ayrıştırıcısı reddeder ve nedenini
+// çalıştırmanın stderr akışına yazar; burada hata olarak kesilmez.
+func ConsoleLine(value string) (string, error) {
+	if len(value) > MaxConsoleLine {
+		return "", errors.New("console line is too long (at most 4096 bytes)")
+	}
+	return value, nil
+}
+
+// ConsoleInput, komutun istemine verilen tek satır: en çok 256 bayt, denetim
+// ya da biçim (Cc, Cf) karakteri yok. İçerik sır olabilir; hata metni onu
+// yansıtmaz.
+func ConsoleInput(value string) (string, error) {
+	if len(value) > MaxConsoleInput {
+		return "", errors.New("console input is too long (at most 256 bytes)")
+	}
+	if HasControlOrFormat(value) {
+		return "", errors.New("console input must not contain control or invisible characters")
+	}
+	return value, nil
+}
+
+// RunID, konsol çalıştırma kimliği: yalnız 16 küçük onaltılık hane.
+func RunID(value string) (string, error) {
+	if !runIDPattern.MatchString(value) {
+		return "", errors.New("invalid run ID")
+	}
+	return value, nil
+}
+
+// ConsoleCursor, imlecin satır içinde (UTF-16 birimi) olduğunu denetler.
+func ConsoleCursor(line string, cursor int) (int, error) {
+	if cursor < 0 || cursor > utf16Len(line) {
+		return 0, errors.New("cursor is outside the line")
+	}
+	return cursor, nil
 }
 
 // Provider, elle yazılan sağlayıcı etiketi; boş olabilir.

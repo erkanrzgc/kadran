@@ -1,7 +1,7 @@
 /**
  * Fikstürlerin, arayüzün beklediği tel biçimini taşıdığını doğrular.
  * Fikstürleri Go testi gerçek protoToJSON çıktısından üretiyor
- * (cmd/kadran/sidecar_fixtures_test.go); bu test TS tiplerinin o biçimle
+ * (internal/cli/sidecar_fixtures_test.go); bu test TS tiplerinin o biçimle
  * aynı varsayımı yaptığını ölçer.
  */
 

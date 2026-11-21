@@ -1,0 +1,134 @@
+package cli
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"time"
+
+	kadranv1 "github.com/erkanrzgc/kadran/internal/pb/kadran/v1"
+)
+
+// defaultTailLines, `-tail` verilmediğinde gösterilecek geçmiş satır
+// sayısıdır.
+//
+// Sıfır olsaydı komut boş bir ekranla açılır ve kullanıcı çalışmadığını
+// sanırdı; çok büyük olsaydı teşhis edilmek istenen son olay ekranın
+// üstünden akıp giderdi. 200 satır bir terminal ekranından uzun, bir
+// günlük dosyasından kısa.
+const defaultTailLines = 200
+
+// runLogs, canlı sürümün çıktısını akıtır.
+func (c *cli) runLogs(ctx context.Context, args []string) int {
+	fs, o := c.logsFlags()
+	if err := fs.Parse(args); err != nil {
+		return ExitUsage
+	}
+	if fs.NArg() < 1 || fs.NArg() > 2 {
+		return c.argCountError("usage: kadran logs [-f] [-tail n] <app> " +
+			"[target] — options go BEFORE the app name")
+	}
+
+	if *o.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *o.timeout)
+		defer cancel()
+	}
+
+	conn, _, err := c.connect(ctx, fs.Arg(1))
+	if err != nil {
+		return c.fail(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	stream, err := conn.RPC().StreamLogs(ctx, &kadranv1.StreamLogsRequest{
+		AppId:     fs.Arg(0),
+		TailLines: uint32(*o.tail), //nolint:gosec // bayrak uint, sunucu ayrıca sınırlıyor
+		Follow:    *o.follow,
+	})
+	if err != nil {
+		return c.fail(fmt.Errorf("could not start the log stream: %w", err))
+	}
+	return c.consumeLogs(ctx, stream)
+}
+
+// logsOpts, `logs` komutunun bayrak değerleri.
+type logsOpts struct {
+	follow  *bool
+	tail    *uint
+	timeout *time.Duration
+}
+
+// logsFlags, `logs` için bayrak kümesini kurar; çalıştırma ve Inspect aynı kurucuyu kullanır.
+func (c *cli) logsFlags() (*flag.FlagSet, *logsOpts) {
+	fs := c.newFlagSet("logs")
+	follow := fs.Bool("f", false, "keep the stream open (Ctrl-C to quit)")
+	tail := fs.Uint("tail", defaultTailLines, "how many lines of history")
+
+	// ── ⚠ Varsayılan sınır YOK ve bu KASITLI ────────────────────────
+	//
+	// `-f` ile akış saatlerce açık kalabilir; sabit bir sınır onu tam da
+	// işe yaradığı anda keserdi. Aynı tuzak bu projede bir kez ölçüldü
+	// (K-044) ve `deploy` komutunda da aynı sebeple sınırsız bırakıldı.
+	//
+	// Sınırsız bırakmak sorumsuzluk değil: bağlantı kurma aşamasının
+	// kendi sınırı var (ssh ConnectTimeout) ve komut SIGINT'e duyarlı.
+	timeout := fs.Duration("timeout", 0, "overall time limit (0 = none)")
+	return fs, &logsOpts{follow: follow, tail: tail, timeout: timeout}
+}
+
+// consumeLogs, akışı okuyup uygun akıma yazar.
+//
+// ── stdout ve stderr AYRI tutuluyor ─────────────────────────────────
+//
+// Konteynerin stderr'i bizim stderr'imize gidiyor. Böylece
+// `kadran logs blog > app.log` yalnızca uygulamanın stdout'unu dosyaya
+// yazar, hata satırları terminalde kalır — Docker'ın ayırdığı bilgiyi
+// birleştirip atmak, akışları ayırmanın bütün faydasını yok ederdi.
+func (c *cli) consumeLogs(
+	ctx context.Context,
+	stream kadranv1.KadranService_StreamLogsClient,
+) int {
+	// ⚠ HİÇ BAŞLAMAMIŞ akış ile YARIDA KOPMUŞ akış ayrı şeyler.
+	//
+	// gRPC akış hatalarını ilk `Recv()`'de yüzeye çıkarıyor, yani sunucu
+	// isteği daha ilk anda reddetse bile hata buradan geliyor. Hepsine
+	// "akış koptu" demek, "uygulama bulunamadı" hatasını bir ağ
+	// sorunuymuş gibi gösterir ve operatörü bağlantının peşine düşürür.
+	started := false
+	for {
+		msg, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			return ExitOK
+		}
+		if err != nil {
+			// ⚠ Ctrl-C hata DEĞİLDİR, zaman aşımı hatadır.
+			//
+			// `-f` akışını bitiren normal yol Ctrl-C'dir; kırmızı bir
+			// mesajla bitirmek her normal çıkışta hata yazdırırdı.
+			//
+			// `-timeout` ile kesilme ise ayrı: kullanıcı çıkmadı, süre
+			// doldu. İkisini birlikte yutmak, yarıda kalmış bir akışı
+			// başarılı gösterirdi.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return ExitOK
+			}
+			if !started {
+				return c.fail(fmt.Errorf("could not start the log stream: %w", err))
+			}
+			return c.fail(fmt.Errorf("log stream broke: %w", err))
+		}
+
+		started = true
+
+		out := c.stdout
+		if msg.GetIsStderr() {
+			out = c.stderr
+		}
+		if _, err := out.Write(msg.GetData()); err != nil {
+			return c.fail(err)
+		}
+	}
+}

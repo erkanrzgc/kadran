@@ -1,6 +1,7 @@
 package confirm
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -72,6 +73,121 @@ func Build(language Language, req Request) Box {
 		Cancel:  t("cancel", nil),
 		Action:  t("action."+string(req.Kind), nil),
 	}
+}
+
+// ConsoleRequest, konsoldan çalıştırılacak bir komutun onay bilgisi.
+//   - Line arıtılmış satırdır (-env değerleri ***), eklenen -s olmadan.
+//   - Admin root hedefidir (root@… ya da -sudo kullanıcı@…); root dışında boş.
+//   - Effect, komut yoluna göre ConsoleEffect'ten gelir.
+//
+// Line boşsa kutu bir konsol ayarı içindir (yönetici komutlarını açmak).
+type ConsoleRequest struct{ Server, Line, Effect, Admin string }
+
+const (
+	// MaxConsoleLineUnits, kutuda gösterilebilen (kaçışlı, arıtılmış) komut
+	// satırının en çok UTF-16 birimi. Daha uzun satır kutuya hiç gelmez:
+	// çalıştırıcı onu kutu kurmadan reddeder (ConsoleTooLong).
+	MaxConsoleLineUnits = 1024
+	// maxRowUnits, Detail'in bir satırının en çok UTF-16 birimi (girinti dahil).
+	maxRowUnits = 96
+	// rowIndent, sarılan bir alanın devam satırlarının girintisi. 0. sütunda
+	// yalnız alanların etiket satırları başlar: kullanıcı değeri ("Server:
+	// staging" içeren bir -health-path gibi) devam satırında etiket gibi
+	// okunamaz.
+	rowIndent = "    "
+)
+
+// BuildConsole, konsol komutunun onay kutusunu kurar. Konsol, GUI işlemleri
+// için de bu tek biçimi kullanır (plan kararı): bayraklardan Spec/Update
+// yeniden kurmak, CLI'ın bayrak → istek çevirisini ikinci kez yazmak olurdu.
+// Ortak kalan: kaçış ve varsayılan düğme Cancel.
+//
+// Komut satırı HİÇ kesilmez (R10): değiştirme sınıfında tek kapı bu kutu ve
+// bayraklarda son yazılan kazanır; ortadan kesilen satırda ikinci bir
+// `-domain` görünmeden onaylanırdı. Satır kaçıştan geçer, kesilmeden en çok
+// maxRowUnits birimlik satırlara bölünür; uzunluk sınırı çalıştırıcıda
+// (MaxConsoleLineUnits). Sunucu, yönetici hedefi ve etki kısa: safe'den geçer.
+// Her alan etiketiyle başlar (etki de); devam satırları rowIndent ile girintili.
+func BuildConsole(language Language, req ConsoleRequest) Box {
+	t := func(key string, p params) string { return text(language, key, p) }
+	var rows []string
+	add := func(label string, parts []string) {
+		rows = append(rows, wrapParts(append(escapeParts(label), parts...))...)
+	}
+	if req.Server != "" {
+		add(t("line.server", params{"target": ""}), safeParts(req.Server))
+	}
+	if req.Admin != "" {
+		add(t("console.line.admin", params{"admin": ""}), safeParts(req.Admin))
+	}
+	if req.Line != "" {
+		add(t("console.line.command", params{"line": ""}), escapeParts(req.Line))
+	}
+	if req.Effect != "" {
+		add(t("console.line.effect", params{"effect": ""}), safeParts(req.Effect))
+	}
+	kind := "command"
+	if req.Line == "" {
+		kind = "setting"
+	}
+	return Box{
+		Title:   t("title", nil),
+		Message: t("console.message."+kind, params{"server": safe(req.Server)}),
+		Detail:  strings.Join(rows, "\n"),
+		Cancel:  t("cancel", nil),
+		Action:  t("console.action."+kind, nil),
+	}
+}
+
+// ConsoleLineUnits, satırın kutuda göstereceği kaçışlı uzunluk (UTF-16).
+func ConsoleLineUnits(line string) int { return partsUnits(escapeParts(line)) }
+
+// ConsoleTooLong, MaxConsoleLineUnits'i aşan satırın ret metni.
+func ConsoleTooLong(language Language) string { return text(language, "console.too_long", nil) }
+
+// wrapParts, parçaları en çok maxRowUnits birimlik satırlara dizer; ilk
+// satırdan sonrakiler rowIndent ile başlar (girinti sınıra dahil). Kırma son
+// boşluktan sonra yapılır (boşluk satır sonunda kalır: hiçbir karakter
+// düşmez); taşınan sözcük girintili satıra sığmıyorsa ya da boşluk yoksa
+// parça sınırında sert kırılır, kaçış bölünmez.
+func wrapParts(parts []string) []string {
+	var rows, row []string
+	// base, satırın baştaki girinti parçası sayısı (ilk satırda 0).
+	width, lastSpace, base := 0, -1, 0
+	for _, p := range parts {
+		w := units(p)
+		if width+w > maxRowUnits && len(row) > base {
+			var carry []string
+			if p != " " && lastSpace >= 0 && units(rowIndent)+partsUnits(row[lastSpace+1:])+w <= maxRowUnits {
+				carry = slices.Clone(row[lastSpace+1:])
+				row = row[:lastSpace+1]
+			}
+			rows = append(rows, strings.Join(row, ""))
+			row = append([]string{rowIndent}, carry...)
+			width, base, lastSpace = partsUnits(row), 1, -1
+		}
+		row, width = append(row, p), width+w
+		if p == " " && len(row) > base+1 {
+			lastSpace = len(row) - 1
+		}
+	}
+	if len(row) > base {
+		rows = append(rows, strings.Join(row, ""))
+	}
+	return rows
+}
+
+// ConsoleEffect, konsol komutunun ne yapacağını anlatan metni döner. key,
+// komut yoludur ("deploy", "app delete"; prune'ın dry-run kipi için
+// "prune -dry-run", yönetici ayarı için "console admin"). ok false ise metin
+// yok: çalıştırıcı bunu onaysız geçiş değil, ret sayar.
+func ConsoleEffect(language Language, key string) (string, bool) {
+	table, ok := catalog[language]
+	if !ok {
+		table = en
+	}
+	v, ok := table["effect."+key]
+	return v, ok && v != ""
 }
 
 type textFunc = func(key string, p params) string

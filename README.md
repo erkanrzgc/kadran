@@ -133,6 +133,7 @@ the [quality completion record](docs/quality/2026-10-11-completion.md).
 | **Audit log** | Hash-chained, append-only logs on both sides of the privilege boundary. `kadran audit verify` checks both |
 | **CI deploys** | Deploy-only SSH keys scoped to named apps; a GitHub Actions workflow that deploys on every push ([below](#continuous-deployment)) |
 | **Glass desktop management** | Apps, definitions, release history, deploy/rollback, bounded log snapshots, alarms, database backups and audit details, starting from a card for every saved server. English/Turkish; light and dark themes, both with a glass sidebar that shows your desktop blurred behind it and content on opaque panels. Built from source in `desktop/`. [Desktop guide](docs/guides/desktop.md) |
+| **Desktop console** | A bottom panel (Ctrl+`) that runs the CLI's own commands under a server screen. Reads run directly, changes and dangerous commands go through the same native confirmation as the buttons, root commands stay off until you enable them, and `totp enable` shows its secret in a card that is never saved. It is not a shell. Built from source in `desktop/` |
 | **Typed proxy boundary** | Rootless `kadran-proxy` accepts only bounded domain/IP/port route sets. The daemon cannot reach raw Caddy admin or request file placeholders. [Upgrade guide](docs/guides/quality-upgrade.md) |
 | **Serialized application operations** | Same-app deploy, rollback, update, delete, prune and heal share a cancelable queue; independent apps proceed separately. Health probes must finish reading the response body |
 
@@ -774,7 +775,7 @@ proto/kadran/v1/     Single source of contract (api, exec)
 cmd/kadrand/         Server daemon
 cmd/kadran-exec/     Privileged executor — deliberately small
 cmd/kadran-connect/  Forced-command stdio proxy
-cmd/kadran/          Workstation CLI + `kadran sidecar`
+cmd/kadran/          Workstation CLI entry point (the commands and `kadran sidecar` are in internal/cli/, shared with the desktop console)
 build/caddy/         Custom Caddy build (no file server)
 internal/            Implementation packages
 desktop/             Wails (Go) + React + Vite: one binary, light and dark themes, glass sidebar

@@ -179,7 +179,7 @@ func privileged(opts Options, script string, args ...string) string {
 func sshRun(ctx context.Context, opts Options, remote string, stdin io.Reader, stdout io.Writer) (int, error) {
 	// G204 gerekçesi bootstrap.go'daki notta: sabit program, kabuksuz argv,
 	// `-` ile başlayan hedef validate()'te reddediliyor; uzak betikler sabit.
-	cmd := exec.CommandContext(ctx, sshCommand, sshArgs(opts, remote)...) //nolint:gosec
+	cmd := opts.sshCmd(ctx, sshArgs(opts, remote)...)
 	cmd.Stdin = stdin
 	cmd.Stdout = stdout
 	cmd.Stderr = opts.Stderr

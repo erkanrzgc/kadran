@@ -29,6 +29,21 @@ export interface AppearanceBundle {
   material: Material;
 }
 
+/** Konsol olayları (Go: console.Runner; adlar ve alanlar runner.go'daki *Data türleri). */
+export type ConsoleEvent =
+  | { name: "console:output"; data: { run: string; stream: "out" | "err"; data: string } }
+  | { name: "console:input"; data: { run: string; prompt: string } }
+  | { name: "console:secret"; data: { run: string; data: string } }
+  | { name: "console:done"; data: { run: string; exit: number } }
+  | { name: "console:use"; data: { server: string } }
+  | { name: "console:clear"; data: Record<string, never> };
+
+/** Panelin açılışta okuduğu konsol durumu. */
+export interface ConsoleState {
+  history: string[];
+  admin: boolean;
+}
+
 export type WindowAction = "minimize" | "maximize" | "close";
 
 export interface KadranBridge {
@@ -66,6 +81,19 @@ export interface KadranBridge {
   githubDisconnect(target: string, confirmation: string): Promise<Cancellable<unknown>>;
   /** Yalnız GitHub bağlantı akışının dört adresi; Go tarafı başkasını reddeder. */
   openGitHub(url: string): Promise<void>;
+  /** Konsol: satırı çalıştırır, çalıştırma kimliğini döner; sınıf ve onay Go'da. */
+  consoleRun(server: string, line: string): Promise<string>;
+  consoleInput(runId: string, text: string): Promise<void>;
+  consoleCancel(runId: string): Promise<void>;
+  consoleComplete(server: string, line: string, cursor: number): Promise<string[]>;
+  consoleState(server: string): Promise<ConsoleState>;
+  consoleSetAdmin(on: boolean): Promise<boolean>;
+  /**
+   * Konsol olaylarına abone olur; dönen işlev aboneliği bırakır. İki şeye
+   * hazır ol: bir çalıştırmanın olayları consoleRun kimliği döndürmeden ÖNCE
+   * gelebilir, ve nadiren bir output olayı done olayından sonra gelir.
+   */
+  onConsoleEvent(handler: (event: ConsoleEvent) => void): () => void;
 }
 
 /** Go'daki yöntemler (desktop/internal/bridge); Wails `window.go` altına koyar. */
@@ -98,12 +126,34 @@ interface GoBridge {
   GitHubConnect(target: string): Promise<unknown>;
   GitHubDisconnect(target: string, confirmation: string): Promise<unknown>;
   OpenGitHub(url: string): Promise<void>;
+  ConsoleRun(server: string, line: string): Promise<string>;
+  ConsoleInput(runId: string, text: string): Promise<void>;
+  ConsoleCancel(runId: string): Promise<void>;
+  ConsoleComplete(server: string, line: string, cursor: number): Promise<string[]>;
+  ConsoleState(server: string): Promise<ConsoleState>;
+  ConsoleSetAdmin(on: boolean): Promise<boolean>;
+}
+
+/** Wails çalışma zamanından yalnız olay aboneliği. */
+interface WailsEvents {
+  EventsOn(name: string, callback: (data: unknown) => void): () => void;
 }
 
 declare global {
   interface Window {
     readonly go?: { readonly bridge?: { readonly Bridge?: GoBridge } };
+    readonly runtime?: Partial<WailsEvents>;
   }
+}
+
+const consoleEventNames = ["console:output", "console:input", "console:secret", "console:done", "console:use", "console:clear"] as const;
+
+/** Konsol olaylarının aboneliği; Wails çalışma zamanı yoksa hiçbir şey yapmaz. */
+function subscribeConsole(handler: (event: ConsoleEvent) => void): () => void {
+  const runtime = window.runtime;
+  if (!runtime?.EventsOn) return () => {};
+  const offs = consoleEventNames.map((name) => runtime.EventsOn!(name, (data) => handler({ name, data } as ConsoleEvent)));
+  return () => offs.forEach((off) => off());
 }
 
 /** Bağlar sayfa yüklenince kurulur; çağrı anında aranır. */
@@ -169,4 +219,11 @@ export const bridge: KadranBridge = {
     }),
   githubDisconnect: (target, confirmation) => call<Cancellable<unknown>>((go) => go.GitHubDisconnect(target, confirmation)),
   openGitHub: (url) => call((go) => go.OpenGitHub(url)),
+  consoleRun: (server, line) => call((go) => go.ConsoleRun(server, line)),
+  consoleInput: (runId, text) => call((go) => go.ConsoleInput(runId, text)),
+  consoleCancel: (runId) => call((go) => go.ConsoleCancel(runId)),
+  consoleComplete: (server, line, cursor) => call((go) => go.ConsoleComplete(server, line, cursor)),
+  consoleState: (server) => call((go) => go.ConsoleState(server)),
+  consoleSetAdmin: (on) => call((go) => go.ConsoleSetAdmin(on)),
+  onConsoleEvent: subscribeConsole,
 };

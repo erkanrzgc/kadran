@@ -63,6 +63,7 @@ type fakeHost struct {
 	mu        sync.Mutex
 	boxes     []confirm.Box
 	answer    bool
+	err       error // nil değilse Confirm (answer, err) döner
 	hold      chan struct{}
 	shown     chan struct{}
 	looks     []appearance.WindowLook
@@ -101,7 +102,7 @@ func (h *fakeHost) Confirm(box confirm.Box) (bool, error) {
 	if hold != nil {
 		<-hold
 	}
-	return h.answer, nil
+	return h.answer, h.err
 }
 
 func (h *fakeHost) boxCount() int {

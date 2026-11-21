@@ -17,23 +17,23 @@ set -uo pipefail
 
 cd "$(dirname "$0")/.."
 DC=internal/domaincheck/domaincheck.go
-CLI=cmd/kadran/domaincheck.go
-APP=cmd/kadran/app.go
-UPD=cmd/kadran/appupdate.go
-DOM=cmd/kadran/domain.go
+CLI=internal/cli/domaincheck.go
+APP=internal/cli/app.go
+UPD=internal/cli/appupdate.go
+DOM=internal/cli/domain.go
 JUDGE=internal/domaincheck/judge.go
 PROV=internal/domaincheck/providers.go
 ZONE=internal/domaincheck/zone.go
 CF=internal/domaincheck/cloudflare.go
 AUTH=internal/domaincheck/authoritative.go
 RDAP=internal/domaincheck/rdap.go
-GUIDE=cmd/kadran/domainguide.go
-PKGS=(./internal/domaincheck/ ./cmd/kadran/)
+GUIDE=internal/cli/domainguide.go
+PKGS=(./internal/domaincheck/ ./internal/cli/)
 TESTS='TestDomainCheck|TestCheck|TestALookupError|TestWrappedNotFound|StopsOnWrongDNS|SkipFlag|MatchingDNS|RemovingTheDomain|LocalhostDomain|DNSWarning|SSHAlias|ParseSSHHostname|Provider|AWSPattern|CleanName|CommandFor|FindZone|GuessRecordName|Cloudflare|AskAuthoritative|DefaultExchange|CheckerRules|CheckerBudget|DNSHost|OnlyTheCache|ProxiedCloudflare|StaysOffline|Registrar|WaitsUntil|WaitGivesUp|WriteDNSGuide|ShowsTheDNSHost|SplitOrLookalike|DnsWaitInterval|StopHint|WaitHint'
 FILES=("$DC" "$CLI" "$APP" "$UPD" "$DOM" "$JUDGE" "$PROV" "$ZONE" "$CF" "$AUTH" "$RDAP" "$GUIDE")
 
 # ⚠ Yedek adı TAM YOLDAN türetiliyor: internal/domaincheck/domaincheck.go
-# ile cmd/kadran/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
+# ile internal/cli/domaincheck.go'nun dosya adı aynı. Betiğin ilk sürümü
 # yedeği dosya adıyla tutuyordu; ikincisi birincinin yedeğini ezdi ve
 # geri yükleme paket dosyasını CLI dosyasıyla DEĞİŞTİRDİ.
 BAKDIR=$(mktemp -d)
@@ -225,13 +225,13 @@ mutate_in "$DOM" "DNS'te olmayan ad için RDAP soruluyor" \
 
 # W2
 mutate_in "$DOM" "negatif -wait kabul ediliyor" \
-    "s=s.replace('if *wait < 0 {','if false {',1)"
+    "s=s.replace('if *o.wait < 0 {','if false {',1)"
 
 mutate_in "$DOM" "iptal sonrası denetim ölü bağlamla sürüyor" \
-    "s=s.replace('!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {','!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && false {',1)"
+    "s=s.replace('!c.waitForDNS(ctx, domain, fs.Arg(1), *o.wait) && ctx.Err() != nil {','!c.waitForDNS(ctx, domain, fs.Arg(1), *o.wait) && false {',1)"
 
 mutate_in "$DOM" "süre dolunca son rapor basılmıyor" \
-    "s=s.replace('!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) && ctx.Err() != nil {','!c.waitForDNS(ctx, domain, fs.Arg(1), *wait) {',1)"
+    "s=s.replace('!c.waitForDNS(ctx, domain, fs.Arg(1), *o.wait) && ctx.Err() != nil {','!c.waitForDNS(ctx, domain, fs.Arg(1), *o.wait) {',1)"
 
 mutate_in "$DOM" "bekleme satırı her turda basılıyor" \
     "s=s.replace('now != last {','now != last || true {',1)"
@@ -256,7 +256,7 @@ mutate_in "$CLI" "boş alan adı da denetleniyor" \
     "s=s.replace('\tif domain == \"\" {\n\t\treturn nil\n\t}\n','',1)"
 
 mutate_in "$APP" "app create denetlemiyor" \
-    "s=s.replace('\tif err := c.checkDomain(ctx, *domain, fs.Arg(1), *skipDNS); err != nil {\n\t\treturn c.fail(err)\n\t}\n','\t_ = skipDNS\n',1)"
+    "s=s.replace('\tif err := c.checkDomain(ctx, *o.domain, fs.Arg(1), *o.skipDNS); err != nil {\n\t\treturn c.fail(err)\n\t}\n','\t_ = o.skipDNS\n',1)"
 
 mutate_in "$UPD" "app update denetlemiyor" \
     "s=s.replace('\tif req.Domain != nil {\n\t\tif err := c.checkDomain','\tif req.Domain != nil && false {\n\t\tif err := c.checkDomain',1)"

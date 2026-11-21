@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { bridge, type Profile } from "./bridge.ts";
+import { ConsolePanel } from "./components/console/ConsolePanel.tsx";
 import { Rail, type FleetView } from "./components/Rail.tsx";
 import { ServerDialog, type ServerDraft } from "./components/ServerDialog.tsx";
 import { ServerSubnav, type ServerView } from "./components/ServerSubnav.tsx";
 import { Tabs } from "./components/Tabs.tsx";
 import { TopBar } from "./components/TopBar.tsx";
+import { useAppearance } from "./appearance/AppearanceProvider.tsx";
 import { useT } from "./i18n/I18nProvider.tsx";
+import { useConsole } from "./hooks/useConsole.ts";
+import { action as consoleAction } from "./lib/consoleKeys.ts";
 import { useFleet } from "./hooks/useFleet.ts";
 import { useServer } from "./hooks/useServer.ts";
 import { errorText, serverListError } from "./lib/errors.ts";
@@ -30,6 +34,7 @@ type Dialog = { kind: "add" } | { kind: "edit"; profile: Profile } | null;
 export function App() {
   const t = useT();
   const toast = useToast();
+  const { appearance, update: updateAppearance } = useAppearance();
   const server = useServer();
   const [view, setView] = useState<FleetView>("servers");
   const [serverView, setServerView] = useState<ServerView>("status");
@@ -171,6 +176,40 @@ export function App() {
     [dialog, store, openServer, t],
   );
 
+  // Konsol: oturum App icinde yasar; panel kapansa ya da ekran degisse de calisma surer.
+  const profileByName = useCallback((name: string) => profiles.find((p) => p.name === name), [profiles]);
+  const consoleApi = useConsole({
+    server: profiles.find((p) => p.target === active)?.name ?? "",
+    onUse: (name) => {
+      const profile = profileByName(name);
+      if (profile) void openServer(profile.target);
+    },
+    secretNote: t("console.secret_shown"),
+  });
+  const consoleShown = active !== null && appearance.consoleOpen;
+  const { setPanelOpen } = consoleApi;
+  const toggleConsole = useCallback(() => {
+    updateAppearance({ consoleOpen: !appearance.consoleOpen });
+  }, [updateAppearance, appearance.consoleOpen]);
+
+  // Gizli kart yalniz panel gorunurken yasar; kapaninca ya da sunucu ekranindan cikinca silinir.
+  useEffect(() => {
+    setPanelOpen(consoleShown);
+  }, [consoleShown, setPanelOpen]);
+
+  // Ctrl+` paneli acar ve kapatir (yalniz sunucu ekranlarinda).
+  useEffect(() => {
+    if (active === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      const act = consoleAction({ key: e.key, code: e.code, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, running: false });
+      if (act !== "toggle") return;
+      e.preventDefault();
+      toggleConsole();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [active, toggleConsole]);
+
   const health = healthOf(server.state.status, server.state.verify, server.state.stale || server.state.verifyStale);
   const currentProfile = profiles.find((p) => p.target === active) ?? null;
   const editServer = (target: string) => {
@@ -205,6 +244,7 @@ export function App() {
               )}
             </main>
           ) : (
+            <>
             <div className="page-host">
               <ServerSubnav view={serverView} onNavigate={setServerView} />
               <main className="stage">
@@ -226,6 +266,8 @@ export function App() {
                 )}
               </main>
             </div>
+            <ConsolePanel api={consoleApi} open={appearance.consoleOpen} height={appearance.consoleHeight} onToggle={toggleConsole} onHeight={(consoleHeight) => updateAppearance({ consoleHeight })} />
+            </>
           )}
         </div>
       </div>

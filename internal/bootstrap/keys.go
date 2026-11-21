@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"regexp"
 	"strings"
 
@@ -122,10 +123,12 @@ type KeyOptions struct {
 	Host string
 	Port int
 	Sudo bool
+	// Command, ssh başlatan her yerden geçer (nil: exec.CommandContext).
+	Command func(ctx context.Context, name string, args ...string) *exec.Cmd
 }
 
 func (k KeyOptions) options() Options {
-	return Options{Host: k.Host, Port: k.Port, Sudo: k.Sudo, Stdout: io.Discard, Stderr: io.Discard}
+	return Options{Host: k.Host, Port: k.Port, Sudo: k.Sudo, Command: k.Command, Stdout: io.Discard, Stderr: io.Discard}
 }
 
 func (k KeyOptions) validate() error {

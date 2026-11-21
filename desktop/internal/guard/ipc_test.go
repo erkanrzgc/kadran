@@ -189,3 +189,79 @@ func TestGitHubURLAllowlist(t *testing.T) {
 		mustFail(t, err, "only GitHub app addresses can be opened", in)
 	}
 }
+
+func TestHasControlOrFormat(t *testing.T) {
+	cases := map[string]bool{
+		"deploy web": false,
+		"a\nb":       true,
+		"a\u202eb":   true,
+		"a\u200bb":   true,
+		"çğ":         false,
+	}
+	for in, want := range cases {
+		if got := HasControlOrFormat(in); got != want {
+			t.Errorf("HasControlOrFormat(%q) = %v, want %v", in, got, want)
+		}
+	}
+}
+
+func TestConsoleLineBoundary(t *testing.T) {
+	if _, err := ConsoleLine(strings.Repeat("a", 4096)); err != nil {
+		t.Errorf("4096 bayt reddedildi: %v", err)
+	}
+	_, err := ConsoleLine(strings.Repeat("a", 4097))
+	mustFail(t, err, "too long", "4097 bayt")
+	// Satır sonu burada kesilmez: ayrıştırıcı nedenini akışa yazar.
+	if _, err := ConsoleLine("deploy web\nprune -all"); err != nil {
+		t.Errorf("satır sonu guard da kesildi: %v", err)
+	}
+}
+
+func TestConsoleInputBoundaryAndCharacters(t *testing.T) {
+	if _, err := ConsoleInput(strings.Repeat("a", 256)); err != nil {
+		t.Errorf("256 bayt reddedildi: %v", err)
+	}
+	_, err := ConsoleInput(strings.Repeat("a", 257))
+	mustFail(t, err, "too long", "257 bayt")
+	for name, in := range map[string]string{"newline": "a\nb", "tab": "a\tb", "nul": "a\x00b", "bidi": "a\u202eb", "zero width": "a\u200bb"} {
+		_, err := ConsoleInput(in)
+		mustFail(t, err, "control or invisible", name)
+	}
+	if got, err := ConsoleInput("pa ss"); err != nil || got != "pa ss" {
+		t.Errorf("%q %v", got, err)
+	}
+}
+
+func TestConsoleServerAllowsEmptyOnly(t *testing.T) {
+	for _, ok := range []string{"", "web1"} {
+		if got, err := ConsoleServer(ok); err != nil || got != ok {
+			t.Errorf("%q: %q %v", ok, got, err)
+		}
+	}
+	_, err := ConsoleServer("   ")
+	mustFail(t, err, "empty", "boşluk")
+	_, err = ConsoleServer(strings.Repeat("s", 201))
+	mustFail(t, err, "too long", "201")
+}
+
+func TestRunIDPattern(t *testing.T) {
+	if got, err := RunID("0123456789abcdef"); err != nil || got != "0123456789abcdef" {
+		t.Errorf("%q %v", got, err)
+	}
+	for _, bad := range []string{"", "../x", "0123456789abcde", "0123456789abcdef0", "0123456789ABCDEF", "0123456789abcdeg", "0123456789abcdef\n"} {
+		_, err := RunID(bad)
+		mustFail(t, err, "invalid run ID", bad)
+	}
+}
+
+func TestConsoleCursorRange(t *testing.T) {
+	for _, ok := range []int{0, 3} {
+		if _, err := ConsoleCursor("abc", ok); err != nil {
+			t.Errorf("%d: %v", ok, err)
+		}
+	}
+	for _, bad := range []int{-1, 4} {
+		_, err := ConsoleCursor("abc", bad)
+		mustFail(t, err, "outside", "imleç")
+	}
+}

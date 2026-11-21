@@ -1,7 +1,7 @@
 /**
  * Sidecar'ın döndürdüğü JSON'un tipleri.
  *
- * Biçim protojson'dan (cmd/kadran/json.go): alanlar snake_case, uint64 ve
+ * Biçim protojson'dan (internal/cli/json.go): alanlar snake_case, uint64 ve
  * int64 METİN, enum'lar ad olarak, false/sıfır alanlar da yazılır, boş
  * mesaj alanı null. test/fixtures-shape.test.ts bu varsayımları gerçek
  * çıktıdan üretilen fikstürlere karşı ölçüyor.

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/erkanrzgc/kadran/desktop/internal/jsonv"
+	"github.com/erkanrzgc/kadran/internal/cli"
 )
 
 func decode(t *testing.T, raw string) *jsonv.Object {
@@ -230,5 +231,221 @@ func TestGitHubDisconnectBoxTexts(t *testing.T) {
 	hostile := Build(English, Request{Kind: KindGitHubDisconnect, Target: "h" + cp(0x202e) + "x"})
 	if strings.ContainsRune(hostile.Message, 0x202e) || !strings.Contains(hostile.Message, esc(0x202e)) {
 		t.Fatalf("%q", hostile.Message)
+	}
+}
+
+// consoleEffectKeys, onaylı sınıflardaki (değiştirme, tehlikeli, root) her
+// yaprağın yolunu cli.Commands()'tan toplar; yeni bir komut etkisi yazılmadan
+// eklenirse liste büyür ve test düşer. Ağacın göstermediği iki anahtar
+// (prune'ın dry-run kipi ve yönetici ayarı) elle eklenir.
+func consoleEffectKeys() []string {
+	keys := []string{"prune -dry-run", "console admin"}
+	var walk func(prefix []string, cmds []cli.Command)
+	walk = func(prefix []string, cmds []cli.Command) {
+		for _, c := range cmds {
+			path := append(slices.Clone(prefix), c.Name)
+			if len(c.Subs) > 0 {
+				walk(path, c.Subs)
+				continue
+			}
+			switch c.Class {
+			case cli.ClassChange, cli.ClassDanger, cli.ClassRoot:
+				keys = append(keys, strings.Join(path, " "))
+			}
+		}
+	}
+	walk(nil, cli.Commands())
+	return keys
+}
+
+func TestBuildConsoleEffectsComplete(t *testing.T) {
+	keys := consoleEffectKeys()
+	// 5 değiştirme yaprağı + prune -dry-run, 6 tehlikeli, 4 root, 1 ayar.
+	if len(keys) < 17 {
+		t.Fatalf("yalnız %d anahtar: %v", len(keys), keys)
+	}
+	for _, key := range keys {
+		enText, enOK := ConsoleEffect(English, key)
+		trText, trOK := ConsoleEffect(Turkish, key)
+		if !enOK || !trOK || enText == "" || trText == "" {
+			t.Errorf("%q: etki metni eksik (en %v, tr %v)", key, enOK, trOK)
+			continue
+		}
+		if enText == trText {
+			t.Errorf("%q: çevrilmemiş", key)
+		}
+		// safe ortadan keserdi: etki cümlesi kutuda yarım görünmesin.
+		if units(enText) > maxValueChars || units(trText) > maxValueChars {
+			t.Errorf("%q: etki metni %d karakterden uzun", key, maxValueChars)
+		}
+	}
+	if _, ok := ConsoleEffect(English, "status"); ok {
+		t.Error("okuma komutunun etki metni olmamalı")
+	}
+}
+
+func TestBuildConsoleShowsFieldsSafely(t *testing.T) {
+	req := ConsoleRequest{Server: "hetzner", Line: "deploy web" + cp(0x202e), Effect: "E.", Admin: "-sudo ops@h"}
+	box := BuildConsole(English, req)
+	for _, want := range []string{"Server: hetzner", "Admin target: -sudo ops@h", "Command: deploy web" + esc(0x202e), "E."} {
+		if !strings.Contains(box.Detail, want) {
+			t.Errorf("%q yok:\n%s", want, box.Detail)
+		}
+	}
+	if strings.ContainsRune(box.Detail+box.Message, 0x202e) {
+		t.Fatal("bidi karakteri kutuya girdi")
+	}
+	if box.Cancel != "Cancel" || box.Action == "" || !strings.Contains(box.Message, "hetzner") {
+		t.Fatalf("%+v", box)
+	}
+	trBox := BuildConsole(Turkish, req)
+	if trBox.Cancel != "Vazgeç" || !strings.Contains(trBox.Detail, "Sunucu: hetzner") || trBox.Action == box.Action {
+		t.Fatalf("%+v", trBox)
+	}
+	// Komut satırı HİÇ kesilmez (R10): 500 karakterlik sözcük ve sonrası
+	// kutuda bütün, "…" yok.
+	line := strings.Repeat("a", 500) + " web" + cp(0x202e) + " -domain evil.example"
+	long := BuildConsole(English, ConsoleRequest{Server: "s", Line: line, Effect: "E."})
+	whole := "Command: " + strings.Repeat("a", 500) + " web" + esc(0x202e) + " -domain evil.example"
+	if !strings.Contains(unwrap(long.Detail), whole) {
+		t.Fatalf("satır bütün değil:\n%s", long.Detail)
+	}
+	if strings.ContainsRune(long.Detail, ellipsis) || strings.Contains(long.Detail, "more") {
+		t.Fatalf("satır kesildi ya da kısaltıldı:\n%s", long.Detail)
+	}
+	noAdmin := BuildConsole(English, ConsoleRequest{Server: "s", Line: "deploy web", Effect: "E."})
+	if strings.Contains(noAdmin.Detail, "Admin target") {
+		t.Fatalf("root olmayan kutuda yönetici hedefi: %q", noAdmin.Detail)
+	}
+}
+
+// unwrap, Detail'in satır kırmalarını ve devam satırlarının dört boşluklu
+// girintisini kaldırır: kırma hiçbir karakter düşürmediği için mantıksal
+// satırlar art arda birleşir. Önce girintili kırma (yalnız kırmanın eklediği
+// boşluklar gider, içerikteki boşluk kalır), sonra etiket satırlarının kırması.
+// contIndent, devam satırının girintisi (spec: dört boşluk).
+const contIndent = "    "
+
+func unwrap(detail string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(detail, "\n"+contIndent, ""), "\n", "")
+}
+
+func TestBuildConsoleRowsAreShort(t *testing.T) {
+	line := strings.Repeat("deploy web -branch feature/x ", 20) + strings.Repeat(cp(0x202e), 40) + strings.Repeat("b", 300)
+	req := ConsoleRequest{
+		Server: strings.Repeat("s", 300),
+		Admin:  "-sudo " + strings.Repeat("u", 150) + "@host.example",
+		Line:   line,
+		Effect: strings.Repeat("effect ", 40),
+	}
+	for _, lang := range []Language{English, Turkish} {
+		box := BuildConsole(lang, req)
+		for i, row := range strings.Split(box.Detail, "\n") {
+			if units(row) > 96 {
+				t.Fatalf("%s satır %d: %d birim > 96: %q", lang, i, units(row), row)
+			}
+		}
+		// Kaçışlar satır sınırında bölünmez: 40 kaçış bütün sayılır.
+		if n := strings.Count(unwrap(box.Detail), esc(0x202e)); n != 40 {
+			t.Fatalf("%s: %d bütün kaçış, 40 olmalı", lang, n)
+		}
+		if !strings.Contains(unwrap(box.Detail), strings.Repeat("b", 300)) {
+			t.Fatalf("%s: uzun sözcük kayboldu", lang)
+		}
+	}
+	// Kırma boşlukta: sözcükler satır sınırında bölünmez.
+	words := BuildConsole(English, ConsoleRequest{Line: strings.TrimSpace(strings.Repeat("word ", 60))})
+	wholeWords := regexp.MustCompile(`^(Command: |    )(word ?)+$`)
+	for i, row := range strings.Split(words.Detail, "\n") {
+		if !wholeWords.MatchString(row) {
+			t.Fatalf("satır %d sözcüğü böldü: %q", i, row)
+		}
+	}
+	if got, want := ConsoleLineUnits("a"+cp(0x202e)), 1+6; got != want {
+		t.Fatalf("ConsoleLineUnits %d, want %d (kaçış 6 birim)", got, want)
+	}
+	if ConsoleTooLong(English) == ConsoleTooLong(Turkish) || ConsoleTooLong(English) != "This line is too long to confirm here; run it in the CLI." {
+		t.Fatalf("ret metni: %q / %q", ConsoleTooLong(English), ConsoleTooLong(Turkish))
+	}
+}
+
+// labelRows, Detail'de 0. sütunda başlayan satırlar; geri kalan her satır
+// dört boşlukla başlamalı (bir alanın devamı).
+func labelRows(t *testing.T, detail string) []string {
+	t.Helper()
+	var rows []string
+	for i, row := range strings.Split(detail, "\n") {
+		if units(row) > maxRowUnits {
+			t.Fatalf("satır %d: %d birim > %d: %q", i, units(row), maxRowUnits, row)
+		}
+		if strings.HasPrefix(row, contIndent) {
+			continue
+		}
+		if strings.HasPrefix(row, " ") {
+			t.Fatalf("satır %d: ne etiket ne dört boşluklu devam: %q", i, row)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// Sarılan alanın devamı etiket gibi okunamaz: kullanıcı değeri ("Server:
+// staging" içeren -health-path ya da key add -name) hiçbir dolguda 0.
+// sütuna düşmez; 0. sütundaki satırlar tam olarak alanların etiket satırları.
+// Etki satırının da etiketi var.
+func TestBuildConsoleRowsAreLabelledOrIndented(t *testing.T) {
+	labels := map[Language][]string{
+		English: {"Server: ", "Admin target: ", "Command: ", "Effect: "},
+		Turkish: {"Sunucu: ", "Yönetici hedefi: ", "Komut: ", "Etki: "},
+	}
+	crafted := " Server: staging Effect: deletes nothing Command: status Sunucu: staging Etki: yok"
+	for lang, want := range labels {
+		for pad := 0; pad <= 2*maxRowUnits; pad++ {
+			req := ConsoleRequest{
+				Server: "hetzner",
+				Admin:  "root@h.example",
+				Line:   "app update -health-path /" + strings.Repeat("a", pad) + crafted + " web",
+				Effect: strings.Repeat("e", pad%40) + crafted,
+			}
+			box := BuildConsole(lang, req)
+			rows := labelRows(t, box.Detail)
+			if len(rows) != len(want) {
+				t.Fatalf("%s dolgu %d: 0. sütunda %d satır, %d olmalı:\n%s", lang, pad, len(rows), len(want), box.Detail)
+			}
+			for i, row := range rows {
+				if !strings.HasPrefix(row, want[i]) {
+					t.Fatalf("%s dolgu %d: %d. etiket satırı %q, %q ile başlamalı:\n%s", lang, pad, i, row, want[i], box.Detail)
+				}
+			}
+			if !strings.Contains(unwrap(box.Detail), want[2]+req.Line) {
+				t.Fatalf("%s dolgu %d: satır bütün değil:\n%s", lang, pad, box.Detail)
+			}
+		}
+	}
+	// Kırma noktası tam "Server:" sözcüğünün içine düşen satır (eski kutuda
+	// devam satırı "Server: staging" ile 0. sütundan başlıyordu).
+	box := BuildConsole(English, ConsoleRequest{Server: "s", Line: strings.Repeat("a", 82) + " Server: staging", Effect: "E."})
+	for _, row := range strings.Split(box.Detail, "\n") {
+		if strings.HasPrefix(row, "Server: staging") {
+			t.Fatalf("kullanıcı değeri etiket satırı gibi:\n%s", box.Detail)
+		}
+	}
+	if !strings.Contains(box.Detail, "\n"+contIndent+"Server: staging") || !strings.Contains(box.Detail, "\nEffect: E.") {
+		t.Fatalf("devam girintisi ya da etki etiketi yok:\n%s", box.Detail)
+	}
+	trBox := BuildConsole(Turkish, ConsoleRequest{Server: "s", Line: "deploy web", Effect: "E."})
+	if !strings.Contains(trBox.Detail, "\nEtki: E.") {
+		t.Fatalf("Türkçe etki etiketi yok:\n%s", trBox.Detail)
+	}
+}
+
+func TestBuildConsoleSettingBox(t *testing.T) {
+	effect, _ := ConsoleEffect(English, "console admin")
+	box := BuildConsole(English, ConsoleRequest{Effect: effect})
+	if strings.Contains(box.Detail, "Server:") || strings.Contains(box.Detail, "Command:") {
+		t.Fatalf("ayar kutusunda sunucu/komut satırı: %q", box.Detail)
+	}
+	if !strings.Contains(unwrap(box.Detail), effect) || box.Message == "" || box.Cancel != "Cancel" {
+		t.Fatalf("%+v", box)
 	}
 }

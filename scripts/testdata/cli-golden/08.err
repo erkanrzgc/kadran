@@ -1,0 +1,39 @@
+Usage of app create:
+  -blkio-weight uint
+    	block I/O weight (10-1000) (default 500)
+  -branch string
+    	default branch (default "main")
+  -build-arg value
+    	build argument KEY=VALUE (repeatable)
+  -cpu-millis uint
+    	CPU limit in millicores (1000 = 1 core) (default 1000)
+  -dockerfile string
+    	Dockerfile path relative to the repository root
+  -domain string
+    	domain to serve the app on; if empty the app is reachable only from the internal network
+  -env value
+    	environment variable KEY=VALUE (repeatable); sealed at rest, but the running container gets it as a plain variable that docker inspect shows
+  -health-path string
+    	health check path (default "/")
+  -json
+    	machine-readable JSON output
+  -memory string
+    	memory limit (e.g. 512Mi, 2Gi) (default "512Mi")
+  -no-www
+    	do not also serve and redirect the www partner of the domain
+  -port uint
+    	port the app listens on inside the container (default 8080)
+  -redirect value
+    	extra name that redirects (308) to the domain (repeatable)
+  -replicas uint
+    	number of replicas (default 1)
+  -repo string
+    	source repository: host/owner/name (e.g. github.com/user/blog)
+  -skip-dns-check
+    	continue even if the domain's DNS does not point at the server (e.g. Cloudflare proxy)
+  -timeout duration
+    	overall time limit (default 30s)
+  -volume value
+    	persistent volume NAME:/mount/point[:ro] (repeatable)
+  -s name
+    	a server saved with `kadran server add`, instead of the target

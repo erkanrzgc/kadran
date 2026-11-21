@@ -440,5 +440,21 @@
   "github.failure_network": "The server could not reach GitHub.",
   "github.failure_rate_limited": "GitHub rate limit reached. Try again later.",
   "github.failure_internal": "The connection failed.",
-  "toast.github_open_failed": "Couldn't open the page: {error}"
+  "toast.github_open_failed": "Couldn't open the page: {error}",
+  "console.title": "Console",
+  "console.resize": "Resize the console",
+  "console.close": "Close the console",
+  "console.input_label": "Console input",
+  "console.placeholder": "Type a command, help lists them",
+  "console.running": "running · Ctrl+C to stop",
+  "console.secret_shown": "secret output shown in a separate card",
+  "console.card_title": "Secret output",
+  "console.card_hint": "Shown only here. Never saved, copied or logged.",
+  "console.card_saved": "I saved it",
+  "console.card_first": "Close the secret card first (I saved it).",
+  "settings.console": "Console",
+  "settings.console_admin": "Admin commands in the console",
+  "settings.console_admin_hint": "Off by default. Turning it on asks for confirmation in a separate window.",
+  "settings.console_off": "Off",
+  "settings.console_on": "On"
 }

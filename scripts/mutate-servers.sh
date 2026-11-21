@@ -19,12 +19,12 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 SRV=internal/servers/servers.go
 FIL=internal/servers/file.go
-FLG=cmd/kadran/serverflag.go
-STA=cmd/kadran/status.go
-MAIN=cmd/kadran/main.go
-KEY=cmd/kadran/key.go
-TOT=cmd/kadran/totp.go
-DOM=cmd/kadran/domain.go
+FLG=internal/cli/serverflag.go
+STA=internal/cli/status.go
+MAIN=internal/cli/cli.go
+KEY=internal/cli/key.go
+TOT=internal/cli/totp.go
+DOM=internal/cli/domain.go
 SCS=internal/sidecar/servers.go
 FILES=("$SRV" "$FIL" "$FLG" "$STA" "$MAIN" "$KEY" "$TOT" "$DOM" "$SCS")
 
@@ -37,7 +37,7 @@ trap restore EXIT
 fail=0
 
 olc() {
-    go test -count=1 -timeout 120s ./internal/servers ./internal/sidecar ./cmd/kadran >/dev/null 2>&1
+    go test -count=1 -timeout 120s ./internal/servers ./internal/sidecar ./internal/cli >/dev/null 2>&1
 }
 
 # mutate_in <dosya> <ad> <python-ifadesi>
@@ -71,7 +71,7 @@ io.open(p,'w',encoding='utf-8',newline='\n').write(s)
     # ── MUTANT DERLENMELİ (K-096) ───────────────────────
     # Derlenmeyen bir mutant her testi düşürür ve sahte "yakalandı" üretirdi.
     local build_out
-    if ! build_out=$(go vet ./internal/servers ./cmd/kadran 2>&1); then
+    if ! build_out=$(go vet ./internal/servers ./internal/cli 2>&1); then
         echo "  !! MUTANT DERLENMİYOR: $name — ölçüm YAPILMADI. Çıktı:"
         echo "$build_out" | grep -vE '^(#|FAIL|ok)' | head -3 | sed 's/^/       /'
         fail=1
@@ -147,7 +147,7 @@ mutate_in "$KEY" "-s notu ilgisiz kullanım hatasında da çıkıyor" \
     "s=s.replace('return c.usageError(\"unknown key subcommand','return c.argCountError(\"unknown key subcommand',1)"
 
 mutate_in "$MAIN" "komut yardımı -s'yi söylemiyor" \
-    "s=s.replace('if !noTargetCommands[command] {','if !noTargetCommands[command] && false {',1)"
+    "s=s.replace('if !isNoTarget(command) {','if !isNoTarget(command) && false {',1)"
 
 echo "== Masaüstünün listesi (yan süreç) =="
 

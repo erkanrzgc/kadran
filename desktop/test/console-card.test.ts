@@ -234,13 +234,14 @@ test("a stray input event for another run is ignored", () => {
   assert.equal(s.input, false);
 });
 
-test("begin echoes the line; done colours the last line", () => {
+test("begin echoes the line; done marks the echo line, not the output", () => {
   let s = begin(initialSession(), "hetzner", "status");
   assert.equal(s.buffer.lines[0]!.text, "hetzner › status");
   assert.equal(s.buffer.lines[0]!.stream, "echo");
   s = apply(started(s, RUN), out(RUN, "ok\n"));
   s = apply(s, done(RUN, 1));
-  assert.equal(s.buffer.lines.at(-1)!.exit, 1);
+  assert.equal(s.buffer.lines[0]!.exit, 1);
+  assert.equal(s.buffer.lines.at(-1)!.exit, null);
 });
 
 test("startFailed unlocks and shows the error", () => {

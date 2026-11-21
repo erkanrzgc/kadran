@@ -33,6 +33,8 @@ export interface ConsoleSession {
   readonly run: string | null;
   /** Çalışmanın başladığı sunucu; istem bunu gösterir. */
   readonly runServer: string | null;
+  /** Çalışmanın yankı satırının kimliği; bitiş işareti ona yazılır. */
+  readonly echoLine: number | null;
   /** Çalışan satır root sınıfında mı (yalnız görünüm: istem `#` ve kırmızı). */
   readonly root: boolean;
   readonly finished: readonly string[];
@@ -47,7 +49,7 @@ export interface ConsoleSession {
 }
 
 export function initialSession(): ConsoleSession {
-  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, root: false, finished: [], input: false, card: null, cardRun: null, panelOpen: false };
+  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, echoLine: null, root: false, finished: [], input: false, card: null, cardRun: null, panelOpen: false };
 }
 
 /** Çalışma var ya da başlıyor: istem kilitli, sunucu sabit. */
@@ -87,9 +89,11 @@ export function isRootLine(line: string): boolean {
 export function begin(s: ConsoleSession, server: string, line: string): ConsoleSession {
   if (s.card !== null) return s;
   const name = server === "" ? "–" : server;
+  const buffer = append(s.buffer, "echo", `${name} › ${line}\n`);
   return {
     ...s,
-    buffer: append(s.buffer, "echo", `${name} › ${line}\n`),
+    buffer,
+    echoLine: buffer.lines[buffer.lines.length - 1]?.id ?? null,
     starting: true,
     run: null,
     runServer: server,
@@ -124,7 +128,8 @@ function finishRun(s: ConsoleSession, id: string, exit: number): ConsoleSession 
   const closes = exit !== 0 && s.cardRun === id;
   return {
     ...s,
-    buffer: finish(s.buffer, exit),
+    buffer: s.echoLine === null ? endLine(s.buffer) : finish(s.buffer, s.echoLine, exit),
+    echoLine: null,
     run: null,
     input: false,
     finished: [...s.finished, id].slice(-FINISHED_KEPT),

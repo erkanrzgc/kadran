@@ -17,7 +17,7 @@ export interface ConsoleLine {
   readonly stream: ConsoleStream;
   /** Satır sonu henüz gelmedi (CLI istemi gibi). */
   readonly open: boolean;
-  /** Komut bu satırla bittiyse çıkış kodu; satırın rengini belirler. */
+  /** Komutun yankı satırında bitiş kodu; işareti belirler. Çıktı satırlarında hep null. */
   readonly exit: number | null;
   readonly truncated: boolean;
 }
@@ -83,9 +83,15 @@ export function endLine(state: BufferState): BufferState {
   return { ...state, lines: [...state.lines.slice(0, -1), { ...last, open: false }] };
 }
 
-/** Komut bitti: açık satır kapanır, son satır çıkış koduna göre renklenir. */
-export function finish(state: BufferState, exit: number): BufferState {
-  const last = state.lines[state.lines.length - 1];
-  if (!last) return state;
-  return { ...state, lines: [...state.lines.slice(0, -1), { ...last, open: false, exit }] };
+/**
+ * Komut bitti: açık son satır kapanır (renklenmez); çıkış kodu yalnız komutun
+ * yankı satırına (lineId) yazılır. Satır 5.000 sınırıyla düştüyse kimse boyanmaz.
+ */
+export function finish(state: BufferState, lineId: number, exit: number): BufferState {
+  const closed = endLine(state);
+  const at = closed.lines.findIndex((l) => l.id === lineId);
+  if (at < 0) return closed;
+  const lines = closed.lines.slice();
+  lines[at] = { ...lines[at]!, exit };
+  return { ...closed, lines };
 }

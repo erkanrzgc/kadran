@@ -46,13 +46,13 @@ async function typeLine(win: Page, line: string): Promise<void> {
 
 const outputText = (win: Page): Promise<string> => evaluate<string>(win, `${q(OUTPUT)}?.textContent ?? ""`);
 
-/** Son çıktı satırı çıkış kodunu taşıyor ve girdi satırı açık mı. */
+/** Son yankı satırı çıkış işaretini taşıyor ve girdi satırı açık mı. */
 const finished = (ok: boolean): string =>
-  `(() => { const l = document.querySelectorAll(".console-line"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && last.classList.contains("${ok ? "is-exit-ok" : "is-exit-bad"}") && i && !i.readOnly); })()`;
+  `(() => { const l = document.querySelectorAll(".console-line.is-echo"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && last.classList.contains("${ok ? "is-exit-ok" : "is-exit-bad"}") && i && !i.readOnly); })()`;
 
 /** Komut 0 ile bitti ama gizli kart açık: istem kilitli ve nedenini söylüyor (R17). */
 const held = (): string =>
-  `(() => { const l = document.querySelectorAll(".console-line"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && last.classList.contains("is-exit-ok") && i && i.readOnly && i.placeholder === ${JSON.stringify(CARD_FIRST)}); })()`;
+  `(() => { const l = document.querySelectorAll(".console-line.is-echo"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && last.classList.contains("is-exit-ok") && i && i.readOnly && i.placeholder === ${JSON.stringify(CARD_FIRST)}); })()`;
 
 /** Komut bir istem bekliyor: girdi açık ve yer tutucu boş (ConsolePrompt). */
 const awaiting = () => `(() => { const i = ${q(INPUT)}; return Boolean(i && !i.readOnly && i.placeholder === ""); })()`;
@@ -172,7 +172,7 @@ async function commandScenarios(win: Page, label: string): Promise<void> {
   await waitForText(win, "live line 2");
   expect(await evaluate<boolean>(win, `${q(INPUT)}.readOnly`), "the prompt is not locked while a command runs");
   await press(win, { key: "c", ctrlKey: true });
-  await waitFor(win, `(() => { const l = document.querySelectorAll(".console-line"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && /is-exit-/.test(last.className) && i && !i.readOnly); })()`, "logs -f stopped by Ctrl+C");
+  await waitFor(win, `(() => { const l = document.querySelectorAll(".console-line.is-echo"); const last = l[l.length - 1]; const i = ${q(INPUT)}; return Boolean(last && /is-exit-/.test(last.className) && i && !i.readOnly); })()`, "logs -f stopped by Ctrl+C");
 
   // key list: yönetici komutları ayar kapalıyken reddedilir, kutu da açılmaz.
   await clearPanel(win);
@@ -188,7 +188,8 @@ async function floodScenario(win: Page): Promise<void> {
   await clearPanel(win);
   await typeLine(win, "logs -tail 6000 web");
   await waitForText(win, "history line 6000");
-  await waitFor(win, finished(true), "the flood finished");
+  // Yankı satırı 5.000 sınırıyla düşer: işaret aranmaz, istemin açılması bitişi gösterir.
+  await waitFor(win, `(() => { const i = ${q(INPUT)}; return Boolean(i && !i.readOnly); })()`, "the flood finished");
   const lines = await evaluate<number>(win, `${q(OUTPUT)}.children.length`);
   expect(lines <= BUFFER_MAX, `the panel holds ${lines} lines, over the ${BUFFER_MAX} line cap`);
 }

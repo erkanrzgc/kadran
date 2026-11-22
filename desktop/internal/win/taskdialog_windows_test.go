@@ -119,3 +119,10 @@ func TestOnlyTheActionButtonConfirms(t *testing.T) {
 		t.Fatal("eylem düğmesi onay sayılmadı")
 	}
 }
+
+// FLASHWINFO amd64'te 32 bayttır; yanlış boyut FlashWindowEx'i sessizce bozar.
+func TestFlashInfoSize(t *testing.T) {
+	if got := unsafe.Sizeof(flashInfo{}); got != 32 {
+		t.Fatalf("flashInfo boyutu %d, 32 olmalı", got)
+	}
+}

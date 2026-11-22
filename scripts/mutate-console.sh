@@ -112,6 +112,9 @@ mutate desk desktop/internal/console/redact.go "-env=KEY=değer biçimi arıtıl
 mutate desk desktop/internal/console/redact.go "Redact -build-arg değerini arıtmıyor" \
     "s=s.replace('var maskedFlags = []string{\"env\", \"build-arg\"}','var maskedFlags = []string{\"env\"}',1)"
 
+mutate desk desktop/internal/console/redact.go "login/totp konumsal değeri arıtılmıyor" \
+    "s=s.replace('\targs = maskSecretPositionals(args)\n','',1)"
+
 echo "== Yazılı ad ve yönetici ayarı =="
 mutate desk desktop/internal/console/gate.go "yazılı ad büyük/küçük harf farkını kabul ediyor" \
     "s=s.replace('if got != want {','if !strings.EqualFold(got, want) {',1)"

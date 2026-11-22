@@ -431,3 +431,32 @@ func TestUnknownHostHint(t *testing.T) {
 		t.Fatal("okuma komutunda ipucu")
 	}
 }
+
+// login ve totp alt komutlarına konumsal yazılan kod geçmişe ve onay
+// kutusuna düz girmez.
+func TestPositionalSecretsNotRemembered(t *testing.T) {
+	h := newHarness(t)
+	h.setAnswer(true)
+	h.exec("hetzner", "login -recovery X-Y")
+	h.exec("hetzner", "login 123456")
+	for _, line := range []string{"totp enable 123456", "totp disable 123456"} {
+		id := h.start("hetzner", line)
+		h.waitInput(id)
+		if err := h.r.Input(id, "hetzner"); err != nil {
+			t.Fatal(err)
+		}
+		h.done(id)
+	}
+	for _, e := range h.history("hetzner") {
+		for _, secret := range []string{"X-Y", "123456"} {
+			if strings.Contains(e, secret) {
+				t.Errorf("geçmişe sır girdi: %q", e)
+			}
+		}
+	}
+	for _, b := range h.boxes {
+		if strings.Contains(b.Detail, "123456") {
+			t.Errorf("kutu ayrıntısında sır: %q", b.Detail)
+		}
+	}
+}

@@ -16,7 +16,7 @@
  * Çıktının son satırı "RESULT {json}" (makine okuyabilir).
  */
 import { spawn, execFileSync, execSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -234,4 +234,6 @@ try {
   child.stdin.end();
   await sleep(1500);
   child.kill();
+  await sleep(500);
+  rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
 }

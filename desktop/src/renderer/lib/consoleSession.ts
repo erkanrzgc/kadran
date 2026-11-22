@@ -83,13 +83,37 @@ export function isRootLine(line: string): boolean {
 }
 
 /**
+ * Yankı için: login ve totp alt komutundan sonraki tireli olmayan sözcükler
+ * (kod, kurtarma kodu) *** olur; Go'daki Redact ile aynı kural. Tırnaklı
+ * boşluklu değer parçalanır ve fazladan maskelenir (güvenli yön). Yalnız
+ * görünüm; çalışan satır değişmez.
+ */
+export function maskSecretWords(line: string): string {
+  const words = [...line.matchAll(/\S+/g)];
+  let at = words[0]?.[0] === "kadran" ? 1 : 0;
+  const head = words[at]?.[0];
+  if (head !== "login" && head !== "totp") return line;
+  at += head === "totp" ? 2 : 1;
+  let out = line;
+  for (const m of words.slice(at).reverse()) {
+    const w = m[0];
+    const eq = w.indexOf("=");
+    let masked = w;
+    if (!w.startsWith("-")) masked = "***";
+    else if (eq >= 0) masked = `${w.slice(0, eq)}=***`;
+    out = out.slice(0, m.index) + masked + out.slice(m.index! + w.length);
+  }
+  return out;
+}
+
+/**
  * Satır gönderilirken: yazılan satır yankılanır, çalışma başlıyor sayılır.
  * Kart açıkken (R17) hiçbir şey değişmez; çağıran canRun ile köprüye de gitmez.
  */
 export function begin(s: ConsoleSession, server: string, line: string): ConsoleSession {
   if (s.card !== null) return s;
   const name = server === "" ? "–" : server;
-  const buffer = append(s.buffer, "echo", `${name} › ${line}\n`);
+  const buffer = append(s.buffer, "echo", `${name} › ${maskSecretWords(line)}\n`);
   return {
     ...s,
     buffer,
@@ -111,7 +135,15 @@ export function started(s: ConsoleSession, runId: string): ConsoleSession {
 
 /** consoleRun reddedildi (köprü hatası): kilit açılır, sebep stderr olarak görünür. */
 export function startFailed(s: ConsoleSession, message: string): ConsoleSession {
-  return { ...s, buffer: append(s.buffer, "err", `${message}\n`), starting: false, run: null, input: false };
+  const buffer = append(s.buffer, "err", `${message}\n`);
+  return {
+    ...s,
+    buffer: s.echoLine === null ? buffer : finish(buffer, s.echoLine, 1),
+    echoLine: null,
+    starting: false,
+    run: null,
+    input: false,
+  };
 }
 
 /** Bu kimlik geçerli çalışma mı; başlarken bilinmeyen yeni kimlik benimsenir. */

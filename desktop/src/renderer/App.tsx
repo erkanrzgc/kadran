@@ -246,7 +246,7 @@ export function App() {
       <div className="shell">
         <Rail view={active === null ? view : null} serverOpen={active !== null} alarmCount={alarmCount(cards)} version={version} onNavigate={navigate} />
         <div className="main">
-          <TopBar target={active} health={health} healthReason={reason}profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
+          <TopBar target={active} health={health} healthReason={reason} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
             <Tabs tabs={tabs} active={active} profiles={profiles} cards={cards} onSelect={(target) => void openServer(target)} onClose={closeTab} />
           </TopBar>
           {active === null ? (

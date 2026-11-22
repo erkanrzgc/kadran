@@ -37,10 +37,11 @@ export function TopBar({ target, health, healthReason, profiles, children, onOpe
           <button type="button" className="crumb is-quiet" onClick={() => onNavigate("servers")} data-testid="crumb-servers"><span>{t("nav.servers")}</span></button>
           <span className="crumb-sep" aria-hidden="true">/</span>
           <CrumbMenu label={name} items={servers} testId="switcher" />
-          <span className={`pill is-${healthTone(health)}`} data-testid="health" title={healthLabel} aria-label={healthLabel}>
+          <span className={`pill is-${healthTone(health)}`} data-testid="health" title={healthLabel}>
             <i className="pill-dot" aria-hidden="true" />
             <span style={{ color: "var(--fg)" }}>{healthText}</span>
           </span>
+          {healthReason === null ? null : <span className="visually-hidden">{t(`health.reason.${healthReason}`)}</span>}
         </nav>
       )}
       {children}

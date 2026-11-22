@@ -1,6 +1,9 @@
 package console
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const redacted = "***"
 
@@ -15,6 +18,7 @@ var maskedFlags = []string{"env", "build-arg"}
 // değer *** olur. Boşluk ya da tırnak içeren sözcük çift tırnağa alınır;
 // içindeki " ve \ ters bölüyle kaçırılır (yalnız gösterim içindir).
 func Redact(args []string) string {
+	args = maskSecretPositionals(args)
 	out := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -30,6 +34,39 @@ func Redact(args []string) string {
 		}
 	}
 	return strings.Join(out, " ")
+}
+
+// maskSecretPositionals: login ve totp alt komutlarına yazılan değerler (kod,
+// kurtarma kodu) -env değeri gibi sırdır ve CLI reddetse bile satır geçmişe
+// düşerdi. Komuttan sonraki tireli olmayan her sözcük *** olur, tireli
+// "ad=değer" değeri *** olur. Çalışan komut değişmez; yalnız gösterim.
+func maskSecretPositionals(args []string) []string {
+	start := 0
+	if len(args) > 0 && args[0] == "kadran" {
+		start = 1
+	}
+	if start >= len(args) {
+		return args
+	}
+	rest := start + 1
+	switch args[start] {
+	case "login":
+	case "totp":
+		rest++
+	default:
+		return args
+	}
+	out := slices.Clone(args)
+	for i := rest; i < len(out); i++ {
+		name, _, joined := strings.Cut(out[i], "=")
+		switch {
+		case strings.HasPrefix(out[i], "-") && joined:
+			out[i] = name + "=" + redacted
+		case !strings.HasPrefix(out[i], "-"):
+			out[i] = redacted
+		}
+	}
+	return out
 }
 
 // isMaskedFlag: a, maskedFlags'tan birinin tek ya da çift tireli adı.

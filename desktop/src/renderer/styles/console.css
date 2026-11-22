@@ -38,7 +38,9 @@
 /* Bitiş işareti yalnız komutun yankı satırında; çıktı hiç boyanmaz. */
 .console-line.is-exit-ok::before, .console-line.is-exit-bad::before { content: "●"; margin-right: 6px; user-select: none; }
 .console-line.is-exit-ok::before { color: var(--ok); }
-.console-line.is-exit-bad::before, .console-exit { color: var(--bad); }
+.console-line.is-exit-bad::before, .console-line .console-exit { color: var(--bad); }
+/* Kopyada exit soneki yer almaz (R3). */
+.console-line .console-exit { user-select: none; }
 
 .console-prompt { display: flex; align-items: center; gap: 8px; height: 32px; flex: none; padding: 0 12px; border-top: 1px solid var(--line-soft); font-family: var(--font-mono); font-size: 12px; font-weight: var(--w-mono); }
 .console-ps { color: var(--series-1); white-space: nowrap; }

@@ -286,3 +286,26 @@ test("line ids stay unique across a clear", () => {
   const all = [...before, ...s.buffer.lines.map((l) => l.id)];
   assert.equal(new Set(all).size, all.length);
 });
+
+test("begin masks positional secrets after login and totp in the echo line", () => {
+  const cases: Array<[string, string]> = [
+    ["login 123456", "hetzner › login ***\n"],
+    ["login -recovery ABCD-EFGH", "hetzner › login -recovery ***\n"],
+    ["totp disable 123456", "hetzner › totp disable ***\n"],
+    ["kadran totp enable 123456", "hetzner › kadran totp enable ***\n"],
+    ["app list", "hetzner › app list\n"],
+    ["deploy web", "hetzner › deploy web\n"],
+    ["login", "hetzner › login\n"],
+  ];
+  for (const [line, want] of cases) {
+    assert.equal(begin(initialSession(), "hetzner", line).buffer.lines[0]!.text, want.trimEnd(), line);
+  }
+});
+
+test("startFailed ends the echo line as failed and clears the echo id", () => {
+  const s = startFailed(begin(initialSession(), "hetzner", "status"), "bridge down");
+  assert.equal(s.echoLine, null);
+  assert.equal(s.buffer.lines[0]!.stream, "echo");
+  assert.notEqual(s.buffer.lines[0]!.exit, undefined);
+  assert.notEqual(s.buffer.lines[0]!.exit, 0);
+});

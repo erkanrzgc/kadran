@@ -29,7 +29,7 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   has a fixed width (320 units). A live check at 150% scale cut a 96-unit unbroken token
   with an ellipsis, so unbroken runs are now split into pieces of at most 32 units. The live retry
   at 150% showed the whole token, and a run of very wide glyphs (U+FDFD) also stayed visible; 100%
-  was not retried. The box comes to the front when Kadran is in the background. Codes typed after `login` or
+  was not retried. The box comes to the front when Kadran is in the background; it also raises its own window once when it opens, so it no longer stays behind another app (live retry pending). Codes typed after `login` or
   `totp` are masked in the history, the echo line and the box. The server badge shows its reason. The memory growth was measured and the result is recorded as an open item.
 
 ## v0.13.0 — 2026-11-18

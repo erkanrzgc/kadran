@@ -33,6 +33,12 @@ const (
 	// Windows kendi genişliğini seçip etki satırını yeniden sarıyordu.
 	taskDialogWidthOffset = 156
 	taskDialogWidth       = 320
+	// pfCallback ve lpCallbackData, cxWidth'ten (156) önceki iki işaretçi;
+	// pshpack1 amd64: ... pszFooter 132..140, pfCallback 140..148,
+	// lpCallbackData 148..156.
+	taskDialogCallbackOffset     = 140
+	taskDialogCallbackDataOffset = 148
+	tdnCreated                   = 0 // TDN_CREATED: kutunun penceresi oluştu
 )
 
 // Box, kutunun metinleri.
@@ -105,6 +111,8 @@ func layout(owner windows.HWND, texts []*uint16) []byte {
 	le.PutUint32(cfg[60:], 2)
 	le.PutUint64(cfg[64:], uint64(uintptr(unsafe.Pointer(&buttons[0]))))
 	le.PutUint32(cfg[72:], buttonCancel) // varsayılan düğme: Vazgeç
+	le.PutUint64(cfg[taskDialogCallbackOffset:], uint64(dialogCallbackPtr))
+	le.PutUint64(cfg[taskDialogCallbackDataOffset:], uint64(owner))
 	le.PutUint32(cfg[taskDialogWidthOffset:], taskDialogWidth)
 	return mem
 }
@@ -134,7 +142,51 @@ func bringForward(owner windows.HWND, api foregroundAPI) {
 	}
 }
 
+// dialogAPI, kutunun kendi penceresini öne getiren yüzey (TDN_CREATED).
+type dialogAPI interface {
+	Foreground() windows.HWND
+	SetTopmost(windows.HWND)
+	ClearTopmost(windows.HWND)
+	SetForeground(windows.HWND) bool
+	Flash(windows.HWND)
+}
+
+// dialogCallbackPtr, TASKDIALOGCONFIG.pfCallback: paket düzeyinde BİR kez
+// kurulur (NewCallback sınırlıdır; her Confirm'de yenisi kurulmaz).
+var dialogCallbackPtr = windows.NewCallback(dialogCallback)
+
+// dialogCallback: refData, layout'un lpCallbackData'ya koyduğu sahip pencere.
+func dialogCallback(hwnd, msg, _, _, refData uintptr) uintptr {
+	return handleNotification(realForeground{}, windows.HWND(hwnd), msg, refData)
+}
+
+// handleNotification yalnız TDN_CREATED'e tepki verir ve her zaman S_OK (0)
+// döner: düğmeye basmaz, kutuyu kapatmaz, varsayılan düğmeye dokunmaz.
+func handleNotification(api dialogAPI, dialog windows.HWND, msg, refData uintptr) uintptr {
+	if msg == tdnCreated {
+		onCreated(dialog, windows.HWND(refData), api)
+	}
+	return 0
+}
+
+// onCreated: kutu başka bir uygulamanın arkasında doğmasın. Z-sırasının
+// en üstüne BİR kez çıkarır (kalıcı sabitlemez), odak ister; ön plan kilidi
+// izin vermezse sahibi (yoksa kutuyu) görev çubuğunda yanıp söndürür.
+func onCreated(dialog, owner windows.HWND, api dialogAPI) {
+	api.SetTopmost(dialog)
+	api.ClearTopmost(dialog)
+	api.SetForeground(dialog)
+	if api.Foreground() == dialog {
+		return
+	}
+	if owner == 0 {
+		owner = dialog
+	}
+	api.Flash(owner)
+}
+
 var (
+	setWindowPosProc        = user32.NewProc("SetWindowPos")
 	getForegroundWindowProc = user32.NewProc("GetForegroundWindow")
 	isIconicProc            = user32.NewProc("IsIconic")
 	showWindowProc          = user32.NewProc("ShowWindow")
@@ -143,6 +195,9 @@ var (
 )
 
 const (
+	swpNoSize       = 0x1
+	swpNoMove       = 0x2
+	swpNoActivate   = 0x10
 	swRestore       = 9
 	flashwAll       = 0x3
 	flashwTimerNoFG = 0xC
@@ -180,4 +235,12 @@ func (realForeground) Flash(h windows.HWND) {
 	fi := flashInfo{hwnd: h, flags: flashwAll | flashwTimerNoFG}
 	fi.size = uint32(unsafe.Sizeof(fi))
 	_, _, _ = flashWindowExProc.Call(uintptr(unsafe.Pointer(&fi)))
+}
+
+// HWND_TOPMOST (-1) ve HWND_NOTOPMOST (-2).
+func (realForeground) SetTopmost(h windows.HWND)   { setZ(h, ^uintptr(0)) }
+func (realForeground) ClearTopmost(h windows.HWND) { setZ(h, ^uintptr(1)) }
+
+func setZ(h windows.HWND, after uintptr) {
+	_, _, _ = setWindowPosProc.Call(uintptr(h), after, 0, 0, 0, 0, swpNoMove|swpNoSize|swpNoActivate)
 }

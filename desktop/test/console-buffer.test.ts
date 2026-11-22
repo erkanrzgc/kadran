@@ -69,14 +69,49 @@ test("consoleBuffer keeps blank lines and drops CR, ANSI and control characters"
   assert.equal(append(state, "out", "").lines.length, 3);
 });
 
-test("consoleBuffer finish colours the last line and closes it", () => {
-  const open = append(emptyBuffer(), "out", "istem: ");
-  assert.equal(open.lines[0]!.open, true);
-  const done = finish(open, 0);
-  assert.equal(done.lines[0]!.open, false);
+function echoRun() {
+  let b = append(emptyBuffer(), "echo", "hetzner › app list\n");
+  b = append(b, "out", "a\nb\nc\n");
+  return { b, echoId: b.lines[0]!.id };
+}
+
+test("finish marks the command line, not output", () => {
+  const { b, echoId } = echoRun();
+  const done = finish(b, echoId, 0);
   assert.equal(done.lines[0]!.exit, 0);
-  assert.equal(finish(append(emptyBuffer(), "err", "x\n"), 3).lines[0]!.exit, 3);
-  assert.deepEqual(finish(emptyBuffer(), 0).lines, []);
+  assert.deepEqual(done.lines.slice(1).map((l) => l.exit), [null, null, null]);
+});
+
+test("failed run adds exit suffix", () => {
+  const { b, echoId } = echoRun();
+  const done = finish(b, echoId, 2);
+  assert.equal(done.lines[0]!.exit, 2);
+  assert.equal(done.lines[0]!.text, "hetzner › app list");
+  assert.deepEqual(done.lines.slice(1).map((l) => l.exit), [null, null, null]);
+});
+
+test("finish closes the open last line without colouring it", () => {
+  const { b, echoId } = echoRun();
+  const done = finish(append(b, "out", "istem: "), echoId, 0);
+  assert.equal(done.lines.at(-1)!.open, false);
+  assert.equal(done.lines.at(-1)!.exit, null);
+});
+
+test("late output after done stays plain", () => {
+  const { b, echoId } = echoRun();
+  const late = append(finish(b, echoId, 0), "out", "late\n");
+  assert.equal(late.lines.at(-1)!.text, "late");
+  assert.equal(late.lines.at(-1)!.exit, null);
+});
+
+test("echo line dropped by the 5000 cap", () => {
+  const { b, echoId } = echoRun();
+  let big = b;
+  for (let i = 0; i < MAX_LINES; i++) big = append(big, "out", `x${i}\n`);
+  assert.equal(big.lines.some((l) => l.id === echoId), false);
+  const done = finish(big, echoId, 1);
+  assert.deepEqual(done.lines.map((l) => l.exit), big.lines.map((l) => l.exit));
+  assert.deepEqual(finish(emptyBuffer(), 0, 0).lines, []);
 });
 
 test("consoleBuffer endLine closes the open prompt line without adding text", () => {

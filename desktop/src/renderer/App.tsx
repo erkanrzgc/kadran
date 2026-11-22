@@ -11,11 +11,12 @@ import { useAppearance } from "./appearance/AppearanceProvider.tsx";
 import { useT } from "./i18n/I18nProvider.tsx";
 import { useConsole } from "./hooks/useConsole.ts";
 import { action as consoleAction } from "./lib/consoleKeys.ts";
+import { isLoginLine, nextTarget, setRunning, type ConsoleTarget } from "./lib/consoleTarget.ts";
 import { useFleet } from "./hooks/useFleet.ts";
 import { useServer } from "./hooks/useServer.ts";
 import { errorText, serverListError } from "./lib/errors.ts";
 import { alarmCount, classifyFailure } from "./lib/fleet.ts";
-import { healthOf } from "./lib/health.ts";
+import { healthOf, healthReason } from "./lib/health.ts";
 import { createProfileStore } from "./lib/profile-store.ts";
 import type { VersionPayload } from "./lib/types.ts";
 import { AlarmsScreen } from "./screens/AlarmsScreen.tsx";
@@ -177,29 +178,46 @@ export function App() {
   );
 
   // Konsol: oturum App icinde yasar; panel kapansa ya da ekran degisse de calisma surer.
+  // Sunucusu GUI baglantisindan bagimsizdir (lib/consoleTarget.ts): oturumu dusmus
+  // sunucuda GUI baglanamasa da `use` + `login` konsoldan calisir.
   const profileByName = useCallback((name: string) => profiles.find((p) => p.name === name), [profiles]);
+  const [target, setTarget] = useState<ConsoleTarget>({ server: "", pending: null, running: false });
+  const activeName = profiles.find((p) => p.target === active)?.name ?? null;
+  useEffect(() => {
+    setTarget((c) => nextTarget(c, { kind: "gui", server: activeName }));
+  }, [activeName]);
   const consoleApi = useConsole({
-    server: profiles.find((p) => p.target === active)?.name ?? "",
+    server: target.server,
     onUse: (name) => {
+      setTarget((c) => nextTarget(c, { kind: "use", server: name }));
       const profile = profileByName(name);
+      // Baglanamasa da konsolun sunucusu degismis kalir.
       if (profile) void openServer(profile.target);
     },
     secretNote: t("console.secret_shown"),
+    onFinish: (line, name, exit) => {
+      // Oturum alindi: GUI o sunucuyu yeniden acmayi dener.
+      if (exit !== 0 || !isLoginLine(line)) return;
+      const profile = profileByName(name);
+      if (profile) void openServer(profile.target);
+    },
   });
-  const consoleShown = active !== null && appearance.consoleOpen;
-  const { setPanelOpen } = consoleApi;
+  const { busy: consoleBusy, setPanelOpen } = consoleApi;
+  useEffect(() => {
+    setTarget((c) => setRunning(c, consoleBusy));
+  }, [consoleBusy]);
+  const consoleShown = appearance.consoleOpen;
   const toggleConsole = useCallback(() => {
     updateAppearance({ consoleOpen: !appearance.consoleOpen });
   }, [updateAppearance, appearance.consoleOpen]);
 
-  // Gizli kart yalniz panel gorunurken yasar; kapaninca ya da sunucu ekranindan cikinca silinir.
+  // Gizli kart yalniz panel gorunurken yasar; kapaninca silinir.
   useEffect(() => {
     setPanelOpen(consoleShown);
   }, [consoleShown, setPanelOpen]);
 
-  // Ctrl+` paneli acar ve kapatir (yalniz sunucu ekranlarinda).
+  // Ctrl+` paneli acar ve kapatir (her ekranda).
   useEffect(() => {
-    if (active === null) return;
     const onKey = (e: KeyboardEvent) => {
       const act = consoleAction({ key: e.key, code: e.code, ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey, metaKey: e.metaKey, running: false });
       if (act !== "toggle") return;
@@ -208,9 +226,11 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [active, toggleConsole]);
+  }, [toggleConsole]);
 
-  const health = healthOf(server.state.status, server.state.verify, server.state.stale || server.state.verifyStale);
+  const healthStale = server.state.stale || server.state.verifyStale;
+  const health = healthOf(server.state.status, server.state.verify, healthStale);
+  const reason = healthReason(server.state.status, server.state.verify, healthStale);
   const currentProfile = profiles.find((p) => p.target === active) ?? null;
   const editServer = (target: string) => {
     const profile = profiles.find((p) => p.target === target);
@@ -226,7 +246,7 @@ export function App() {
       <div className="shell">
         <Rail view={active === null ? view : null} serverOpen={active !== null} alarmCount={alarmCount(cards)} version={version} onNavigate={navigate} />
         <div className="main">
-          <TopBar target={active} health={health} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
+          <TopBar target={active} health={health} healthReason={reason} profiles={profiles} onOpenServer={fleetActions.onOpen} onNavigate={navigate}>
             <Tabs tabs={tabs} active={active} profiles={profiles} cards={cards} onSelect={(target) => void openServer(target)} onClose={closeTab} />
           </TopBar>
           {active === null ? (
@@ -266,9 +286,9 @@ export function App() {
                 )}
               </main>
             </div>
-            <ConsolePanel api={consoleApi} open={appearance.consoleOpen} height={appearance.consoleHeight} onToggle={toggleConsole} onHeight={(consoleHeight) => updateAppearance({ consoleHeight })} />
             </>
           )}
+          <ConsolePanel api={consoleApi} open={appearance.consoleOpen} height={appearance.consoleHeight} onToggle={toggleConsole} onHeight={(consoleHeight) => updateAppearance({ consoleHeight })} />
         </div>
       </div>
       {dialog ? <ServerDialog profile={dialog.kind === "edit" ? dialog.profile : null} pending={dialogPending} error={dialogError} onSubmit={(draft) => void submitDialog(draft)} onClose={() => setDialog(null)} /> : null}

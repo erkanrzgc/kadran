@@ -43,6 +43,9 @@ type appsCache struct {
 // ve `use` için kayıtlı sunucular önerilir; yasak komutlar önerilmez.
 func (r *Runner) Complete(server, line string, cursor int) []string {
 	prefix := line[:byteOffset(line, cursor)]
+	if strings.HasPrefix(prefix, "/") && !strings.ContainsAny(prefix, " \t") {
+		return slashNames(prefix)
+	}
 	words := strings.Fields(prefix)
 	current := ""
 	if len(words) > 0 && !strings.HasSuffix(prefix, " ") {
@@ -85,6 +88,18 @@ func (r *Runner) candidates(server string, words []string, current string) []str
 		return nil
 	}
 	return r.appNames(server)
+}
+
+// slashNames, istem `/` ile başlarken konsolun yerleşikleri; koddaki sırayla.
+// Yalnız `/help` eğik çizgilidir, ötekiler çalışan biçimleriyle önerilir.
+func slashNames(prefix string) []string {
+	out := []string{}
+	for _, n := range []string{slashHelp, "use", "clear"} {
+		if prefix == "/" || strings.HasPrefix(n, prefix) {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 // topLevelNames, üst düzey komutlar (yasaklar hariç) ve konsolun yerleşikleri.

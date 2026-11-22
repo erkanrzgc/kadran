@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import type { Profile } from "../bridge.ts";
 import { useT } from "../i18n/I18nProvider.tsx";
-import { healthKey, healthTone, type Health } from "../lib/health.ts";
+import { healthKey, healthTone, type Health, type HealthReason } from "../lib/health.ts";
 import { CrumbMenu } from "./CrumbMenu.tsx";
 import type { FleetView } from "./Rail.tsx";
 import { WindowButtons } from "./WindowButtons.tsx";
@@ -11,6 +11,8 @@ interface Props {
   /** Açık sunucu; yoksa filo ekranı. */
   target: string | null;
   health: Health;
+  /** Rozetin nedeni; ipucu ve ekran okuyucu metnine eklenir. */
+  healthReason: HealthReason;
   profiles: readonly Profile[];
   /** Sekmeler. */
   children: ReactNode;
@@ -22,9 +24,11 @@ interface Props {
  * Düz üst çubuk (48 px): yol, sekmeler, pencere düğmeleri. Filo ekranında yol
  * yok: sayfa adı zaten sayfanın başlığında ve kenar çubuğunda seçili.
  */
-export function TopBar({ target, health, profiles, children, onOpenServer, onNavigate }: Props) {
+export function TopBar({ target, health, healthReason, profiles, children, onOpenServer, onNavigate }: Props) {
   const t = useT();
   const servers = profiles.map((p) => ({ key: p.target, label: p.name, current: p.target === target, onSelect: () => onOpenServer(p.target) }));
+  const healthText = t(healthKey(health));
+  const healthLabel = healthReason === null ? healthText : `${healthText}: ${t(`health.reason.${healthReason}`)}`;
   const name = profiles.find((p) => p.target === target)?.name ?? target ?? "";
   return (
     <header className="topbar">
@@ -33,10 +37,11 @@ export function TopBar({ target, health, profiles, children, onOpenServer, onNav
           <button type="button" className="crumb is-quiet" onClick={() => onNavigate("servers")} data-testid="crumb-servers"><span>{t("nav.servers")}</span></button>
           <span className="crumb-sep" aria-hidden="true">/</span>
           <CrumbMenu label={name} items={servers} testId="switcher" />
-          <span className={`pill is-${healthTone(health)}`} data-testid="health">
+          <span className={`pill is-${healthTone(health)}`} data-testid="health" title={healthLabel}>
             <i className="pill-dot" aria-hidden="true" />
-            <span style={{ color: "var(--fg)" }}>{t(healthKey(health))}</span>
+            <span style={{ color: "var(--fg)" }}>{healthText}</span>
           </span>
+          {healthReason === null ? null : <span className="visually-hidden">{t(`health.reason.${healthReason}`)}</span>}
         </nav>
       )}
       {children}

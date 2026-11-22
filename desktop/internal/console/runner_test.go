@@ -448,3 +448,33 @@ func TestPanicInCommandEndsRun(t *testing.T) {
 		t.Fatalf("panikten sonra yuva boşalmadı: exit %d", exit)
 	}
 }
+
+func TestSlashHelpIsHelp(t *testing.T) {
+	h := newHarness(t)
+	h.setRun(func(_ context.Context, _ []string, env cli.Env) int {
+		_, _ = env.Stderr.Write([]byte("USAGE-TEXT\n"))
+		return cli.ExitOK
+	})
+	id, exit := h.exec("hetzner", "/help")
+	if exit != cli.ExitOK || !slices.Equal(h.lastCall().args, []string{"help"}) {
+		t.Fatalf("/help: exit %d args %q", exit, h.lastCall().args)
+	}
+	out := h.output(id, "")
+	if !strings.Contains(out, "USAGE-TEXT") || !strings.Contains(out, "use <server>") {
+		t.Fatalf("/help çıktısı help ile aynı değil:\n%s", out)
+	}
+}
+
+func TestUnknownSlashStillRefused(t *testing.T) {
+	h := newHarness(t)
+	for _, line := range []string{"/use web", "/x", "/clear", "/help now"} {
+		calls := h.callCount()
+		_, exit := h.exec("hetzner", line)
+		if exit == cli.ExitOK {
+			t.Fatalf("%q yerleşik sayıldı", line)
+		}
+		if h.callCount() != calls || h.boxCount() != 0 {
+			t.Fatalf("%q koşucuya gitti ya da kutu açtı", line)
+		}
+	}
+}

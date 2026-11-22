@@ -60,6 +60,7 @@ test("şablonlu t(`…`) çağrılarının her ailesi tanımlı ve üyeleri en+t
     "release.${}": protoEnum(proto, "ReleaseStatus"),
     "apps.tab_${}": appTabs(appsSrc),
     "theme.${}": THEMES,
+    "health.reason.${}": ["stale", "executor-unreachable", "chain-not-valid", "no-verify"], // lib/health.ts HealthReason
   };
 
   const found = new Set<string>();

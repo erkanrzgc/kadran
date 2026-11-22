@@ -29,6 +29,10 @@ const (
 	taskDialogConfigSize        = 160    // pshpack1: alanlar arasında dolgu yok
 	taskDialogButtonSize        = 12
 	buttonCancel, buttonAction  = 1001, 1002
+	// cxWidth, paketli yapının son alanı (156..160); diyalog birimi. 0 iken
+	// Windows kendi genişliğini seçip etki satırını yeniden sarıyordu.
+	taskDialogWidthOffset = 156
+	taskDialogWidth       = 320
 )
 
 // Box, kutunun metinleri.
@@ -56,6 +60,7 @@ func Confirm(owner windows.HWND, box Box) (bool, error) {
 		texts = append(texts, p)
 	}
 	mem := layout(owner, texts)
+	bringForward(owner, realForeground{})
 
 	// Kutu kendi ileti döngüsünü bu iş parçacığında döndürür.
 	runtime.LockOSThread()
@@ -100,5 +105,79 @@ func layout(owner windows.HWND, texts []*uint16) []byte {
 	le.PutUint32(cfg[60:], 2)
 	le.PutUint64(cfg[64:], uint64(uintptr(unsafe.Pointer(&buttons[0]))))
 	le.PutUint32(cfg[72:], buttonCancel) // varsayılan düğme: Vazgeç
+	le.PutUint32(cfg[taskDialogWidthOffset:], taskDialogWidth)
 	return mem
+}
+
+// foregroundAPI, kutu açılmadan önce sahip pencereyi öne getiren küçük yüzey;
+// mantık gerçek pencere olmadan sınanabilsin diye arayüz.
+type foregroundAPI interface {
+	Foreground() windows.HWND
+	IsIconic(windows.HWND) bool
+	Restore(windows.HWND)
+	SetForeground(windows.HWND) bool
+	Flash(windows.HWND)
+}
+
+// bringForward: kutu görünmeden komut "çalışıyor"da beklemesin. Kutuyu atlamaz
+// ve onaylamaz; yalnız sahibi öne getirir, Windows ön plan kilidi izin
+// vermezse görev çubuğunda yanıp söndürür.
+func bringForward(owner windows.HWND, api foregroundAPI) {
+	if owner == 0 || api.Foreground() == owner {
+		return
+	}
+	if api.IsIconic(owner) {
+		api.Restore(owner)
+	}
+	if !api.SetForeground(owner) {
+		api.Flash(owner)
+	}
+}
+
+var (
+	getForegroundWindowProc = user32.NewProc("GetForegroundWindow")
+	isIconicProc            = user32.NewProc("IsIconic")
+	showWindowProc          = user32.NewProc("ShowWindow")
+	setForegroundWindowProc = user32.NewProc("SetForegroundWindow")
+	flashWindowExProc       = user32.NewProc("FlashWindowEx")
+)
+
+const (
+	swRestore       = 9
+	flashwAll       = 0x3
+	flashwTimerNoFG = 0xC
+)
+
+// flashInfo, FLASHWINFO (amd64: cbSize 4, dolgu 4, hwnd 8, flags 4, count 4, timeout 4, dolgu 4).
+type flashInfo struct {
+	size    uint32
+	hwnd    windows.HWND
+	flags   uint32
+	count   uint32
+	timeout uint32
+}
+
+type realForeground struct{}
+
+func (realForeground) Foreground() windows.HWND {
+	h, _, _ := getForegroundWindowProc.Call()
+	return windows.HWND(h)
+}
+
+func (realForeground) IsIconic(h windows.HWND) bool {
+	r, _, _ := isIconicProc.Call(uintptr(h))
+	return r != 0
+}
+
+func (realForeground) Restore(h windows.HWND) { _, _, _ = showWindowProc.Call(uintptr(h), swRestore) }
+
+func (realForeground) SetForeground(h windows.HWND) bool {
+	r, _, _ := setForegroundWindowProc.Call(uintptr(h))
+	return r != 0
+}
+
+func (realForeground) Flash(h windows.HWND) {
+	fi := flashInfo{hwnd: h, flags: flashwAll | flashwTimerNoFG}
+	fi.size = uint32(unsafe.Sizeof(fi))
+	_, _, _ = flashWindowExProc.Call(uintptr(unsafe.Pointer(&fi)))
 }

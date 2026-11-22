@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { healthKey, healthOf, healthTone, statusMetaKeys } from "../src/renderer/lib/health.ts";
+import { healthKey, healthOf, healthReason, healthTone, statusMetaKeys } from "../src/renderer/lib/health.ts";
 
 const ok = { running_as_user: "kadran", executor_reachable: true };
 const valid = { daemon_status: "CHAIN_STATUS_VALID", executor_status: "CHAIN_STATUS_VALID" };
@@ -61,4 +61,24 @@ test("ton ve i18n anahtarı", () => {
   assert.equal(healthTone("unknown"), "muted");
   assert.equal(healthKey("broken-install"), "health.broken_install");
   assert.equal(healthKey("healthy"), "health.healthy");
+});
+
+test("neden: her dal kendi nedenini söyler", () => {
+  assert.equal(healthReason(ok, valid, true), "stale");
+  assert.equal(healthReason(ok, null, true), "stale");
+  assert.equal(healthReason({ ...ok, executor_reachable: false }, valid), "executor-unreachable");
+  assert.equal(healthReason(ok, { ...valid, executor_status: "CHAIN_STATUS_UNREACHABLE" }), "chain-not-valid");
+  assert.equal(healthReason(ok, null), "no-verify");
+});
+
+test("neden: sağlıklı, bilinmeyen ve kötü haberde neden yok", () => {
+  assert.equal(healthReason(ok, valid), null);
+  assert.equal(healthReason(null, null), null);
+  assert.equal(healthReason(null, null, true), null);
+  assert.equal(healthReason({ ...ok, running_as_user: "root" }, valid, true), null);
+  assert.equal(healthReason(ok, { ...valid, daemon_status: "CHAIN_STATUS_INVALID" }, true), null);
+});
+
+test("neden: executor kapalıysa bayatken de asıl neden o", () => {
+  assert.equal(healthReason({ ...ok, executor_reachable: false }, valid, true), "executor-unreachable");
 });

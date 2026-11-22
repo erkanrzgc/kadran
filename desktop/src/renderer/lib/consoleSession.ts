@@ -33,6 +33,8 @@ export interface ConsoleSession {
   readonly run: string | null;
   /** Çalışmanın başladığı sunucu; istem bunu gösterir. */
   readonly runServer: string | null;
+  /** Çalışmanın yankı satırının kimliği; bitiş işareti ona yazılır. */
+  readonly echoLine: number | null;
   /** Çalışan satır root sınıfında mı (yalnız görünüm: istem `#` ve kırmızı). */
   readonly root: boolean;
   readonly finished: readonly string[];
@@ -47,7 +49,7 @@ export interface ConsoleSession {
 }
 
 export function initialSession(): ConsoleSession {
-  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, root: false, finished: [], input: false, card: null, cardRun: null, panelOpen: false };
+  return { buffer: emptyBuffer(), starting: false, run: null, runServer: null, echoLine: null, root: false, finished: [], input: false, card: null, cardRun: null, panelOpen: false };
 }
 
 /** Çalışma var ya da başlıyor: istem kilitli, sunucu sabit. */
@@ -81,15 +83,41 @@ export function isRootLine(line: string): boolean {
 }
 
 /**
+ * Yankı için: login ve totp alt komutundan sonraki tireli olmayan sözcükler
+ * (kod, kurtarma kodu) *** olur; Go'daki Redact ile aynı kural. Tırnaklı
+ * boşluklu değer parçalanır ve fazladan maskelenir (güvenli yön). Yalnız
+ * görünüm; çalışan satır değişmez.
+ */
+export function maskSecretWords(line: string): string {
+  const words = [...line.matchAll(/\S+/g)];
+  let at = words[0]?.[0] === "kadran" ? 1 : 0;
+  const head = words[at]?.[0];
+  if (head !== "login" && head !== "totp") return line;
+  at += head === "totp" ? 2 : 1;
+  let out = line;
+  for (const m of words.slice(at).reverse()) {
+    const w = m[0];
+    const eq = w.indexOf("=");
+    let masked = w;
+    if (!w.startsWith("-")) masked = "***";
+    else if (eq >= 0) masked = `${w.slice(0, eq)}=***`;
+    out = out.slice(0, m.index) + masked + out.slice(m.index! + w.length);
+  }
+  return out;
+}
+
+/**
  * Satır gönderilirken: yazılan satır yankılanır, çalışma başlıyor sayılır.
  * Kart açıkken (R17) hiçbir şey değişmez; çağıran canRun ile köprüye de gitmez.
  */
 export function begin(s: ConsoleSession, server: string, line: string): ConsoleSession {
   if (s.card !== null) return s;
   const name = server === "" ? "–" : server;
+  const buffer = append(s.buffer, "echo", `${name} › ${maskSecretWords(line)}\n`);
   return {
     ...s,
-    buffer: append(s.buffer, "echo", `${name} › ${line}\n`),
+    buffer,
+    echoLine: buffer.lines[buffer.lines.length - 1]?.id ?? null,
     starting: true,
     run: null,
     runServer: server,
@@ -107,7 +135,15 @@ export function started(s: ConsoleSession, runId: string): ConsoleSession {
 
 /** consoleRun reddedildi (köprü hatası): kilit açılır, sebep stderr olarak görünür. */
 export function startFailed(s: ConsoleSession, message: string): ConsoleSession {
-  return { ...s, buffer: append(s.buffer, "err", `${message}\n`), starting: false, run: null, input: false };
+  const buffer = append(s.buffer, "err", `${message}\n`);
+  return {
+    ...s,
+    buffer: s.echoLine === null ? buffer : finish(buffer, s.echoLine, 1),
+    echoLine: null,
+    starting: false,
+    run: null,
+    input: false,
+  };
 }
 
 /** Bu kimlik geçerli çalışma mı; başlarken bilinmeyen yeni kimlik benimsenir. */
@@ -124,7 +160,8 @@ function finishRun(s: ConsoleSession, id: string, exit: number): ConsoleSession 
   const closes = exit !== 0 && s.cardRun === id;
   return {
     ...s,
-    buffer: finish(s.buffer, exit),
+    buffer: s.echoLine === null ? endLine(s.buffer) : finish(s.buffer, s.echoLine, exit),
+    echoLine: null,
     run: null,
     input: false,
     finished: [...s.finished, id].slice(-FINISHED_KEPT),
@@ -188,7 +225,8 @@ export function closePanel(s: ConsoleSession): ConsoleSession {
 
 /** Çıktıyı temizler (Ctrl+L, `clear`); çalışma durumuna dokunmaz. */
 export function clearOutput(s: ConsoleSession): ConsoleSession {
-  return { ...s, buffer: emptyBuffer() };
+  // Kimlikler tekrar kullanılmaz (React anahtarı); çalışan komutun yankı satırı gitti, işaret kimseye yazılmaz.
+  return { ...s, buffer: { ...emptyBuffer(), next: s.buffer.next }, echoLine: null };
 }
 
 /** Konsolun kendi notu (tamamlama adayları). */

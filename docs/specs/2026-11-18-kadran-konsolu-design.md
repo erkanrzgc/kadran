@@ -207,6 +207,8 @@ bir şey çalıştırmasını önler)**.
   da görünür; `server add` yasak olduğu için konsol "sunucu ekleme arayüzdeki akışta" der.
 - Konsola özgü üç komut **(benim kararım)**: `use <sunucu>`, `clear` (Ctrl+L), `help` (CLI'ın
   komut listesi + konsol kısayolları). Başka yerleşik komut yok.
+  `/help` tek başına `help` ile aynıdır; istem `/` iken Tab konsolun yerleşiklerini (`/help`, `use`,
+  `clear`) önerir; `/` ile başlayan başka hiçbir satır yerleşik sayılmaz (canlıda eklendi, K-169).
 - Seçili sunucu yokken (boş liste) yalnız `help`, `use` ve `server list` çalışır.
 
 ### 5. Onay akışları
@@ -261,9 +263,11 @@ bir şey çalıştırmasını önler)**.
 
 ### 6. Çıktı
 
-- CLI'ın stdout ve stderr metni olduğu gibi gösterilir **(kullanıcı onayladı)**. Ek renk yalnız
-  iki: komut sıfırla biterse son satır yeşil, sıfır dışıyla biterse kırmızı; stderr ikincil
-  renkte **(benim kararım)**.
+- CLI'ın stdout ve stderr metni olduğu gibi gösterilir **(kullanıcı onayladı)**. Çıktı satırları
+  hiçbir zaman boyanmaz; stderr ikincil renkte kalır **(benim kararım)**. Komutun bitiş işareti
+  çıktıya değil komutun yankı satırına konur: sıfırla biterse satırın başında yeşil `●`, sıfır
+  dışıyla biterse kırmızı `●` ve satırın sonunda `· exit N`; işaret çizimde `exit` alanından üretilir, satır metnine
+  yazılmaz **(R19; canlıda değişti, K-169)**.
 - Panelde en çok 5.000 satır tutulur, eskiler düşer **(benim kararım: 300 MB bellek bütçesi,
   K-165)**. Panel kapanıp açılınca içerik kalır; uygulama kapanınca gider.
 - Çıktı seçilip kopyalanabilir (bugünkü `CopyText` sınırıyla).
@@ -324,7 +328,10 @@ seçenekler konsoldan çıkarmak ve Windows'un kendi kutusuydu)**.
 
 ### 9. Panel
 
-- Sunucu ekranının altında; Ctrl+` ile açılır ve kapanır **(kullanıcı)**.
+- Her ekranın altında (Sunucular, Uygulamalar, sunucu sayfaları); Ctrl+` ile açılır ve kapanır
+  **(kullanıcı; her ekran: R20, canlıda değişti, K-169)**. Konsolun seçili sunucusu GUI'nin
+  bağlı sunucusundan ayrı tutulur; bağlantısı kurulamayan ya da oturumu düşmüş sunucu da `use`
+  ile seçilebilir, böylece `login` konsoldan yapılır **(R20; canlıda değişti, K-169)**.
 - Yükseklik sürüklenerek ayarlanır (en az 120 px, en çok pencerenin %70'i); açık/kapalı durumu
   ve yükseklik sonraki açılışa kalır **(kullanıcı onayladı; sınırlar benim kararım)**. Mevcut
   görünüm deposuna (`appearance.Store`) eklenir.

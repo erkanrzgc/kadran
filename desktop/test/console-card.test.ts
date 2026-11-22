@@ -234,13 +234,14 @@ test("a stray input event for another run is ignored", () => {
   assert.equal(s.input, false);
 });
 
-test("begin echoes the line; done colours the last line", () => {
+test("begin echoes the line; done marks the echo line, not the output", () => {
   let s = begin(initialSession(), "hetzner", "status");
   assert.equal(s.buffer.lines[0]!.text, "hetzner › status");
   assert.equal(s.buffer.lines[0]!.stream, "echo");
   s = apply(started(s, RUN), out(RUN, "ok\n"));
   s = apply(s, done(RUN, 1));
-  assert.equal(s.buffer.lines.at(-1)!.exit, 1);
+  assert.equal(s.buffer.lines[0]!.exit, 1);
+  assert.equal(s.buffer.lines.at(-1)!.exit, null);
 });
 
 test("startFailed unlocks and shows the error", () => {
@@ -266,4 +267,45 @@ test("the prompt shows # only while a root-class line runs", () => {
   assert.equal(isRootLine("status"), false);
   assert.equal(begin(initialSession(), "hetzner", "key list").root, true);
   assert.equal(begin(initialSession(), "hetzner", "status").root, false);
+});
+
+test("clear during run never marks output", () => {
+  let s = begin(initialSession(), "hetzner", "logs -f web");
+  s = apply(started(s, RUN), out(RUN, "a\nb\n"));
+  s = clearOutput(s);
+  s = apply(s, out(RUN, "c\nd\n"));
+  s = apply(s, done(RUN, 130));
+  assert.deepEqual(s.buffer.lines.map((l) => l.exit), [null, null]);
+});
+
+test("line ids stay unique across a clear", () => {
+  let s = begin(initialSession(), "hetzner", "status");
+  s = apply(started(s, RUN), out(RUN, "a\nb\n"));
+  const before = s.buffer.lines.map((l) => l.id);
+  s = apply(clearOutput(s), out(RUN, "c\nd\n"));
+  const all = [...before, ...s.buffer.lines.map((l) => l.id)];
+  assert.equal(new Set(all).size, all.length);
+});
+
+test("begin masks positional secrets after login and totp in the echo line", () => {
+  const cases: Array<[string, string]> = [
+    ["login 123456", "hetzner › login ***\n"],
+    ["login -recovery ABCD-EFGH", "hetzner › login -recovery ***\n"],
+    ["totp disable 123456", "hetzner › totp disable ***\n"],
+    ["kadran totp enable 123456", "hetzner › kadran totp enable ***\n"],
+    ["app list", "hetzner › app list\n"],
+    ["deploy web", "hetzner › deploy web\n"],
+    ["login", "hetzner › login\n"],
+  ];
+  for (const [line, want] of cases) {
+    assert.equal(begin(initialSession(), "hetzner", line).buffer.lines[0]!.text, want.trimEnd(), line);
+  }
+});
+
+test("startFailed ends the echo line as failed and clears the echo id", () => {
+  const s = startFailed(begin(initialSession(), "hetzner", "status"), "bridge down");
+  assert.equal(s.echoLine, null);
+  assert.equal(s.buffer.lines[0]!.stream, "echo");
+  assert.notEqual(s.buffer.lines[0]!.exit, undefined);
+  assert.notEqual(s.buffer.lines[0]!.exit, 0);
 });

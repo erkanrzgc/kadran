@@ -7,14 +7,20 @@ const STICK_PX = 24;
 
 function lineClass(line: ConsoleLine): string {
   const parts = ["console-line", `is-${line.stream}`];
-  if (line.exit === 0) parts.push("is-exit-ok");
-  else if (line.exit !== null) parts.push("is-exit-bad");
+  if (line.stream === "echo" && line.exit !== null) parts.push(line.exit === 0 ? "is-exit-ok" : "is-exit-bad");
   return parts.join(" ");
 }
 
 /** Satır nesnesi değişmedikçe yeniden çizilmez: 5.000 satırda yalnız yeni satırlar çizilir. */
 const Line = memo(function Line({ line }: { line: ConsoleLine }) {
-  return <div className={lineClass(line)}>{line.text}</div>;
+  // R3: exit soneki çizimde eklenir, metne yazılmaz (kopya ve geçmiş temiz kalır).
+  const bad = line.stream === "echo" && line.exit !== null && line.exit !== 0;
+  return (
+    <div className={lineClass(line)}>
+      {line.text}
+      {bad ? <span className="console-exit">{` · exit ${line.exit}`}</span> : null}
+    </div>
+  );
 });
 
 interface Props {

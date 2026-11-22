@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -45,14 +47,33 @@ const (
 // fakeKadrand, konsol senaryolarının dokunduğu RPC'leri yanıtlar.
 type fakeKadrand struct {
 	kadranv1.UnimplementedKadranServiceServer
+	// totp, oturumu düşmüş gerçek sunucu gibi davranır: Ping giriş ister.
+	totp bool
 }
 
-func (fakeKadrand) Ping(context.Context, *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
+// smokeLoginCode, sahte sunucunun kabul ettiği tek giriş kodu.
+const smokeLoginCode = "000000"
+
+// smokeTotpHost, TotpRequired dönen sahte sunucunun adı (fake@totp).
+const smokeTotpHost = "totp"
+
+func (f fakeKadrand) Ping(context.Context, *kadranv1.PingRequest) (*kadranv1.PingResponse, error) {
 	return &kadranv1.PingResponse{
 		DaemonVersion:   "smoke",
 		ProtocolVersion: version.Protocol,
 		ServerTime:      timestamppb.Now(),
-		TotpRequired:    proto.Bool(false),
+		TotpRequired:    proto.Bool(f.totp),
+	}, nil
+}
+
+// Login: `kadran login` bu RPC yi çağırır (internal/cli/totp.go); yalnız 000000 kabul.
+func (fakeKadrand) Login(_ context.Context, req *kadranv1.LoginRequest) (*kadranv1.LoginResponse, error) {
+	if req.GetCode() != smokeLoginCode {
+		return nil, status.Error(codes.Unauthenticated, "invalid code")
+	}
+	return &kadranv1.LoginResponse{ //nolint:gosec // yalnız duman ikilisi; sahte jeton
+		SessionToken: "smoke-login-session",
+		ExpiresAt:    timestamppb.New(time.Now().Add(8 * time.Hour)),
 	}, nil
 }
 
@@ -143,13 +164,21 @@ func (fakeKadrand) ConfirmTotpEnrollment(context.Context, *kadranv1.ConfirmTotpE
 }
 
 // consoleDial, konsolun bağlantı kurucusu: bufconn üstündeki sahte kadrand.
-// Hedef yok sayılır; her sunucu aynı sahteye gider.
+// fake@totp ayrı bir sahteye gider (Ping TotpRequired), diğerleri aynı sahteye.
 func consoleDial() func(client.Target) (*client.Client, error) {
-	lis := bufconn.Listen(1 << 20)
-	srv := grpc.NewServer()
-	kadranv1.RegisterKadranServiceServer(srv, fakeKadrand{})
-	go func() { _ = srv.Serve(lis) }()
+	serve := func(f fakeKadrand) *bufconn.Listener {
+		lis := bufconn.Listen(1 << 20)
+		srv := grpc.NewServer()
+		kadranv1.RegisterKadranServiceServer(srv, f)
+		go func() { _ = srv.Serve(lis) }()
+		return lis
+	}
+	plain, totp := serve(fakeKadrand{}), serve(fakeKadrand{totp: true})
 	return func(t client.Target) (*client.Client, error) {
+		lis := plain
+		if t.SSHHost == smokeTotpHost {
+			lis = totp
+		}
 		return client.DialWithDialer(t, func(context.Context, string) (net.Conn, error) { return lis.Dial() })
 	}
 }

@@ -28,7 +28,8 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   The exit marker sits on the command's echo line and output is never coloured. The confirmation box
   has a fixed width (320 units). A live check at 100% cut a 96-unit unbroken token with an
   ellipsis, so unbroken runs are now split into pieces of at most 32 units; it will be tried live
-  again. The box comes to the front when Kadran is in the background. Codes typed after `login` or
+  again at 100% and 150% DPI. The limit counts UTF-16 units, not drawn width, so very wide single
+  glyphs (e.g. U+FDFD) may still be cut; the retry includes them. The box comes to the front when Kadran is in the background. Codes typed after `login` or
   `totp` are masked in the history, the echo line and the box. The server badge shows its reason. The memory growth was measured and the result is recorded as an open item.
 
 ## v0.13.0 — 2026-11-18

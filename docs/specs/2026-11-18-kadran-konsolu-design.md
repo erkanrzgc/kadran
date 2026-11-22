@@ -226,7 +226,7 @@ bir şey çalıştırmasını önler)**.
   bayraklarda son yazılan kazanır; ortadan kesilen satırda ikinci bir `-domain` görünmeden
   onaylanırdı (uygulamada değişti, K-169 Uygulama).
   Boşluksuz koşular kutuda en çok 32 UTF-16 birimlik parçalara bölünür: TaskDialog uzun sözcüğü
-  sarmaz, sonunu "…" ile kısaltır (canlıda eklendi, K-169).
+  sarmaz, sonunu "…" ile kısaltır (canlıda eklendi, K-169; canlı yeniden deneme bekliyor).
   Kutudaki bilgiler, `Run`'dan önce komutun kendi `FlagSet` kurucusuyla çözülen bayraklardan
   gelir **(benim kararım, 19 Kasım)**. Ayrıntılar:
   - `-env` ve `-build-arg` değerleri kutuda gizlidir, GUI'deki gibi (`desktop/internal/confirm/text.go:53`);

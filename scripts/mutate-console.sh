@@ -146,6 +146,8 @@ mutate desk desktop/internal/confirm/box.go "boşluksuz koşu sınırı 96 (geni
     "s=s.replace('maxWordUnits = 32','maxWordUnits = 96',1)"
 mutate desk desktop/internal/confirm/box.go "boşluksuz koşu hiç bölünmüyor" \
     "s=s.replace('run+w > maxWordUnits &&','false &&',1)"
+mutate desk desktop/internal/confirm/box.go "taşınan sözcük koşuya sayılmıyor (taşınan + 32 birimlik koşu)" \
+    "s=s.replace('partsUnits(carry)','0',1)"
 mutate desk desktop/internal/console/gate.go "1024 birim sınırı yok (uzun satır kutuda kesilir)" \
     "s=s.replace('confirm.ConsoleLineUnits(p.line) > confirm.MaxConsoleLineUnits','false',1)"
 

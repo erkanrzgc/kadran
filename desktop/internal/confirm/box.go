@@ -90,6 +90,12 @@ const (
 	MaxConsoleLineUnits = 1024
 	// maxRowUnits, Detail'in bir satırının en çok UTF-16 birimi (girinti dahil).
 	maxRowUnits = 96
+	// maxWordUnits, Detail içinde boşluksuz bir koşunun en çok UTF-16 birimi.
+	// TaskDialog boşluksuz sözcüğü sarmaz, sığmazsa sonunu "…" ile kısaltır:
+	// canlıda (%100 ölçek) 96 birimlik W koşusunda ~55 W sığdı. 32, tam genişlik
+	// harflerde de pay bırakır; ölçek büyüdükçe kutu ve harf birlikte büyüdüğü
+	// için oran değişmez. Daha uzun koşu bu uzunlukta parçalara bölünür.
+	maxWordUnits = 32
 	// rowIndent, sarılan bir alanın devam satırlarının girintisi. 0. sütunda
 	// yalnız alanların etiket satırları başlar: kullanıcı değeri ("Server:
 	// staging" içeren bir -health-path gibi) devam satırında etiket gibi
@@ -149,26 +155,41 @@ func ConsoleTooLong(language Language) string { return text(language, "console.t
 // satırdan sonrakiler rowIndent ile başlar (girinti sınıra dahil). Kırma son
 // boşluktan sonra yapılır (boşluk satır sonunda kalır: hiçbir karakter
 // düşmez); taşınan sözcük girintili satıra sığmıyorsa ya da boşluk yoksa
-// parça sınırında sert kırılır, kaçış bölünmez.
+// parça sınırında sert kırılır, kaçış bölünmez. Boşluksuz koşu ayrıca
+// maxWordUnits birimde sert kırılır (TaskDialog uzun sözcüğü sarmaz, kısaltır):
+// parça yeni bir girintili satırda sürer. Parçalar rune ya da kaçış olduğundan
+// vekil çift ortadan bölünmez.
 func wrapParts(parts []string) []string {
 	var rows, row []string
-	// base, satırın baştaki girinti parçası sayısı (ilk satırda 0).
-	width, lastSpace, base := 0, -1, 0
+	// base, satırın baştaki girinti parçası sayısı (ilk satırda 0); run,
+	// satırın sonundaki boşluksuz koşunun birimi.
+	width, lastSpace, base, run := 0, -1, 0, 0
+	newRow := func(carry []string) {
+		rows = append(rows, strings.Join(row, ""))
+		row = append([]string{rowIndent}, carry...)
+		width, base, lastSpace, run = partsUnits(row), 1, -1, partsUnits(carry)
+	}
 	for _, p := range parts {
 		w := units(p)
+		if p != " " && run+w > maxWordUnits && len(row) > base {
+			newRow(nil)
+		}
 		if width+w > maxRowUnits && len(row) > base {
 			var carry []string
 			if p != " " && lastSpace >= 0 && units(rowIndent)+partsUnits(row[lastSpace+1:])+w <= maxRowUnits {
 				carry = slices.Clone(row[lastSpace+1:])
 				row = row[:lastSpace+1]
 			}
-			rows = append(rows, strings.Join(row, ""))
-			row = append([]string{rowIndent}, carry...)
-			width, base, lastSpace = partsUnits(row), 1, -1
+			newRow(carry)
 		}
 		row, width = append(row, p), width+w
-		if p == " " && len(row) > base+1 {
-			lastSpace = len(row) - 1
+		if p == " " {
+			run = 0
+			if len(row) > base+1 {
+				lastSpace = len(row) - 1
+			}
+		} else {
+			run += w
 		}
 	}
 	if len(row) > base {

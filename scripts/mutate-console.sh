@@ -142,6 +142,10 @@ mutate desk desktop/internal/console/stream.go "büyük yazma olay başına kesi
 echo "== Onay kutusu (R10) =="
 mutate desk desktop/internal/confirm/box.go "kutu komut satırını yine kesiyor (safe)" \
     "s=s.replace('escapeParts(req.Line))','safeParts(req.Line))',1)"
+mutate desk desktop/internal/confirm/box.go "boşluksuz koşu sınırı 96 (geniş harfli değer TaskDialog içinde kısaltılır)" \
+    "s=s.replace('maxWordUnits = 32','maxWordUnits = 96',1)"
+mutate desk desktop/internal/confirm/box.go "boşluksuz koşu hiç bölünmüyor" \
+    "s=s.replace('run+w > maxWordUnits &&','false &&',1)"
 mutate desk desktop/internal/console/gate.go "1024 birim sınırı yok (uzun satır kutuda kesilir)" \
     "s=s.replace('confirm.ConsoleLineUnits(p.line) > confirm.MaxConsoleLineUnits','false',1)"
 

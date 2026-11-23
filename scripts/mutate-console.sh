@@ -153,12 +153,17 @@ mutate desk desktop/internal/console/gate.go "1024 birim sınırı yok (uzun sat
     "s=s.replace('confirm.ConsoleLineUnits(p.line) > confirm.MaxConsoleLineUnits','false',1)"
 
 echo "== Onay kutusu öne gelmesi (TDN_CREATED) =="
-mutate desk desktop/internal/win/taskdialog_windows.go "yanıp sönme koşulu ters (kutu öndeyken yanar, arkadayken yanmaz)" \
-    "s=s.replace('if api.Foreground() == dialog {','if api.Foreground() != dialog {',1)"
-mutate desk desktop/internal/win/taskdialog_windows.go "kutu z-sırasının en üstüne çıkarılmıyor (TOPMOST adımı yok)" \
-    "s=s.replace('\tapi.SetTopmost(dialog)\n','',1)"
-mutate desk desktop/internal/win/taskdialog_windows.go "kutu kalıcı en üstte kalıyor (NOTOPMOST adımı yok)" \
-    "s=s.replace('\tapi.ClearTopmost(dialog)\n','',1)"
+# taskdialog_windows.go yalnız Windows'ta derlenir; Linux CI'da bu testler koşmaz.
+if [ "$(go env GOOS)" = windows ]; then
+    mutate desk desktop/internal/win/taskdialog_windows.go "yanıp sönme koşulu ters (kutu öndeyken yanar, arkadayken yanmaz)" \
+        "s=s.replace('if api.Foreground() == dialog {','if api.Foreground() != dialog {',1)"
+    mutate desk desktop/internal/win/taskdialog_windows.go "kutu z-sırasının en üstüne çıkarılmıyor (TOPMOST adımı yok)" \
+        "s=s.replace('\tapi.SetTopmost(dialog)\n','',1)"
+    mutate desk desktop/internal/win/taskdialog_windows.go "kutu kalıcı en üstte kalıyor (NOTOPMOST adımı yok)" \
+        "s=s.replace('\tapi.ClearTopmost(dialog)\n','',1)"
+else
+    echo "  ATLANDI: TDN_CREATED mutantları Windows ister (taskdialog_windows.go)"
+fi
 
 echo "== Duman bayrağı kutuyu atlatmaz =="
 if [ "$(go env GOOS)" = windows ] && [ -d desktop/node_modules ] && [ -d desktop/out/renderer ]; then

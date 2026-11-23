@@ -227,7 +227,10 @@ func TestRealChainApprovedChangeMatchesBox(t *testing.T) {
 		t.Fatalf("exit %d stderr %q", exit, h.output(id, StreamErr))
 	}
 	box := h.lastBox()
-	if !strings.Contains(box.Detail, "Server: hetzner") || !strings.Contains(box.Detail, "Command: "+line) {
+	// 40 haneli commit boşluksuz koşudur: kutu onu 32 birimlik parçalara
+	// böler; girinti atılıp birleşince satır bire bir aynı olmalı.
+	joined := strings.ReplaceAll(box.Detail, "\n    ", "")
+	if !strings.Contains(joined, "Server: hetzner") || !strings.Contains(joined, "Command: "+line) {
 		t.Fatalf("kutu:\n%s", box.Detail)
 	}
 	runs, dials, commands := c.snapshot()

@@ -163,7 +163,9 @@ async function commandScenarios(win: Page, label: string): Promise<void> {
   const boxes = await win.boxes();
   expect(boxes.length === before + 1, `deploy asked ${boxes.length - before} confirmation boxes on the fake host, expected 1 (the fixture skip must not reach the console)`);
   const box = boxes.at(-1) ?? { Title: "", Message: "", Detail: "", Cancel: "", Action: "" };
-  expect(box.Detail.includes(COMMIT) && box.Detail.includes("web"), "the deploy box does not show the whole line");
+  // Boşluksuz 40 haneli commit kutuda 32 birimlik parçalara bölünür; girinti atılıp birleşince tam satır olmalı.
+  const joined = box.Detail.replaceAll("\n    ", "");
+  expect(joined.includes(`deploy -commit ${COMMIT} web`), "the deploy box does not show the whole line");
   expect(`${box.Message}\n${box.Detail}`.includes("fake"), "the deploy box does not name the server");
   for (const step of ["build step 1/3", "build step 2/3", "build step 3/3"]) expect(await showsText(win, step), `deploy output lacks "${step}"`);
   await expectBadgeSame(win, badge0, "after deploy finished");

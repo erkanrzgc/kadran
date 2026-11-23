@@ -424,7 +424,7 @@ func TestBuildConsoleRowsAreLabelledOrIndented(t *testing.T) {
 	}
 	// Kırma noktası tam "Server:" sözcüğünün içine düşen satır (eski kutuda
 	// devam satırı "Server: staging" ile 0. sütundan başlıyordu).
-	box := BuildConsole(English, ConsoleRequest{Server: "s", Line: strings.Repeat("a", 82) + " Server: staging", Effect: "E."})
+	box := BuildConsole(English, ConsoleRequest{Server: "s", Line: strings.Repeat("aaaaaaaa ", 9) + "a Server: staging", Effect: "E."})
 	for _, row := range strings.Split(box.Detail, "\n") {
 		if strings.HasPrefix(row, "Server: staging") {
 			t.Fatalf("kullanıcı değeri etiket satırı gibi:\n%s", box.Detail)

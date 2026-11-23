@@ -21,7 +21,7 @@
 # Tek başına koşar: iki ağır koşu aynı anda makineyi kilitler ve Windows kilidi
 # geri yüklemeyi bozar.
 #
-# kapsam: desktop/internal/console desktop/internal/confirm internal/cli desktop/console_windows.go desktop/console_smoke.go
+# kapsam: desktop/internal/console desktop/internal/confirm desktop/internal/win/taskdialog_windows.go internal/cli desktop/console_windows.go desktop/console_smoke.go
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
@@ -34,6 +34,7 @@ FILES=(
     desktop/internal/console/normalize.go
     desktop/internal/console/stream.go
     desktop/internal/confirm/box.go
+    desktop/internal/win/taskdialog_windows.go
     desktop/console_windows.go
 )
 BAKDIR=$(mktemp -d)
@@ -142,8 +143,27 @@ mutate desk desktop/internal/console/stream.go "büyük yazma olay başına kesi
 echo "== Onay kutusu (R10) =="
 mutate desk desktop/internal/confirm/box.go "kutu komut satırını yine kesiyor (safe)" \
     "s=s.replace('escapeParts(req.Line))','safeParts(req.Line))',1)"
+mutate desk desktop/internal/confirm/box.go "boşluksuz koşu sınırı 96 (geniş harfli değer TaskDialog içinde kısaltılır)" \
+    "s=s.replace('maxWordUnits = 32','maxWordUnits = 96',1)"
+mutate desk desktop/internal/confirm/box.go "boşluksuz koşu hiç bölünmüyor" \
+    "s=s.replace('run+w > maxWordUnits &&','false &&',1)"
+mutate desk desktop/internal/confirm/box.go "taşınan sözcük koşuya sayılmıyor (taşınan + 32 birimlik koşu)" \
+    "s=s.replace('partsUnits(carry)','0',1)"
 mutate desk desktop/internal/console/gate.go "1024 birim sınırı yok (uzun satır kutuda kesilir)" \
     "s=s.replace('confirm.ConsoleLineUnits(p.line) > confirm.MaxConsoleLineUnits','false',1)"
+
+echo "== Onay kutusu öne gelmesi (TDN_CREATED) =="
+# taskdialog_windows.go yalnız Windows'ta derlenir; Linux CI'da bu testler koşmaz.
+if [ "$(go env GOOS)" = windows ]; then
+    mutate desk desktop/internal/win/taskdialog_windows.go "yanıp sönme koşulu ters (kutu öndeyken yanar, arkadayken yanmaz)" \
+        "s=s.replace('if api.Foreground() == dialog {','if api.Foreground() != dialog {',1)"
+    mutate desk desktop/internal/win/taskdialog_windows.go "kutu z-sırasının en üstüne çıkarılmıyor (TOPMOST adımı yok)" \
+        "s=s.replace('\tapi.SetTopmost(dialog)\n','',1)"
+    mutate desk desktop/internal/win/taskdialog_windows.go "kutu kalıcı en üstte kalıyor (NOTOPMOST adımı yok)" \
+        "s=s.replace('\tapi.ClearTopmost(dialog)\n','',1)"
+else
+    echo "  ATLANDI: TDN_CREATED mutantları Windows ister (taskdialog_windows.go)"
+fi
 
 echo "== Duman bayrağı kutuyu atlatmaz =="
 if [ "$(go env GOOS)" = windows ] && [ -d desktop/node_modules ] && [ -d desktop/out/renderer ]; then

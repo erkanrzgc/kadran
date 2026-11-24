@@ -13124,7 +13124,7 @@ kararım" olarak işaretli. Spec'teki iki kod iddiası düzeltildi:
 - "28 dosya, ~11 bin satır": test dışı 5.265 satırdı;
 - "süreç geneline yalnız `main.go` dokunuyor": ortam değişkenleri ve kancasız `ssh` çağrıları da vardı.
 
-**Durum:** PR #39 → `12141d5`, main'de (21 Kasım; CI 17/17 yeşil, üçüncü koşuda). Canlıda iki sunucuda denendi (aşağıda "Canlı"); deneme altı bulgu çıkardı, düzeltmesi ayrı PR. Sunucu, protokol (3) ve ayrıcalıklı yüzey değişmedi. Canlı düzeltmeleri PR #41 → `94391a4` (24 Kasım); R6 PR #42 → `c238d9a` (25 Kasım). #42'nin ilk koşusunda Güvenlik değişmezleri kırmızıydı; sebep #42 değil, Caddy'nin dolaylı bağımlılığı `go.opentelemetry.io/otel` v1.46.0'daki GO-2026-6974'tü (o gün main de kırmızıydı). PR #43 ile v1.47.0'a çıkıldı (`ef26999`). v0.14.0'a giriyor; sunucuya yalnız `kadran-caddy` gider (sunucu yükseltmesi, canlı adım, ayrı onay).
+**Durum:** PR #39 → `12141d5`, main'de (21 Kasım; CI 17/17 yeşil, üçüncü koşuda). Canlıda iki sunucuda denendi (aşağıda "Canlı"); deneme altı bulgu çıkardı, düzeltmesi ayrı PR. Sunucu, protokol (3) ve ayrıcalıklı yüzey değişmedi. Canlı düzeltmeleri PR #41 → `94391a4` (24 Kasım); R6 PR #42 → `c238d9a` (25 Kasım). #42'nin ilk koşusunda Güvenlik değişmezleri kırmızıydı; sebep #42 değil, Caddy'nin dolaylı bağımlılığı `go.opentelemetry.io/otel` v1.46.0'daki GO-2026-6974'tü (o gün main de kırmızıydı). PR #43 ile v1.47.0'a çıkıldı (`ef26999`). v0.14.0'da yayımlandı (25 Kasım; etiket `0bbdd30`, tam CI 18/18 yeşil, iki temiz kopyada `SHA256SUMS` aynı); masaüstü yine sürüm dosyalarında yok, kaynaktan derleniyor. Sunucuya yalnız `kadran-caddy` gider (sunucu yükseltmesi, canlı adım, ayrı onay).
 
 **Uygulama (20 Kasım):**
 

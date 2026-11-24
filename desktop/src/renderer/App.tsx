@@ -13,6 +13,7 @@ import { useConsole } from "./hooks/useConsole.ts";
 import { action as consoleAction } from "./lib/consoleKeys.ts";
 import { isLoginLine, nextTarget, setRunning, type ConsoleTarget } from "./lib/consoleTarget.ts";
 import { useFleet } from "./hooks/useFleet.ts";
+import { useFleetFollow } from "./hooks/useFleetFollow.ts";
 import { useServer } from "./hooks/useServer.ts";
 import { errorText, serverListError } from "./lib/errors.ts";
 import { alarmCount, classifyFailure } from "./lib/fleet.ts";
@@ -58,6 +59,8 @@ export function App() {
   );
   const [version, setVersion] = useState<VersionPayload | null>(null);
   const cards = useFleet(profiles, active === null);
+  // Filo yoklaması etkin sunucunun düştüğünü görürse rozet "Healthy" kalmasın (R6).
+  useFleetFollow(cards, server.state.target, server.refresh);
   // Odakta yeniden okuma düşerse aynı hata her pencere geçişinde yinelenmesin.
   const reloadFailed = useRef(false);
 

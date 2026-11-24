@@ -658,6 +658,15 @@ export async function journey(win: Page): Promise<void> {
   expect(pill === "Attention required", `health pill while stale: ${pill}`);
   await dismissToasts(win);
 
+  // R6: Durum ekranı yenilenmese de filo yoklaması etkin sunucunun düştüğünü
+  // görür ve rozet "Healthy" kalmaz (çıkış ya da kopma; canlı yenileme kapalı).
+  await openServer(win, "fake@flaky3");
+  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Healthy"`, "healthy pill for fake@flaky3");
+  await click(win, '[data-testid="nav-apps"]');
+  await evaluate(win, `document.dispatchEvent(new Event("visibilitychange"))`);
+  await waitFor(win, `${q('[data-testid="health"]')}?.textContent === "Attention required"`, "fleet failure left the pill Healthy");
+  await dismissToasts(win);
+
   await click(win, '[data-testid="nav-settings"]');
   await waitFor(win, q('[data-testid="screen-settings"]'), "settings screen");
   await themeJourney(win);

@@ -23,6 +23,10 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
 ### Fixed
 
+- The desktop health pill no longer stays "Healthy" after a logout or a dropped connection
+  (K-169, R6). When the fleet poll sees the open server fail (or recover), the server status is
+  refreshed once and the pill turns to "Attention required"; before, only the Status screen's own
+  refresh could do that. The 5-minute verification expiry is unchanged.
 - Console live fixes (K-169). The panel is on every screen and the console's server is independent
   of the GUI connection, so `use` works without a session and `login` can be run from the console.
   The exit marker sits on the command's echo line and output is never coloured. The confirmation box

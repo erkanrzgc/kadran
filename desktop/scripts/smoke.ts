@@ -58,6 +58,7 @@ function prepareUserData(): string {
     { name: "root", target: "fake@root" },
     { name: "flaky", target: "fake@flaky" },
     { name: "flaky2", target: "fake@flaky2" },
+    { name: "flaky3", target: "fake@flaky3" },
     { name: "verifyfail", target: "fake@verifyfail" },
     { name: "slow", target: "fake@slow" },
     { name: LONG_NAME, target: LONG_TARGET, provider: "kendi-sunucum" },

@@ -41,6 +41,7 @@ FILES=(
     src/renderer/lib/providers.ts
     src/renderer/lib/audit-window.ts
     src/renderer/lib/health.ts
+    src/renderer/lib/fleet-follow.ts
     src/renderer/lib/fonts.ts
     src/renderer/lib/i18n.ts
     src/renderer/lib/single-flight.ts
@@ -219,6 +220,12 @@ mutate_in src/renderer/lib/health.ts "bayat veri Healthy gösteriyor" \
     "s=s.replace('if (!stale || !status) return h;','return h;',1)"
 mutate_in src/renderer/lib/health.ts "bayatken kötü haber gizleniyor" \
     "s=s.replace(': [\"status.meta_stale\", \"status.meta_down\"]',': [\"status.meta_stale\"]',1)"
+mutate_in src/renderer/lib/fleet-follow.ts "filo düşüşü rozete iletilmiyor (R6)" \
+    "s=s.replace('return card.failure !== null;','return false;',1)"
+mutate_in src/renderer/lib/fleet-follow.ts "başka sunucunun okuması yenileme tetikliyor" \
+    "s=s.replace('before.target === now.target &&','',1)"
+mutate_in src/renderer/lib/fleet-follow.ts "değişmeyen okuma her turda yeniliyor (bildirim yağmuru)" \
+    "s=s.replace('before.failed !== now.failed','true',1)"
 mutate_in src/renderer/lib/single-flight.ts "aynı sunucuya üst üste istek" \
     "s=s.replace('if (existing) return existing;','void existing;',1)"
 mutate_in src/renderer/lib/serial.ts "profil yazmaları sırasız" \

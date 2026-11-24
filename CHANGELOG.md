@@ -3,7 +3,16 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
-## Unreleased
+## v0.14.0 — 2026-11-25
+
+A console panel in the desktop app (K-169) and a security fix in `kadran-caddy` (GO-2026-6974). The
+protocol stays 3 and no server call changed, so this client works with a v0.13.0 server and a
+v0.13.0 client works with a v0.14.0 server. On the server only `kadran-caddy` changed: upgrade your
+servers to get the fixed binary (Caddy restarts during the upgrade). The CLI's commands moved into
+`internal/cli` so that the console runs the same code; their output and exit codes are unchanged,
+checked against recorded outputs in `scripts/testdata/cli-golden`. The desktop app is still not
+among the release files: build it from source in `desktop/` (see the
+[desktop guide](docs/guides/desktop.md)).
 
 ### Added
 
@@ -33,8 +42,19 @@ decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
   has a fixed width (320 units). A live check at 150% scale cut a 96-unit unbroken token
   with an ellipsis, so unbroken runs are now split into pieces of at most 32 units. The live retry
   at 150% showed the whole token, and a run of very wide glyphs (U+FDFD) also stayed visible; 100%
-  was not retried. The box comes to the front when Kadran is in the background; it also raises its own window once when it opens, so it no longer stays behind another app (live retry pending). Codes typed after `login` or
+  was not retried. The box comes to the front when Kadran is in the background; it also raises its own window once when it opens, so it no longer stays behind another app. A timed
+  live check passed: with another app in front, the box came above it and flashed in the taskbar
+  (Windows does not let it take the focus); the path where the box belongs to the Kadran window was
+  not measured. Codes typed after `login` or
   `totp` are masked in the history, the echo line and the box. The server badge shows its reason. The memory growth was measured and the result is recorded as an open item.
+
+### Security
+
+- `kadran-caddy` is built with `go.opentelemetry.io/otel` v1.47.0 (`otel`, `sdk`, `trace`,
+  `metric`, `sdk/metric`, `log`, `sdk/log`), which fixes
+  [GO-2026-6974](https://pkg.go.dev/vuln/GO-2026-6974) (the attribute value length limit could be
+  bypassed with U+FFFD runes). govulncheck found it reachable from Caddy's `main`. Upgrade your
+  servers to v0.14.0 to get the fixed binary (recorded under K-169).
 
 ## v0.13.0 — 2026-11-18
 

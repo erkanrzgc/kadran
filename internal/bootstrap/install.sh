@@ -776,6 +776,21 @@ build/caddy/main.go — the K-050 boundary is VOID."
 
     say "Caddy module exclusions verified; typed broker enforces the admin boundary"
 
+    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
+    #
+    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
+    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
+    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
+    # sağlanıyor. Hazırlıkta denetleniyor: yükseltmede hiçbir şey değişmeden
+    # düşsün. Taze kurulumda kullanıcı henüz yok (`id` boş döner) ve
+    # ters_vekil_baslat'taki useradd onu bu gruba koymuyor.
+    if id -nG kadran-caddy 2>/dev/null | tr ' ' '\n' | grep -qx kadran; then
+        die \
+"user kadran-caddy is in the 'kadran' group. As it is, it can reach exec.sock
+— the internet-facing process could talk to the privileged executor.
+To fix:  gpasswd -d kadran-caddy kadran"
+    fi
+
     # ── Yapılandırma ve birimler ────────────────────────────────────────
 
     vekil_once="$(vekil_parmak_izi)"
@@ -823,19 +838,6 @@ ters_vekil_baslat() {
             --home-dir /var/lib/kadran-caddy --no-create-home \
             --shell "$NOLOGIN" \
             --comment "Kadran reverse proxy" kadran-caddy
-    fi
-
-    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
-    #
-    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
-    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
-    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
-    # sağlanıyor.
-    if id -nG kadran-caddy | tr ' ' '\n' | grep -qx kadran; then
-        die \
-"user kadran-caddy is in the 'kadran' group. As it is, it can reach exec.sock
-— the internet-facing process could talk to the privileged executor.
-To fix:  gpasswd -d kadran-caddy kadran"
     fi
 
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \

@@ -389,7 +389,7 @@ Fix it and run the install again; the migration resumes where it stopped."
 }
 
 # goc_vekil — eski ters vekili durdurur ve yeni ada taşır. KESİNTİ BURADA
-# başlar ve install.sh'ın ters_vekil_kur'u kadran-caddy'yi başlatınca biter
+# başlar ve install.sh'ın ters_vekil_baslat'ı kadran-caddy'yi başlatınca biter
 # (rotaları kadrand'ın vekil izleyicisi yazar, K-055).
 goc_vekil() {
     local b

@@ -70,7 +70,7 @@ func TestUpgradeClosesLegacyRawAdminConnections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	block := between(string(script), "ters_vekil_baslat() {", "ters_vekil_kur() {")
+	block := between(string(script), "ters_vekil_baslat() {", "\n}\n")
 	stop := strings.Index(block, "systemctl stop kadrand.service")
 	restart := strings.Index(block, "systemctl restart kadran-caddy-admin.socket")
 	if stop < 0 || restart < 0 || stop >= restart {

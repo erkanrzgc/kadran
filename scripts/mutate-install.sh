@@ -113,7 +113,20 @@ mutate_in "$INST" "göçte aracı önhazırlığı hiç çağrılmıyor" \
     "s=s.replace('    # başlamadan ÖNCE var olmalı (B2/I4).\n    vekil_araci_onhazirla\n','    # başlamadan ÖNCE var olmalı (B2/I4).\n',1)"
 
 mutate_in "$INST" "göçte aracı önhazırlığı kadrand'dan SONRA çağrılıyor" \
-    "s=s.replace('    # başlamadan ÖNCE var olmalı (B2/I4).\n    vekil_araci_onhazirla\n','    # başlamadan ÖNCE var olmalı (B2/I4).\n',1); s=s.replace('systemctl restart kadran-exec.service\nsystemctl restart kadrand.service\n','systemctl restart kadran-exec.service\nsystemctl restart kadrand.service\nvekil_araci_onhazirla\n',1)"
+    "s=s.replace('    # başlamadan ÖNCE var olmalı (B2/I4).\n    vekil_araci_onhazirla\n','    # başlamadan ÖNCE var olmalı (B2/I4).\n',1); s=s.replace('fi\nsystemctl restart kadrand.service\n','fi\nsystemctl restart kadrand.service\nvekil_araci_onhazirla\n',1)"
+
+echo "== Ters vekil kadrand'dan hemen önce yeniden başlıyor (K-169) =="
+
+mutate_in "$INST" "vekil başlatması yine hazırlığın hemen ardında (SSH/git/executor boyunca site kapalı)" \
+    "s=s.replace('    ters_vekil_hazirla\nfi\n','    ters_vekil_hazirla\n    ters_vekil_baslat\nfi\n',1); s=s.replace('    ters_vekil_baslat\nfi\nsystemctl restart kadrand.service\n','    :\nfi\nsystemctl restart kadrand.service\n',1)"
+
+mutate_in "$INST" "executor vekil başlatmasıyla kadrand arasında yeniden başlıyor" \
+    "s=s.replace('systemctl restart kadran-exec.service\n# Ters vekil','# Ters vekil',1); s=s.replace('    ters_vekil_baslat\nfi\nsystemctl restart kadrand.service\n','    ters_vekil_baslat\nfi\nsystemctl restart kadran-exec.service\nsystemctl restart kadrand.service\n',1)"
+
+mutate_in "$INST" "vekil başlatması kadrand'dan SONRA (rotalar izleyicinin turunu bekler)" \
+    "s=s.replace('    ters_vekil_baslat\nfi\nsystemctl restart kadrand.service\n','    :\nfi\nsystemctl restart kadrand.service\nters_vekil_baslat\n',1)"
+
+echo "== Göç: aracı önhazırlığı =="
 
 mutate_in "$INST" "önhazırlık aracı servisini de başlatıyor (eski vekil portları tutarken)" \
     "s=s.replace('    systemctl restart kadran-proxy.socket\n}','    systemctl restart kadran-proxy.socket\n    systemctl start kadran-proxy.service\n}',1)"

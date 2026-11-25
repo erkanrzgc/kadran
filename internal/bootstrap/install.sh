@@ -684,7 +684,7 @@ say "volume root hardened ($vol_opts)"
 #
 # kadrand.service `Requires=kadran-proxy.socket` taşıyor: aracının kullanıcısı,
 # tmpfiles dizini, birim dosyaları ve SOKETİ kadrand başlamadan ÖNCE hazır
-# olmalı. Taze kurulum ve yükseltmede ters_vekil_kur bunu zaten yapıyor. Göçte
+# olmalı. Taze kurulum ve yükseltmede ters_vekil_baslat bunu zaten yapıyor. Göçte
 # (K-136) ters_vekil_* kasten kadrand'dan SONRAYA ertelenir (eski vekil :80/:443'ü
 # tutuyor); bu yüzden kadrand'ın göçteki ilk yeniden başlatması, birim yokken
 # `Requires=` yüzünden başlamıyordu (yarım göç, B2/I4). Aşağıdaki üç parça iki
@@ -743,7 +743,7 @@ vekil_araci_onhazirla() {
 # sunarken yapılabilen her şey (K-050 denetimi, dosyalar, enable) hazırlıkta;
 # kullanıcıya ve porta bağlı olanlar başlatmada. GCP provasında ilk sürümün
 # 6,5 sn'lik vekil geçişinin ~3 sn'si modül denetimiydi. Taze kurulum ve
-# yükseltmede ikisi art arda çalışır (ters_vekil_kur), davranış aynı.
+# yükseltmede de ayrılar: hazırlık erken, başlatma kadrand'dan hemen önce.
 ters_vekil_hazirla() {
     step "Reverse proxy"
 
@@ -872,13 +872,13 @@ To fix:  gpasswd -d kadran-caddy kadran"
     systemctl start kadran-proxy.service
 }
 
-ters_vekil_kur() {
-    ters_vekil_hazirla
-    ters_vekil_baslat
-}
-
+# Taze kurulum ve yükseltmede hazırlık burada (K-050 denetimi değişiklikten
+# önce düşsün), başlatma ise "Services" adımında kadrand'dan HEMEN önce:
+# Caddy değişince ters_vekil_baslat kadrand'ı durdurup Caddy'yi rotasız açar
+# ve rotaları kadrand yükler. Başlatma burada olsaydı SSH, git aracı ve
+# executor adımları boyunca site boş Caddy'ye düşerdi (v0.14.0, GCP: 7,8 sn).
 if [ "$GOC" -eq 0 ]; then
-    ters_vekil_kur
+    ters_vekil_hazirla
 fi
 
 # ── SSH yapılandırması ───────────────────────────────────────────────
@@ -1003,6 +1003,11 @@ systemctl enable kadran-exec.service kadrand.service
 # trafiği etkilenmez (ters vekil ve konteynerler ayrı). Executor ÖNCE:
 # daemon açılışta ona bağlanıyor.
 systemctl restart kadran-exec.service
+# Ters vekil kadrand'dan HEMEN önce (yukarıdaki hazırlığın notu): rotasız
+# Caddy ile rotaları yükleyen kadrand arasında başka adım olmasın.
+if [ "$GOC" -eq 0 ]; then
+    ters_vekil_baslat
+fi
 systemctl restart kadrand.service
 
 # Soketlerin belirmesi için kısa bir pencere.

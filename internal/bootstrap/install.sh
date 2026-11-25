@@ -737,6 +737,23 @@ vekil_araci_onhazirla() {
     systemctl restart kadran-proxy.socket
 }
 
+# Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
+#
+# Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
+# internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
+# admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
+# sağlanıyor. İki yerden koşar: hazırlıkta (yükseltmede değişiklikten önce)
+# ve başlatmada (kullanıcı oluşturulduktan ya da göçte yeniden
+# adlandırıldıktan sonra, Caddy yeniden başlamadan önce).
+vekil_grup_denetimi() {
+    if id -nG kadran-caddy 2>/dev/null | tr ' ' '\n' | grep -qx kadran; then
+        die \
+"user kadran-caddy is in the 'kadran' group. As it is, it can reach exec.sock
+— the internet-facing process could talk to the privileged executor.
+To fix:  gpasswd -d kadran-caddy kadran"
+    fi
+}
+
 # ters_vekil_hazirla / ters_vekil_baslat — ters vekili kurar ya da yükseltir.
 #
 # İki parça çünkü göçte (K-136) arada eski vekil duruyor: ESKİ vekil siteyi
@@ -776,20 +793,9 @@ build/caddy/main.go — the K-050 boundary is VOID."
 
     say "Caddy module exclusions verified; typed broker enforces the admin boundary"
 
-    # Değişmez: ters vekil `kadran` GRUBUNDA OLAMAZ.
-    #
-    # Girseydi /run/kadran-exec/exec.sock'a (0660 root:kadran) ulaşırdı; yani
-    # internete bakan süreç ayrıcalıklı executor'a konuşabilirdi. kadrand'nin
-    # admin soketine erişimi grup ÜYELİĞİYLE değil, SOKETİN grup sahipliğiyle
-    # sağlanıyor. Hazırlıkta denetleniyor: yükseltmede hiçbir şey değişmeden
-    # düşsün. Taze kurulumda kullanıcı henüz yok (`id` boş döner) ve
-    # ters_vekil_baslat'taki useradd onu bu gruba koymuyor.
-    if id -nG kadran-caddy 2>/dev/null | tr ' ' '\n' | grep -qx kadran; then
-        die \
-"user kadran-caddy is in the 'kadran' group. As it is, it can reach exec.sock
-— the internet-facing process could talk to the privileged executor.
-To fix:  gpasswd -d kadran-caddy kadran"
-    fi
+    # Yükseltmede hiçbir şey değişmeden düşsün (taze kurulumda kullanıcı
+    # henüz yok, denetim boş geçer; başlatmada yeniden koşar).
+    vekil_grup_denetimi
 
     # ── Yapılandırma ve birimler ────────────────────────────────────────
 
@@ -839,6 +845,8 @@ ters_vekil_baslat() {
             --shell "$NOLOGIN" \
             --comment "Kadran reverse proxy" kadran-caddy
     fi
+
+    vekil_grup_denetimi
 
     install -m 0644 -o root -g root "$STAGE/kadran-caddy-tmpfiles.conf" \
         /etc/tmpfiles.d/kadran-caddy.conf

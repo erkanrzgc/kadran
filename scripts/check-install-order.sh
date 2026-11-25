@@ -167,5 +167,20 @@ dene "ters vekil hazırlığı SSH adımından ÖNCE (K-050 denetimi erken düş
     "h=\"\$(grep -n '^    ters_vekil_hazirla\$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)\"; [ -n \"\$h\" ] && [ \"\$h\" -lt '$sshadim' ]"
 
 echo
+echo "== kadran-caddy 'kadran' grubunda değil: iki yerde denetleniyor =="
+# Hazırlıkta (yükseltmede değişiklikten önce) ve başlatmada (kullanıcı
+# oluşturulduktan ya da göçte yeniden adlandırıldıktan sonra).
+HZR="$D/hazirla"; BSL="$D/baslat"
+sed -n '/^ters_vekil_hazirla() {/,/^}/p' internal/bootstrap/install.sh > "$HZR"
+sed -n '/^ters_vekil_baslat() {/,/^}/p' internal/bootstrap/install.sh > "$BSL"
+dene "işlevler çıkarılabildi" "[ -s '$HZR' ] && [ -s '$BSL' ]"
+dene "grup denetimi hazırlıkta" "grep -qx '    vekil_grup_denetimi' '$HZR'"
+gu="$(grep -n 'useradd --system --gid kadran-caddy' "$BSL" | head -1 | cut -d: -f1)"
+gd="$(grep -nx '    vekil_grup_denetimi' "$BSL" | head -1 | cut -d: -f1)"
+gr="$(grep -n 'systemctl restart kadran-caddy.service' "$BSL" | head -1 | cut -d: -f1)"
+dene "grup denetimi başlatmada useradd'dan SONRA, Caddy yeniden başlamadan ÖNCE" \
+    "[ -n '$gu' ] && [ -n '$gd' ] && [ -n '$gr' ] && [ '$gu' -lt '$gd' ] && [ '$gd' -lt '$gr' ]"
+
+echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }
 echo "Göç sırası doğru."

@@ -126,6 +126,12 @@ mutate_in "$INST" "executor vekil başlatmasıyla kadrand arasında yeniden baş
 mutate_in "$INST" "vekil başlatması kadrand'dan SONRA (rotalar izleyicinin turunu bekler)" \
     "s=s.replace('    ters_vekil_baslat\nfi\nsystemctl restart kadrand.service\n','    :\nfi\nsystemctl restart kadrand.service\nters_vekil_baslat\n',1)"
 
+mutate_in "$INST" "grup denetimi başlatmada yok (göçte yeniden adlandırılan kullanıcı denetlenmez)" \
+    "s=s.replace('    fi\n\n    vekil_grup_denetimi\n\n    install','    fi\n\n    install',1)"
+
+mutate_in "$INST" "grup denetimi hazırlıkta yok (yükseltme değişiklikten sonra düşer)" \
+    "s=s.replace('    # henüz yok, denetim boş geçer; başlatmada yeniden koşar).\n    vekil_grup_denetimi\n','    # henüz yok, denetim boş geçer; başlatmada yeniden koşar).\n',1)"
+
 echo "== Göç: aracı önhazırlığı =="
 
 mutate_in "$INST" "önhazırlık aracı servisini de başlatıyor (eski vekil portları tutarken)" \

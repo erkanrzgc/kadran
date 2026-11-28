@@ -144,5 +144,43 @@ dene "ön koşul (eski kimlik) ilk değişiklikten ÖNCE" \
     "[ -n '$onceki' ] && [ -n '$havuz' ] && [ '$onceki' -lt '$havuz' ] && [ '$onceki' -lt '$ikili' ]"
 
 echo
+echo "== Ters vekil kadrand'dan hemen ÖNCE yeniden başlıyor (K-169) =="
+# Caddy değişince ters_vekil_baslat kadrand'ı durdurup Caddy'yi rotasız açar;
+# rotaları kadrand yükler. Arada başka adım koşarsa site o kadar kapalı kalır
+# (v0.14.0, GCP: SSH, git aracı ve executor yeniden başlatmaları → 7,8 sn).
+vbas="$(grep -n '^    ters_vekil_baslat$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+sshadim="$(grep -n '^step "SSH configuration"' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+execr="$(grep -n '^systemctl restart kadran-exec.service$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)"
+dene "ana akış: ters_vekil_baslat çağrısı var" "[ -n '$vbas' ]"
+dene "vekil başlatması SSH adımından SONRA" \
+    "[ -n '$vbas' ] && [ -n '$sshadim' ] && [ '$vbas' -gt '$sshadim' ]"
+dene "vekil başlatması git_araci_kur'dan SONRA" \
+    "[ -n '$vbas' ] && [ -n '$gcagri' ] && [ '$vbas' -gt '$gcagri' ]"
+dene "vekil başlatması executor yeniden başlatmasından SONRA" \
+    "[ -n '$vbas' ] && [ -n '$execr' ] && [ '$vbas' -gt '$execr' ]"
+dene "vekil başlatması kadrand yeniden başlatmasından ÖNCE" \
+    "[ -n '$vbas' ] && [ -n '$yeniden' ] && [ '$vbas' -lt '$yeniden' ]"
+# Aradaki satırlar yalnız if kapanışı, yorum ya da boş satır olabilir.
+dene "vekil başlatmasıyla kadrand arasında başka komut yok" \
+    "[ -n '$vbas' ] && [ -n '$yeniden' ] && ! sed -n \"\$(( $vbas + 1 )),\$(( $yeniden - 1 ))p\" internal/bootstrap/install.sh | grep -Ev '^[[:space:]]*(#|\$)|^fi\$' | grep -q ."
+dene "ters vekil hazırlığı SSH adımından ÖNCE (K-050 denetimi erken düşer)" \
+    "h=\"\$(grep -n '^    ters_vekil_hazirla\$' internal/bootstrap/install.sh | head -1 | cut -d: -f1)\"; [ -n \"\$h\" ] && [ \"\$h\" -lt '$sshadim' ]"
+
+echo
+echo "== kadran-caddy 'kadran' grubunda değil: iki yerde denetleniyor =="
+# Hazırlıkta (yükseltmede değişiklikten önce) ve başlatmada (kullanıcı
+# oluşturulduktan ya da göçte yeniden adlandırıldıktan sonra).
+HZR="$D/hazirla"; BSL="$D/baslat"
+sed -n '/^ters_vekil_hazirla() {/,/^}/p' internal/bootstrap/install.sh > "$HZR"
+sed -n '/^ters_vekil_baslat() {/,/^}/p' internal/bootstrap/install.sh > "$BSL"
+dene "işlevler çıkarılabildi" "[ -s '$HZR' ] && [ -s '$BSL' ]"
+dene "grup denetimi hazırlıkta" "grep -qx '    vekil_grup_denetimi' '$HZR'"
+gu="$(grep -n 'useradd --system --gid kadran-caddy' "$BSL" | head -1 | cut -d: -f1)"
+gd="$(grep -nx '    vekil_grup_denetimi' "$BSL" | head -1 | cut -d: -f1)"
+gr="$(grep -n 'systemctl restart kadran-caddy.service' "$BSL" | head -1 | cut -d: -f1)"
+dene "grup denetimi başlatmada useradd'dan SONRA, Caddy yeniden başlamadan ÖNCE" \
+    "[ -n '$gu' ] && [ -n '$gd' ] && [ -n '$gr' ] && [ '$gu' -lt '$gd' ] && [ '$gd' -lt '$gr' ]"
+
+echo
 (( fail == 0 )) || { echo "BAŞARISIZ"; exit 1; }
 echo "Göç sırası doğru."

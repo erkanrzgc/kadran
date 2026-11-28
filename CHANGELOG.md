@@ -3,6 +3,16 @@
 All notable changes are recorded here. Every claim links back to a measured
 decision record (`K-…`) in [`docs/decisions.md`](docs/decisions.md).
 
+## Unreleased
+
+### Fixed
+
+- When an upgrade replaces `kadran-caddy`, `kadran bootstrap` now restarts the reverse proxy right
+  before `kadrand`, which loads the routes (K-169). Before, the proxy restarted early and the sites
+  stayed down while the SSH settings, the GitHub broker and the executor were set up: about 3 s on
+  the Hetzner test server and 7.8 s on the GCP e2-micro in the v0.14.0 upgrade. The new gap is only
+  the proxy restart and `kadrand`'s start; it has not been measured on a live server yet.
+
 ## v0.14.0 — 2026-11-25
 
 A console panel in the desktop app (K-169) and a security fix in `kadran-caddy` (GO-2026-6974). The
